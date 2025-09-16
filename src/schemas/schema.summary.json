@@ -1,0 +1,1061 @@
+{
+  "about_page_contents": {},
+  "agent_packages": {
+    "name": [
+      "string"
+    ],
+    "icon": [
+      "string"
+    ],
+    "price_yearly": [
+      "null",
+      "number"
+    ],
+    "description": [
+      "string"
+    ],
+    "key_benefits": [
+      "array",
+      "null"
+    ],
+    "notes": [
+      "string"
+    ],
+    "popular": [
+      "boolean",
+      "null"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "agents": {},
+  "assets": {
+    "url": [
+      "string"
+    ],
+    "thumbUrl": [
+      "string"
+    ],
+    "title": [
+      "string"
+    ],
+    "alt": [
+      "string"
+    ],
+    "credit": [
+      "string"
+    ],
+    "license": [
+      "string"
+    ],
+    "sourceUrl": [
+      "string"
+    ],
+    "tags": [
+      "array"
+    ],
+    "width": [
+      "number"
+    ],
+    "height": [
+      "number"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "bank_settings": {
+    "country": [
+      "string"
+    ],
+    "beneficiary_name": [
+      "null",
+      "string"
+    ],
+    "beneficiary_address": [
+      "null",
+      "string"
+    ],
+    "bank_name": [
+      "null",
+      "string"
+    ],
+    "branch_address": [
+      "null",
+      "string"
+    ],
+    "account_number": [
+      "null",
+      "number",
+      "string"
+    ],
+    "branch_transit": [
+      "null",
+      "number"
+    ],
+    "institution_number": [
+      "null",
+      "number"
+    ],
+    "swift_bic": [
+      "null",
+      "string"
+    ],
+    "currency": [
+      "string"
+    ],
+    "charges_option": [
+      "string"
+    ],
+    "active": [
+      "boolean"
+    ],
+    "instructions": [
+      "string"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "brand_settings": {
+    "singleton_key": [
+      "string"
+    ],
+    "company_name": [
+      "string"
+    ],
+    "logo_url": [
+      "string"
+    ],
+    "logo_dark_url": [
+      "null"
+    ],
+    "favicon_url": [
+      "null"
+    ],
+    "primary_color": [
+      "string"
+    ],
+    "secondary_color": [
+      "string"
+    ],
+    "tagline": [
+      "string"
+    ],
+    "footer_text": [
+      "string"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "cases": {},
+  "chat_settings": {
+    "singleton_key": [
+      "string"
+    ],
+    "whatsapp_number": [
+      "string"
+    ],
+    "zalo_number": [
+      "string"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "contact_page_contents": {
+    "singleton_key": [
+      "string"
+    ],
+    "hero_title": [
+      "string"
+    ],
+    "hero_subtitle": [
+      "string"
+    ],
+    "form_title": [
+      "string"
+    ],
+    "info_title": [
+      "string"
+    ],
+    "office_hours_title": [
+      "string"
+    ],
+    "email": [
+      "string"
+    ],
+    "phone": [
+      "string"
+    ],
+    "address": [
+      "string"
+    ],
+    "office_hours_vietnam": [
+      "string"
+    ],
+    "office_hours_canada": [
+      "string"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "contacts": {},
+  "conversations": {},
+  "event_assignments": {
+    "event_id": [
+      "string"
+    ],
+    "user_id": [
+      "string"
+    ],
+    "assigned_role": [
+      "string"
+    ],
+    "permissions": [
+      "array"
+    ],
+    "notes": [
+      "null"
+    ],
+    "assigned_by": [
+      "string"
+    ],
+    "status": [
+      "string"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "event_registrations": {},
+  "events": {
+    "event_id": [
+      "string"
+    ],
+    "title": [
+      "string"
+    ],
+    "start": [
+      "string"
+    ],
+    "end": [
+      "string"
+    ],
+    "timezone": [
+      "string"
+    ],
+    "archive_at": [
+      "string"
+    ],
+    "location": [
+      "string"
+    ],
+    "registration_tiers": [
+      "array"
+    ],
+    "registration_form_fields": [
+      "array"
+    ],
+    "registration_close": [
+      "null"
+    ],
+    "refund_50_by": [
+      "null"
+    ],
+    "refund_none_after": [
+      "null"
+    ],
+    "nasio_checkout_url": [
+      "null"
+    ],
+    "bank_details": [
+      "null"
+    ],
+    "introduction": [
+      "string"
+    ],
+    "fair_inclusions": [
+      "array"
+    ],
+    "additional_activities": [
+      "array"
+    ],
+    "promotion_plan": [
+      "object"
+    ],
+    "payment_information": [
+      "null"
+    ],
+    "shipping_deadline": [
+      "null",
+      "string"
+    ],
+    "shipping_address": [
+      "null",
+      "string"
+    ],
+    "exhibitor_notes": [
+      "null",
+      "string"
+    ],
+    "contact_details": [
+      "object"
+    ],
+    "cover_image": [
+      "null",
+      "string"
+    ],
+    "gallery_images": [
+      "array"
+    ],
+    "promo_video": [
+      "null"
+    ],
+    "promo_video_url": [
+      "null",
+      "string"
+    ],
+    "media_attribution": [
+      "null"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "exhibitor_registrations": {
+    "event_id": [
+      "string"
+    ],
+    "user_id": [
+      "string"
+    ],
+    "school_name": [
+      "string"
+    ],
+    "contact_name": [
+      "string"
+    ],
+    "contact_email": [
+      "string"
+    ],
+    "phone": [
+      "string"
+    ],
+    "status": [
+      "string"
+    ],
+    "amount": [
+      "number"
+    ],
+    "currency": [
+      "string"
+    ],
+    "payment_method": [
+      "string"
+    ],
+    "bank_proof_url": [
+      "null",
+      "string"
+    ],
+    "ticket_qr_url": [
+      "null",
+      "string"
+    ],
+    "booth_number": [
+      "null",
+      "string"
+    ],
+    "checked_in": [
+      "boolean",
+      "null"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "fair_events": {
+    "title": [
+      "string"
+    ],
+    "startDate": [
+      "string"
+    ],
+    "endDate": [
+      "string"
+    ],
+    "city": [
+      "string"
+    ],
+    "country": [
+      "string"
+    ],
+    "isOnline": [
+      "boolean",
+      "null"
+    ],
+    "venue": [
+      "string"
+    ],
+    "registrationUrl": [
+      "string"
+    ],
+    "registrationClosed": [
+      "null"
+    ],
+    "imageUrl": [
+      "string"
+    ],
+    "status": [
+      "string"
+    ],
+    "isFree": [
+      "null"
+    ],
+    "isHybrid": [
+      "null"
+    ],
+    "isWorkshop": [
+      "null"
+    ],
+    "description": [
+      "string"
+    ],
+    "sponsorshipPackages": [
+      "null"
+    ],
+    "partnershipOpportunities": [
+      "null"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "faqs": {
+    "faq_id": [
+      "string"
+    ],
+    "lang": [
+      "string"
+    ],
+    "title": [
+      "string"
+    ],
+    "body": [
+      "string"
+    ],
+    "tags": [
+      "array"
+    ],
+    "category": [
+      "string"
+    ],
+    "priority": [
+      "null",
+      "number"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "home_page_contents": {
+    "singleton_key": [
+      "string"
+    ],
+    "hero_section": [
+      "object"
+    ],
+    "events_page_section": [
+      "null"
+    ],
+    "features_section": [
+      "array"
+    ],
+    "testimonials_section": [
+      "array"
+    ],
+    "stats_section": [
+      "array"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "institutions": {},
+  "knowledge_bases": {
+    "kb_id": [
+      "string"
+    ],
+    "lang": [
+      "string"
+    ],
+    "title": [
+      "string"
+    ],
+    "summary": [
+      "string"
+    ],
+    "body": [
+      "string"
+    ],
+    "sources": [
+      "array"
+    ],
+    "category": [
+      "string"
+    ],
+    "tags": [
+      "array"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "leads": {},
+  "marketplace_orders": {},
+  "messages": {},
+  "payments": {},
+  "posts": {
+    "title": [
+      "string"
+    ],
+    "excerpt": [
+      "string"
+    ],
+    "content": [
+      "string"
+    ],
+    "coverImageUrl": [
+      "string"
+    ],
+    "category": [
+      "string"
+    ],
+    "author": [
+      "string"
+    ],
+    "readTime": [
+      "string"
+    ],
+    "isFeatured": [
+      "boolean",
+      "null"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "programs": {
+    "title": [
+      "string"
+    ],
+    "schoolName": [
+      "string"
+    ],
+    "schoolLogoUrl": [
+      "null"
+    ],
+    "schoolProvince": [
+      "null"
+    ],
+    "schoolCity": [
+      "null"
+    ],
+    "level": [
+      "string"
+    ],
+    "tuition": [
+      "number"
+    ],
+    "duration": [
+      "string"
+    ],
+    "next_intake": [
+      "string"
+    ],
+    "overview": [
+      "string"
+    ],
+    "admission_requirements": [
+      "null",
+      "string"
+    ],
+    "tuition_and_fees_details": [
+      "null",
+      "string"
+    ],
+    "intake_details": [
+      "null",
+      "string"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "registrations": {},
+  "reservations": {},
+  "schools": {
+    "name": [
+      "string"
+    ],
+    "location": [
+      "string"
+    ],
+    "country": [
+      "string"
+    ],
+    "founded_year": [
+      "null",
+      "number"
+    ],
+    "address": [
+      "null",
+      "string"
+    ],
+    "tuition_fees": [
+      "null",
+      "number"
+    ],
+    "application_fee": [
+      "null",
+      "number"
+    ],
+    "cost_of_living": [
+      "null",
+      "number"
+    ],
+    "about": [
+      "string"
+    ],
+    "programs": [
+      "array"
+    ],
+    "website": [
+      "null",
+      "string"
+    ],
+    "image_url": [
+      "null",
+      "string"
+    ],
+    "rating": [
+      "number"
+    ],
+    "acceptance_rate": [
+      "number"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "services": {
+    "vendor_id": [
+      "string"
+    ],
+    "name": [
+      "string"
+    ],
+    "description": [
+      "null",
+      "string"
+    ],
+    "category": [
+      "string"
+    ],
+    "price_usd": [
+      "number"
+    ],
+    "image_url": [
+      "null",
+      "string"
+    ],
+    "status": [
+      "string"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "student_rsvps": {},
+  "student_tutor_packages": {
+    "name": [
+      "string"
+    ],
+    "target_user": [
+      "string"
+    ],
+    "price_display": [
+      "string"
+    ],
+    "price_usd": [
+      "null",
+      "number"
+    ],
+    "num_sessions": [
+      "number"
+    ],
+    "key_benefits": [
+      "array"
+    ],
+    "icon": [
+      "string"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "support_agents": {},
+  "support_tickets": {},
+  "tutoring_sessions": {},
+  "tutor_packages": {
+    "name": [
+      "string"
+    ],
+    "icon": [
+      "string"
+    ],
+    "price_cad_monthly": [
+      "null",
+      "number"
+    ],
+    "commission_rate": [
+      "number"
+    ],
+    "key_benefits": [
+      "array"
+    ],
+    "popular": [
+      "boolean",
+      "null"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "tutors": {},
+  "vendors": {
+    "user_id": [
+      "string"
+    ],
+    "business_name": [
+      "string"
+    ],
+    "business_license_url": [
+      "null"
+    ],
+    "service_categories": [
+      "array"
+    ],
+    "verification_status": [
+      "string"
+    ],
+    "rating": [
+      "null",
+      "number"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "visa_documents": {},
+  "visa_packages": {
+    "name": [
+      "string"
+    ],
+    "icon": [
+      "string"
+    ],
+    "price": [
+      "number"
+    ],
+    "description": [
+      "string"
+    ],
+    "features": [
+      "array"
+    ],
+    "processingTime": [
+      "string"
+    ],
+    "successRate": [
+      "string"
+    ],
+    "supportLevel": [
+      "string"
+    ],
+    "popular": [
+      "boolean",
+      "null"
+    ],
+    "country": [
+      "string"
+    ],
+    "doc_requirements": [
+      "array"
+    ],
+    "upload_tips": [
+      "array"
+    ],
+    "id": [
+      "string"
+    ],
+    "created_date": [
+      "string"
+    ],
+    "updated_date": [
+      "string"
+    ],
+    "created_by_id": [
+      "string"
+    ],
+    "is_sample": [
+      "null"
+    ]
+  },
+  "visa_requests": {},
+  "wallet_transactions": {},
+  "wallets": {}
+}

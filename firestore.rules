@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function authed() { return request.auth != null; }
+
+    // ----- Public content (read-only) -----
+    match /events/{doc}              { allow read: if true; allow write: if false; }
+    match /home_page_contents/{doc}  { allow read: if true; allow write: if false; }
+    match /about_page_contents/{doc} { allow read: if true; allow write: if false; }
+    match /contact_page_contents/{doc}{ allow read: if true; allow write: if false; }
+    match /brand_settings/{doc}      { allow read: if true; allow write: if false; }
+    match /chat_settings/{doc}       { allow read: if true; allow write: if false; }
+    match /faqs/{doc}                { allow read: if true; allow write: if false; }
+    match /schools/{doc}             { allow read: if true; allow write: if false; }
+    match /school_profiles/{doc}     { allow read: if true; allow write: if false; }
+    match /posts/{doc}               { allow read: if true; allow write: if false; }
+    match /assets/{doc}              { allow read: if true; allow write: if false; }
+    match /institutions/{doc}        { allow read: if true; allow write: if false; }
+    match /programs/{doc}            { allow read: if true; allow write: if false; }
+
+    // ----- Settings (read-only) -----
+    match /bank_settings/{doc}   { allow read: if true; allow write: if false; }
+    match /settings/{doc}        { allow read: if true; allow write: if false; } // if you keep a generic settings coll
+
+    // ----- Registrations & payments -----
+    match /event_registrations/{doc} {
+      // allow guests to create a registration
+      allow create: if true;
+      // allow reading/updating by signed-in users (tighten to owner if you store user_id)
+      allow read, update: if authed();
+      allow delete: if false;
+    }
+    match /payments/{doc} {
+      // created immediately after successful capture
+      allow create: if true;
+      allow read, update: if authed();
+      allow delete: if false;
+    }
+
+    // ----- Fallback: deny everything else unless you have explicit rules -----
+    match /{document=**} { allow read, write: if false; }
+  }
+}
