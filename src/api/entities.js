@@ -22,6 +22,7 @@ async function listEq(coll, filters = {}, { limit } = {}) {
   const s = await getDocs(qRef);
   return s.docs.map(withId);
 }
+
 async function createIn(coll, payload) {
   const ref = await addDoc(collection(db, coll), payload);
   const snap = await getDoc(ref);

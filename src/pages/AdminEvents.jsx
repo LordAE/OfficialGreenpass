@@ -1,8 +1,4 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { Event } from '@/api/entities';
-import { EventRegistration } from '@/api/entities';
-import { User } from '@/api/entities';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,12 +14,27 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/components/URLRedirect';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Firebase
+import { db, auth } from '@/firebase';
+import {
+  collection, query, where, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc,
+  serverTimestamp, getDoc
+} from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+
+// --- Helpers / constants ---
+const EVENTS_COL = 'events';
+const REGS_COL = 'event_registrations';
+const USERS_COL = 'users';
+
+const toJsDate = (v) => (v && typeof v?.toDate === 'function') ? v.toDate() : new Date(v || Date.now());
+
 // Mobile Event Card Component
 const MobileEventCard = ({ event, eventStats, onEdit, onDelete, deleting, openRolesModal }) => {
   const getEventStatus = (event) => {
     const now = new Date();
-    const start = new Date(event.start);
-    const end = new Date(event.end);
+    const start = toJsDate(event.start);
+    const end = toJsDate(event.end);
 
     if (now > end) {
       return <Badge variant="secondary" className="text-xs">Past</Badge>;
@@ -43,7 +54,7 @@ const MobileEventCard = ({ event, eventStats, onEdit, onDelete, deleting, openRo
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 truncate pr-2">{event.title}</h3>
             <p className="text-sm text-gray-500 truncate">{event.location}</p>
-            <p className="text-xs text-gray-400 mt-1">{format(new Date(event.start), 'MMM dd, yyyy')}</p>
+            <p className="text-xs text-gray-400 mt-1">{format(toJsDate(event.start), 'MMM dd, yyyy')}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {getEventStatus(event)}
@@ -116,125 +127,163 @@ export default function AdminEvents() {
   const [selectedEventForRoles, setSelectedEventForRoles] = useState(null);
   const navigate = useNavigate();
 
+  // Notification auto-hide
   useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
+    if (!notification) return;
+    const t = setTimeout(() => setNotification(null), 5000);
+    return () => clearTimeout(t);
   }, [notification]);
 
+  // --- Data access helpers (Firestore) ---
+  const fetchCurrentUser = () =>
+    new Promise((resolve) => {
+      const unsub = onAuthStateChanged(auth, async (fbUser) => {
+        unsub();
+        if (!fbUser) return resolve(null);
+        try {
+          const snap = await getDoc(doc(db, USERS_COL, fbUser.uid));
+          resolve({ uid: fbUser.uid, ...(snap.exists() ? snap.data() : {}), email: fbUser.email });
+        } catch {
+          resolve({ uid: fbUser.uid, email: fbUser.email });
+        }
+      });
+    });
+
+  const fetchEvents = async () => {
+    const q = query(collection(db, EVENTS_COL), orderBy('start', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        event_id: data.event_id || d.id, // keep compatibility with your links
+      };
+    });
+  };
+
+  const fetchEventStats = async (event) => {
+    const q = query(collection(db, REGS_COL), where('event_id', '==', event.event_id));
+    const snap = await getDocs(q);
+    const regs = snap.docs.map(d => d.data());
+    return {
+      totalRegistrations: regs.length,
+      paidRegistrations: regs.filter(r => r.status === 'paid').length,
+      checkedInRegistrations: regs.filter(r => r.checked_in === true).length,
+    };
+  };
+
+  const saveEvent = async (id, data) => {
+    if (id) {
+      await updateDoc(doc(db, EVENTS_COL, id), data);
+    } else {
+      await addDoc(collection(db, EVENTS_COL), {
+        ...data,
+        event_id: data.event_id || undefined, // optional
+        created_at: serverTimestamp(),
+      });
+    }
+  };
+
+  const deleteEventWithRegistrations = async (eventToDelete) => {
+    const q = query(collection(db, REGS_COL), where('event_id', '==', eventToDelete.event_id));
+    const regsSnap = await getDocs(q);
+    await Promise.all(regsSnap.docs.map(d => deleteDoc(doc(db, REGS_COL, d.id))));
+    await deleteDoc(doc(db, EVENTS_COL, eventToDelete.id));
+  };
+
+  // --- Load initial data ---
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     try {
-      const [user, eventData] = await Promise.all([
-        User.me(),
-        Event.list(),
-      ]);
+      const [user, evs] = await Promise.all([fetchCurrentUser(), fetchEvents()]);
       setCurrentUser(user);
-      
-      const sortedEvents = eventData.sort((a, b) => new Date(b.start) - new Date(a.start));
-      setEvents(sortedEvents);
-      
-      const stats = {};
-      for (const event of sortedEvents) {
-        try {
-          const registrations = await EventRegistration.filter({ event_id: event.event_id });
-          stats[event.id] = {
-            totalRegistrations: registrations.length,
-            paidRegistrations: registrations.filter(r => r.status === 'paid').length,
-            checkedInRegistrations: registrations.filter(r => r.checked_in).length,
-          };
-        } catch (error) {
-          console.warn(`Could not load stats for event ${event.id}`);
-          stats[event.id] = { totalRegistrations: 0, paidRegistrations: 0, checkedInRegistrations: 0 };
-        }
-      }
-      setEventStats(stats);
+
+      // Compute stats per event
+      const statsEntries = await Promise.all(
+        evs.map(async (e) => {
+          try {
+            const s = await fetchEventStats(e);
+            return [e.id, s];
+          } catch {
+            return [e.id, { totalRegistrations: 0, paidRegistrations: 0, checkedInRegistrations: 0 }];
+          }
+        })
+      );
+
+      setEvents(evs);
+      setEventStats(Object.fromEntries(statsEntries));
     } catch (error) {
-      console.error("Error loading initial data:", error);
-      if (error?.response?.status === 401) {
-        navigate(createPageUrl('Welcome'));
-      }
+      console.error('Error loading initial data:', error);
+      // If your app gates by auth, redirect to Welcome when unauthenticated
+      if (error?.response?.status === 401) navigate(createPageUrl('Welcome'));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [navigate]);
 
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
-  
+
+  // Search filter
   useEffect(() => {
-    const lowercasedFilter = searchTerm.toLowerCase();
-    const filtered = events.filter(item => {
-      return (
-        item.title?.toLowerCase().includes(lowercasedFilter) ||
-        item.location?.toLowerCase().includes(lowercasedFilter)
-      );
-    });
-    setFilteredEvents(filtered);
+    const lower = searchTerm.toLowerCase();
+    setFilteredEvents(
+      events.filter((item) =>
+        (item.title || '').toLowerCase().includes(lower) ||
+        (item.location || '').toLowerCase().includes(lower)
+      )
+    );
   }, [searchTerm, events]);
 
+  // Reload helper (after create/update/delete)
   const loadEvents = async () => {
     try {
-      const eventData = await Event.list();
-      const sortedEvents = eventData.sort((a, b) => new Date(b.start) - new Date(a.start));
-      setEvents(sortedEvents);
-      
-      const stats = {};
-      for (const event of sortedEvents) {
-        try {
-          const registrations = await EventRegistration.filter({ event_id: event.event_id });
-          stats[event.id] = {
-            totalRegistrations: registrations.length,
-            paidRegistrations: registrations.filter(r => r.status === 'paid').length,
-            checkedInRegistrations: registrations.filter(r => r.checked_in).length,
-          };
-        } catch (error) {
-          console.warn(`Could not load stats for event ${event.id}`);
-          stats[event.id] = { totalRegistrations: 0, paidRegistrations: 0, checkedInRegistrations: 0 };
-        }
-      }
-      setEventStats(stats);
+      const evs = await fetchEvents();
+      const statsEntries = await Promise.all(
+        evs.map(async (e) => {
+          try {
+            const s = await fetchEventStats(e);
+            return [e.id, s];
+          } catch {
+            return [e.id, { totalRegistrations: 0, paidRegistrations: 0, checkedInRegistrations: 0 }];
+          }
+        })
+      );
+      setEvents(evs);
+      setEventStats(Object.fromEntries(statsEntries));
     } catch (error) {
-      console.error("Error loading events:", error);
+      console.error('Error loading events:', error);
     }
   };
 
+  // Form save handler (uses Firestore)
   const handleFormSave = async (eventData) => {
     try {
-      if (selectedEventForForm) {
-        await Event.update(selectedEventForForm.id, eventData);
-      } else {
-        await Event.create(eventData);
-      }
+      await saveEvent(selectedEventForForm?.id, eventData);
       setIsFormOpen(false);
       setSelectedEventForForm(null);
       await loadEvents();
       setNotification({ type: 'success', message: 'Event saved successfully!' });
     } catch (error) {
-      console.error("Error saving event:", error);
+      console.error('Error saving event:', error);
       setNotification({ type: 'error', message: 'Failed to save event. Please try again.' });
     }
   };
 
+  // Delete handler (cascade)
   const handleDeleteEvent = async (eventToDelete) => {
     const confirmMessage = `Are you sure you want to delete "${eventToDelete.title}"? This action cannot be undone.`;
-    
     if (!window.confirm(confirmMessage)) return;
 
     setDeleting(eventToDelete.id);
     try {
-      const registrations = await EventRegistration.filter({ event_id: eventToDelete.event_id });
-      for (const registration of registrations) {
-        await EventRegistration.delete(registration.id);
-      }
-      await Event.delete(eventToDelete.id);
+      await deleteEventWithRegistrations(eventToDelete);
       await loadEvents();
       setNotification({ type: 'success', message: 'Event deleted successfully.' });
     } catch (error) {
-      console.error("Error deleting event:", error);
+      console.error('Error deleting event:', error);
       setNotification({ type: 'error', message: 'Failed to delete event. Please try again.' });
     } finally {
       setDeleting(null);
@@ -245,16 +294,16 @@ export default function AdminEvents() {
     setSelectedEventForForm(event);
     setIsFormOpen(true);
   };
-  
+
   const openRolesModal = (event) => {
     setSelectedEventForRoles(event);
     setIsRolesModalOpen(true);
   };
-  
+
   const getEventStatus = (event) => {
     const now = new Date();
-    const start = new Date(event.start);
-    const end = new Date(event.end);
+    const start = toJsDate(event.start);
+    const end = toJsDate(event.end);
 
     if (now > end) {
       return <Badge variant="secondary">Past</Badge>;
@@ -303,7 +352,7 @@ export default function AdminEvents() {
       </AnimatePresence>
 
       <div className="max-w-7xl mx-auto">
-        {/* Header - Mobile Optimized */}
+        {/* Header */}
         <div className="flex flex-col gap-4 mb-6 sm:mb-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex-1">
@@ -315,7 +364,7 @@ export default function AdminEvents() {
                 Create, view, and manage all company events.
               </p>
             </div>
-            
+
             {currentUser?.user_type === 'admin' && (
               <Button onClick={() => openEditForm()} className="w-full sm:w-auto">
                 <PlusCircle className="w-4 h-4 mr-2" />
@@ -324,7 +373,7 @@ export default function AdminEvents() {
             )}
           </div>
 
-          {/* Search Bar - Full Width on Mobile */}
+          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -336,6 +385,7 @@ export default function AdminEvents() {
           </div>
         </div>
 
+        {/* Modals */}
         <Dialog open={isFormOpen} onOpenChange={(isOpen) => { if (!isOpen) setSelectedEventForForm(null); setIsFormOpen(isOpen); }}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -344,7 +394,7 @@ export default function AdminEvents() {
             <EventForm event={selectedEventForForm} onSave={handleFormSave} onCancel={() => setIsFormOpen(false)} />
           </DialogContent>
         </Dialog>
-        
+
         <Dialog open={isRolesModalOpen} onOpenChange={setIsRolesModalOpen}>
           <DialogContent className="max-w-4xl">
             <DialogHeader>
@@ -354,14 +404,14 @@ export default function AdminEvents() {
           </DialogContent>
         </Dialog>
 
-        {/* Events List - Mobile and Desktop Views */}
+        {/* Events List */}
         {loading && events.length === 0 ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
           </div>
         ) : filteredEvents.length > 0 ? (
           <>
-            {/* Desktop Table View - Hidden on Mobile */}
+            {/* Desktop table */}
             <div className="hidden lg:block">
               <Card>
                 <CardHeader>
@@ -386,7 +436,7 @@ export default function AdminEvents() {
                             <div className="font-medium">{event.title}</div>
                             <div className="text-sm text-muted-foreground">{event.location}</div>
                           </TableCell>
-                          <TableCell>{format(new Date(event.start), 'MMM dd, yyyy')}</TableCell>
+                          <TableCell>{format(toJsDate(event.start), 'MMM dd, yyyy')}</TableCell>
                           <TableCell>{getEventStatus(event)}</TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-1 text-xs">
@@ -417,7 +467,7 @@ export default function AdminEvents() {
               </Card>
             </div>
 
-            {/* Mobile Card View - Hidden on Desktop */}
+            {/* Mobile cards */}
             <div className="lg:hidden space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">All Events ({filteredEvents.length})</h2>
