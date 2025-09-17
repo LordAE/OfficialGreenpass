@@ -1,3 +1,4 @@
+// src/pages/AdminEvents.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,7 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { PlusCircle, Edit, Trash2, Calendar as CalendarIcon, Users, UserCheck, Eye, MoreHorizontal, Search, Loader2, CheckCircle, XCircle, X as XIcon } from "lucide-react";
+import {
+  PlusCircle, Edit, Trash2, Calendar as CalendarIcon, Users, UserCheck,
+  Eye, MoreHorizontal, Search, Loader2, CheckCircle, XCircle, X as XIcon
+} from "lucide-react";
 import EventForm from '../components/events/EventForm';
 import EventRoleAssignment from '../components/events/EventRoleAssignment';
 import { format } from 'date-fns';
@@ -14,35 +18,31 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/components/URLRedirect';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Firebase
+/* ---------- Firebase ---------- */
 import { db, auth } from '@/firebase';
 import {
-  collection, query, where, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc,
-  serverTimestamp, getDoc
+  collection, query, where, orderBy, addDoc, updateDoc, deleteDoc, doc,
+  serverTimestamp, getDoc, onSnapshot, getCountFromServer
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
-// --- Helpers / constants ---
+/* ---------- Helpers / constants ---------- */
 const EVENTS_COL = 'events';
 const REGS_COL = 'event_registrations';
 const USERS_COL = 'users';
 
 const toJsDate = (v) => (v && typeof v?.toDate === 'function') ? v.toDate() : new Date(v || Date.now());
 
-// Mobile Event Card Component
+/* ---------- Mobile Event Card ---------- */
 const MobileEventCard = ({ event, eventStats, onEdit, onDelete, deleting, openRolesModal }) => {
   const getEventStatus = (event) => {
     const now = new Date();
     const start = toJsDate(event.start);
     const end = toJsDate(event.end);
 
-    if (now > end) {
-      return <Badge variant="secondary" className="text-xs">Past</Badge>;
-    } else if (now >= start && now <= end) {
-      return <Badge className="bg-red-500 text-white animate-pulse text-xs">Live</Badge>;
-    } else {
-      return <Badge variant="outline" className="text-green-600 border-green-200 text-xs">Upcoming</Badge>;
-    }
+    if (now > end) return <Badge variant="secondary" className="text-xs">Past</Badge>;
+    if (now >= start && now <= end) return <Badge className="bg-red-500 text-white animate-pulse text-xs">Live</Badge>;
+    return <Badge variant="outline" className="text-green-600 border-green-200 text-xs">Upcoming</Badge>;
   };
 
   const stats = eventStats[event.id] || { totalRegistrations: 0, paidRegistrations: 0, checkedInRegistrations: 0 };
@@ -81,9 +81,9 @@ const MobileEventCard = ({ event, eventStats, onEdit, onDelete, deleting, openRo
                     <Eye className="w-4 h-4 mr-2" /> View Public Page
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => onDelete(event)} 
-                  className="text-red-600 focus:text-red-600 focus:bg-red-50" 
+                <DropdownMenuItem
+                  onClick={() => onDelete(event)}
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
                   disabled={deleting === event.id}
                 >
                   <Trash2 className="w-4 h-4 mr-2" /> Delete
@@ -92,7 +92,7 @@ const MobileEventCard = ({ event, eventStats, onEdit, onDelete, deleting, openRo
             </DropdownMenu>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-3 gap-4 pt-3 border-t border-gray-100">
           <div className="text-center">
             <div className="text-lg font-semibold text-blue-600">{stats.totalRegistrations}</div>
@@ -112,6 +112,7 @@ const MobileEventCard = ({ event, eventStats, onEdit, onDelete, deleting, openRo
   );
 };
 
+/* ---------- Page ---------- */
 export default function AdminEvents() {
   const [events, setEvents] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -127,14 +128,14 @@ export default function AdminEvents() {
   const [selectedEventForRoles, setSelectedEventForRoles] = useState(null);
   const navigate = useNavigate();
 
-  // Notification auto-hide
+  /* Notifications auto-hide */
   useEffect(() => {
     if (!notification) return;
     const t = setTimeout(() => setNotification(null), 5000);
     return () => clearTimeout(t);
   }, [notification]);
 
-  // --- Data access helpers (Firestore) ---
+  /* Current user */
   const fetchCurrentUser = () =>
     new Promise((resolve) => {
       const unsub = onAuthStateChanged(auth, async (fbUser) => {
@@ -149,142 +150,155 @@ export default function AdminEvents() {
       });
     });
 
-  const fetchEvents = async () => {
-    const q = query(collection(db, EVENTS_COL), orderBy('start', 'desc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => {
-      const data = d.data();
-      return {
-        id: d.id,
-        ...data,
-        event_id: data.event_id || d.id, // keep compatibility with your links
-      };
-    });
+  /* Stats via aggregate counts (fewer reads than fetching all registrations) */
+  const fetchEventStatsCounts = async (evs) => {
+    const entries = await Promise.all(
+      evs.map(async (e) => {
+        try {
+          const baseQ = query(collection(db, REGS_COL), where('event_id', '==', e.event_id));
+          const totalSnap = await getCountFromServer(baseQ);
+          const paidSnap = await getCountFromServer(query(baseQ, where('status', '==', 'paid')));
+          const checkedSnap = await getCountFromServer(query(baseQ, where('checked_in', '==', true)));
+          return [
+            e.id,
+            {
+              totalRegistrations: totalSnap.data().count || 0,
+              paidRegistrations: paidSnap.data().count || 0,
+              checkedInRegistrations: checkedSnap.data().count || 0,
+            },
+          ];
+        } catch {
+          return [e.id, { totalRegistrations: 0, paidRegistrations: 0, checkedInRegistrations: 0 }];
+        }
+      })
+    );
+    return Object.fromEntries(entries);
   };
 
-  const fetchEventStats = async (event) => {
-    const q = query(collection(db, REGS_COL), where('event_id', '==', event.event_id));
-    const snap = await getDocs(q);
-    const regs = snap.docs.map(d => d.data());
-    return {
-      totalRegistrations: regs.length,
-      paidRegistrations: regs.filter(r => r.status === 'paid').length,
-      checkedInRegistrations: regs.filter(r => r.checked_in === true).length,
-    };
-  };
+  /* Live events list */
+  useEffect(() => {
+    let eventsUnsub;
+    (async () => {
+      try {
+        const user = await fetchCurrentUser();
+        setCurrentUser(user);
 
-  const saveEvent = async (id, data) => {
-    if (id) {
-      await updateDoc(doc(db, EVENTS_COL, id), data);
-    } else {
-      await addDoc(collection(db, EVENTS_COL), {
-        ...data,
-        event_id: data.event_id || undefined, // optional
-        created_at: serverTimestamp(),
-      });
-    }
-  };
-
-  const deleteEventWithRegistrations = async (eventToDelete) => {
-    const q = query(collection(db, REGS_COL), where('event_id', '==', eventToDelete.event_id));
-    const regsSnap = await getDocs(q);
-    await Promise.all(regsSnap.docs.map(d => deleteDoc(doc(db, REGS_COL, d.id))));
-    await deleteDoc(doc(db, EVENTS_COL, eventToDelete.id));
-  };
-
-  // --- Load initial data ---
-  const loadInitialData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [user, evs] = await Promise.all([fetchCurrentUser(), fetchEvents()]);
-      setCurrentUser(user);
-
-      // Compute stats per event
-      const statsEntries = await Promise.all(
-        evs.map(async (e) => {
-          try {
-            const s = await fetchEventStats(e);
-            return [e.id, s];
-          } catch {
-            return [e.id, { totalRegistrations: 0, paidRegistrations: 0, checkedInRegistrations: 0 }];
+        const q = query(collection(db, EVENTS_COL), orderBy('start', 'desc'));
+        eventsUnsub = onSnapshot(
+          q,
+          async (snap) => {
+            const evs = snap.docs.map((d) => {
+              const data = d.data();
+              return { id: d.id, ...data, event_id: data.event_id || d.id };
+            });
+            setEvents(evs);
+            // refresh stats when the list changes
+            const stats = await fetchEventStatsCounts(evs);
+            setEventStats(stats);
+            setLoading(false);
+          },
+          (err) => {
+            console.error('Error loading events:', err);
+            if (err?.code === 'permission-denied') {
+              alert("You don't have permission to view events.");
+            } else {
+              alert('Failed to load events.');
+            }
+            setLoading(false);
           }
-        })
-      );
+        );
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+        if (error?.response?.status === 401) navigate(createPageUrl('Welcome'));
+        setLoading(false);
+      }
+    })();
 
-      setEvents(evs);
-      setEventStats(Object.fromEntries(statsEntries));
-    } catch (error) {
-      console.error('Error loading initial data:', error);
-      // If your app gates by auth, redirect to Welcome when unauthenticated
-      if (error?.response?.status === 401) navigate(createPageUrl('Welcome'));
-    } finally {
-      setLoading(false);
-    }
+    return () => eventsUnsub && eventsUnsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
-  useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
-
-  // Search filter
+  /* Search filter */
   useEffect(() => {
     const lower = searchTerm.toLowerCase();
     setFilteredEvents(
-      events.filter((item) =>
-        (item.title || '').toLowerCase().includes(lower) ||
-        (item.location || '').toLowerCase().includes(lower)
+      events.filter(
+        (item) =>
+          (item.title || '').toLowerCase().includes(lower) ||
+          (item.location || '').toLowerCase().includes(lower)
       )
     );
   }, [searchTerm, events]);
 
-  // Reload helper (after create/update/delete)
-  const loadEvents = async () => {
-    try {
-      const evs = await fetchEvents();
-      const statsEntries = await Promise.all(
-        evs.map(async (e) => {
-          try {
-            const s = await fetchEventStats(e);
-            return [e.id, s];
-          } catch {
-            return [e.id, { totalRegistrations: 0, paidRegistrations: 0, checkedInRegistrations: 0 }];
-          }
-        })
-      );
-      setEvents(evs);
-      setEventStats(Object.fromEntries(statsEntries));
-    } catch (error) {
-      console.error('Error loading events:', error);
+  /* Save (create or update) */
+  const saveEvent = async (id, data) => {
+    if (id) {
+      const ref = doc(db, EVENTS_COL, id);
+      await updateDoc(ref, { ...data, updated_at: serverTimestamp() });
+      return id;
+    } else {
+      const refCol = collection(db, EVENTS_COL);
+      const docRef = await addDoc(refCol, {
+        ...data,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+      // ensure a stable event_id for links
+      await updateDoc(docRef, { event_id: data.event_id || docRef.id });
+      return docRef.id;
     }
   };
 
-  // Form save handler (uses Firestore)
   const handleFormSave = async (eventData) => {
     try {
       await saveEvent(selectedEventForForm?.id, eventData);
       setIsFormOpen(false);
       setSelectedEventForForm(null);
-      await loadEvents();
       setNotification({ type: 'success', message: 'Event saved successfully!' });
     } catch (error) {
       console.error('Error saving event:', error);
-      setNotification({ type: 'error', message: 'Failed to save event. Please try again.' });
+      if (error?.code === 'permission-denied') {
+        setNotification({ type: 'error', message: "You don't have permission to save events." });
+      } else {
+        setNotification({ type: 'error', message: 'Failed to save event. Please try again.' });
+      }
     }
   };
 
-  // Delete handler (cascade)
+  /* Cascade delete (registrations for the same event_id) */
   const handleDeleteEvent = async (eventToDelete) => {
     const confirmMessage = `Are you sure you want to delete "${eventToDelete.title}"? This action cannot be undone.`;
     if (!window.confirm(confirmMessage)) return;
 
     setDeleting(eventToDelete.id);
     try {
-      await deleteEventWithRegistrations(eventToDelete);
-      await loadEvents();
+      // Aggregate deletes: fetch ids only to minimize payload
+      const regsQ = query(collection(db, REGS_COL), where('event_id', '==', eventToDelete.event_id));
+      const regsSnap = await getCountFromServer(regsQ); // optional warm-up/no-op, safe to keep or remove
+      // Fall back to deleting docs (no batched count delete API, so we read ids)
+      // NOTE: If there are many registrations, consider a Cloud Function for bulk delete.
+      const regsListQ = query(collection(db, REGS_COL), where('event_id', '==', eventToDelete.event_id));
+      const regsListSnap = await new Promise((resolve, reject) => {
+        const unsub = onSnapshot(
+          regsListQ,
+          (s) => {
+            unsub(); // one-shot
+            resolve(s);
+          },
+          reject
+        );
+      });
+      await Promise.all(regsListSnap.docs.map((d) => deleteDoc(doc(db, REGS_COL, d.id))));
+      await deleteDoc(doc(db, EVENTS_COL, eventToDelete.id));
+
       setNotification({ type: 'success', message: 'Event deleted successfully.' });
     } catch (error) {
       console.error('Error deleting event:', error);
-      setNotification({ type: 'error', message: 'Failed to delete event. Please try again.' });
+      if (error?.code === 'permission-denied') {
+        setNotification({ type: 'error', message: "You don't have permission to delete events." });
+      } else {
+        setNotification({ type: 'error', message: 'Failed to delete event. Please try again.' });
+      }
     } finally {
       setDeleting(null);
     }
@@ -304,14 +318,9 @@ export default function AdminEvents() {
     const now = new Date();
     const start = toJsDate(event.start);
     const end = toJsDate(event.end);
-
-    if (now > end) {
-      return <Badge variant="secondary">Past</Badge>;
-    } else if (now >= start && now <= end) {
-      return <Badge className="bg-red-500 text-white animate-pulse">Live</Badge>;
-    } else {
-      return <Badge variant="outline" className="text-green-600 border-green-200">Upcoming</Badge>;
-    }
+    if (now > end) return <Badge variant="secondary">Past</Badge>;
+    if (now >= start && now <= end) return <Badge className="bg-red-500 text-white animate-pulse">Live</Badge>;
+    return <Badge variant="outline" className="text-green-600 border-green-200">Upcoming</Badge>;
   };
 
   if (loading && !events.length) {
@@ -386,7 +395,10 @@ export default function AdminEvents() {
         </div>
 
         {/* Modals */}
-        <Dialog open={isFormOpen} onOpenChange={(isOpen) => { if (!isOpen) setSelectedEventForForm(null); setIsFormOpen(isOpen); }}>
+        <Dialog
+          open={isFormOpen}
+          onOpenChange={(isOpen) => { if (!isOpen) setSelectedEventForForm(null); setIsFormOpen(isOpen); }}
+        >
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{selectedEventForForm ? "Edit Event" : "Create New Event"}</DialogTitle>
@@ -430,7 +442,7 @@ export default function AdminEvents() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredEvents.map(event => (
+                      {filteredEvents.map((event) => (
                         <TableRow key={event.id}>
                           <TableCell>
                             <div className="font-medium">{event.title}</div>
@@ -451,11 +463,29 @@ export default function AdminEvents() {
                                 <Button variant="ghost" size="icon"><MoreHorizontal className="w-4 h-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openEditForm(event)}><Edit className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
-                                <DropdownMenuItem asChild><Link to={createPageUrl(`EventCheckIn?eventId=${event.event_id}`)}><Users className="w-4 h-4 mr-2" /> Manage Attendees</Link></DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => openRolesModal(event)}><UserCheck className="w-4 h-4 mr-2" /> Staff Roles</DropdownMenuItem>
-                                <DropdownMenuItem asChild><Link to={createPageUrl(`EventDetails?id=${event.event_id}`)} target="_blank"><Eye className="w-4 h-4 mr-2" /> View Public Page</Link></DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDeleteEvent(event)} className="text-red-600 focus:text-red-600 focus:bg-red-50" disabled={deleting === event.id}><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openEditForm(event)}>
+                                  <Edit className="w-4 h-4 mr-2" /> Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                  <Link to={createPageUrl(`EventCheckIn?eventId=${event.event_id}`)}>
+                                    <Users className="w-4 h-4 mr-2" /> Manage Attendees
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openRolesModal(event)}>
+                                  <UserCheck className="w-4 h-4 mr-2" /> Staff Roles
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                  <Link to={createPageUrl(`EventDetails?id=${event.event_id}`)} target="_blank">
+                                    <Eye className="w-4 h-4 mr-2" /> View Public Page
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteEvent(event)}
+                                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                  disabled={deleting === event.id}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" /> Delete
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -472,8 +502,8 @@ export default function AdminEvents() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">All Events ({filteredEvents.length})</h2>
               </div>
-              {filteredEvents.map(event => (
-                <MobileEventCard 
+              {filteredEvents.map((event) => (
+                <MobileEventCard
                   key={event.id}
                   event={event}
                   eventStats={eventStats}

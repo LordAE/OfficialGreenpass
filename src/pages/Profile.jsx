@@ -1,4 +1,3 @@
-// src/pages/Profile.jsx
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,9 +7,12 @@ import AgentProfileForm from "../components/profile/AgentProfileForm";
 import TutorProfileForm from "../components/profile/TutorProfileForm";
 import SchoolProfileForm from "../components/profile/SchoolProfileForm";
 import VendorProfileForm from "../components/profile/VendorProfileForm";
-import ProfilePictureUpload from "../components/profile/ProfilePictureUpload"; // ⬅️ NEW
+import ProfilePictureUpload from "../components/profile/ProfilePictureUpload";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 
 /* ---------- Firebase ---------- */
 import { auth, db } from "@/firebase";
@@ -30,11 +32,31 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   Helpers: field mapping
+   Helpers
 ========================= */
 const pickFirst = (...vals) =>
   vals.find((v) => (Array.isArray(v) ? v.length : v || v === 0)) ?? undefined;
 
+const csvToArray = (s) =>
+  (s || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+const ensureArray = (v) => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") return csvToArray(v);
+  return [];
+};
+
+const ensureNumber = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+/* =========================
+   Field mapping from onboarding
+========================= */
 const mapOnboardingToAgent = (src = {}) => ({
   company_name: pickFirst(src.company_name, src.companyName, src.agency_name, src.org_name),
   business_license_mst: pickFirst(
@@ -46,16 +68,16 @@ const mapOnboardingToAgent = (src = {}) => ({
     src.tax_number
   ),
   paypal_email: pickFirst(src.paypal_email, src.paypal, src.payout_email),
-  year_established: pickFirst(src.year_established, src.established_year, src.yearEstablished),
+  year_established: ensureNumber(pickFirst(src.year_established, src.established_year, src.yearEstablished)),
   website: pickFirst(src.website, src.org_website),
   phone: pickFirst(src.phone, src.business_phone),
   address: pickFirst(src.address, src.business_address),
 });
 
 const mapOnboardingToTutor = (src = {}) => ({
-  experience_years: Number(pickFirst(src.experience_years, src.experience, src.years_of_experience)) || undefined,
-  hourly_rate: Number(pickFirst(src.hourly_rate, src.rate, src.hourlyRate)) || undefined,
-  specializations: pickFirst(src.specializations, src.subjects, src.specialties) || [],
+  experience_years: ensureNumber(pickFirst(src.experience_years, src.experience, src.years_of_experience)),
+  hourly_rate: ensureNumber(pickFirst(src.hourly_rate, src.rate, src.hourlyRate)),
+  specializations: ensureArray(pickFirst(src.specializations, src.subjects, src.specialties)),
   paypal_email: pickFirst(src.paypal_email, src.paypal, src.payout_email),
   bio: pickFirst(src.bio, src.about),
 });
@@ -70,7 +92,7 @@ const mapOnboardingToSchool = (src = {}) => ({
 
 const mapOnboardingToVendor = (src = {}) => ({
   business_name: pickFirst(src.business_name, src.company_name),
-  service_categories: pickFirst(src.service_categories, src.categories, src.services) || [],
+  service_categories: ensureArray(pickFirst(src.service_categories, src.categories, src.services)),
   paypal_email: pickFirst(src.paypal_email, src.paypal, src.payout_email),
   website: pickFirst(src.website),
 });
@@ -87,7 +109,7 @@ const ROLE_COLLECTIONS = {
 
 const ROLE_USER_ID_FIELDS = ["user_id", "userId", "uid"];
 
-async function findRoleDoc(db, uid, userType) {
+async function findRoleDoc(db, uid, userType, onError) {
   const collections = ROLE_COLLECTIONS[userType] || [];
   for (const colName of collections) {
     for (const idField of ROLE_USER_ID_FIELDS) {
@@ -99,6 +121,7 @@ async function findRoleDoc(db, uid, userType) {
           return { refPath: `${colName}/${d.id}`, id: d.id, colName, idField, data: d.data() };
         }
       } catch (err) {
+        onError && onError(err);
         console.debug(`No match in ${colName}.${idField}:`, err?.code || err?.message);
       }
     }
@@ -141,11 +164,43 @@ async function loadOnboardingDraft(db, uid) {
   return null;
 }
 
+function normalizeRoleData(userType, data = {}) {
+  if (userType === "tutor") {
+    return {
+      ...data,
+      experience_years: ensureNumber(data.experience_years),
+      hourly_rate: ensureNumber(data.hourly_rate),
+      specializations: ensureArray(data.specializations),
+      qualifications: ensureArray(data.qualifications),
+    };
+  }
+  if (userType === "vendor") {
+    return {
+      ...data,
+      service_categories: ensureArray(data.service_categories),
+    };
+  }
+  if (userType === "agent") {
+    return {
+      ...data,
+      year_established: ensureNumber(data.year_established),
+    };
+  }
+  return data;
+}
+
+/* role change helper */
+async function changeUserRole(db, uid, newRole) {
+  const ref = doc(db, "users", uid);
+  await setDoc(ref, { user_type: newRole, updatedAt: serverTimestamp() }, { merge: true });
+  return newRole;
+}
+
 /* =========================
    Component
 ========================= */
 export default function Profile() {
-  const [currentUser, setCurrentUser] = useState(null); // normalized user
+  const [currentUser, setCurrentUser] = useState(null);
   const [roleSpecificData, setRoleSpecificData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -159,7 +214,7 @@ export default function Profile() {
     const full_name = pickFirst(data.full_name, data.displayName, fbUser.displayName, data.name) || "";
     const user_type = (pickFirst(data.user_type, data.role, "student") || "student").toLowerCase();
     return { id: uid, ...data, full_name, user_type };
-  };
+    };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
@@ -185,31 +240,42 @@ export default function Profile() {
           };
           await setDoc(uref, seed, { merge: true });
         }
-        const freshUser = (await getDoc(uref)).data() || {};
+        const freshUserSnap = await getDoc(uref);
+        const freshUser = freshUserSnap.data() || {};
         const baseUser = normalizeUser(fbUser.uid, freshUser, fbUser);
         setCurrentUser(baseUser);
 
+        // Merge onboarding into personal form (if any)
         const onboarding = await loadOnboardingDraft(db, fbUser.uid);
         const personalMerge = onboarding?.personal || onboarding?.user || onboarding || {};
         setUserFormData({ ...baseUser, ...personalMerge });
 
-        const found = await findRoleDoc(db, fbUser.uid, baseUser.user_type);
+        // Load or seed role doc
+        const found = await findRoleDoc(db, fbUser.uid, baseUser.user_type, (err) => {
+          if (err?.code === "permission-denied") {
+            setError(
+              "Permission denied reading your professional profile. Ask an admin or update rules/owner field."
+            );
+          }
+        });
 
         if (found) {
           const roleData = { id: found.id, ...found.data };
-          setRoleSpecificData(roleData);
-          setRoleFormData(roleData);
+          const normalized = normalizeRoleData(baseUser.user_type, roleData);
+          setRoleSpecificData(normalized);
+          setRoleFormData(normalized);
         } else {
-          let mapped = {};
+          // Map from onboarding draft if role doc doesn’t exist yet
           const src = onboarding?.[baseUser.user_type] || onboarding || {};
-
+          let mapped = {};
           if (baseUser.user_type === "agent") mapped = mapOnboardingToAgent(src);
           if (baseUser.user_type === "tutor") mapped = mapOnboardingToTutor(src);
           if (baseUser.user_type === "school") mapped = mapOnboardingToSchool(src);
           if (baseUser.user_type === "vendor") mapped = mapOnboardingToVendor(src);
 
+          const normalized = normalizeRoleData(baseUser.user_type, mapped);
           setRoleSpecificData(null);
-          setRoleFormData(mapped);
+          setRoleFormData(normalized);
         }
       } catch (err) {
         console.error("Error loading profile:", err);
@@ -296,10 +362,14 @@ export default function Profile() {
         return;
       }
 
+      // Normalize before validating/saving
+      let normalizedToSave = normalizeRoleData(userType, roleFormData);
+
+      // Validate required fields
       const missing = required.filter((k) => {
-        const v = roleFormData?.[k];
+        const v = normalizedToSave?.[k];
         if (Array.isArray(v)) return v.length === 0;
-        return v === undefined || v === null || `${v}`.trim() === "";
+        return v === undefined || v === null || `${v}`.trim?.() === "" || (!`${v}`.trim && v === "");
       });
       if (missing.length) {
         setError("Please complete all required fields.");
@@ -307,17 +377,40 @@ export default function Profile() {
         return;
       }
 
+      // Ensure Firestore gets correct shapes
+      if (userType === "tutor") {
+        normalizedToSave = {
+          ...normalizedToSave,
+          experience_years: ensureNumber(normalizedToSave.experience_years) ?? 0,
+          hourly_rate: ensureNumber(normalizedToSave.hourly_rate) ?? 0,
+          specializations: ensureArray(normalizedToSave.specializations),
+          qualifications: ensureArray(normalizedToSave.qualifications),
+        };
+      }
+      if (userType === "vendor") {
+        normalizedToSave = {
+          ...normalizedToSave,
+          service_categories: ensureArray(normalizedToSave.service_categories),
+        };
+      }
+      if (userType === "agent") {
+        normalizedToSave = {
+          ...normalizedToSave,
+          year_established: ensureNumber(normalizedToSave.year_established),
+        };
+      }
+
       let savedData = null;
 
       if (roleSpecificData?.id) {
         const refDoc = doc(db, col, roleSpecificData.id);
-        const { id, ...payload } = roleFormData || {};
+        const { id, ...payload } = normalizedToSave || {};
         await updateDoc(refDoc, { ...payload, updatedAt: serverTimestamp() });
         const fresh = await getDoc(refDoc);
         savedData = { id: refDoc.id, ...fresh.data() };
       } else {
         const payload = {
-          ...roleFormData,
+          ...normalizedToSave,
           user_id: currentUser.id,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -330,8 +423,9 @@ export default function Profile() {
         savedData = { id: refDoc.id, ...fresh.data() };
       }
 
-      setRoleSpecificData(savedData);
-      setRoleFormData(savedData);
+      const normalizedSaved = normalizeRoleData(userType, savedData);
+      setRoleSpecificData(normalizedSaved);
+      setRoleFormData(normalizedSaved);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
@@ -402,21 +496,19 @@ export default function Profile() {
                 <CardTitle>Personal Information</CardTitle>
               </CardHeader>
               <CardContent>
-                {/* ---- Profile Photo Uploader ---- */}
+                {/* Photo */}
                 <div className="mb-6">
                   <ProfilePictureUpload
                     currentPicture={userFormData?.photo_url}
                     fallbackName={currentUser?.full_name || "User"}
                     onUpdate={(url) => {
-                      // reflect immediately in UI state
                       setUserFormData((prev) => ({ ...prev, photo_url: url }));
                       setCurrentUser((prev) => (prev ? { ...prev, photo_url: url } : prev));
                     }}
-                    // autoSaveToFirestore is true by default; keeps users/{uid}.photo_url in sync
                   />
                 </div>
 
-                {/* ---- Personal form fields ---- */}
+                {/* Personal form */}
                 <UserProfileForm formData={userFormData} handleInputChange={handleUserInputChange} />
 
                 <div className="flex justify-end mt-6">
@@ -441,39 +533,78 @@ export default function Profile() {
                 <CardTitle>Professional Profile</CardTitle>
               </CardHeader>
               <CardContent>
-                {currentUser.user_type === "agent" && (
-                  <AgentProfileForm formData={roleFormData} handleInputChange={handleRoleInputChange} />
-                )}
-                {currentUser.user_type === "tutor" && (
-                  <TutorProfileForm formData={roleFormData} handleInputChange={handleRoleInputChange} />
-                )}
-                {currentUser.user_type === "school" && (
-                  <SchoolProfileForm formData={roleFormData} handleInputChange={handleRoleInputChange} />
-                )}
-                {currentUser.user_type === "vendor" && (
-                  <VendorProfileForm formData={roleFormData} handleInputChange={handleRoleInputChange} />
-                )}
-                {["user", "student"].includes(currentUser.user_type) && (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500">
-                      Professional profile settings are available after selecting a professional role.
-                    </p>
+                {["user", "student"].includes(currentUser.user_type) ? (
+                  <div className="py-6">
+                    <p className="text-gray-600 mb-3">Choose your professional role to continue:</p>
+                    <div className="flex items-center gap-3">
+                      <Select
+                        onValueChange={async (val) => {
+                          try {
+                            await changeUserRole(db, currentUser.id, val);
+                            setCurrentUser((u) => ({ ...u, user_type: val }));
+                            setRoleSpecificData(null);
+                            setRoleFormData({});
+                          } catch (e) {
+                            setError("Failed to set role. Please try again.");
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-60">
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="tutor">Tutor</SelectItem>
+                          <SelectItem value="agent">Agent</SelectItem>
+                          <SelectItem value="school">School</SelectItem>
+                          <SelectItem value="vendor">Vendor</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                )}
+                ) : (
+                  <>
+                    {currentUser.user_type === "agent" && (
+                      <AgentProfileForm
+                        formData={roleFormData}
+                        handleInputChange={handleRoleInputChange}
+                        autoLoadFromFirestore={false}
+                      />
+                    )}
+                    {currentUser.user_type === "tutor" && (
+                      <TutorProfileForm
+                        formData={roleFormData}
+                        handleInputChange={handleRoleInputChange}
+                        autoLoadFromFirestore={false}
+                      />
+                    )}
+                    {currentUser.user_type === "school" && (
+                      <SchoolProfileForm
+                        formData={roleFormData}
+                        handleInputChange={handleRoleInputChange}
+                        autoLoadFromFirestore={false}
+                      />
+                    )}
+                    {currentUser.user_type === "vendor" && (
+                      <VendorProfileForm
+                        formData={roleFormData}
+                        handleInputChange={handleRoleInputChange}
+                        autoLoadFromFirestore={false}
+                      />
+                    )}
 
-                {!["user", "student"].includes(currentUser.user_type) && (
-                  <div className="flex justify-end mt-6">
-                    <Button onClick={handleSaveRoleProfile} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
-                      {saving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        "Save Changes"
-                      )}
-                    </Button>
-                  </div>
+                    <div className="flex justify-end mt-6">
+                      <Button onClick={handleSaveRoleProfile} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
+                        {saving ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          "Save Changes"
+                        )}
+                      </Button>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>

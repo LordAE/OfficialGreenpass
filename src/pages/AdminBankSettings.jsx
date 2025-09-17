@@ -1,6 +1,5 @@
-
+// src/pages/AdminBankSettings.jsx
 import React, { useState, useEffect } from 'react';
-import { BankSettings } from '@/api/entities';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,8 +11,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Save, Plus, Edit, Trash2, Eye, EyeOff, CreditCard, Building, Globe } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Badge } from "@/components/ui/badge"; // Added for inactive status
+import { Badge } from "@/components/ui/badge";
 
+/* ---------- Firebase ---------- */
+import { db } from '@/firebase';
+import {
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
+  serverTimestamp
+} from 'firebase/firestore';
+
+/* =========================
+   Bank Account Form
+========================= */
 const BankAccountForm = ({ initialData, onSave, onCancel, saving }) => {
   const [formData, setFormData] = useState({
     account_nickname: initialData?.account_nickname || '',
@@ -157,9 +166,11 @@ const BankAccountForm = ({ initialData, onSave, onCancel, saving }) => {
   );
 };
 
-
+/* =========================
+   Page: AdminBankSettings
+========================= */
 export default function AdminBankSettings() {
-  const [settings, setSettings] = useState([]);
+  const [settings, setSettings] = useState([]);              // unified list: paypal, etransfer, bank_transfer accounts
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('paypal');
@@ -169,45 +180,52 @@ export default function AdminBankSettings() {
     loadSettings();
   }, []);
 
+  // Load:
+  // - Singletons from payment_settings/{paypal|etransfer}
+  // - Bank accounts from bank_accounts/*
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const bankSettings = await BankSettings.list();
-      setSettings(bankSettings);
+      const list = [];
+
+      // Singletons
+      const paypalSnap = await getDoc(doc(db, 'payment_settings', 'paypal'));
+      if (paypalSnap.exists()) list.push({ id: 'paypal', payment_type: 'paypal', ...paypalSnap.data() });
+
+      const etSnap = await getDoc(doc(db, 'payment_settings', 'etransfer'));
+      if (etSnap.exists()) list.push({ id: 'etransfer', payment_type: 'etransfer', ...etSnap.data() });
+
+      // Bank accounts
+      const bankSnap = await getDocs(collection(db, 'bank_accounts'));
+      bankSnap.docs.forEach(d => list.push({ id: d.id, payment_type: 'bank_transfer', ...d.data() }));
+
+      setSettings(list);
     } catch (error) {
       console.error("Error loading bank settings:", error);
+      alert('Failed to load bank settings.');
     } finally {
       setLoading(false);
     }
   };
 
-  const getSettingsByType = (type) => {
-    // This function now only handles single-instance settings like PayPal or E-transfer.
-    // Bank transfer will be handled by filtering the settings array.
-    return settings.find(s => s.payment_type === type) || {
-      payment_type: type,
-      country: '',
-      active: false
-    };
-  };
+  const getSettingsByType = (type) =>
+    settings.find(s => s.payment_type === type) || { payment_type: type, country: '', active: false };
 
   const updateSetting = async (type, data) => {
     setSaving(true);
     try {
-      const existing = settings.find(s => s.payment_type === type);
-      const settingData = { payment_type: type, ...data };
-      
+      const existing = settings.find(s => s.payment_type === type); // singleton existence
+      const ref = doc(db, 'payment_settings', type);
       if (existing) {
-        await BankSettings.update(existing.id, settingData);
+        await setDoc(ref, { payment_type: type, ...data, updated_at: serverTimestamp() }, { merge: true });
       } else {
-        await BankSettings.create(settingData);
+        await setDoc(ref, { payment_type: type, ...data, created_at: serverTimestamp(), updated_at: serverTimestamp() }, { merge: true });
       }
-      
       await loadSettings();
       alert('Settings saved successfully!');
     } catch (error) {
       console.error("Error saving settings:", error);
-      alert('Failed to save settings');
+      alert('Failed to save settings.');
     } finally {
       setSaving(false);
     }
@@ -217,6 +235,7 @@ export default function AdminBankSettings() {
     setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  /* ---------- PayPal ---------- */
   const PayPalSettings = () => {
     const paypalSettings = getSettingsByType('paypal');
     const [formData, setFormData] = useState({
@@ -231,9 +250,7 @@ export default function AdminBankSettings() {
       active: paypalSettings.active || false
     });
 
-    const handleSave = () => {
-      updateSetting('paypal', formData);
-    };
+    const handleSave = () => updateSetting('paypal', formData);
 
     return (
       <div className="space-y-6">
@@ -248,9 +265,7 @@ export default function AdminBankSettings() {
           <div>
             <Label htmlFor="paypal_environment">Environment</Label>
             <Select value={formData.paypal_environment} onValueChange={(value) => setFormData(prev => ({ ...prev, paypal_environment: value }))}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="sandbox">Sandbox (Testing)</SelectItem>
                 <SelectItem value="live">Live (Production)</SelectItem>
@@ -262,9 +277,7 @@ export default function AdminBankSettings() {
           <div>
             <Label htmlFor="paypal_currency">Currency</Label>
             <Select value={formData.currency} onValueChange={(value) => setFormData(prev => ({ ...prev, currency: value }))}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="USD">USD - US Dollar</SelectItem>
                 <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
@@ -361,6 +374,7 @@ export default function AdminBankSettings() {
     );
   };
 
+  /* ---------- Bank Transfer (multiple accounts) ---------- */
   const BankTransferSettings = () => {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingSetting, setEditingSetting] = useState(null);
@@ -378,29 +392,28 @@ export default function AdminBankSettings() {
     };
 
     const handleDelete = async (settingId) => {
-      if (window.confirm('Are you sure you want to delete this bank account? This action cannot be undone.')) {
-        setSaving(true);
-        try {
-          await BankSettings.delete(settingId);
-          await loadSettings();
-          alert('Bank account deleted successfully!');
-        } catch (error) {
-          console.error("Error deleting bank account:", error);
-          alert('Failed to delete bank account.');
-        } finally {
-          setSaving(false);
-        }
+      if (!window.confirm('Are you sure you want to delete this bank account? This action cannot be undone.')) return;
+      setSaving(true);
+      try {
+        await deleteDoc(doc(db, 'bank_accounts', settingId));
+        await loadSettings();
+        alert('Bank account deleted successfully!');
+      } catch (error) {
+        console.error("Error deleting bank account:", error);
+        alert('Failed to delete bank account.');
+      } finally {
+        setSaving(false);
       }
     };
-    
+
     const handleSave = async (formData) => {
       setSaving(true);
       try {
         const dataToSave = { payment_type: 'bank_transfer', ...formData };
         if (editingSetting && editingSetting.id) {
-          await BankSettings.update(editingSetting.id, dataToSave);
+          await updateDoc(doc(db, 'bank_accounts', editingSetting.id), { ...dataToSave, updated_at: serverTimestamp() });
         } else {
-          await BankSettings.create(dataToSave);
+          await addDoc(collection(db, 'bank_accounts'), { ...dataToSave, created_at: serverTimestamp(), updated_at: serverTimestamp() });
         }
         setIsFormOpen(false);
         setEditingSetting(null);
@@ -482,6 +495,7 @@ export default function AdminBankSettings() {
     );
   };
 
+  /* ---------- E-Transfer ---------- */
   const ETransferSettings = () => {
     const etransferSettings = getSettingsByType('etransfer');
     const [formData, setFormData] = useState({
@@ -494,9 +508,7 @@ export default function AdminBankSettings() {
       active: etransferSettings.active || false
     });
 
-    const handleSave = () => {
-      updateSetting('etransfer', formData);
-    };
+    const handleSave = () => updateSetting('etransfer', formData);
 
     return (
       <div className="space-y-6">
@@ -547,7 +559,7 @@ export default function AdminBankSettings() {
               className="absolute right-0 top-0 h-full px-3"
               onClick={() => toggleSecretVisibility('etransfer_answer')}
             >
-              {showSecrets.etransfer_answer ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showSecrets.etransfer_answer ? <EyeOff className="h-4 h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </div>
         </div>

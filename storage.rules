@@ -1,0 +1,27 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function authed() { return request.auth != null; }
+
+    // Public site media (admins upload via Admin editors)
+    match /home/{allPaths=**} {
+      allow read: if true;
+      allow write: if authed(); // tighten to custom claims later if needed
+    }
+    match /about/{allPaths=**} {
+      allow read: if true;
+      allow write: if authed();
+    }
+
+    // User profile images: users can write their own; public can read
+    match /users/{uid}/profile/{file=**} {
+      allow read: if true;
+      allow write: if authed() && request.auth.uid == uid;
+    }
+
+    // Default: block
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

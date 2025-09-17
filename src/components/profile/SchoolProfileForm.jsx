@@ -1,118 +1,145 @@
-import React from 'react';
+// src/components/profile/SchoolProfileForm.jsx
+import React, { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import LevelSelector from '../LevelSelector';
-import ProvinceSelector from '../ProvinceSelector';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const COUNTRIES = [
-  { value: 'Canada', label: 'Canada' },
-  { value: 'USA', label: 'United States' },
-  { value: 'UK', label: 'United Kingdom' },
-  { value: 'Australia', label: 'Australia' },
-  { value: 'New Zealand', label: 'New Zealand' },
-];
+/* Firebase */
+import { auth, db } from "@/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { collection, getDocs, query, where, limit } from "firebase/firestore";
 
-export default function SchoolProfileForm({ formData, handleInputChange }) {
+const normalizeSchool = (doc = {}) => ({
+  name: doc.name || "",
+  school_level: doc.school_level || "",
+  location: doc.location || "",
+  website: doc.website || "",
+  description: doc.description || "",
+});
+
+export default function SchoolProfileForm({
+  formData,
+  handleInputChange,
+  autoLoadFromFirestore = true,
+  onLoaded,
+}) {
+  const usingParentState = typeof handleInputChange === "function";
+  const [localData, setLocalData] = useState(() => normalizeSchool(formData));
+  const [loading, setLoading] = useState(!!autoLoadFromFirestore);
+  const [docId, setDocId] = useState(null);
+
+  useEffect(() => {
+    if (usingParentState) return;
+    setLocalData(normalizeSchool(formData));
+  }, [formData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!autoLoadFromFirestore) return;
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      setLoading(true);
+      try {
+        if (!user) return setLoading(false);
+        // Prefer school_profiles; if you store in "schools" instead, change below
+        const qRef = query(collection(db, "school_profiles"), where("user_id", "==", user.uid), limit(1));
+        const qs = await getDocs(qRef);
+        if (!qs.empty) {
+          const snap = qs.docs[0];
+          const data = normalizeSchool(snap.data());
+          setDocId(snap.id);
+          if (usingParentState) {
+            Object.entries(data).forEach(([k, v]) => handleInputChange(k, v));
+          } else {
+            setLocalData(data);
+          }
+          onLoaded && onLoaded({ docId: snap.id, data });
+        } else {
+          const empty = normalizeSchool({});
+          if (usingParentState) {
+            Object.entries(empty).forEach(([k, v]) => handleInputChange(k, v));
+          } else {
+            setLocalData(empty);
+          }
+          onLoaded && onLoaded({ docId: null, data: empty });
+        }
+      } catch (e) {
+        console.error("School load failed:", e);
+      } finally {
+        setLoading(false);
+      }
+    });
+    return () => unsub && unsub();
+  }, [autoLoadFromFirestore, usingParentState, handleInputChange, onLoaded]);
+
+  const data = usingParentState ? formData || {} : localData;
+  const onChange = (k, v) =>
+    usingParentState ? handleInputChange(k, v) : setLocalData((p) => ({ ...p, [k]: v }));
+
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">School Information</h3>
-      <div className="space-y-4">
-        <div>
-          <Label htmlFor="school_name">School Name *</Label>
-          <Input
-            id="school_name"
-            placeholder="e.g., University of Toronto"
-            value={formData?.name || ""}
-            onChange={(e) => handleInputChange("name", e.target.value)}
-          />
-        </div>
+      <h3 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
+        School Profile {docId ? <span className="text-xs text-gray-500">({docId})</span> : null}
+      </h3>
 
-        <div>
-          <Label htmlFor="school_level">School Level *</Label>
-          <LevelSelector
-            value={formData?.school_level || "bachelor"}
-            onValueChange={(value) => handleInputChange("school_level", value)}
-            placeholder="Select school level"
-          />
-        </div>
+      {loading ? (
+        <div className="text-sm text-gray-500">Loading school profile…</div>
+      ) : (
+        <>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <Label htmlFor="name">Institution Name *</Label>
+              <Input
+                id="name"
+                value={data.name || ""}
+                onChange={(e) => onChange("name", e.target.value)}
+                required
+              />
+            </div>
 
-        <div className="grid md:grid-cols-3 gap-4">
-          <div>
-            <Label htmlFor="country">Country *</Label>
-            <Select
-              value={formData?.country || ""}
-              onValueChange={(value) => handleInputChange("country", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select country" />
-              </SelectTrigger>
-              <SelectContent>
-                {COUNTRIES.map((country) => (
-                  <SelectItem key={country.value} value={country.value}>
-                    {country.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div>
+              <Label htmlFor="school_level">School Level *</Label>
+              <Input
+                id="school_level"
+                placeholder="University / College / High School"
+                value={data.school_level || ""}
+                onChange={(e) => onChange("school_level", e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="location">Location *</Label>
+              <Input
+                id="location"
+                placeholder="City, Country"
+                value={data.location || ""}
+                onChange={(e) => onChange("location", e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="website">Website</Label>
+              <Input
+                id="website"
+                placeholder="https://example.edu"
+                value={data.website || ""}
+                onChange={(e) => onChange("website", e.target.value)}
+              />
+            </div>
           </div>
-          
+
           <div>
-            <Label htmlFor="province">Province/State *</Label>
-            <ProvinceSelector
-              value={formData?.province || ""}
-              onValueChange={(value) => handleInputChange("province", value)}
-              placeholder="Select province"
-              includeInternational={formData?.country !== 'Canada'}
+            <Label htmlFor="description">About</Label>
+            <Textarea
+              id="description"
+              placeholder="Describe the institution..."
+              value={data.description || ""}
+              onChange={(e) => onChange("description", e.target.value)}
+              rows={4}
             />
           </div>
-          
-          <div>
-            <Label htmlFor="location">City *</Label>
-            <Input
-              id="location"
-              placeholder="e.g., Toronto"
-              value={formData?.location || ""}
-              onChange={(e) => handleInputChange("location", e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <Label htmlFor="tuition_fees">Annual Tuition (USD) *</Label>
-            <Input
-              id="tuition_fees"
-              type="number"
-              placeholder="25000"
-              value={formData?.tuition_fees || ""}
-              onChange={(e) => handleInputChange("tuition_fees", Number(e.target.value))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="website">Website *</Label>
-            <Input
-              id="website"
-              type="url"
-              placeholder="https://www.university.edu"
-              value={formData?.website || ""}
-              onChange={(e) => handleInputChange("website", e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div>
-          <Label htmlFor="about">About the School</Label>
-          <Textarea
-            id="about"
-            placeholder="A brief description of your institution..."
-            value={formData?.about || ""}
-            onChange={(e) => handleInputChange("about", e.target.value)}
-            rows={4}
-          />
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }

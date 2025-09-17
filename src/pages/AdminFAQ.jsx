@@ -1,5 +1,5 @@
+// src/pages/AdminFAQ.jsx
 import React, { useState, useEffect } from 'react';
-import { FAQ } from '@/api/entities';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,45 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Edit, Trash2, Save, Eye } from "lucide-react";
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+
+/* ---------- Firebase ---------- */
+import { db } from '@/firebase';
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+} from 'firebase/firestore';
+
+/* ---------- Helpers ---------- */
+const pickFirst = (...vals) =>
+  vals.find((v) => v !== undefined && v !== null && (`${v}`.trim?.() ?? `${v}`) !== '') ?? undefined;
+
+const ensureNumber = (v, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const toCSV = (arr) => (Array.isArray(arr) ? arr.join(', ') : (arr || ''));
+const fromCSV = (s) => (s || '').split(',').map(x => x.trim()).filter(Boolean);
+
+const mapFAQDoc = (snap) => {
+  const d = { id: snap.id, ...snap.data() };
+  return {
+    id: snap.id,
+    faq_id: pickFirst(d.faq_id, d.slug, snap.id),
+    lang: (d.lang || 'en').toLowerCase(),
+    title: d.title || '',
+    body: d.body || '',
+    category: d.category || 'general',
+    tags: Array.isArray(d.tags) ? d.tags : fromCSV(d.tags),
+    priority: ensureNumber(d.priority, 0),
+    ...d,
+  };
+};
 
 export default function AdminFAQ() {
   const [faqs, setFaqs] = useState([]);
@@ -35,8 +74,11 @@ export default function AdminFAQ() {
   const loadFAQs = async () => {
     setLoading(true);
     try {
-      const faqData = await FAQ.list('-priority');
-      setFaqs(faqData);
+      const snap = await getDocs(collection(db, 'faqs'));
+      const items = snap.docs.map(mapFAQDoc);
+      // Sort by priority DESC (to match '-priority')
+      items.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      setFaqs(items);
     } catch (error) {
       console.error("Error loading FAQs:", error);
     } finally {
@@ -46,37 +88,43 @@ export default function AdminFAQ() {
 
   const handleSave = async () => {
     try {
-      const faqData = {
-        ...formData,
+      const payload = {
         faq_id: formData.faq_id || `faq_${Date.now()}`,
-        tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
-        priority: parseInt(formData.priority) || 0
+        lang: (formData.lang || 'en').toLowerCase(),
+        title: formData.title || '',
+        body: formData.body || '',
+        category: formData.category || 'general',
+        tags: fromCSV(formData.tags),
+        priority: ensureNumber(formData.priority, 0),
+        updatedAt: serverTimestamp(),
       };
 
-      if (selectedFAQ) {
-        await FAQ.update(selectedFAQ.id, faqData);
+      if (selectedFAQ?.id) {
+        await updateDoc(doc(db, 'faqs', selectedFAQ.id), payload);
       } else {
-        await FAQ.create(faqData);
+        await addDoc(collection(db, 'faqs'), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
       }
-      
+
       setIsFormOpen(false);
       resetForm();
-      loadFAQs();
+      await loadFAQs();
     } catch (error) {
       console.error("Error saving FAQ:", error);
       alert('Failed to save FAQ');
     }
   };
 
-  const handleDelete = async (faqId) => {
-    if (window.confirm("Are you sure you want to delete this FAQ?")) {
-      try {
-        await FAQ.delete(faqId);
-        loadFAQs();
-      } catch (error) {
-        console.error("Error deleting FAQ:", error);
-        alert('Failed to delete FAQ');
-      }
+  const handleDelete = async (docId) => {
+    if (!window.confirm("Are you sure you want to delete this FAQ?")) return;
+    try {
+      await deleteDoc(doc(db, 'faqs', docId));
+      await loadFAQs();
+    } catch (error) {
+      console.error("Error deleting FAQ:", error);
+      alert('Failed to delete FAQ');
     }
   };
 
@@ -84,13 +132,13 @@ export default function AdminFAQ() {
     if (faq) {
       setSelectedFAQ(faq);
       setFormData({
-        faq_id: faq.faq_id,
-        lang: faq.lang,
-        title: faq.title,
-        body: faq.body,
-        category: faq.category,
-        tags: faq.tags?.join(', ') || '',
-        priority: faq.priority
+        faq_id: faq.faq_id || '',
+        lang: (faq.lang || 'en').toLowerCase(),
+        title: faq.title || '',
+        body: faq.body || '',
+        category: faq.category || 'general',
+        tags: toCSV(faq.tags),
+        priority: faq.priority ?? 0
       });
     } else {
       resetForm();
@@ -123,10 +171,13 @@ export default function AdminFAQ() {
                 Preview
               </Button>
             </Link>
-            <Dialog open={isFormOpen} onOpenChange={(open) => {
-              if (!open) resetForm();
-              setIsFormOpen(open);
-            }}>
+            <Dialog
+              open={isFormOpen}
+              onOpenChange={(open) => {
+                if (!open) resetForm();
+                setIsFormOpen(open);
+              }}
+            >
               <DialogTrigger asChild>
                 <Button onClick={() => openForm()}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -137,6 +188,7 @@ export default function AdminFAQ() {
                 <DialogHeader>
                   <DialogTitle>{selectedFAQ ? 'Edit FAQ' : 'Add New FAQ'}</DialogTitle>
                 </DialogHeader>
+
                 <div className="space-y-4">
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
@@ -150,7 +202,10 @@ export default function AdminFAQ() {
                     </div>
                     <div>
                       <Label htmlFor="lang">Language</Label>
-                      <Select value={formData.lang} onValueChange={(value) => setFormData(prev => ({ ...prev, lang: value }))}>
+                      <Select
+                        value={formData.lang}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, lang: value }))}
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -161,6 +216,7 @@ export default function AdminFAQ() {
                       </Select>
                     </div>
                   </div>
+
                   <div>
                     <Label htmlFor="title">Question</Label>
                     <Input
@@ -170,6 +226,7 @@ export default function AdminFAQ() {
                       placeholder="How do I apply to a school?"
                     />
                   </div>
+
                   <div>
                     <Label htmlFor="body">Answer</Label>
                     <Textarea
@@ -180,10 +237,14 @@ export default function AdminFAQ() {
                       rows={5}
                     />
                   </div>
+
                   <div className="grid md:grid-cols-3 gap-4">
                     <div>
                       <Label htmlFor="category">Category</Label>
-                      <Select value={formData.category} onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}>
+                      <Select
+                        value={formData.category}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -198,6 +259,7 @@ export default function AdminFAQ() {
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div>
                       <Label htmlFor="priority">Priority</Label>
                       <Input
@@ -208,6 +270,7 @@ export default function AdminFAQ() {
                         placeholder="0"
                       />
                     </div>
+
                     <div>
                       <Label htmlFor="tags">Tags</Label>
                       <Input
@@ -218,6 +281,7 @@ export default function AdminFAQ() {
                       />
                     </div>
                   </div>
+
                   <div className="flex justify-end gap-2 pt-4">
                     <Button variant="outline" onClick={() => setIsFormOpen(false)}>
                       Cancel
@@ -251,18 +315,27 @@ export default function AdminFAQ() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {faqs.map(faq => (
+                  {faqs.map((faq) => (
                     <TableRow key={faq.id}>
                       <TableCell className="font-medium">{faq.title}</TableCell>
-                      <TableCell><Badge variant="outline">{faq.category}</Badge></TableCell>
-                      <TableCell><Badge>{faq.lang.toUpperCase()}</Badge></TableCell>
-                      <TableCell>{faq.priority}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{faq.category}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge>{(faq.lang || 'en').toUpperCase()}</Badge>
+                      </TableCell>
+                      <TableCell>{faq.priority ?? 0}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button variant="ghost" size="icon" onClick={() => openForm(faq)}>
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(faq.id)} className="text-red-500">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(faq.id)}
+                            className="text-red-500"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>

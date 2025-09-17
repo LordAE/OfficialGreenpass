@@ -50,6 +50,13 @@ const ROLE_OPTIONS = [
     benefits: ['Service marketplace','Order management','Payment processing','Customer reviews'] },
 ];
 
+// ✅ Helpers to handle CSV ↔ array safely
+const csvToArray = (s) =>
+  (s || '').split(',').map(x => x.trim()).filter(Boolean);
+
+const arrayToCSV = (v) =>
+  Array.isArray(v) ? v.join(', ') : (typeof v === 'string' ? v : '');
+
 function buildUserDefaults({ email, full_name = '' }) {
   return {
     role: 'user',
@@ -128,6 +135,7 @@ export default function Onboarding() {
       setSelectedRole(roleFromProfile);
       setCurrentStep(data.onboarding_completed ? STEPS.COMPLETE : (data.onboarding_step || STEPS.CHOOSE_ROLE));
 
+      // 👇 Keep UI the same, but ensure CSV string shows even if Firestore has an array
       setFormData({
         full_name: data.full_name || fbUser.displayName || '',
         phone: data.phone || '',
@@ -137,7 +145,7 @@ export default function Onboarding() {
         business_license_mst: data.agent_profile?.business_license_mst || '',
         year_established: data.agent_profile?.year_established || '',
         paypal_email: data.agent_profile?.paypal_email || data.tutor_profile?.paypal_email || data.vendor_profile?.paypal_email || '',
-        specializations: data.tutor_profile?.specializations || '',
+        specializations: arrayToCSV(data.tutor_profile?.specializations),
         experience_years: data.tutor_profile?.experience_years || '',
         hourly_rate: data.tutor_profile?.hourly_rate || '',
         bio: data.tutor_profile?.bio || '',
@@ -188,7 +196,11 @@ export default function Onboarding() {
   const validateRoleSpecificInfo = () => {
     if (selectedRole === 'user') return true;
     if (selectedRole === 'agent')  return formData.company_name && formData.business_license_mst && formData.paypal_email;
-    if (selectedRole === 'tutor')  return formData.specializations && formData.experience_years && formData.hourly_rate && formData.paypal_email;
+    // ✅ Ensure tutor has at least one specialization (CSV→array), numbers, and PayPal
+    if (selectedRole === 'tutor')  return csvToArray(formData.specializations).length > 0
+      && !!formData.experience_years
+      && !!formData.hourly_rate
+      && !!formData.paypal_email;
     if (selectedRole === 'school') return formData.school_name && formData.location && formData.website && formData.type;
     if (selectedRole === 'vendor') return formData.business_name && (formData.service_categories?.length > 0) && formData.paypal_email;
     return false;
@@ -253,10 +265,11 @@ export default function Onboarding() {
         };
       }
       if (selectedRole === 'tutor') {
+        // ✅ Save correct data types to Firestore
         updates.tutor_profile = {
-          specializations: formData.specializations || '',
-          experience_years: formData.experience_years || '',
-          hourly_rate: formData.hourly_rate || '',
+          specializations: csvToArray(formData.specializations),          // array
+          experience_years: Number(formData.experience_years) || 0,      // number
+          hourly_rate: Number(formData.hourly_rate) || 0,                // number
           bio: formData.bio || '',
           paypal_email: formData.paypal_email || '',
         };

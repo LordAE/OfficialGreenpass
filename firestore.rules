@@ -2,43 +2,304 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function authed() { return request.auth != null; }
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
 
-    // ----- Public content (read-only) -----
-    match /events/{doc}              { allow read: if true; allow write: if false; }
-    match /home_page_contents/{doc}  { allow read: if true; allow write: if false; }
-    match /about_page_contents/{doc} { allow read: if true; allow write: if false; }
-    match /contact_page_contents/{doc}{ allow read: if true; allow write: if false; }
-    match /brand_settings/{doc}      { allow read: if true; allow write: if false; }
-    match /chat_settings/{doc}       { allow read: if true; allow write: if false; }
-    match /faqs/{doc}                { allow read: if true; allow write: if false; }
-    match /schools/{doc}             { allow read: if true; allow write: if false; }
-    match /school_profiles/{doc}     { allow read: if true; allow write: if false; }
-    match /posts/{doc}               { allow read: if true; allow write: if false; }
-    match /assets/{doc}              { allow read: if true; allow write: if false; }
-    match /institutions/{doc}        { allow read: if true; allow write: if false; }
-    match /programs/{doc}            { allow read: if true; allow write: if false; }
+      // AboutPageContent
+      match /AboutPageContent/{docId} {
+        allow read, write: if isAdmin();
+      }
 
-    // ----- Settings (read-only) -----
-    match /bank_settings/{doc}   { allow read: if true; allow write: if false; }
-    match /settings/{doc}        { allow read: if true; allow write: if false; } // if you keep a generic settings coll
+      // Agent
+      match /Agent/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
 
-    // ----- Registrations & payments -----
-    match /event_registrations/{doc} {
-      // allow guests to create a registration
-      allow create: if true;
-      // allow reading/updating by signed-in users (tighten to owner if you store user_id)
-      allow read, update: if authed();
-      allow delete: if false;
+      // AgentPackage
+      match /AgentPackage/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Asset
+      match /Asset/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // BankSettings
+      match /BankSettings/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // BrandSettings
+      match /BrandSettings/{docId} {
+        allow read, write: if isAdmin();
+      }
+
+      // Case
+      match /Case/{docId} {
+        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      }
+
+      // ChatSettings
+      match /ChatSettings/{docId} {
+        allow read, write: if isAdmin();
+      }
+
+      // Contact
+      match /Contact/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // ContactPageContent
+      match /ContactPageContent/{docId} {
+        allow read, write: if isAdmin();
+      }
+
+      // Conversation
+      match /Conversation/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Event
+      match /Event/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // EventAssignment
+      match /EventAssignment/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // EventRegistration
+      match /EventRegistration/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // ExhibitorRegistration
+      match /ExhibitorRegistration/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // FAQ
+      match /FAQ/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // FairEvent
+      match /FairEvent/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // HomePageContent
+      match /HomePageContent/{docId} {
+        allow read, write: if isAdmin();
+      }
+
+      // Institution
+      match /Institution/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // KnowledgeBase
+      match /KnowledgeBase/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // Lead
+      match /Lead/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // MarketplaceOrder
+      match /MarketplaceOrder/{docId} {
+        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      }
+
+      // Message
+      match /Message/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // OurTeamPageContent
+      match /OurTeamPageContent/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Package
+      match /Package/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Payment
+      match /Payment/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Post
+      match /Post/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Program
+      match /Program/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // Registration
+      match /Registration/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Reservation
+      match /Reservation/{docId} {
+        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      }
+
+      // School
+      match /School/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // SchoolProfile
+      match /SchoolProfile/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Service
+      match /Service/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // StudentRSVP
+      match /StudentRSVP/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // StudentTutorPackage
+      match /StudentTutorPackage/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // SupportAgent
+      match /SupportAgent/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // SupportTicket
+      match /SupportTicket/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Tutor
+      match /Tutor/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // TutorPackage
+      match /TutorPackage/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // TutoringSession
+      match /TutoringSession/{docId} {
+        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      }
+
+      // User
+      match /User/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // Vendor
+      match /Vendor/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // VisaDocument
+      match /VisaDocument/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // VisaPackage
+      match /VisaPackage/{docId} {
+        allow create: if signedIn();
+        allow read: if signedIn();
+        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // VisaRequest
+      match /VisaRequest/{docId} {
+        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      }
+
+      // Wallet
+      match /Wallet/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+      // WalletTransaction
+      match /WalletTransaction/{docId} {
+        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
-    match /payments/{doc} {
-      // created immediately after successful capture
-      allow create: if true;
-      allow read, update: if authed();
-      allow delete: if false;
-    }
-
-    // ----- Fallback: deny everything else unless you have explicit rules -----
-    match /{document=**} { allow read, write: if false; }
   }
 }

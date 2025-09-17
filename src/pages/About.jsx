@@ -1,5 +1,5 @@
+// src/pages/About.jsx
 import React, { useState, useEffect } from 'react';
-import { AboutPageContent } from '@/api/entities';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from 'framer-motion';
@@ -9,25 +9,57 @@ import { createPageUrl } from '@/utils';
 import IconResolver from '../components/IconResolver';
 import YouTubeEmbed from '../components/YouTubeEmbed';
 
+/* ---------- Firebase ---------- */
+import { db } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
+/* ---------- Defaults & helpers ---------- */
+const DEFAULT_CONTENT = {
+  hero_title: "About GreenPass",
+  hero_subtitle: "Empowering students to achieve their international education dreams",
+  hero_image_url: "",
+  hero_video_url: "",
+  mission_title: "Our Mission",
+  mission_subtitle: "Transforming International Education",
+  mission_text:
+    "We believe every student deserves access to quality international education. GreenPass connects students with verified education agents, top institutions, and essential services to make studying abroad accessible, affordable, and successful.",
+  values: [
+    { id: "1", icon: "Star",        title: "Excellence", text: "We maintain the highest standards in everything we do, from partner verification to customer service." },
+    { id: "2", icon: "Users",       title: "Community",  text: "We foster a supportive community where students, agents, and institutions can connect and thrive." },
+    { id: "3", icon: "CheckCircle", title: "Trust",      text: "Transparency and reliability are at the core of our platform. Every partner is verified and vetted." }
+  ],
+  team_title: "Our Team",
+  team_text:
+    "GreenPass is built by a diverse team of education professionals, technologists, and international students who understand the challenges and opportunities in global education."
+};
+
+const ensureArray = (v) => (Array.isArray(v) ? v : []);
+const sanitizeLoaded = (loaded = {}) => ({
+  ...DEFAULT_CONTENT,       // keep sensible defaults
+  ...loaded,                // overlay data from Firestore
+  values: ensureArray(loaded.values),
+});
+
 export default function About() {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadContent = async () => {
+    (async () => {
       try {
-        const aboutContent = await AboutPageContent.list();
-        if (aboutContent.length > 0) {
-          setContent(aboutContent[0]);
+        const snap = await getDoc(doc(db, 'about_page_contents', 'SINGLETON'));
+        if (snap.exists()) {
+          setContent(sanitizeLoaded(snap.data()));
+        } else {
+          setContent(DEFAULT_CONTENT);
         }
       } catch (error) {
         console.error("Error loading about content:", error);
+        setContent(DEFAULT_CONTENT);
       } finally {
         setLoading(false);
       }
-    };
-    
-    loadContent();
+    })();
   }, []);
 
   if (loading) {
@@ -38,37 +70,7 @@ export default function About() {
     );
   }
 
-  const defaultContent = {
-    hero_title: "About GreenPass",
-    hero_subtitle: "Empowering students to achieve their international education dreams",
-    mission_title: "Our Mission",
-    mission_subtitle: "Transforming International Education",
-    mission_text: "We believe every student deserves access to quality international education. GreenPass connects students with verified education agents, top institutions, and essential services to make studying abroad accessible, affordable, and successful.",
-    values: [
-      {
-        id: "1",
-        icon: "Star",
-        title: "Excellence",
-        text: "We maintain the highest standards in everything we do, from partner verification to customer service."
-      },
-      {
-        id: "2", 
-        icon: "Users",
-        title: "Community",
-        text: "We foster a supportive community where students, agents, and institutions can connect and thrive."
-      },
-      {
-        id: "3",
-        icon: "CheckCircle",
-        title: "Trust",
-        text: "Transparency and reliability are at the core of our platform. Every partner is verified and vetted."
-      }
-    ],
-    team_title: "Our Team",
-    team_text: "GreenPass is built by a diverse team of education professionals, technologists, and international students who understand the challenges and opportunities in global education."
-  };
-
-  const pageContent = content || defaultContent;
+  const pageContent = content || DEFAULT_CONTENT;
 
   return (
     <div className="min-h-screen bg-white">
@@ -93,27 +95,27 @@ export default function About() {
                 </Button>
               </Link>
             </motion.div>
-            
+
             <motion.div
               initial={{ opacity: 0, x: 50 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
               {pageContent.hero_video_url ? (
-                <YouTubeEmbed 
-                  url={pageContent.hero_video_url} 
+                <YouTubeEmbed
+                  url={pageContent.hero_video_url}
                   className="w-full h-64 md:h-80 rounded-lg shadow-xl"
                 />
               ) : pageContent.hero_image_url ? (
-                <img 
-                  src={pageContent.hero_image_url} 
-                  alt="About GreenPass" 
+                <img
+                  src={pageContent.hero_image_url}
+                  alt="About GreenPass"
                   className="w-full h-auto rounded-lg shadow-xl"
                 />
               ) : (
-                <img 
-                  src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=400&fit=crop" 
-                  alt="Team collaboration" 
+                <img
+                  src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=400&fit=crop"
+                  alt="Team collaboration"
                   className="w-full h-auto rounded-lg shadow-xl"
                 />
               )}
@@ -151,11 +153,11 @@ export default function About() {
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Our Values</h2>
             <p className="text-xl text-gray-600">The principles that guide everything we do</p>
           </div>
-          
+
           <div className="grid md:grid-cols-3 gap-8">
             {pageContent.values?.map((value, index) => (
               <motion.div
-                key={value.id}
+                key={value.id || index}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: index * 0.1 }}
