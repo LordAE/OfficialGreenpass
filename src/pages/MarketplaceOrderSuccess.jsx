@@ -1,20 +1,23 @@
+// src/pages/MarketplaceOrderSuccess.jsx
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MarketplaceOrder } from '@/api/entities';
-import { Service } from '@/api/entities';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, Loader2 } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 
+// --- Firebase ---
+import { db } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
 export default function MarketplaceOrderSuccess() {
   const [searchParams] = useSearchParams();
+  const orderId = searchParams.get('orderId');
+
   const [order, setOrder] = useState(null);
   const [service, setService] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const orderId = searchParams.get('orderId');
 
   useEffect(() => {
     if (!orderId) {
@@ -25,15 +28,30 @@ export default function MarketplaceOrderSuccess() {
 
     const fetchOrderDetails = async () => {
       try {
-        const orderData = await MarketplaceOrder.get(orderId);
-        if (!orderData) throw new Error('Order not found.');
+        setLoading(true);
+        setError(null);
+
+        // Fetch order
+        const orderRef = doc(db, 'marketplace_orders', orderId);
+        const orderSnap = await getDoc(orderRef);
+        if (!orderSnap.exists()) {
+          throw new Error('Order not found.');
+        }
+        const orderData = { id: orderSnap.id, ...orderSnap.data() };
         setOrder(orderData);
-        
-        const serviceData = await Service.get(orderData.service_id);
-        if (!serviceData) throw new Error('Service not found.');
-        setService(serviceData);
+
+        // Fetch related service
+        if (!orderData.service_id) {
+          throw new Error('Order is missing its service reference.');
+        }
+        const serviceRef = doc(db, 'services', orderData.service_id);
+        const serviceSnap = await getDoc(serviceRef);
+        if (!serviceSnap.exists()) {
+          throw new Error('Service not found.');
+        }
+        setService({ id: serviceSnap.id, ...serviceSnap.data() });
       } catch (err) {
-        setError(err.message);
+        setError(err.message || 'Failed to load order details.');
       } finally {
         setLoading(false);
       }
@@ -64,6 +82,8 @@ export default function MarketplaceOrderSuccess() {
     );
   }
 
+  const amount = typeof order?.amount_usd === 'number' ? order.amount_usd.toFixed(2) : '0.00';
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <Card className="max-w-lg w-full shadow-lg">
@@ -77,14 +97,16 @@ export default function MarketplaceOrderSuccess() {
           <p className="text-gray-700">
             Your booking for the service has been confirmed. The vendor will be in touch with you shortly.
           </p>
+
           {service && order && (
             <div className="text-left bg-gray-50 p-4 rounded-lg border">
               <h4 className="font-semibold mb-2">Order Summary</h4>
-              <p><strong>Service:</strong> {service.name}</p>
+              <p><strong>Service:</strong> {service.name || 'Service'}</p>
               <p><strong>Order ID:</strong> {order.id}</p>
-              <p><strong>Amount Paid:</strong> ${order.amount_usd.toFixed(2)} USD</p>
+              <p><strong>Amount Paid:</strong> ${amount} USD</p>
             </div>
           )}
+
           <div className="flex gap-4 pt-4">
             <Link to={createPageUrl('MyOrders')} className="flex-1">
               <Button variant="outline" className="w-full">View My Orders</Button>

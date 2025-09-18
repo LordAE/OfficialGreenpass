@@ -1,13 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { BrandSettings } from '@/api/entities';
-import { UploadFile } from '@/api/integrations';
+// src/pages/AdminBrandSettings.jsx
+import React, { useState, useEffect } from "react";
+import { db, storage } from "@/firebase";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Save, Upload, Image, Palette, Info } from "lucide-react";
+import { Loader2, Save, Image, Palette, Info } from "lucide-react";
+
+const SETTINGS_COLL = "brandSettings";
+const SETTINGS_ID = "SINGLETON";
 
 export default function AdminBrandSettings() {
   const [settings, setSettings] = useState(null);
@@ -17,68 +29,90 @@ export default function AdminBrandSettings() {
 
   useEffect(() => {
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const brandSettings = await BrandSettings.list();
-      if (brandSettings.length > 0) {
-        setSettings(brandSettings[0]);
+      const refDoc = doc(db, SETTINGS_COLL, SETTINGS_ID);
+      const snap = await getDoc(refDoc);
+
+      if (snap.exists()) {
+        setSettings({ id: SETTINGS_ID, ...snap.data() });
       } else {
-        // Create default settings
-        const defaultSettings = {
-          singleton_key: 'SINGLETON',
-          company_name: 'GreenPass',
-          logo_url: 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/52125f446_GP2withnameTransparent.png',
-          primary_color: '#059669',
-          secondary_color: '#0f766e',
-          tagline: 'Your comprehensive super app for studying abroad',
-          footer_text: 'All rights reserved.'
+        const defaults = {
+          singleton_key: "SINGLETON",
+          company_name: "GreenPass",
+          logo_url:
+            "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/52125f446_GP2withnameTransparent.png",
+          primary_color: "#059669",
+          secondary_color: "#0f766e",
+          tagline: "Your comprehensive super app for studying abroad",
+          footer_text: "All rights reserved.",
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
         };
-        const created = await BrandSettings.create(defaultSettings);
-        setSettings(created);
+        await setDoc(refDoc, defaults);
+        setSettings({ id: SETTINGS_ID, ...defaults });
       }
-    } catch (error) {
-      console.error("Error loading brand settings:", error);
+    } catch (e) {
+      console.error("Error loading brand settings:", e);
     } finally {
       setLoading(false);
     }
   };
 
   const handleInputChange = (field, value) => {
-    setSettings(prev => ({ ...prev, [field]: value }));
+    setSettings((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleFileUpload = async (field, file) => {
     if (!file) return;
 
-    // Validate file type
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'].includes(file.type)) {
-      alert('Please upload a valid image file (JPG, PNG, WebP, or SVG)');
+    if (
+      ![
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/svg+xml",
+        "image/x-icon",
+      ].includes(file.type)
+    ) {
+      alert("Please upload JPG, PNG, WebP, SVG, or ICO");
       return;
     }
 
-    setUploading(prev => ({ ...prev, [field]: true }));
+    setUploading((prev) => ({ ...prev, [field]: true }));
     try {
-      const { file_url } = await UploadFile({ file });
-      handleInputChange(field, file_url);
-    } catch (error) {
-      console.error(`Error uploading ${field}:`, error);
-      alert('Failed to upload file. Please try again.');
+      const path = `brand/${field}-${Date.now()}-${file.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      handleInputChange(field, url);
+    } catch (e) {
+      console.error(`Error uploading ${field}:`, e);
+      alert("Failed to upload file. Please try again.");
     } finally {
-      setUploading(prev => ({ ...prev, [field]: false }));
+      setUploading((prev) => ({ ...prev, [field]: false }));
     }
   };
 
   const handleSave = async () => {
+    if (!settings) return;
     setSaving(true);
     try {
-      await BrandSettings.update(settings.id, settings);
-      alert('Brand settings saved successfully! Please refresh the page to see changes.');
-    } catch (error) {
-      console.error("Error saving brand settings:", error);
-      alert('Failed to save settings');
+      const refDoc = doc(db, SETTINGS_COLL, SETTINGS_ID);
+      const payload = {
+        ...settings,
+        id: undefined, // do not store id field inside the doc
+        updated_at: serverTimestamp(),
+      };
+      await updateDoc(refDoc, payload);
+      alert("Brand settings saved successfully! Please refresh to see changes.");
+    } catch (e) {
+      console.error("Error saving brand settings:", e);
+      alert("Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -101,10 +135,16 @@ export default function AdminBrandSettings() {
               <Palette className="w-8 h-8" />
               Brand Settings
             </h1>
-            <p className="text-gray-600 mt-2">Customize your company branding and appearance</p>
+            <p className="text-gray-600 mt-2">
+              Customize your company branding and appearance
+            </p>
           </div>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+            {saving ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
             Save Changes
           </Button>
         </div>
@@ -123,18 +163,20 @@ export default function AdminBrandSettings() {
                 <Label htmlFor="company_name">Company Name</Label>
                 <Input
                   id="company_name"
-                  value={settings?.company_name || ''}
-                  onChange={(e) => handleInputChange('company_name', e.target.value)}
+                  value={settings?.company_name || ""}
+                  onChange={(e) =>
+                    handleInputChange("company_name", e.target.value)
+                  }
                   placeholder="Your Company Name"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="tagline">Tagline</Label>
                 <Textarea
                   id="tagline"
-                  value={settings?.tagline || ''}
-                  onChange={(e) => handleInputChange('tagline', e.target.value)}
+                  value={settings?.tagline || ""}
+                  onChange={(e) => handleInputChange("tagline", e.target.value)}
                   placeholder="Your company tagline or description"
                   rows={2}
                 />
@@ -144,8 +186,10 @@ export default function AdminBrandSettings() {
                 <Label htmlFor="footer_text">Footer Text</Label>
                 <Input
                   id="footer_text"
-                  value={settings?.footer_text || ''}
-                  onChange={(e) => handleInputChange('footer_text', e.target.value)}
+                  value={settings?.footer_text || ""}
+                  onChange={(e) =>
+                    handleInputChange("footer_text", e.target.value)
+                  }
                   placeholder="Copyright text for footer"
                 />
               </div>
@@ -166,9 +210,9 @@ export default function AdminBrandSettings() {
                 <Label>Main Logo</Label>
                 <div className="mt-2 flex items-center gap-4">
                   {settings?.logo_url && (
-                    <img 
-                      src={settings.logo_url} 
-                      alt="Current logo" 
+                    <img
+                      src={settings.logo_url}
+                      alt="Current logo"
                       className="h-12 w-auto object-contain bg-gray-100 p-2 rounded"
                     />
                   )}
@@ -176,7 +220,10 @@ export default function AdminBrandSettings() {
                     <Input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => e.target.files[0] && handleFileUpload('logo_url', e.target.files[0])}
+                      onChange={(e) =>
+                        e.target.files?.[0] &&
+                        handleFileUpload("logo_url", e.target.files[0])
+                      }
                       disabled={uploading.logo_url}
                     />
                     {uploading.logo_url && (
@@ -197,9 +244,9 @@ export default function AdminBrandSettings() {
                 <Label>Dark Version Logo (Optional)</Label>
                 <div className="mt-2 flex items-center gap-4">
                   {settings?.logo_dark_url && (
-                    <img 
-                      src={settings.logo_dark_url} 
-                      alt="Dark logo" 
+                    <img
+                      src={settings.logo_dark_url}
+                      alt="Dark logo"
                       className="h-12 w-auto object-contain bg-gray-800 p-2 rounded"
                     />
                   )}
@@ -207,7 +254,10 @@ export default function AdminBrandSettings() {
                     <Input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => e.target.files[0] && handleFileUpload('logo_dark_url', e.target.files[0])}
+                      onChange={(e) =>
+                        e.target.files?.[0] &&
+                        handleFileUpload("logo_dark_url", e.target.files[0])
+                      }
                       disabled={uploading.logo_dark_url}
                     />
                     {uploading.logo_dark_url && (
@@ -228,9 +278,9 @@ export default function AdminBrandSettings() {
                 <Label>Favicon</Label>
                 <div className="mt-2 flex items-center gap-4">
                   {settings?.favicon_url && (
-                    <img 
-                      src={settings.favicon_url} 
-                      alt="Favicon" 
+                    <img
+                      src={settings.favicon_url}
+                      alt="Favicon"
                       className="h-8 w-8 object-contain bg-gray-100 p-1 rounded"
                     />
                   )}
@@ -238,7 +288,10 @@ export default function AdminBrandSettings() {
                     <Input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => e.target.files[0] && handleFileUpload('favicon_url', e.target.files[0])}
+                      onChange={(e) =>
+                        e.target.files?.[0] &&
+                        handleFileUpload("favicon_url", e.target.files[0])
+                      }
                       disabled={uploading.favicon_url}
                     />
                     {uploading.favicon_url && (
@@ -248,7 +301,7 @@ export default function AdminBrandSettings() {
                       </div>
                     )}
                     <p className="text-xs text-gray-500 mt-1">
-                      Square format recommended (32x32 or 64x64 pixels)
+                      Square format recommended (32x32 or 64x64)
                     </p>
                   </div>
                 </div>
@@ -272,13 +325,17 @@ export default function AdminBrandSettings() {
                     <Input
                       type="color"
                       id="primary_color"
-                      value={settings?.primary_color || '#059669'}
-                      onChange={(e) => handleInputChange('primary_color', e.target.value)}
+                      value={settings?.primary_color || "#059669"}
+                      onChange={(e) =>
+                        handleInputChange("primary_color", e.target.value)
+                      }
                       className="w-16 h-10 p-1 rounded"
                     />
                     <Input
-                      value={settings?.primary_color || '#059669'}
-                      onChange={(e) => handleInputChange('primary_color', e.target.value)}
+                      value={settings?.primary_color || "#059669"}
+                      onChange={(e) =>
+                        handleInputChange("primary_color", e.target.value)
+                      }
                       placeholder="#059669"
                       className="flex-1"
                     />
@@ -291,13 +348,17 @@ export default function AdminBrandSettings() {
                     <Input
                       type="color"
                       id="secondary_color"
-                      value={settings?.secondary_color || '#0f766e'}
-                      onChange={(e) => handleInputChange('secondary_color', e.target.value)}
+                      value={settings?.secondary_color || "#0f766e"}
+                      onChange={(e) =>
+                        handleInputChange("secondary_color", e.target.value)
+                      }
                       className="w-16 h-10 p-1 rounded"
                     />
                     <Input
-                      value={settings?.secondary_color || '#0f766e'}
-                      onChange={(e) => handleInputChange('secondary_color', e.target.value)}
+                      value={settings?.secondary_color || "#0f766e"}
+                      onChange={(e) =>
+                        handleInputChange("secondary_color", e.target.value)
+                      }
                       placeholder="#0f766e"
                       className="flex-1"
                     />
@@ -308,7 +369,8 @@ export default function AdminBrandSettings() {
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>
-                  Note: Color changes will be applied after the next app update. Contact support for immediate color theme updates.
+                  Note: Color changes will be applied after the next app update.
+                  Contact support for immediate color theme updates.
                 </AlertDescription>
               </Alert>
             </CardContent>
@@ -323,25 +385,33 @@ export default function AdminBrandSettings() {
               <div className="p-4 bg-gray-100 rounded-lg">
                 <div className="flex items-center gap-4 mb-4">
                   {settings?.logo_url && (
-                    <img 
-                      src={settings.logo_url} 
-                      alt={settings?.company_name || 'Company Logo'} 
+                    <img
+                      src={settings.logo_url}
+                      alt={settings?.company_name || "Company Logo"}
                       className="h-10 w-auto object-contain"
                     />
                   )}
                   <div>
-                    <h3 className="font-bold text-lg">{settings?.company_name || 'Company Name'}</h3>
-                    <p className="text-gray-600 text-sm">{settings?.tagline || 'Company tagline'}</p>
+                    <h3 className="font-bold text-lg">
+                      {settings?.company_name || "Company Name"}
+                    </h3>
+                    <p className="text-gray-600 text-sm">
+                      {settings?.tagline || "Company tagline"}
+                    </p>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <div 
-                    className="w-8 h-8 rounded" 
-                    style={{ backgroundColor: settings?.primary_color || '#059669' }}
+                  <div
+                    className="w-8 h-8 rounded"
+                    style={{
+                      backgroundColor: settings?.primary_color || "#059669",
+                    }}
                   />
-                  <div 
-                    className="w-8 h-8 rounded" 
-                    style={{ backgroundColor: settings?.secondary_color || '#0f766e' }}
+                  <div
+                    className="w-8 h-8 rounded"
+                    style={{
+                      backgroundColor: settings?.secondary_color || "#0f766e",
+                    }}
                   />
                 </div>
               </div>

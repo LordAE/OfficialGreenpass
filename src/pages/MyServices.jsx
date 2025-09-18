@@ -1,8 +1,5 @@
-
+// src/pages/MyServices.jsx
 import React, { useState, useEffect } from 'react';
-import { Service } from '@/api/entities';
-import { User } from '@/api/entities';
-import { Vendor } from '@/api/entities'; // Added Vendor import
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -13,7 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Store, Plus, Edit, Trash2, Eye } from 'lucide-react';
-import { Alert, AlertDescription } from "@/components/ui/alert"; // Added Alert import
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+// --- Firebase ---
+import { db } from '@/firebase';
+import {
+  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc,
+  doc, orderBy, limit, serverTimestamp
+} from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const StatusBadge = ({ status }) => {
   const colors = {
@@ -35,12 +40,20 @@ const ServiceForm = ({ service, onSave, onCancel }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    // ensure price is numeric
+    if (name === 'price_usd') {
+      setFormData(prev => ({ ...prev, [name]: value === '' ? '' : Number(value) }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(formData);
+    onSave({
+      ...formData,
+      price_usd: Number(formData.price_usd || 0),
+    });
   };
 
   const categories = ["Transport", "SIM Card", "Banking", "Accommodation", "Delivery", "Tours"];
@@ -49,28 +62,28 @@ const ServiceForm = ({ service, onSave, onCancel }) => {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <Label htmlFor="name">Service Name</Label>
-        <Input 
-          id="name" 
-          name="name" 
-          value={formData.name} 
-          onChange={handleChange} 
-          required 
+        <Input
+          id="name"
+          name="name"
+          value={formData.name}
+          onChange={handleChange}
+          required
           placeholder="e.g., Airport Pickup Service"
         />
       </div>
-      
+
       <div>
         <Label htmlFor="description">Description</Label>
-        <Textarea 
-          id="description" 
-          name="description" 
-          value={formData.description} 
-          onChange={handleChange} 
+        <Textarea
+          id="description"
+          name="description"
+          value={formData.description}
+          onChange={handleChange}
           required
           placeholder="Detailed description of your service..."
         />
       </div>
-      
+
       <div>
         <Label htmlFor="category">Category</Label>
         <Select value={formData.category} onValueChange={(value) => setFormData({...formData, category: value})}>
@@ -84,21 +97,21 @@ const ServiceForm = ({ service, onSave, onCancel }) => {
           </SelectContent>
         </Select>
       </div>
-      
+
       <div>
         <Label htmlFor="price_usd">Price (USD)</Label>
-        <Input 
-          id="price_usd" 
-          name="price_usd" 
-          type="number" 
-          value={formData.price_usd} 
-          onChange={handleChange} 
-          required 
+        <Input
+          id="price_usd"
+          name="price_usd"
+          type="number"
+          value={formData.price_usd}
+          onChange={handleChange}
+          required
           min="0"
           step="0.01"
         />
       </div>
-      
+
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
         <Button type="submit">Save Service</Button>
@@ -107,31 +120,55 @@ const ServiceForm = ({ service, onSave, onCancel }) => {
   );
 };
 
-export default function MyServices() { 
+export default function MyServices() {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedService, setSelectedService] = useState(null);
-  const [error, setError] = useState(null); // Added error state
-  const [successMessage, setSuccessMessage] = useState(null); // Added successMessage state
+  const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
+  const [vendorDoc, setVendorDoc] = useState(null); // Firestore vendor doc
+
+  const getVendorForUser = async (uid) => {
+    const q = query(collection(db, 'vendors'), where('user_id', '==', uid), limit(1));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const d = snap.docs[0];
+    return { id: d.id, ...d.data() };
+  };
 
   const loadData = async () => {
     setLoading(true);
-    setError(null); // Clear any previous errors
+    setError(null);
     try {
-      const currentUser = await User.me();
-      const [vendorProfile] = await Vendor.filter({ user_id: currentUser.id });
-      if (vendorProfile) {
-        const serviceData = await Service.filter({ vendor_id: vendorProfile.id }, '-created_date');
-        setServices(serviceData);
-      } else {
-          // Handle case where vendor profile doesn't exist yet
-          setServices([]);
-          // Optionally, set an error or message if vendor profile is mandatory
-          setError("Your vendor profile is not complete. Please complete it to list services.");
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) {
+        setError("You need to be signed in to manage services.");
+        setServices([]);
+        setLoading(false);
+        return;
       }
-    } catch (error) {
-      console.error("Error loading services:", error);
+
+      const v = await getVendorForUser(user.uid);
+      setVendorDoc(v);
+      if (!v) {
+        setServices([]);
+        setError("Your vendor profile is not complete. Please complete it to list services.");
+        setLoading(false);
+        return;
+      }
+
+      const svcQ = query(
+        collection(db, 'services'),
+        where('vendor_id', '==', v.id),
+        orderBy('created_date', 'desc')
+      );
+      const svcSnap = await getDocs(svcQ);
+      const svc = svcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setServices(svc);
+    } catch (err) {
+      console.error("Error loading services:", err);
       setError("Failed to load your services. Please refresh the page.");
     }
     setLoading(false);
@@ -142,66 +179,71 @@ export default function MyServices() {
   }, []);
 
   const handleSave = async (serviceData) => {
-    setError(null); // Clear previous errors
-    setSuccessMessage(null); // Clear previous success messages
+    setError(null);
+    setSuccessMessage(null);
     try {
-      const currentUser = await User.me();
-      const [vendorProfile] = await Vendor.filter({ user_id: currentUser.id });
-
-      if (!vendorProfile) {
+      if (!vendorDoc) {
         setError("Could not find your vendor profile. Please complete your profile first.");
         return;
       }
-      
-      const dataWithVendor = { ...serviceData, vendor_id: vendorProfile.id };
-      
+
+      const payload = {
+        ...serviceData,
+        vendor_id: vendorDoc.id,
+        // Keep any existing status or default to 'active'
+        status: serviceData.status || 'active',
+        updated_date: serverTimestamp(),
+      };
+
       if (selectedService) {
-        await Service.update(selectedService.id, dataWithVendor);
+        await updateDoc(doc(db, 'services', selectedService.id), payload);
         setSuccessMessage("Service updated successfully!");
       } else {
-        await Service.create(dataWithVendor);
+        await addDoc(collection(db, 'services'), {
+          ...payload,
+          created_date: serverTimestamp(),
+        });
         setSuccessMessage("Service added successfully!");
       }
-      
+
       setIsFormOpen(false);
       setSelectedService(null);
-      await loadData(); // Reload services
-      
-      setTimeout(() => setSuccessMessage(null), 3000); // Clear success message after 3 seconds
-
-    } catch (error) {
-      console.error("Error saving service:", error);
+      await loadData();
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error("Error saving service:", err);
       setError("An error occurred while saving the service.");
     }
   };
 
   const handleDelete = async (serviceId) => {
-    if (window.confirm("Are you sure you want to delete this service?")) {
-      setError(null); // Clear previous errors
-      setSuccessMessage(null); // Clear previous success messages
-      try {
-        await Service.delete(serviceId);
-        setSuccessMessage("Service deleted successfully!");
-        await loadData(); // Reload services
-        setTimeout(() => setSuccessMessage(null), 3000); // Clear success message after 3 seconds
-      } catch (error) {
-        console.error("Error deleting service:", error);
-        setError("An error occurred while deleting the service.");
-      }
+    if (!window.confirm("Are you sure you want to delete this service?")) return;
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      await deleteDoc(doc(db, 'services', serviceId));
+      setSuccessMessage("Service deleted successfully!");
+      await loadData();
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error("Error deleting service:", err);
+      setError("An error occurred while deleting the service.");
     }
   };
 
   const openForm = (service = null) => {
     setSelectedService(service);
     setIsFormOpen(true);
-    setError(null); // Clear error when opening form
-    setSuccessMessage(null); // Clear success when opening form
+    setError(null);
+    setSuccessMessage(null);
   };
 
   const stats = {
     totalServices: services.length,
     activeServices: services.filter(s => s.status === 'active').length,
-    averagePrice: services.length > 0 ? services.reduce((sum, s) => sum + s.price_usd, 0) / services.length : 0
+    averagePrice: services.length > 0
+      ? services.reduce((sum, s) => sum + Number(s.price_usd || 0), 0) / services.length
+      : 0
   };
 
   if (loading) {
@@ -222,7 +264,7 @@ export default function MyServices() {
               My Services
             </h1>
           </div>
-          
+
           <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => openForm()}>
@@ -234,9 +276,9 @@ export default function MyServices() {
               <DialogHeader>
                 <DialogTitle>{selectedService ? "Edit Service" : "Add New Service"}</DialogTitle>
               </DialogHeader>
-              <ServiceForm 
+              <ServiceForm
                 service={selectedService}
-                onSave={handleSave} 
+                onSave={handleSave}
                 onCancel={() => { setIsFormOpen(false); setSelectedService(null); setError(null); setSuccessMessage(null); }}
               />
             </DialogContent>
@@ -267,7 +309,7 @@ export default function MyServices() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -322,7 +364,7 @@ export default function MyServices() {
                       <TableCell>
                         <Badge variant="outline">{service.category}</Badge>
                       </TableCell>
-                      <TableCell className="font-medium">${service.price_usd}</TableCell>
+                      <TableCell className="font-medium">${Number(service.price_usd || 0)}</TableCell>
                       <TableCell><StatusBadge status={service.status} /></TableCell>
                       <TableCell>
                         <div className="flex gap-2">

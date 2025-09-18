@@ -8,48 +8,69 @@ import { Button } from "@/components/ui/button";
 import { Users, MessageCircle, Calendar, Star } from 'lucide-react';
 import { format } from 'date-fns';
 
-export default function TutorStudents() { 
+export default function TutorStudents() {
   const [students, setStudents] = useState([]);
-  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         const currentUser = await User.me();
-        
-        // Get sessions for this tutor
-        const sessionData = await TutoringSession.filter({ 
-          tutor_id: currentUser.id 
-        }, '-created_date');
-        setSessions(sessionData);
-        
-        // Get unique students
-        const studentIds = [...new Set(sessionData.map(s => s.student_id))];
-        if (studentIds.length > 0) {
-          const studentData = await User.filter({ id: { $in: studentIds } });
-          
-          // Add session statistics to each student
-          const studentsWithStats = studentData.map(student => {
-            const studentSessions = sessionData.filter(s => s.student_id === student.id);
-            return {
-              ...student,
-              totalSessions: studentSessions.length,
-              completedSessions: studentSessions.filter(s => s.status === 'completed').length,
-              averageRating: studentSessions.filter(s => s.student_rating).length > 0 ? 
-                studentSessions.reduce((sum, s) => sum + (s.student_rating || 0), 0) / studentSessions.filter(s => s.student_rating).length : 0,
-              lastSession: studentSessions.sort((a, b) => new Date(b.scheduled_date) - new Date(a.scheduled_date))[0],
-              subjects: [...new Set(studentSessions.map(s => s.subject))]
-            };
-          });
-          
-          setStudents(studentsWithStats);
+
+        // Fetch all sessions for the tutor (no server-side sort string)
+        const sessionData = await TutoringSession.filter({ tutor_id: currentUser.id });
+
+        // Sort newest first on the client (if needed)
+        const sessions = [...sessionData].sort(
+          (a, b) => new Date(b.scheduled_date || 0) - new Date(a.scheduled_date || 0)
+        );
+
+        // Group sessions by student_id (fallback to student_email if no id)
+        const byStudent = new Map();
+        for (const s of sessions) {
+          const key = s.student_id || s.student_email || `unknown-${(s.id || Math.random()).toString()}`;
+          const bucket = byStudent.get(key) || [];
+          bucket.push(s);
+          byStudent.set(key, bucket);
         }
+
+        // Build student rows with stats using data embedded in sessions
+        const rows = Array.from(byStudent.entries()).map(([key, sess]) => {
+          const latest = sess[0]; // sessions already sorted desc
+          const fullName =
+            latest.student_full_name ||
+            latest.student_name ||
+            'Unknown Student';
+          const email = latest.student_email || '';
+
+          const completed = sess.filter(x => x.status === 'completed');
+          const rated = sess.filter(x => typeof x.student_rating === 'number' && x.student_rating > 0);
+
+          const averageRating =
+            rated.length > 0
+              ? rated.reduce((sum, x) => sum + (x.student_rating || 0), 0) / rated.length
+              : 0;
+
+          return {
+            id: key,
+            full_name: fullName,
+            email,
+            subjects: Array.from(new Set(sess.map(x => x.subject).filter(Boolean))),
+            totalSessions: sess.length,
+            completedSessions: completed.length,
+            averageRating,
+            lastSession: latest,
+          };
+        });
+
+        setStudents(rows);
       } catch (error) {
-        console.error("Error loading students:", error);
+        console.error('Error loading students:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
+
     loadData();
   }, []);
 
@@ -95,16 +116,22 @@ export default function TutorStudents() {
                       <TableCell>
                         <div>
                           <div className="font-medium">{student.full_name}</div>
-                          <div className="text-sm text-gray-500">{student.email}</div>
+                          {student.email && (
+                            <div className="text-sm text-gray-500">{student.email}</div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {student.subjects.map(subject => (
-                            <Badge key={subject} variant="outline" className="text-xs">
-                              {subject}
-                            </Badge>
-                          ))}
+                          {student.subjects.length > 0 ? (
+                            student.subjects.map(subject => (
+                              <Badge key={subject} variant="outline" className="text-xs">
+                                {subject}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{student.totalSessions}</TableCell>
@@ -120,17 +147,16 @@ export default function TutorStudents() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {student.lastSession ? 
-                          format(new Date(student.lastSession.scheduled_date), 'MMM dd, yyyy') : 
-                          'N/A'
-                        }
+                        {student.lastSession?.scheduled_date
+                          ? format(new Date(student.lastSession.scheduled_date), 'MMM dd, yyyy')
+                          : 'N/A'}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button variant="ghost" size="sm">
+                          <Button variant="ghost" size="sm" title="Message">
                             <MessageCircle className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="sm">
+                          <Button variant="ghost" size="sm" title="Schedule">
                             <Calendar className="w-4 h-4" />
                           </Button>
                         </div>

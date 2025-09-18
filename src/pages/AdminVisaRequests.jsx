@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { VisaRequest } from '@/api/entities';
-import { Case } from '@/api/entities';
-import { User } from '@/api/entities';
-import { Agent } from '@/api/entities';
+// src/pages/AdminVisaRequests.jsx
+import React, { useState, useEffect, useMemo } from "react";
+import { db } from "@/firebase";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  doc,
+  updateDoc,
+} from "firebase/firestore";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,51 +19,74 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { FileText, Search, Eye, Edit, CheckCircle, Clock, AlertCircle, User as UserIcon, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
+import { FileText, Search, Eye, CheckCircle, Clock, AlertCircle, User as UserIcon, Loader2 } from "lucide-react";
+import { format } from "date-fns";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+
+// ---- helpers ----
+const toDate = (val) => {
+  if (!val) return null;
+  try {
+    if (typeof val?.toDate === "function") return val.toDate(); // Firestore Timestamp
+    return new Date(val); // string/number
+  } catch {
+    return null;
+  }
+};
 
 const StatusBadge = ({ status }) => {
   const variants = {
-    pending: { variant: 'secondary', icon: Clock, color: 'text-yellow-600' },
-    in_progress: { variant: 'default', icon: Clock, color: 'text-blue-600' },
-    documents_required: { variant: 'outline', icon: AlertCircle, color: 'text-orange-600' },
-    waiting_loa: { variant: 'outline', icon: Clock, color: 'text-purple-600' },
-    completed: { variant: 'default', icon: CheckCircle, color: 'text-green-600' },
-    rejected: { variant: 'destructive', icon: AlertCircle, color: 'text-red-600' }
+    pending: { variant: "secondary", icon: Clock, color: "text-yellow-600" },
+    in_progress: { variant: "default", icon: Clock, color: "text-blue-600" },
+    documents_required: { variant: "outline", icon: AlertCircle, color: "text-orange-600" },
+    waiting_loa: { variant: "outline", icon: Clock, color: "text-purple-600" },
+    completed: { variant: "default", icon: CheckCircle, color: "text-green-600" },
+    rejected: { variant: "destructive", icon: AlertCircle, color: "text-red-600" },
   };
-  
+
   const config = variants[status] || variants.pending;
   const Icon = config.icon;
-  
   return (
     <Badge variant={config.variant} className="flex items-center gap-1">
       <Icon className="w-3 h-3" />
-      {status.replace('_', ' ').toUpperCase()}
+      {(status || "").replaceAll("_", " ").toUpperCase() || "PENDING"}
     </Badge>
   );
 };
 
-const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate }) => {
+const DEFAULT_STATUS_OPTIONS = [
+  "pending",
+  "in_progress",
+  "documents_required",
+  "waiting_loa",
+  "completed",
+  "rejected",
+];
+
+const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate, statusOptions }) => {
   const [formData, setFormData] = useState(caseData || {});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (caseData) {
-      setFormData(caseData);
-    }
+    if (caseData) setFormData(caseData);
   }, [caseData]);
 
   const handleSave = async () => {
+    if (!caseData?.id) return;
     try {
       setSaving(true);
-      await Case.update(caseData.id, formData);
-      onUpdate();
+      // Update Firestore case doc
+      await updateDoc(doc(db, "cases", caseData.id), {
+        status: formData.status || "pending",
+        program_name: formData.program_name || "",
+        notes: formData.notes || "",
+      });
+      onUpdate?.();
       onOpenChange(false);
     } catch (error) {
-      console.error('Error updating case:', error);
-      alert('Failed to update case. Please try again.');
+      console.error("Error updating case:", error);
+      alert("Failed to update case. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -64,13 +94,15 @@ const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate 
 
   if (!caseData) return null;
 
+  const options = Array.from(new Set([...(statusOptions || []), ...DEFAULT_STATUS_OPTIONS]));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Case Details</DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-6">
           {/* Student Information */}
           <Card>
@@ -84,19 +116,19 @@ const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <p className="font-semibold">Name:</p>
-                  <p>{user?.full_name || 'N/A'}</p>
+                  <p>{user?.full_name || "N/A"}</p>
                 </div>
                 <div>
                   <p className="font-semibold">Email:</p>
-                  <p>{user?.email || 'N/A'}</p>
+                  <p>{user?.email || "N/A"}</p>
                 </div>
                 <div>
                   <p className="font-semibold">Phone:</p>
-                  <p>{user?.phone || 'N/A'}</p>
+                  <p>{user?.phone || "N/A"}</p>
                 </div>
                 <div>
                   <p className="font-semibold">Country:</p>
-                  <p>{user?.country || 'N/A'}</p>
+                  <p>{user?.country || "N/A"}</p>
                 </div>
               </div>
             </CardContent>
@@ -111,24 +143,23 @@ const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <Label>Case Type</Label>
-                  <p className="font-medium">{formData.case_type}</p>
+                  <p className="font-medium">{formData.case_type || "—"}</p>
                 </div>
                 <div>
                   <Label>Current Status</Label>
-                  <Select 
-                    value={formData.status} 
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
+                  <Select
+                    value={formData.status || "pending"}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Application Started">Application Started</SelectItem>
-                      <SelectItem value="Documents Under Review">Documents Under Review</SelectItem>
-                      <SelectItem value="Interview Scheduled">Interview Scheduled</SelectItem>
-                      <SelectItem value="Decision Pending">Decision Pending</SelectItem>
-                      <SelectItem value="Approved">Approved</SelectItem>
-                      <SelectItem value="Rejected">Rejected</SelectItem>
+                      {options.map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {opt.replaceAll("_", " ")}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -137,8 +168,8 @@ const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate 
               <div>
                 <Label>Program Name</Label>
                 <Input
-                  value={formData.program_name || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, program_name: e.target.value }))}
+                  value={formData.program_name || ""}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, program_name: e.target.value }))}
                   placeholder="Enter program name"
                 />
               </div>
@@ -146,8 +177,8 @@ const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate 
               <div>
                 <Label>Notes</Label>
                 <Textarea
-                  value={formData.notes || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  value={formData.notes || ""}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
                   placeholder="Add case notes..."
                   rows={4}
                 />
@@ -165,11 +196,11 @@ const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <p className="font-semibold">Company:</p>
-                    <p>{agent.company_name}</p>
+                    <p>{agent.company_name || "—"}</p>
                   </div>
                   <div>
                     <p className="font-semibold">Contact Person:</p>
-                    <p>{agent.contact_person?.name || 'N/A'}</p>
+                    <p>{agent.contact_person?.name || "N/A"}</p>
                   </div>
                 </div>
               </CardContent>
@@ -188,7 +219,7 @@ const CaseDetailsModal = ({ caseData, user, agent, open, onOpenChange, onUpdate 
                   Saving...
                 </>
               ) : (
-                'Save Changes'
+                "Save Changes"
               )}
             </Button>
           </div>
@@ -204,8 +235,8 @@ export default function AdminVisaRequests() {
   const [agents, setAgents] = useState({});
   const [filteredCases, setFilteredCases] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [selectedCase, setSelectedCase] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -216,50 +247,68 @@ export default function AdminVisaRequests() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [casesData, usersData, agentsData] = await Promise.all([
-        Case.list(),
-        User.list(),
-        Agent.list()
-      ]);
 
-      setCases(casesData || []);
+      // Cases (newest first if field exists)
+      let caseDocs = [];
+      try {
+        const cq = query(collection(db, "cases"), orderBy("created_date", "desc"));
+        const csnap = await getDocs(cq);
+        caseDocs = csnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      } catch {
+        const csnap = await getDocs(collection(db, "cases"));
+        caseDocs = csnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      }
+      setCases(caseDocs || []);
 
-      // Create user lookup
+      // Users
+      const usnap = await getDocs(collection(db, "users"));
       const userMap = {};
-      (usersData || []).forEach(user => {
-        userMap[user.id] = user;
-      });
+      usnap.docs.forEach((d) => (userMap[d.id] = { id: d.id, ...d.data() }));
       setUsers(userMap);
 
-      // Create agent lookup
+      // Agents
+      const asnap = await getDocs(collection(db, "agents"));
       const agentMap = {};
-      (agentsData || []).forEach(agent => {
-        agentMap[agent.id] = agent;
-      });
+      asnap.docs.forEach((d) => (agentMap[d.id] = { id: d.id, ...d.data() }));
       setAgents(agentMap);
-
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error("Error loading data:", error);
     } finally {
       setLoading(false);
     }
   };
 
+  // derive available statuses (for filter + modal options)
+  const statuses = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (cases || [])
+            .map((c) => c.status)
+            .filter(Boolean)
+        )
+      ),
+    [cases]
+  );
+
   useEffect(() => {
     let filtered = cases;
 
     if (searchTerm.trim()) {
-      filtered = filtered.filter(caseItem => {
+      const t = searchTerm.toLowerCase();
+      filtered = filtered.filter((caseItem) => {
         const user = users[caseItem.student_id];
-        return user?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               caseItem.case_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               caseItem.program_name?.toLowerCase().includes(searchTerm.toLowerCase());
+        return (
+          user?.full_name?.toLowerCase().includes(t) ||
+          user?.email?.toLowerCase().includes(t) ||
+          caseItem.case_type?.toLowerCase().includes(t) ||
+          caseItem.program_name?.toLowerCase().includes(t)
+        );
       });
     }
 
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(caseItem => caseItem.status === statusFilter);
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((caseItem) => caseItem.status === statusFilter);
     }
 
     setFilteredCases(filtered);
@@ -269,8 +318,6 @@ export default function AdminVisaRequests() {
     setSelectedCase(caseData);
     setDetailsOpen(true);
   };
-
-  const statuses = [...new Set(cases.map(c => c.status))].filter(Boolean);
 
   if (loading) {
     return (
@@ -309,8 +356,10 @@ export default function AdminVisaRequests() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                {statuses.map(status => (
-                  <SelectItem key={status} value={status}>{status}</SelectItem>
+                {statuses.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {status.replaceAll("_", " ")}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -341,35 +390,28 @@ export default function AdminVisaRequests() {
             <TableBody>
               {filteredCases.map((caseItem) => {
                 const user = users[caseItem.student_id];
-                const agent = agents[caseItem.agent_id];
-                
+                const created = toDate(caseItem.created_date);
                 return (
                   <TableRow key={caseItem.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{user?.full_name || 'Unknown'}</p>
-                        <p className="text-sm text-gray-600">{user?.email || 'No email'}</p>
+                        <p className="font-medium">{user?.full_name || "Unknown"}</p>
+                        <p className="text-sm text-gray-600">{user?.email || "No email"}</p>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{caseItem.case_type}</Badge>
+                      <Badge variant="outline">{caseItem.case_type || "—"}</Badge>
                     </TableCell>
                     <TableCell>
-                      <p className="text-sm">{caseItem.program_name || 'Not specified'}</p>
+                      <p className="text-sm">{caseItem.program_name || "Not specified"}</p>
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={caseItem.status} />
                     </TableCell>
-                    <TableCell>
-                      {format(new Date(caseItem.created_date), 'MMM dd, yyyy')}
-                    </TableCell>
+                    <TableCell>{created ? format(created, "MMM dd, yyyy") : "—"}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openCaseDetails(caseItem)}
-                        >
+                        <Button size="sm" variant="outline" onClick={() => openCaseDetails(caseItem)}>
                           <Eye className="w-4 h-4" />
                         </Button>
                         <Link to={createPageUrl(`VisaDocuments?case_id=${caseItem.id}`)}>
@@ -390,9 +432,9 @@ export default function AdminVisaRequests() {
               <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">No Cases Found</h3>
               <p className="text-gray-600">
-                {searchTerm || statusFilter !== 'all' 
-                  ? 'Try adjusting your search filters' 
-                  : 'No visa cases have been created yet'}
+                {searchTerm || statusFilter !== "all"
+                  ? "Try adjusting your search filters"
+                  : "No visa cases have been created yet"}
               </p>
             </div>
           )}
@@ -402,10 +444,11 @@ export default function AdminVisaRequests() {
       <CaseDetailsModal
         caseData={selectedCase}
         user={selectedCase ? users[selectedCase.student_id] : null}
-        agent={selectedCase ? agents[selectedCase.agent_id] : null}
+        agent={null /* wire if you want to show agent details: agents[selectedCase?.agent_id] */}
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
         onUpdate={loadData}
+        statusOptions={statuses}
       />
     </div>
   );

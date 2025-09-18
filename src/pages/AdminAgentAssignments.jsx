@@ -1,12 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { User } from '@/api/entities';
-import { Agent } from '@/api/entities';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+// src/pages/AdminAgentAssignments.jsx
+import React, { useState, useEffect } from "react";
+import { db } from "@/firebase";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, UserCheck, Search, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, UserCheck, ShieldCheck, ShieldX } from "lucide-react";
 
 export default function AdminAgentAssignments() {
   const [requests, setRequests] = useState([]);
@@ -19,12 +45,28 @@ export default function AdminAgentAssignments() {
     setLoading(true);
     setError(null);
     try {
-      const allUsers = await User.list();
-      const pendingRequests = allUsers.filter(u => u.agent_reassignment_request && u.agent_reassignment_request.status === 'pending');
-      
-      const agentUsers = await User.filter({ user_type: 'agent', is_verified: true });
-      setAgents(agentUsers);
-      setRequests(pendingRequests);
+      // pending requests: users with agent_reassignment_request.status == "pending"
+      const usersRef = collection(db, "users");
+      const pendingQ = query(
+        usersRef,
+        where("agent_reassignment_request.status", "==", "pending")
+      );
+      const [pendingSnap, agentsSnap] = await Promise.all([
+        getDocs(pendingQ),
+        getDocs(
+          query(
+            usersRef,
+            where("user_type", "==", "agent"),
+            where("is_verified", "==", true)
+          )
+        ),
+      ]);
+
+      const pending = pendingSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const agentList = agentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+      setRequests(pending);
+      setAgents(agentList);
     } catch (err) {
       console.error("Failed to fetch data:", err);
       setError("Could not load assignment requests.");
@@ -35,50 +77,76 @@ export default function AdminAgentAssignments() {
 
   useEffect(() => {
     fetchData();
+    // If you want live updates, switch to onSnapshot here.
   }, []);
 
   const handleAction = async (userId, action, newAgentId = null) => {
     setProcessingId(userId);
-    const userToUpdate = requests.find(r => r.id === userId);
-    if (!userToUpdate) return;
+    const userToUpdate = requests.find((r) => r.id === userId);
+    if (!userToUpdate) {
+      setProcessingId(null);
+      return;
+    }
 
     try {
-      let updatedData = {};
-      let updatedRequest = { ...userToUpdate.agent_reassignment_request };
+      const userRef = doc(db, "users", userId);
+      const currentReq = userToUpdate.agent_reassignment_request || {};
+      let update = {};
+      let nextReq = { ...currentReq };
 
-      if (action === 'approve') {
-        updatedRequest.status = 'approved';
-        updatedData = {
-          assigned_agent_id: updatedRequest.new_agent_id,
-          agent_reassignment_request: updatedRequest
+      if (action === "approve") {
+        nextReq.status = "approved";
+        update = {
+          assigned_agent_id: currentReq.new_agent_id || null,
+          agent_reassignment_request: nextReq,
+          updated_at: serverTimestamp(),
         };
-      } else if (action === 'reject') {
-        updatedRequest.status = 'rejected';
-        updatedData = {
-          agent_reassignment_request: updatedRequest
+      } else if (action === "reject") {
+        nextReq.status = "rejected";
+        update = {
+          agent_reassignment_request: nextReq,
+          updated_at: serverTimestamp(),
         };
-      } else if (action === 'reassign' && newAgentId) {
-        updatedRequest.status = 'approved'; // Reassigning is an approval with a different agent
-        updatedData = {
+      } else if (action === "reassign" && newAgentId) {
+        // Treat reassign as approval with a different agent
+        nextReq.status = "approved";
+        update = {
           assigned_agent_id: newAgentId,
-          agent_reassignment_request: updatedRequest
+          agent_reassignment_request: nextReq,
+          updated_at: serverTimestamp(),
         };
       }
 
-      await User.update(userId, updatedData);
-      // Refresh data from server
+      await updateDoc(userRef, update);
       await fetchData();
-
     } catch (err) {
       console.error(`Failed to ${action} request:`, err);
-      alert(`Could not perform action. Please try again.`);
+      alert("Could not perform action. Please try again.");
     } finally {
       setProcessingId(null);
     }
   };
 
+  const formatReqDate = (val) => {
+    // Supports Firestore Timestamp or ISO/string/number
+    try {
+      const d =
+        val?.toDate?.() ??
+        (typeof val === "string" || typeof val === "number"
+          ? new Date(val)
+          : null);
+      return d ? d.toLocaleDateString() : "—";
+    } catch {
+      return "—";
+    }
+  };
+
   if (loading) {
-    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
   }
 
   if (error) {
@@ -92,7 +160,7 @@ export default function AdminAgentAssignments() {
           <UserCheck className="w-8 h-8 text-blue-600" />
           <h1 className="text-3xl font-bold">Agent Assignment Requests</h1>
         </div>
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Pending Assignments</CardTitle>
@@ -111,32 +179,42 @@ export default function AdminAgentAssignments() {
               <TableBody>
                 {requests.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan="5" className="text-center py-8">
+                    <TableCell colSpan={5} className="text-center py-8">
                       No pending assignment requests.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  requests.map(user => {
-                    const req = user.agent_reassignment_request;
-                    const requestedAgent = agents.find(a => a.id === req.new_agent_id);
+                  requests.map((user) => {
+                    const req = user.agent_reassignment_request || {};
+                    const requestedAgent = agents.find(
+                      (a) => a.id === req.new_agent_id
+                    );
                     const isProcessing = processingId === user.id;
-                    
+
                     return (
                       <TableRow key={user.id}>
                         <TableCell>
-                          <div className="font-medium">{user.full_name}</div>
-                          <div className="text-sm text-gray-500">{user.email}</div>
+                          <div className="font-medium">
+                            {user.full_name || user.name || "Unnamed"}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {user.email || "—"}
+                          </div>
                         </TableCell>
-                        <TableCell>{requestedAgent?.full_name || 'N/A'}</TableCell>
-                        <TableCell>{req.reason || 'N/A'}</TableCell>
-                        <TableCell>{new Date(req.requested_at).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          {requestedAgent?.full_name ||
+                            requestedAgent?.name ||
+                            "N/A"}
+                        </TableCell>
+                        <TableCell>{req.reason || "N/A"}</TableCell>
+                        <TableCell>{formatReqDate(req.requested_at)}</TableCell>
                         <TableCell className="space-y-2">
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
                               variant="outline"
                               className="bg-green-50 text-green-700 hover:bg-green-100"
-                              onClick={() => handleAction(user.id, 'approve')}
+                              onClick={() => handleAction(user.id, "approve")}
                               disabled={isProcessing}
                             >
                               <ShieldCheck className="w-4 h-4 mr-2" /> Approve
@@ -144,7 +222,7 @@ export default function AdminAgentAssignments() {
                             <Button
                               size="sm"
                               variant="destructive"
-                              onClick={() => handleAction(user.id, 'reject')}
+                              onClick={() => handleAction(user.id, "reject")}
                               disabled={isProcessing}
                             >
                               <ShieldX className="w-4 h-4 mr-2" /> Reject
@@ -152,22 +230,26 @@ export default function AdminAgentAssignments() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Select
-                              onValueChange={(agentId) => handleAction(user.id, 'reassign', agentId)}
+                              onValueChange={(agentId) =>
+                                handleAction(user.id, "reassign", agentId)
+                              }
                               disabled={isProcessing}
                             >
                               <SelectTrigger>
                                 <SelectValue placeholder="Re-assign to..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {agents.map(agent => (
+                                {agents.map((agent) => (
                                   <SelectItem key={agent.id} value={agent.id}>
-                                    {agent.full_name}
+                                    {agent.full_name || agent.name || agent.id}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </div>
-                          {isProcessing && <Loader2 className="w-4 h-4 animate-spin"/>}
+                          {isProcessing && (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          )}
                         </TableCell>
                       </TableRow>
                     );

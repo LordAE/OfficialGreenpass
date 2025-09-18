@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { BarChart3, TrendingUp, Users, ShoppingCart, Star, DollarSign } from 'lucide-react';
 
 export default function VendorAnalytics() {
+  // static demo data; kept in state so you can later hydrate from API if needed
   const [analytics] = useState({
     totalOrders: 24,
     revenue: 1850,
@@ -16,6 +17,8 @@ export default function VendorAnalytics() {
       { name: "City Tour", orders: 4, revenue: 570 }
     ]
   });
+
+  const fmtMoney = (n) => `$${(Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50 p-6">
@@ -45,7 +48,7 @@ export default function VendorAnalytics() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-green-600">${analytics.revenue}</div>
+                  <div className="text-2xl font-bold text-green-600">{fmtMoney(analytics.revenue)}</div>
                   <p className="text-gray-600">Revenue</p>
                 </div>
                 <DollarSign className="w-8 h-8 text-green-200" />
@@ -57,7 +60,9 @@ export default function VendorAnalytics() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-yellow-600">{analytics.avgRating}</div>
+                  <div className="text-2xl font-bold text-yellow-600">
+                    {(Number(analytics.avgRating) || 0).toFixed(1)}
+                  </div>
                   <p className="text-gray-600">Avg Rating</p>
                 </div>
                 <Star className="w-8 h-8 text-yellow-200" />
@@ -87,7 +92,7 @@ export default function VendorAnalytics() {
             <CardContent>
               <div className="text-center">
                 <div className="text-4xl font-bold text-orange-600 mb-2">
-                  {analytics.conversionRate}%
+                  {(Number(analytics.conversionRate) || 0).toFixed(1)}%
                 </div>
                 <p className="text-gray-600">Visitors to customers</p>
                 <Badge className="mt-4 bg-green-100 text-green-800">
@@ -103,14 +108,14 @@ export default function VendorAnalytics() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {analytics.topServices.map((service, index) => (
-                  <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                {(analytics.topServices || []).map((service, idx) => (
+                  <div key={`${service?.name || 'service'}-${idx}`} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <p className="font-medium">{service.name}</p>
-                      <p className="text-sm text-gray-600">{service.orders} orders</p>
+                      <p className="font-medium">{service?.name || '—'}</p>
+                      <p className="text-sm text-gray-600">{Number(service?.orders) || 0} orders</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold">${service.revenue}</p>
+                      <p className="font-semibold">{fmtMoney(service?.revenue)}</p>
                       <p className="text-sm text-gray-600">revenue</p>
                     </div>
                   </div>

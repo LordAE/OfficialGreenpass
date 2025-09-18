@@ -1,15 +1,20 @@
+// src/pages/MyAgent.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { User } from '@/api/entities';
-import { Agent } from '@/api/entities';
-import { Case } from '@/api/entities';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Users, MessageCircle, FileText, Calendar, Phone, Mail, Star, Send, Loader2, UserCheck } from 'lucide-react';
+import { Users, MessageCircle, FileText, Phone, Mail, Send, Loader2, UserCheck } from 'lucide-react';
 import { format } from 'date-fns';
+
+// --- Firebase ---
+import { db } from '@/firebase';
+import {
+  doc, getDoc, collection, getDocs, query, where, orderBy, limit, addDoc, serverTimestamp
+} from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const ContactAgentModal = ({ agent, onSend, onCancel }) => {
   const [message, setMessage] = useState('');
@@ -78,13 +83,23 @@ const CaseProgressCard = ({ caseData }) => {
 
   const progress = getProgress();
 
+  const createdAt =
+    caseData.created_date?.toDate
+      ? caseData.created_date.toDate()
+      : caseData.created_date
+      ? new Date(caseData.created_date)
+      : null;
+
   return (
     <Card className="mb-4">
       <CardContent className="p-4">
         <div className="flex justify-between items-start mb-3">
           <div>
             <h4 className="font-semibold">{caseData.case_type}</h4>
-            <p className="text-sm text-gray-600">Case #{caseData.id?.slice(-6)}</p>
+            {caseData.id && <p className="text-sm text-gray-600">Case #{String(caseData.id).slice(-6)}</p>}
+            {createdAt && (
+              <p className="text-xs text-gray-500 mt-1">Created {format(createdAt, 'PP')}</p>
+            )}
           </div>
           <Badge className={getStatusColor(caseData.status)}>
             {caseData.status}
@@ -99,7 +114,7 @@ const CaseProgressCard = ({ caseData }) => {
           <Progress value={progress} className="h-2" />
         </div>
 
-        {caseData.timeline && caseData.timeline.length > 0 && (
+        {Array.isArray(caseData.timeline) && caseData.timeline.length > 0 && (
           <div className="text-sm text-gray-600">
             <strong>Latest Update:</strong> {caseData.timeline[caseData.timeline.length - 1].event}
           </div>
@@ -111,40 +126,75 @@ const CaseProgressCard = ({ caseData }) => {
 
 export default function MyAgent() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [agent, setAgent] = useState(null);
-  const [agentUser, setAgentUser] = useState(null);
+  const [agent, setAgent] = useState(null);           // from 'agents' collection
+  const [agentUser, setAgentUser] = useState(null);   // from 'users' collection
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [error, setError] = useState(null);
 
   const loadAgentData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const user = await User.me();
-      setCurrentUser(user);
+      const auth = getAuth();
+      const authUser = auth.currentUser;
+      if (!authUser) {
+        setError('You must be signed in to view this page.');
+        setLoading(false);
+        return;
+      }
 
-      if (user.assigned_agent_id) {
-        // Get agent user details
-        const agentUserData = await User.filter({ id: user.assigned_agent_id });
-        if (agentUserData.length > 0) {
-          setAgentUser(agentUserData[0]);
-          
-          // Get agent profile details
-          const agentData = await Agent.filter({ user_id: user.assigned_agent_id });
-          if (agentData.length > 0) {
-            setAgent(agentData[0]);
-          }
+      // Load current user's profile
+      const userRef = doc(db, 'users', authUser.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        setError('User profile not found.');
+        setLoading(false);
+        return;
+      }
+      const me = { id: userSnap.id, ...userSnap.data() };
+      setCurrentUser(me);
+
+      if (me.assigned_agent_id) {
+        // Agent's user profile
+        const agentUserRef = doc(db, 'users', me.assigned_agent_id);
+        const agentUserSnap = await getDoc(agentUserRef);
+        if (agentUserSnap.exists()) {
+          setAgentUser({ id: agentUserSnap.id, ...agentUserSnap.data() });
         }
 
-        // Get cases handled by this agent for this student
-        const caseData = await Case.filter({ 
-          student_id: user.id,
-          agent_id: user.assigned_agent_id 
-        }, '-created_date');
-        setCases(caseData);
+        // Agent profile (from 'agents' collection) where user_id == assigned_agent_id
+        const agentsQ = query(
+          collection(db, 'agents'),
+          where('user_id', '==', me.assigned_agent_id),
+          limit(1)
+        );
+        const agentsSnap = await getDocs(agentsQ);
+        if (!agentsSnap.empty) {
+          const docSnap = agentsSnap.docs[0];
+          setAgent({ id: docSnap.id, ...docSnap.data() });
+        }
+
+        // Cases for this student with this agent
+        const casesQ = query(
+          collection(db, 'cases'),
+          where('student_id', '==', me.id || authUser.uid),
+          where('agent_id', '==', me.assigned_agent_id),
+          orderBy('created_date', 'desc')
+        );
+        const casesSnap = await getDocs(casesQ);
+        const myCases = casesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setCases(myCases);
+      } else {
+        // No agent assigned; just finish
+        setAgent(null);
+        setAgentUser(null);
+        setCases([]);
       }
-    } catch (error) {
-      console.error("Error loading agent data:", error);
+    } catch (err) {
+      console.error('Error loading agent data:', err);
+      setError('Failed to load your agent data.');
     } finally {
       setLoading(false);
     }
@@ -154,14 +204,28 @@ export default function MyAgent() {
     loadAgentData();
   }, [loadAgentData]);
 
-  const handleSendMessage = async (messageData) => {
+  const handleSendMessage = async ({ subject, message }) => {
     try {
-      // In a real app, this would send via messaging system
-      console.log("Sending message to agent:", messageData);
+      if (!currentUser?.id || !currentUser?.assigned_agent_id) return;
+
+      await addDoc(collection(db, 'agent_messages'), {
+        from_user_id: currentUser.id,
+        to_user_id: currentUser.assigned_agent_id,
+        subject,
+        message,
+        created_at: serverTimestamp(),
+        read: false,
+        context: {
+          page: 'MyAgent',
+          student_name: currentUser.full_name || currentUser.email || currentUser.id,
+          agent_name: agentUser?.full_name || agentUser?.email || currentUser.assigned_agent_id,
+        }
+      });
+
       setIsContactModalOpen(false);
       alert("Message sent successfully! Your agent will respond soon.");
-    } catch (error) {
-      console.error("Error sending message:", error);
+    } catch (err) {
+      console.error("Error sending message:", err);
       alert("Failed to send message. Please try again.");
     }
   };
@@ -170,6 +234,17 @@ export default function MyAgent() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="p-8 text-center">
+          <CardTitle className="mb-2">Error</CardTitle>
+          <p className="text-gray-600">{error}</p>
+        </Card>
       </div>
     );
   }
@@ -272,7 +347,7 @@ export default function MyAgent() {
                     <p className="text-sm text-gray-600">Total Cases</p>
                   </div>
 
-                  {agent?.target_countries && (
+                  {Array.isArray(agent?.target_countries) && agent.target_countries.length > 0 && (
                     <div>
                       <p className="text-sm font-medium text-gray-700 mb-2">Specializes in:</p>
                       <div className="flex flex-wrap gap-1">
@@ -321,7 +396,7 @@ export default function MyAgent() {
             </Card>
 
             {/* Services Offered */}
-            {agent?.services_offered && (
+            {Array.isArray(agent?.services_offered) && agent.services_offered.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Services Offered</CardTitle>

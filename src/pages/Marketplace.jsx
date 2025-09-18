@@ -1,51 +1,68 @@
-
+// src/pages/Marketplace.jsx
 import React, { useState, useEffect } from 'react';
-import { Service } from '@/api/entities';
-import { Vendor } from '@/api/entities';
-import { User } from '@/api/entities';
-import { MarketplaceOrder } from '@/api/entities';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Star, DollarSign, ShoppingCart, MapPin, Loader2, CheckCircle } from 'lucide-react';
-import { createPageUrl } from '@/utils'; // This utility is still imported but not used for the specific checkout URL construction anymore as per the change.
-// Removed: import { useNavigate } from 'react-router-dom'; since it's no longer used for navigation within this component
+import { Search, Star, DollarSign, ShoppingCart, Loader2, CheckCircle } from 'lucide-react';
 
-const BookingModal = ({ service, vendor, vendorUser, open, onOpenChange, onBookingSuccess }) => {
+// ---- Firebase ----
+import { db } from '@/firebase';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+
+const COLLECTIONS = {
+  services: 'services',
+  vendors: 'vendors',
+  users: 'users',
+  orders: 'marketplace_orders',
+};
+
+const BookingModal = ({ service, vendor, vendorUser, open, onOpenChange }) => {
   const [booking, setBooking] = useState(false);
   const [bookingComplete, setBookingComplete] = useState(false);
-  // Removed: const navigate = useNavigate(); since window.location.href is now used
 
   const handleBookNow = async () => {
     try {
       setBooking(true);
-      
-      const currentUser = await User.me();
-      
+
+      // Get current signed-in user (assumes your "users" docs are keyed by auth.uid)
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        alert('Please sign in to book this service.');
+        return;
+      }
+
       // Create marketplace order
       const orderData = {
         service_id: service.id,
         vendor_id: service.vendor_id,
-        student_id: currentUser.id,
-        amount_usd: service.price_usd,
-        status: 'pending',
-        payment_status: 'pending'
+        student_id: currentUser.uid,
+        amount_usd: Number(service.price_usd || 0),
+        status: 'pending',           // business status
+        payment_status: 'pending',   // payment status
+        created_at: serverTimestamp(),
       };
-      
-      const newOrder = await MarketplaceOrder.create(orderData);
-      
+
+      const docRef = await addDoc(collection(db, COLLECTIONS.orders), orderData);
+
       setBookingComplete(true);
-      
-      // Use direct URL navigation for marketplace checkout
+
+      // Redirect to checkout (preserves your existing flow)
       setTimeout(() => {
-        const checkoutUrl = `/Checkout?type=marketplace_order&packageId=${encodeURIComponent(newOrder.id)}`;
-        console.log('Direct navigation to:', checkoutUrl);
+        const checkoutUrl = `/Checkout?type=marketplace_order&packageId=${encodeURIComponent(docRef.id)}`;
         window.location.href = checkoutUrl;
-      }, 2000);
-      
+      }, 1500);
     } catch (error) {
       console.error('Error booking service:', error);
       alert('Failed to book service. Please try again.');
@@ -54,15 +71,17 @@ const BookingModal = ({ service, vendor, vendorUser, open, onOpenChange, onBooki
     }
   };
 
+  if (!service) return null;
+
   if (bookingComplete) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-md">
           <div className="text-center py-6">
             <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Booking Confirmed!</h3>
+            <h3 className="text-xl font-semibold mb-2">Booking Created</h3>
             <p className="text-gray-600 mb-4">
-              Your service booking has been created. You'll be redirected to complete payment.
+              You’ll be redirected to complete payment…
             </p>
             <div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full mx-auto"></div>
           </div>
@@ -77,27 +96,28 @@ const BookingModal = ({ service, vendor, vendorUser, open, onOpenChange, onBooki
         <DialogHeader>
           <DialogTitle>Book Service</DialogTitle>
         </DialogHeader>
+
         <div className="space-y-4">
           <div>
             <h3 className="font-semibold text-lg">{service?.name}</h3>
             <p className="text-gray-600">{service?.description}</p>
           </div>
-          
+
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="flex justify-between items-center mb-2">
               <span className="font-medium">Service Provider:</span>
-              <span>{vendorUser?.full_name}</span>
+              <span>{vendorUser?.full_name || 'Vendor'}</span>
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="font-medium">Category:</span>
-              <Badge variant="secondary">{service?.category}</Badge>
+              <Badge variant="secondary">{service?.category || 'General'}</Badge>
             </div>
             <div className="flex justify-between items-center">
               <span className="font-medium">Price:</span>
-              <span className="text-xl font-bold text-green-600">${service?.price_usd}</span>
+              <span className="text-xl font-bold text-green-600">${service?.price_usd || 0}</span>
             </div>
           </div>
-          
+
           <div className="flex gap-3 pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Cancel
@@ -106,7 +126,7 @@ const BookingModal = ({ service, vendor, vendorUser, open, onOpenChange, onBooki
               {booking ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Booking...
+                  Booking…
                 </>
               ) : (
                 <>
@@ -129,18 +149,21 @@ const ServiceCard = ({ service, vendor, vendorUser, onBookService }) => (
         src={service.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=250&fit=crop'}
         alt={service.name}
         className="w-full h-full object-cover"
+        onError={(e) => {
+          e.currentTarget.src = 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=250&fit=crop';
+        }}
       />
     </div>
-    
+
     <CardContent className="p-6 flex-grow flex flex-col">
       <div className="flex-grow">
         <div className="flex items-start justify-between mb-2">
           <h3 className="font-bold text-lg text-gray-900 line-clamp-2">{service.name}</h3>
-          <Badge variant="secondary" className="ml-2 shrink-0">{service.category}</Badge>
+          <Badge variant="secondary" className="ml-2 shrink-0">{service.category || 'General'}</Badge>
         </div>
-        
+
         <p className="text-gray-600 text-sm line-clamp-3 mb-4">{service.description}</p>
-        
+
         <div className="flex items-center gap-2 mb-4">
           <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-green-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
             {vendorUser?.full_name?.charAt(0) || 'V'}
@@ -149,21 +172,21 @@ const ServiceCard = ({ service, vendor, vendorUser, onBookService }) => (
             <p className="font-medium text-sm">{vendorUser?.full_name || 'Vendor'}</p>
             <div className="flex items-center gap-1">
               <Star className="w-3 h-3 text-yellow-400 fill-current" />
-              <span className="text-xs text-gray-600">{vendor?.rating || 4.5}</span>
+              <span className="text-xs text-gray-600">{vendor?.rating ?? 4.5}</span>
             </div>
           </div>
         </div>
       </div>
-      
+
       <div className="border-t pt-4 mt-4">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-2xl font-bold text-green-600">${service.price_usd}</span>
-          <Badge variant="outline">{service.status}</Badge>
+          <span className="text-2xl font-bold text-green-600">${service.price_usd || 0}</span>
+          <Badge variant="outline">{service.status || 'inactive'}</Badge>
         </div>
-        <Button 
-          onClick={() => onBookService(service, vendor, vendorUser)} 
+        <Button
+          onClick={() => onBookService(service, vendor, vendorUser)}
           className="w-full"
-          disabled={service.status !== 'active'}
+          disabled={(service.status || 'inactive') !== 'active'}
         >
           <ShoppingCart className="w-4 h-4 mr-2" />
           Book Now
@@ -178,9 +201,11 @@ export default function Marketplace() {
   const [vendors, setVendors] = useState({});
   const [vendorUsers, setVendorUsers] = useState({});
   const [filteredServices, setFilteredServices] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+
   const [selectedService, setSelectedService] = useState(null);
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [selectedVendorUser, setSelectedVendorUser] = useState(null);
@@ -188,34 +213,34 @@ export default function Marketplace() {
 
   useEffect(() => {
     const loadData = async () => {
+      setLoading(true);
       try {
-        const [servicesData, vendorsData, usersData] = await Promise.all([
-          Service.list(),
-          Vendor.list(),
-          User.list()
-        ]);
+        // services (optionally filter by active here or filter later in UI)
+        const servicesSnap = await getDocs(collection(db, COLLECTIONS.services));
+        const servicesList = servicesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setServices(servicesList);
 
-        setServices(servicesData || []);
-        
-        // Create vendor lookup
-        const vendorMap = {};
-        (vendorsData || []).forEach(vendor => {
-          vendorMap[vendor.id] = vendor;
-        });
+        // vendors
+        const vendorsSnap = await getDocs(collection(db, COLLECTIONS.vendors));
+        const vendorsList = vendorsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const vendorMap = vendorsList.reduce((acc, v) => {
+          acc[v.id] = v;
+          return acc;
+        }, {});
         setVendors(vendorMap);
-        
-        // Create vendor user lookup
-        const vendorUserMap = {};
-        (vendorsData || []).forEach(vendor => {
-          const user = (usersData || []).find(u => u.id === vendor.user_id);
-          if (user) {
-            vendorUserMap[vendor.id] = user;
-          }
+
+        // users (to get vendor display names)
+        const usersSnap = await getDocs(collection(db, COLLECTIONS.users));
+        const usersList = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // map vendor_id -> user
+        const vUserMap = {};
+        vendorsList.forEach(v => {
+          const u = usersList.find(u => u.id === v.user_id);
+          if (u) vUserMap[v.id] = u;
         });
-        setVendorUsers(vendorUserMap);
-        
-      } catch (error) {
-        console.error('Error loading marketplace data:', error);
+        setVendorUsers(vUserMap);
+      } catch (err) {
+        console.error('Error loading marketplace data:', err);
       } finally {
         setLoading(false);
       }
@@ -224,17 +249,18 @@ export default function Marketplace() {
   }, []);
 
   useEffect(() => {
-    let filtered = services.filter(service => service.status === 'active');
+    let filtered = services.filter(s => (s.status || 'inactive') === 'active');
 
     if (searchTerm.trim()) {
+      const s = searchTerm.toLowerCase();
       filtered = filtered.filter(service =>
-        service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        service.description.toLowerCase().includes(searchTerm.toLowerCase())
+        (service.name || '').toLowerCase().includes(s) ||
+        (service.description || '').toLowerCase().includes(s)
       );
     }
 
     if (categoryFilter !== 'all') {
-      filtered = filtered.filter(service => service.category === categoryFilter);
+      filtered = filtered.filter(service => (service.category || '') === categoryFilter);
     }
 
     setFilteredServices(filtered);
@@ -247,7 +273,7 @@ export default function Marketplace() {
     setBookingModalOpen(true);
   };
 
-  const categories = [...new Set(services.map(s => s.category))].filter(Boolean);
+  const categories = [...new Set(services.map(s => s.category).filter(Boolean))];
 
   if (loading) {
     return (
@@ -319,8 +345,8 @@ export default function Marketplace() {
               <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">No Services Found</h3>
               <p className="text-gray-600">
-                {searchTerm || categoryFilter !== 'all' 
-                  ? 'Try adjusting your search filters' 
+                {searchTerm || categoryFilter !== 'all'
+                  ? 'Try adjusting your search filters'
                   : 'Services will be available soon'}
               </p>
             </CardContent>
@@ -333,10 +359,6 @@ export default function Marketplace() {
           vendorUser={selectedVendorUser}
           open={bookingModalOpen}
           onOpenChange={setBookingModalOpen}
-          onBookingSuccess={() => {
-            setBookingModalOpen(false);
-            // Refresh data or show success message
-          }}
         />
       </div>
     </div>

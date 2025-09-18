@@ -1,5 +1,18 @@
+// src/pages/AdminInstitutions.jsx
+import React, { useState, useEffect, useCallback } from "react";
+import { db } from "@/firebase";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
 
-import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,8 +20,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { PlusCircle, Edit, Trash2, Building, CheckCircle, XCircle, Search, Loader2 } from "lucide-react";
-import InstitutionForm from '../components/institutions/InstitutionForm';
-import { Institution } from '@/api/entities';
+import InstitutionForm from "../components/institutions/InstitutionForm";
+
+const COLL = "institutions";
 
 export default function AdminInstitutions() {
   const [institutions, setInstitutions] = useState([]);
@@ -16,21 +30,27 @@ export default function AdminInstitutions() {
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedInstitution, setSelectedInstitution] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
 
   const loadInstitutions = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await Institution.list();
-      // Ensure data is always a valid array
-      const safeData = (data && Array.isArray(data)) ? data.filter(item => item && typeof item === 'object') : [];
+      const ref = collection(db, COLL);
+      const q = query(ref, orderBy("name", "asc"));
+      const snap = await getDocs(q);
+      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+      const safeData = Array.isArray(data)
+        ? data.filter((item) => item && typeof item === "object")
+        : [];
+
       setInstitutions(safeData);
       setFilteredInstitutions(safeData);
     } catch (error) {
       console.error("Error loading institutions:", error);
       setInstitutions([]);
       setFilteredInstitutions([]);
-      alert("Failed to load institutions. Please check if the Institution entity is defined correctly.");
+      alert("Failed to load institutions (Firestore).");
     } finally {
       setLoading(false);
     }
@@ -45,19 +65,16 @@ export default function AdminInstitutions() {
       setFilteredInstitutions([]);
       return;
     }
-
-    if (searchTerm.trim() === '') {
+    if (searchTerm.trim() === "") {
       setFilteredInstitutions(institutions);
     } else {
-      const filtered = institutions.filter(institution => {
+      const term = searchTerm.toLowerCase();
+      const filtered = institutions.filter((institution) => {
         if (!institution) return false;
-        const name = institution.name || '';
-        const city = institution.city || '';
-        const province = institution.province || '';
-        
-        return name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               province.toLowerCase().includes(searchTerm.toLowerCase());
+        const name = (institution.name || "").toLowerCase();
+        const city = (institution.city || "").toLowerCase();
+        const province = (institution.province || "").toLowerCase();
+        return name.includes(term) || city.includes(term) || province.includes(term);
       });
       setFilteredInstitutions(filtered);
     }
@@ -65,10 +82,19 @@ export default function AdminInstitutions() {
 
   const handleSave = async (institutionData) => {
     try {
-      if (selectedInstitution) {
-        await Institution.update(selectedInstitution.id, institutionData);
+      if (selectedInstitution?.id) {
+        const ref = doc(db, COLL, selectedInstitution.id);
+        await updateDoc(ref, {
+          ...institutionData,
+          updated_at: serverTimestamp(),
+        });
       } else {
-        await Institution.create(institutionData);
+        const ref = collection(db, COLL);
+        await addDoc(ref, {
+          ...institutionData,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        });
       }
       setIsFormOpen(false);
       setSelectedInstitution(null);
@@ -80,9 +106,11 @@ export default function AdminInstitutions() {
   };
 
   const handleDelete = async (institutionId) => {
+    if (!institutionId) return;
     if (window.confirm("Are you sure you want to delete this institution?")) {
       try {
-        await Institution.delete(institutionId);
+        const ref = doc(db, COLL, institutionId);
+        await deleteDoc(ref);
         await loadInstitutions();
       } catch (error) {
         console.error("Error deleting institution:", error);
@@ -125,7 +153,10 @@ export default function AdminInstitutions() {
               <InstitutionForm
                 institution={selectedInstitution}
                 onSave={handleSave}
-                onCancel={() => { setIsFormOpen(false); setSelectedInstitution(null); }}
+                onCancel={() => {
+                  setIsFormOpen(false);
+                  setSelectedInstitution(null);
+                }}
               />
             </DialogContent>
           </Dialog>
@@ -190,13 +221,17 @@ export default function AdminInstitutions() {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <div>{institution.city}, {institution.province}</div>
+                          <div>
+                            {institution.city}, {institution.province}
+                          </div>
                           <div className="text-gray-500">{institution.country}</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          {institution.isFeatured && <Badge className="bg-yellow-100 text-yellow-800">Featured</Badge>}
+                          {institution.isFeatured && (
+                            <Badge className="bg-yellow-100 text-yellow-800">Featured</Badge>
+                          )}
                           {institution.isDLI ? (
                             <Badge className="bg-green-100 text-green-800">
                               <CheckCircle className="w-3 h-3 mr-1" />
@@ -215,15 +250,15 @@ export default function AdminInstitutions() {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => openForm(institution)}
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => handleDelete(institution.id)}
                             className="text-red-600 hover:text-red-700"

@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,14 +9,25 @@ import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
-// Import User entity (always required)
+// Required
 import { User } from '@/api/entities';
 
-// Import other entities - these may or may not exist
+// Optional (may be unavailable in some deployments)
 import { Agent } from '@/api/entities';
 import { Tutor } from '@/api/entities';
 import { Vendor } from '@/api/entities';
 import { School } from '@/api/entities';
+
+const safeFormatDate = (d, fmt = 'MMM dd, yyyy') => {
+  if (!d) return 'N/A';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return 'N/A';
+  try {
+    return format(date, fmt);
+  } catch {
+    return 'N/A';
+  }
+};
 
 const StatusBadge = ({ status }) => {
   const colors = {
@@ -25,13 +35,13 @@ const StatusBadge = ({ status }) => {
     verified: "bg-green-100 text-green-800",
     rejected: "bg-red-100 text-red-800"
   };
-  return <Badge className={colors[status] || "bg-gray-100 text-gray-800"}>{status}</Badge>;
+  return <Badge className={colors[status] || "bg-gray-100 text-gray-800"}>{status || 'pending'}</Badge>;
 };
 
 const VerificationActions = ({ item, onApprove, onReject, entityType }) => (
   <div className="flex gap-2">
     <Button asChild variant="ghost" size="sm" className="w-8 h-8">
-      <Link to={createPageUrl(`UserDetails?id=${item.user_id || item.id}`)}>
+      <Link to={createPageUrl(`UserDetails?id=${encodeURIComponent(item.user_id || item.id)}`)}>
         <Eye className="w-4 h-4" />
       </Link>
     </Button>
@@ -49,23 +59,23 @@ export default function Verification() {
   const [tutors, setTutors] = useState([]);
   const [schools, setSchools] = useState([]);
   const [vendors, setVendors] = useState([]);
-  const [users, setUsers] = useState([]); // This will hold pending general users
-  const [students, setStudents] = useState([]); // This will hold pending student users
+  const [users, setUsers] = useState([]);
+  const [students, setStudents] = useState([]);
   const [userMap, setUserMap] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null); // State for handling overall component errors
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
     const loadData = async () => {
       setLoading(true);
-      setError(null); // Clear any previous errors on new load attempt
-      
+      setError(null);
       try {
-        // Add delays between API calls to prevent rate limiting
         let userData = [];
         try {
           userData = await User.list();
-          await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
+          await sleep(200);
         } catch (err) {
           console.error('Error loading users:', err);
         }
@@ -74,68 +84,52 @@ export default function Verification() {
         if (Agent && typeof Agent.filter === 'function') {
           try {
             agentData = await Agent.filter({ verification_status: 'pending' });
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await sleep(200);
           } catch (err) {
             console.error('Error loading agents:', err);
           }
-        } else {
-          console.warn('Agent entity not available or filter method missing');
         }
 
         let tutorData = [];
         if (Tutor && typeof Tutor.filter === 'function') {
           try {
             tutorData = await Tutor.filter({ verification_status: 'pending' });
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await sleep(200);
           } catch (err) {
             console.error('Error loading tutors:', err);
           }
-        } else {
-          console.warn('Tutor entity not available or filter method missing');
         }
 
         let schoolData = [];
         if (School && typeof School.filter === 'function') {
           try {
             schoolData = await School.filter({ verification_status: 'pending' });
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await sleep(200);
           } catch (err) {
             console.error('Error loading schools:', err);
           }
-        } else {
-          console.warn('School entity not available or filter method missing');
         }
 
         let vendorData = [];
         if (Vendor && typeof Vendor.filter === 'function') {
           try {
             vendorData = await Vendor.filter({ verification_status: 'pending' });
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await sleep(200);
           } catch (err) {
             console.error('Error loading vendors:', err);
           }
-        } else {
-          console.warn('Vendor entity not available or filter method missing');
         }
 
-        // Create user map for quick lookups
-        // Ensure userData is an array before processing
-        const userMapping = (Array.isArray(userData) ? userData : []).reduce((acc, user) => {
-          acc[user.id] = user;
+        const userMapping = (Array.isArray(userData) ? userData : []).reduce((acc, u) => {
+          if (u && u.id) acc[u.id] = u;
           return acc;
         }, {});
         setUserMap(userMapping);
 
-        // Filter pending users and students based on onboarding_completed status
-        // Ensure userData is an array before filtering
-        const pendingUsers = (Array.isArray(userData) ? userData : []).filter(user => 
-          user.user_type === 'user' && !user.onboarding_completed
-        );
-        const pendingStudents = (Array.isArray(userData) ? userData : []).filter(user => 
-          user.user_type === 'student' && !user.onboarding_completed
-        );
+        const allUsers = Array.isArray(userData) ? userData : [];
+        const pendingUsers = allUsers.filter(u => u.user_type === 'user' && !u.onboarding_completed);
+        const pendingStudents = allUsers.filter(u => u.user_type === 'student' && !u.onboarding_completed);
 
-        // Set states, ensuring data is always an array
         setAgents(Array.isArray(agentData) ? agentData : []);
         setTutors(Array.isArray(tutorData) ? tutorData : []);
         setSchools(Array.isArray(schoolData) ? schoolData : []);
@@ -143,72 +137,64 @@ export default function Verification() {
         setUsers(pendingUsers);
         setStudents(pendingStudents);
       } catch (err) {
-        // Catch any unexpected errors that might occur during the data loading process
         console.error("Critical error loading verification data:", err);
         setError("Failed to load verification data. Please try refreshing the page.");
       } finally {
         setLoading(false);
       }
     };
+
     loadData();
   }, []);
 
   const handleApprove = async (item, entityType) => {
     try {
       const updateData = { verification_status: 'verified' };
-      
+
       switch (entityType) {
         case 'agent':
-          // Check if Agent entity and its update method exist before calling
-          if (Agent && typeof Agent.update === 'function') {
+          if (Agent?.update) {
             await Agent.update(item.id, updateData);
             setAgents(prev => prev.filter(a => a.id !== item.id));
           } else {
-            console.warn(`Agent entity or update method not available for approval. Item ID: ${item.id}`);
-            alert('Agent verification service is not available. Please contact support.');
+            alert('Agent verification not available.');
           }
           break;
         case 'tutor':
-          if (Tutor && typeof Tutor.update === 'function') {
+          if (Tutor?.update) {
             await Tutor.update(item.id, updateData);
             setTutors(prev => prev.filter(t => t.id !== item.id));
           } else {
-            console.warn(`Tutor entity or update method not available for approval. Item ID: ${item.id}`);
-            alert('Tutor verification service is not available. Please contact support.');
+            alert('Tutor verification not available.');
           }
           break;
         case 'school':
-          if (School && typeof School.update === 'function') {
+          if (School?.update) {
             await School.update(item.id, updateData);
             setSchools(prev => prev.filter(s => s.id !== item.id));
           } else {
-            console.warn(`School entity or update method not available for approval. Item ID: ${item.id}`);
-            alert('School verification service is not available. Please contact support.');
+            alert('School verification not available.');
           }
           break;
         case 'vendor':
-          if (Vendor && typeof Vendor.update === 'function') {
+          if (Vendor?.update) {
             await Vendor.update(item.id, updateData);
             setVendors(prev => prev.filter(v => v.id !== item.id));
           } else {
-            console.warn(`Vendor entity or update method not available for approval. Item ID: ${item.id}`);
-            alert('Vendor verification service is not available. Please contact support.');
+            alert('Vendor verification not available.');
           }
           break;
         case 'user':
         case 'student':
-          // User entity is assumed to always be available and updateable
           await User.update(item.id, { onboarding_completed: true });
           if (entityType === 'user') {
             setUsers(prev => prev.filter(u => u.id !== item.id));
-          } else { // entityType is 'student'
+          } else {
             setStudents(prev => prev.filter(s => s.id !== item.id));
           }
           break;
         default:
-          console.warn(`Unknown entity type for approval: ${entityType}`);
-          alert('Failed to approve: Unknown entity type.');
-          break;
+          alert('Unknown entity type.');
       }
     } catch (err) {
       console.error('Error approving item:', err);
@@ -219,64 +205,78 @@ export default function Verification() {
   const handleReject = async (item, entityType) => {
     try {
       const updateData = { verification_status: 'rejected' };
-      
+
       switch (entityType) {
         case 'agent':
-          if (Agent && typeof Agent.update === 'function') {
+          if (Agent?.update) {
             await Agent.update(item.id, updateData);
             setAgents(prev => prev.filter(a => a.id !== item.id));
           } else {
-            console.warn(`Agent entity or update method not available for rejection. Item ID: ${item.id}`);
-            alert('Agent verification service is not available. Please contact support.');
+            alert('Agent verification not available.');
           }
           break;
         case 'tutor':
-          if (Tutor && typeof Tutor.update === 'function') {
+          if (Tutor?.update) {
             await Tutor.update(item.id, updateData);
             setTutors(prev => prev.filter(t => t.id !== item.id));
           } else {
-            console.warn(`Tutor entity or update method not available for rejection. Item ID: ${item.id}`);
-            alert('Tutor verification service is not available. Please contact support.');
+            alert('Tutor verification not available.');
           }
           break;
         case 'school':
-          if (School && typeof School.update === 'function') {
+          if (School?.update) {
             await School.update(item.id, updateData);
             setSchools(prev => prev.filter(s => s.id !== item.id));
           } else {
-            console.warn(`School entity or update method not available for rejection. Item ID: ${item.id}`);
-            alert('School verification service is not available. Please contact support.');
+            alert('School verification not available.');
           }
           break;
         case 'vendor':
-          if (Vendor && typeof Vendor.update === 'function') {
+          if (Vendor?.update) {
             await Vendor.update(item.id, updateData);
             setVendors(prev => prev.filter(v => v.id !== item.id));
           } else {
-            console.warn(`Vendor entity or update method not available for rejection. Item ID: ${item.id}`);
-            alert('Vendor verification service is not available. Please contact support.');
+            alert('Vendor verification not available.');
           }
           break;
         case 'user':
         case 'student':
-          // For rejection, we explicitly set onboarding_completed to false
-          await User.update(item.id, { onboarding_completed: false }); 
+          await User.update(item.id, { onboarding_completed: false });
           if (entityType === 'user') {
             setUsers(prev => prev.filter(u => u.id !== item.id));
-          } else { // entityType is 'student'
+          } else {
             setStudents(prev => prev.filter(s => s.id !== item.id));
           }
           break;
         default:
-          console.warn(`Unknown entity type for rejection: ${entityType}`);
-          alert('Failed to reject: Unknown entity type.');
-          break;
+          alert('Unknown entity type.');
       }
     } catch (err) {
       console.error('Error rejecting item:', err);
       alert('Failed to reject item. Please try again.');
     }
   };
+
+  const totalPending = (agents?.length || 0)
+    + (tutors?.length || 0)
+    + (schools?.length || 0)
+    + (vendors?.length || 0)
+    + (users?.length || 0)
+    + (students?.length || 0);
+
+  // Compute a safe initial tab based on available entities
+  const initialTab = useMemo(() => {
+    const order = [
+      { key: 'agents', available: !!Agent },
+      { key: 'tutors', available: !!Tutor },
+      { key: 'schools', available: !!School },
+      { key: 'vendors', available: !!Vendor },
+      { key: 'users', available: true },
+      { key: 'students', available: true },
+    ];
+    const first = order.find(o => o.available);
+    return first ? first.key : 'users';
+  }, []);
 
   if (loading) {
     return (
@@ -298,8 +298,6 @@ export default function Verification() {
     );
   }
 
-  const totalPending = agents.length + tutors.length + schools.length + vendors.length + users.length + students.length;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -311,20 +309,19 @@ export default function Verification() {
         </div>
 
         <Card className="mb-8 shadow-lg">
-            <CardContent className="p-4 flex items-center gap-4">
-                <div className="p-3 bg-emerald-100 rounded-lg">
-                    <Clock className="w-8 h-8 text-emerald-600"/>
-                </div>
-                <div>
-                    <div className="text-3xl font-bold text-emerald-700">{totalPending}</div>
-                    <p className="text-gray-600">Pending Verifications</p>
-                </div>
-            </CardContent>
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="p-3 bg-emerald-100 rounded-lg">
+              <Clock className="w-8 h-8 text-emerald-600"/>
+            </div>
+            <div>
+              <div className="text-3xl font-bold text-emerald-700">{totalPending}</div>
+              <p className="text-gray-600">Pending Verifications</p>
+            </div>
+          </CardContent>
         </Card>
 
-        <Tabs defaultValue="agents" className="space-y-6">
+        <Tabs defaultValue={initialTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-6 bg-white/80 backdrop-blur-sm">
-            {/* Conditionally render TabsTrigger based on whether the entity was successfully loaded */}
             {Agent && <TabsTrigger value="agents"><Briefcase className="w-4 h-4 mr-2"/>Agents ({agents.length})</TabsTrigger>}
             {Tutor && <TabsTrigger value="tutors"><BookOpen className="w-4 h-4 mr-2"/>Tutors ({tutors.length})</TabsTrigger>}
             {School && <TabsTrigger value="schools"><Building className="w-4 h-4 mr-2"/>Schools ({schools.length})</TabsTrigger>}
@@ -333,7 +330,7 @@ export default function Verification() {
             <TabsTrigger value="students"><UsersIcon className="w-4 h-4 mr-2"/>Students ({students.length})</TabsTrigger>
           </TabsList>
 
-          {/* Users Tab */}
+          {/* Users */}
           <TabsContent value="users">
             <Card className="shadow-lg">
               <CardHeader>
@@ -355,16 +352,16 @@ export default function Verification() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map(user => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.full_name}</TableCell>
-                          <TableCell>{user.email}</TableCell>
-                          <TableCell>{user.country || 'N/A'}</TableCell>
-                          <TableCell>{format(new Date(user.created_date), 'MMM dd, yyyy')}</TableCell>
+                      {users.map(u => (
+                        <TableRow key={u.id}>
+                          <TableCell className="font-medium">{u.full_name || 'N/A'}</TableCell>
+                          <TableCell>{u.email}</TableCell>
+                          <TableCell>{u.country || 'N/A'}</TableCell>
+                          <TableCell>{safeFormatDate(u.created_date)}</TableCell>
                           <TableCell>
-                            <VerificationActions 
-                              item={user} 
-                              onApprove={handleApprove} 
+                            <VerificationActions
+                              item={u}
+                              onApprove={handleApprove}
                               onReject={handleReject}
                               entityType="user"
                             />
@@ -384,7 +381,7 @@ export default function Verification() {
             </Card>
           </TabsContent>
 
-          {/* Students Tab */}
+          {/* Students */}
           <TabsContent value="students">
             <Card className="shadow-lg">
               <CardHeader>
@@ -407,18 +404,17 @@ export default function Verification() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {students.map(student => (
-                        <TableRow key={student.id}>
-                          <TableCell className="font-medium">{student.full_name}</TableCell>
-                          <TableCell>{student.email}</TableCell>
-                          {/* Use optional chaining for properties that might not exist on a base user, or provide fallbacks */}
-                          <TableCell>{student.programId || 'N/A'}</TableCell>
-                          <TableCell>{student.schoolId || 'N/A'}</TableCell>
-                          <TableCell>{format(new Date(student.created_date), 'MMM dd, yyyy')}</TableCell>
+                      {students.map(s => (
+                        <TableRow key={s.id}>
+                          <TableCell className="font-medium">{s.full_name || 'N/A'}</TableCell>
+                          <TableCell>{s.email}</TableCell>
+                          <TableCell>{s.programId || 'N/A'}</TableCell>
+                          <TableCell>{s.schoolId || 'N/A'}</TableCell>
+                          <TableCell>{safeFormatDate(s.created_date)}</TableCell>
                           <TableCell>
-                            <VerificationActions 
-                              item={student} 
-                              onApprove={handleApprove} 
+                            <VerificationActions
+                              item={s}
+                              onApprove={handleApprove}
                               onReject={handleReject}
                               entityType="student"
                             />
@@ -438,7 +434,7 @@ export default function Verification() {
             </Card>
           </TabsContent>
 
-          {/* Conditionally render TabsContent for other entities */}
+          {/* Agents */}
           {Agent && (
             <TabsContent value="agents">
               <Card className="shadow-lg">
@@ -463,18 +459,18 @@ export default function Verification() {
                       </TableHeader>
                       <TableBody>
                         {agents.map(agent => {
-                          const user = userMap[agent.user_id];
+                          const u = userMap[agent.user_id];
                           return (
                             <TableRow key={agent.id}>
-                              <TableCell className="font-medium">{agent.company_name}</TableCell>
-                              <TableCell>{agent.contact_person?.name || user?.full_name}</TableCell>
-                              <TableCell>{agent.contact_person?.email || user?.email}</TableCell>
-                              <TableCell>{agent.business_license_mst}</TableCell>
-                              <TableCell>{format(new Date(agent.created_date), 'MMM dd, yyyy')}</TableCell>
+                              <TableCell className="font-medium">{agent.company_name || 'N/A'}</TableCell>
+                              <TableCell>{agent.contact_person?.name || u?.full_name || 'N/A'}</TableCell>
+                              <TableCell>{agent.contact_person?.email || u?.email || 'N/A'}</TableCell>
+                              <TableCell>{agent.business_license_mst || 'N/A'}</TableCell>
+                              <TableCell>{safeFormatDate(agent.created_date)}</TableCell>
                               <TableCell>
-                                <VerificationActions 
-                                  item={agent} 
-                                  onApprove={handleApprove} 
+                                <VerificationActions
+                                  item={agent}
+                                  onApprove={handleApprove}
                                   onReject={handleReject}
                                   entityType="agent"
                                 />
@@ -496,6 +492,7 @@ export default function Verification() {
             </TabsContent>
           )}
 
+          {/* Tutors */}
           {Tutor && (
             <TabsContent value="tutors">
               <Card className="shadow-lg">
@@ -521,19 +518,19 @@ export default function Verification() {
                       </TableHeader>
                       <TableBody>
                         {tutors.map(tutor => {
-                          const user = userMap[tutor.user_id];
+                          const u = userMap[tutor.user_id];
                           return (
                             <TableRow key={tutor.id}>
-                              <TableCell className="font-medium">{user?.full_name}</TableCell>
-                              <TableCell>{user?.email}</TableCell>
-                              <TableCell>{tutor.specializations?.join(', ')}</TableCell>
-                              <TableCell>{tutor.experience_years} years</TableCell>
-                              <TableCell>${tutor.hourly_rate}/hr</TableCell>
-                              <TableCell>{format(new Date(tutor.created_date), 'MMM dd, yyyy')}</TableCell>
+                              <TableCell className="font-medium">{u?.full_name || 'N/A'}</TableCell>
+                              <TableCell>{u?.email || 'N/A'}</TableCell>
+                              <TableCell>{(tutor.specializations || []).join(', ')}</TableCell>
+                              <TableCell>{tutor.experience_years || 0} years</TableCell>
+                              <TableCell>${tutor.hourly_rate || 0}/hr</TableCell>
+                              <TableCell>{safeFormatDate(tutor.created_date)}</TableCell>
                               <TableCell>
-                                <VerificationActions 
-                                  item={tutor} 
-                                  onApprove={handleApprove} 
+                                <VerificationActions
+                                  item={tutor}
+                                  onApprove={handleApprove}
                                   onReject={handleReject}
                                   entityType="tutor"
                                 />
@@ -555,6 +552,7 @@ export default function Verification() {
             </TabsContent>
           )}
 
+          {/* Schools */}
           {School && (
             <TabsContent value="schools">
               <Card className="shadow-lg">
@@ -579,22 +577,22 @@ export default function Verification() {
                       </TableHeader>
                       <TableBody>
                         {schools.map(school => {
-                          const user = userMap[school.user_id];
+                          const u = userMap[school.user_id];
                           return (
                             <TableRow key={school.id}>
-                              <TableCell className="font-medium">{school.name}</TableCell>
-                              <TableCell>{school.location}, {school.country}</TableCell>
-                              <TableCell>{user?.email}</TableCell>
+                              <TableCell className="font-medium">{school.name || 'N/A'}</TableCell>
+                              <TableCell>{[school.location, school.country].filter(Boolean).join(', ') || 'N/A'}</TableCell>
+                              <TableCell>{u?.email || 'N/A'}</TableCell>
                               <TableCell>
                                 <Badge className={school.account_type === 'real' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
                                   {school.account_type || 'real'}
                                 </Badge>
                               </TableCell>
-                              <TableCell>{format(new Date(school.created_date), 'MMM dd, yyyy')}</TableCell>
+                              <TableCell>{safeFormatDate(school.created_date)}</TableCell>
                               <TableCell>
-                                <VerificationActions 
-                                  item={school} 
-                                  onApprove={handleApprove} 
+                                <VerificationActions
+                                  item={school}
+                                  onApprove={handleApprove}
                                   onReject={handleReject}
                                   entityType="school"
                                 />
@@ -616,6 +614,7 @@ export default function Verification() {
             </TabsContent>
           )}
 
+          {/* Vendors */}
           {Vendor && (
             <TabsContent value="vendors">
               <Card className="shadow-lg">
@@ -639,17 +638,17 @@ export default function Verification() {
                       </TableHeader>
                       <TableBody>
                         {vendors.map(vendor => {
-                          const user = userMap[vendor.user_id];
+                          const u = userMap[vendor.user_id];
                           return (
                             <TableRow key={vendor.id}>
-                              <TableCell className="font-medium">{vendor.business_name}</TableCell>
-                              <TableCell>{user?.email}</TableCell>
-                              <TableCell>{vendor.service_categories?.join(', ')}</TableCell>
-                              <TableCell>{format(new Date(vendor.created_date), 'MMM dd, yyyy')}</TableCell>
+                              <TableCell className="font-medium">{vendor.business_name || 'N/A'}</TableCell>
+                              <TableCell>{u?.email || 'N/A'}</TableCell>
+                              <TableCell>{(vendor.service_categories || []).join(', ')}</TableCell>
+                              <TableCell>{safeFormatDate(vendor.created_date)}</TableCell>
                               <TableCell>
-                                <VerificationActions 
-                                  item={vendor} 
-                                  onApprove={handleApprove} 
+                                <VerificationActions
+                                  item={vendor}
+                                  onApprove={handleApprove}
                                   onReject={handleReject}
                                   entityType="vendor"
                                 />

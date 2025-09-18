@@ -1,25 +1,30 @@
-import React from 'react';
+// src/pages/AdminPackages.jsx
+import React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Package } from "lucide-react";
-import PackageEditor from '../components/admin/packages/PackageEditor';
+import PackageEditor from "../components/admin/packages/PackageEditor";
 
-// Import Entities
-import { VisaPackage } from '@/api/entities';
-import { TutorPackage } from '@/api/entities';
-import { AgentPackage } from '@/api/entities';
-import { StudentTutorPackage } from '@/api/entities';
+// Swap Base44 entities → Firebase repos
+import {
+  VisaPackageRepo,
+  TutorPackageRepo,
+  AgentPackageRepo,
+  StudentTutorPackageRepo,
+  // or use makePackageRepo("collectionName") inline if you prefer
+} from "@/api/packagesRepo";
 
-// Import Forms
-import VisaPackageForm from '../components/admin/packages/VisaPackageForm';
-import TutorPackageForm from '../components/admin/packages/TutorPackageForm';
-import AgentPackageForm from '../components/admin/packages/AgentPackageForm';
-import StudentTutorPackageForm from '../components/admin/packages/StudentTutorPackageForm';
+// Forms & columns unchanged
+import VisaPackageForm from "../components/admin/packages/VisaPackageForm";
+import TutorPackageForm from "../components/admin/packages/TutorPackageForm";
+import AgentPackageForm from "../components/admin/packages/AgentPackageForm";
+import StudentTutorPackageForm from "../components/admin/packages/StudentTutorPackageForm";
 
-// Import Table Columns
-import { visaPackageColumns } from '../components/admin/packages/columns';
-import { tutorPackageColumns } from '../components/admin/packages/columns';
-import { agentPackageColumns } from '../components/admin/packages/columns';
-import { studentTutorPackageColumns } from '../components/admin/packages/columns';
+import {
+  visaPackageColumns,
+  tutorPackageColumns,
+  agentPackageColumns,
+  studentTutorPackageColumns,
+} from "../components/admin/packages/columns";
 
 export default function AdminPackages() {
   return (
@@ -41,7 +46,7 @@ export default function AdminPackages() {
 
           <TabsContent value="visa" className="mt-4">
             <PackageEditor
-              entity={VisaPackage}
+              entity={VisaPackageRepo}
               FormComponent={VisaPackageForm}
               columns={visaPackageColumns}
               title="Visa Package"
@@ -51,7 +56,7 @@ export default function AdminPackages() {
 
           <TabsContent value="tutor" className="mt-4">
             <PackageEditor
-              entity={TutorPackage}
+              entity={TutorPackageRepo}
               FormComponent={TutorPackageForm}
               columns={tutorPackageColumns}
               title="Tutor Package"
@@ -60,16 +65,16 @@ export default function AdminPackages() {
 
           <TabsContent value="agent" className="mt-4">
             <PackageEditor
-              entity={AgentPackage}
+              entity={AgentPackageRepo}
               FormComponent={AgentPackageForm}
               columns={agentPackageColumns}
               title="Agent Package"
             />
           </TabsContent>
-          
+
           <TabsContent value="student_tutor" className="mt-4">
             <PackageEditor
-              entity={StudentTutorPackage}
+              entity={StudentTutorPackageRepo}
               FormComponent={StudentTutorPackageForm}
               columns={studentTutorPackageColumns}
               title="Student Tutor Package"

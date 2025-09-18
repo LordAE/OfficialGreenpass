@@ -1,14 +1,27 @@
-import React, { useState, useEffect } from 'react';
+// src/pages/ComparePrograms.jsx
+import React, { useEffect, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, X, Share2, PlusCircle } from 'lucide-react';
-import { useCompare, getComparedPrograms } from '@/components/utils/comparison';
+import { useCompare } from '@/components/utils/comparison';
 import { createPageUrl } from '@/utils';
 import { toast } from '@/components/ui/use-toast';
 import { getLevelLabel } from '../components/utils/EducationLevels';
 import { getProvinceLabel } from '../components/utils/CanadianProvinces';
+
+// --- Firebase ---
+import { db } from '@/firebase';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  documentId,
+} from 'firebase/firestore';
+
+const PROGRAMS_COLLECTION = 'school_programs'; // <-- change if needed
 
 const formatCurrency = (amount) => {
   if (typeof amount !== 'number' || amount === 0) return 'Contact School';
@@ -42,12 +55,16 @@ const ProgramColumn = ({ program, onRemove }) => {
             alt={`${program.institution_name || 'School'} logo`}
             className="h-12 w-12 object-contain bg-gray-100 border p-1 rounded-md flex-shrink-0"
             onError={(e) => {
-              e.target.src = 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop';
+              e.currentTarget.src = 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop';
             }}
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-gray-800 leading-tight truncate">{program.institution_name || 'School Name'}</p>
-            <p className="text-xs text-gray-600 line-clamp-3 mt-1">{program.program_title || 'Program Title'}</p>
+            <p className="text-sm font-bold text-gray-800 leading-tight truncate">
+              {program.institution_name || 'School Name'}
+            </p>
+            <p className="text-xs text-gray-600 line-clamp-3 mt-1">
+              {program.program_title || 'Program Title'}
+            </p>
           </div>
         </div>
         <Button
@@ -60,7 +77,10 @@ const ProgramColumn = ({ program, onRemove }) => {
         </Button>
       </div>
       <div className="flex-1 flex items-end">
-        <Link to={createPageUrl(`ProgramDetail?id=${program.id}`)} className="block w-full text-center bg-green-600 text-white text-sm font-semibold py-2 hover:bg-green-700 transition-colors">
+        <Link
+          to={createPageUrl(`ProgramDetail?id=${program.id}`)}
+          className="block w-full text-center bg-green-600 text-white text-sm font-semibold py-2 hover:bg-green-700 transition-colors"
+        >
           View Details
         </Link>
       </div>
@@ -70,7 +90,9 @@ const ProgramColumn = ({ program, onRemove }) => {
 
 const CompareRow = ({ label, values, programData, formatter = (v, p) => v || 'N/A' }) => (
   <TableRow>
-    <TableHead className="font-semibold text-gray-700 w-1/5 bg-gray-50 sticky left-0 z-10 border-r">{label}</TableHead>
+    <TableHead className="font-semibold text-gray-700 w-1/5 bg-gray-50 sticky left-0 z-10 border-r">
+      {label}
+    </TableHead>
     {values.map((value, index) => (
       <TableCell key={index} className="text-sm text-center border-r last:border-r-0">
         {formatter(value, programData[index])}
@@ -85,39 +107,59 @@ export default function ComparePrograms() {
   const [comparedPrograms, setComparedPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Firestore: fetch programs by ids (keeps order the user selected)
+  const fetchProgramsByIds = async (ids) => {
+    if (!ids?.length) return [];
+
+    // Firestore 'in' supports up to 10; we only need up to 4, but chunk to be safe
+    const chunked = [];
+    for (let i = 0; i < ids.length; i += 10) {
+      chunked.push(ids.slice(i, i + 10));
+    }
+
+    const allDocs = [];
+    for (const chunk of chunked) {
+      const qRef = query(
+        collection(db, PROGRAMS_COLLECTION),
+        where(documentId(), 'in', chunk)
+      );
+      const snap = await getDocs(qRef);
+      snap.forEach((d) => allDocs.push({ id: d.id, ...d.data() }));
+    }
+
+    // return in the same order as ids
+    const byId = Object.fromEntries(allDocs.map((d) => [d.id, d]));
+    return ids.map((id) => byId[id]).filter(Boolean);
+  };
+
   // Load programs when component mounts or items change
   useEffect(() => {
     if (!isReady) return;
 
     const loadPrograms = async () => {
       setLoading(true);
-      
       try {
-        // Check URL params first
         const urlIds = searchParams.get('ids');
         let programIds = [];
-        
+
         if (urlIds) {
-          programIds = urlIds.split(',');
+          programIds = urlIds.split(',').map((s) => s.trim()).filter(Boolean);
         } else {
-          programIds = items.map(item => item.id);
+          programIds = items.map((item) => item.id);
         }
-        
-        console.log('Loading programs with IDs:', programIds);
-        
+
         if (programIds.length > 0) {
-          const programs = await getComparedPrograms(programIds);
-          console.log('Loaded programs for comparison:', programs);
+          const programs = await fetchProgramsByIds(programIds);
           setComparedPrograms(programs);
         } else {
           setComparedPrograms([]);
         }
       } catch (error) {
         console.error('Error loading compared programs:', error);
-        toast({ 
-          title: 'Error', 
-          description: 'Could not load comparison data.', 
-          variant: 'destructive' 
+        toast({
+          title: 'Error',
+          description: 'Could not load comparison data.',
+          variant: 'destructive',
         });
         setComparedPrograms([]);
       } finally {
@@ -132,69 +174,54 @@ export default function ComparePrograms() {
     if (shareUrl) {
       navigator.clipboard.writeText(shareUrl);
       toast({
-        title: "Link Copied!",
-        description: "The comparison link has been copied to your clipboard.",
+        title: 'Link Copied!',
+        description: 'The comparison link has been copied to your clipboard.',
       });
     }
   };
 
-  // Pad programs array to always show 4 columns
-  const paddedPrograms = [...comparedPrograms];
-  while (paddedPrograms.length < 4) {
-    paddedPrograms.push(null);
-  }
+  // Pad to 4 columns
+  const paddedPrograms = useMemo(() => {
+    const arr = [...comparedPrograms];
+    while (arr.length < 4) arr.push(null);
+    return arr;
+  }, [comparedPrograms]);
 
   const fields = [
-    { 
-      label: 'Program Level', 
+    {
+      label: 'Program Level',
       key: 'program_level',
-      formatter: (v) => v ? getLevelLabel(v) : 'N/A'
+      formatter: (v) => (v ? getLevelLabel(v) : 'N/A'),
     },
-    { 
-      label: 'Discipline', 
-      key: 'field_of_study' 
+    { label: 'Discipline', key: 'field_of_study' },
+    {
+      label: 'Tuition/Year',
+      key: 'tuition_fee_cad',
+      formatter: formatCurrency,
     },
-    { 
-      label: 'Tuition/Year', 
-      key: 'tuition_fee_cad', 
-      formatter: formatCurrency 
-    },
-    { 
-      label: 'Duration', 
-      key: 'duration_display' 
-    },
-    { 
-      label: 'Delivery', 
-      key: 'delivery_mode' 
-    },
-    { 
-      label: 'Language', 
-      key: 'language_of_instruction' 
-    },
-    { 
-      label: 'Location', 
-      key: 'school_city', 
+    { label: 'Duration', key: 'duration_display' },
+    { label: 'Delivery', key: 'delivery_mode' },
+    { label: 'Language', key: 'language_of_instruction' },
+    {
+      label: 'Location',
+      key: 'school_city',
       formatter: (v, p) => {
         if (!p || !p.school_city) return 'N/A';
         const province = p.school_province ? getProvinceLabel(p.school_province) : '';
         return province ? `${p.school_city}, ${province}` : p.school_city;
-      }
+      },
     },
-    { 
-      label: 'Next Intake', 
-      key: 'intake_dates', 
-      formatter: (v) => Array.isArray(v) && v.length > 0 ? v[0] : 'N/A' 
+    {
+      label: 'Next Intake',
+      key: 'intake_dates',
+      formatter: (v) => (Array.isArray(v) && v.length > 0 ? v[0] : 'N/A'),
     },
-    { 
-      label: 'Application Fee', 
-      key: 'application_fee', 
-      formatter: formatCurrency 
+    { label: 'Application Fee', key: 'application_fee', formatter: formatCurrency },
+    {
+      label: 'Scholarships',
+      key: 'scholarships_available',
+      formatter: (v) => (v === true ? 'Yes' : v === false ? 'No' : 'N/A'),
     },
-    { 
-      label: 'Scholarships', 
-      key: 'scholarships_available', 
-      formatter: v => v === true ? 'Yes' : v === false ? 'No' : 'N/A' 
-    }
   ];
 
   if (loading || !isReady) {
@@ -229,18 +256,16 @@ export default function ComparePrograms() {
           </div>
         </div>
       </header>
-      
+
       <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!hasPrograms ? (
           <div className="text-center py-20">
-             <Card className="max-w-lg mx-auto p-8">
+            <Card className="max-w-lg mx-auto p-8">
               <CardHeader>
                 <CardTitle>Your Comparison List is Empty</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-600 mb-6">
-                  Add up to 4 programs to see a side-by-side comparison.
-                </p>
+                <p className="text-gray-600 mb-6">Add up to 4 programs to see a side-by-side comparison.</p>
                 <Link to={createPageUrl('Programs')}>
                   <Button size="lg">
                     <PlusCircle className="w-5 h-5 mr-2" />
@@ -257,22 +282,24 @@ export default function ComparePrograms() {
                 <TableRow>
                   <TableHead className="w-1/5 bg-gray-50 sticky left-0 z-10 border-r">
                     <div className="py-2">
-                      <p className="text-sm text-gray-600">{comparedPrograms.length} program{comparedPrograms.length !== 1 ? 's' : ''} selected</p>
+                      <p className="text-sm text-gray-600">
+                        {comparedPrograms.length} program{comparedPrograms.length !== 1 ? 's' : ''} selected
+                      </p>
                     </div>
                   </TableHead>
                   {paddedPrograms.map((p, index) => (
-                    <TableHead key={p?.id || index} className="w-1/4 p-0 align-top border-r last:border-r-0">
+                    <TableHead key={p?.id || `empty-${index}`} className="w-1/4 p-0 align-top border-r last:border-r-0">
                       <ProgramColumn program={p} onRemove={remove} />
                     </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {fields.map(field => (
+                {fields.map((field) => (
                   <CompareRow
                     key={field.label}
                     label={field.label}
-                    values={paddedPrograms.map(p => p ? p[field.key] : null)}
+                    values={paddedPrograms.map((p) => (p ? p[field.key] : null))}
                     programData={paddedPrograms}
                     formatter={field.formatter}
                   />

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { DollarSign, TrendingUp, Download, Calendar, Users, Clock, Loader2, CreditCard } from 'lucide-react';
+import { DollarSign, TrendingUp, Calendar, Users, Clock, Loader2, CreditCard } from 'lucide-react';
 import { format } from 'date-fns';
 
 const PayoutRequestModal = ({ wallet, onSubmit, onCancel }) => {
@@ -20,11 +20,13 @@ const PayoutRequestModal = ({ wallet, onSubmit, onCancel }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (amount > wallet.balance_usd) {
+    const amt = Number(amount || 0);
+    const max = Number(wallet?.balance_usd || 0);
+    if (amt > max) {
       alert("Payout amount cannot exceed available balance.");
       return;
     }
-    onSubmit({ amount, notes });
+    onSubmit({ amount: amt, notes });
   };
 
   return (
@@ -41,7 +43,7 @@ const PayoutRequestModal = ({ wallet, onSubmit, onCancel }) => {
           required
         />
         <p className="text-sm text-gray-500 mt-1">
-          Available balance: ${wallet?.balance_usd?.toFixed(2) || '0.00'}
+          Available balance: ${Number(wallet?.balance_usd || 0).toFixed(2)}
         </p>
       </div>
       
@@ -75,28 +77,29 @@ export default function TutorEarnings() {
     setLoading(true);
     try {
       const currentUser = await User.me();
-      
-      // Load wallet data
+
+      // Wallet
       const walletData = await Wallet.filter({ user_id: currentUser.id });
       if (walletData.length > 0) {
-        setWallet(walletData[0]);
-        
-        // Load transactions
-        const transactionData = await WalletTransaction.filter({ 
-          wallet_id: walletData[0].id 
-        }, '-created_date');
-        setTransactions(transactionData);
+        const w = walletData[0];
+        setWallet(w);
+
+        // Transactions (remove unsupported sort arg)
+        const transactionData = await WalletTransaction.filter({ wallet_id: w.id });
+        setTransactions(transactionData || []);
+      } else {
+        setWallet(null);
+        setTransactions([]);
       }
 
-      // Load sessions for earnings breakdown
-      const sessionData = await TutoringSession.filter({ 
-        tutor_id: currentUser.id,
-        status: 'completed'
-      }, '-scheduled_date');
-      setSessions(sessionData);
-
+      // Completed sessions for earnings (remove unsupported sort arg)
+      const sessionData = await TutoringSession.filter({ tutor_id: currentUser.id, status: 'completed' });
+      setSessions(sessionData || []);
     } catch (error) {
       console.error("Error loading earnings data:", error);
+      setWallet(null);
+      setTransactions([]);
+      setSessions([]);
     } finally {
       setLoading(false);
     }
@@ -109,21 +112,28 @@ export default function TutorEarnings() {
   const handlePayoutRequest = async (payoutData) => {
     try {
       if (!wallet) return;
-      
-      // Create a payout request transaction
+
+      const nowIso = new Date().toISOString();
+      const amount = Number(payoutData?.amount || 0);
+      const currentPending = Number(wallet?.pending_payout || 0);
+      const currentBalance = Number(wallet?.balance_usd || 0);
+
+      // Create payout request transaction (store created_date explicitly)
       await WalletTransaction.create({
         wallet_id: wallet.id,
         user_id: wallet.user_id,
         transaction_type: 'payout_request',
-        amount_usd: -payoutData.amount, // Negative for payout
-        description: `Payout request: ${payoutData.notes || 'No notes'}`,
-        status: 'pending'
+        amount_usd: -amount, // negative for payout
+        description: `Payout request: ${payoutData?.notes || 'No notes'}`,
+        status: 'pending',
+        created_date: nowIso,
       });
 
-      // Update wallet pending payout
+      // Update wallet fields
       await Wallet.update(wallet.id, {
-        pending_payout: (wallet.pending_payout || 0) + payoutData.amount,
-        balance_usd: wallet.balance_usd - payoutData.amount
+        pending_payout: currentPending + amount,
+        balance_usd: currentBalance - amount,
+        updated_date: nowIso,
       });
 
       setIsPayoutModalOpen(false);
@@ -141,7 +151,7 @@ export default function TutorEarnings() {
       const now = new Date();
       return sessionDate.getMonth() === now.getMonth() && sessionDate.getFullYear() === now.getFullYear();
     })
-    .reduce((sum, s) => sum + (s.price || 0), 0);
+    .reduce((sum, s) => sum + Number(s.price || 0), 0);
 
   if (loading) {
     return (
@@ -150,6 +160,10 @@ export default function TutorEarnings() {
       </div>
     );
   }
+
+  const balance = Number(wallet?.balance_usd || 0);
+  const totalEarned = Number(wallet?.total_earned || 0);
+  const pendingPayout = Number(wallet?.pending_payout || 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 p-6">
@@ -168,7 +182,7 @@ export default function TutorEarnings() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-green-600">
-                    ${wallet?.balance_usd?.toFixed(2) || '0.00'}
+                    ${balance.toFixed(2)}
                   </div>
                   <p className="text-gray-600">Available Balance</p>
                 </div>
@@ -182,7 +196,7 @@ export default function TutorEarnings() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-blue-600">
-                    ${wallet?.total_earned?.toFixed(2) || '0.00'}
+                    ${totalEarned.toFixed(2)}
                   </div>
                   <p className="text-gray-600">Total Earned</p>
                 </div>
@@ -210,7 +224,7 @@ export default function TutorEarnings() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-orange-600">
-                    ${wallet?.pending_payout?.toFixed(2) || '0.00'}
+                    ${pendingPayout.toFixed(2)}
                   </div>
                   <p className="text-gray-600">Pending Payout</p>
                 </div>
@@ -231,7 +245,7 @@ export default function TutorEarnings() {
               <Dialog open={isPayoutModalOpen} onOpenChange={setIsPayoutModalOpen}>
                 <DialogTrigger asChild>
                   <Button 
-                    disabled={!wallet || wallet.balance_usd <= 0}
+                    disabled={balance <= 0}
                     className="bg-green-600 hover:bg-green-700"
                   >
                     <CreditCard className="w-4 h-4 mr-2" />
@@ -243,7 +257,7 @@ export default function TutorEarnings() {
                     <DialogTitle>Request Payout</DialogTitle>
                   </DialogHeader>
                   <PayoutRequestModal
-                    wallet={wallet}
+                    wallet={{ ...wallet, balance_usd: balance }}
                     onSubmit={handlePayoutRequest}
                     onCancel={() => setIsPayoutModalOpen(false)}
                   />
@@ -273,10 +287,12 @@ export default function TutorEarnings() {
                 <TableBody>
                   {sessions.slice(0, 10).map(session => (
                     <TableRow key={session.id}>
-                      <TableCell>{format(new Date(session.scheduled_date), 'MMM dd, yyyy')}</TableCell>
-                      <TableCell>{session.subject}</TableCell>
-                      <TableCell>{session.duration} min</TableCell>
-                      <TableCell className="font-medium">${session.price}</TableCell>
+                      <TableCell>{session.scheduled_date ? format(new Date(session.scheduled_date), 'MMM dd, yyyy') : '-'}</TableCell>
+                      <TableCell>{session.subject || '-'}</TableCell>
+                      <TableCell>{session.duration ? `${session.duration} min` : '-'}</TableCell>
+                      <TableCell className="font-medium">
+                        ${Number(session.price || 0).toFixed(2)}
+                      </TableCell>
                       <TableCell>
                         <Badge className="bg-green-100 text-green-800">Completed</Badge>
                       </TableCell>
@@ -314,11 +330,14 @@ export default function TutorEarnings() {
                 <TableBody>
                   {transactions.map(transaction => (
                     <TableRow key={transaction.id}>
-                      <TableCell>{format(new Date(transaction.created_date), 'MMM dd, yyyy')}</TableCell>
-                      <TableCell className="capitalize">{transaction.transaction_type.replace('_', ' ')}</TableCell>
-                      <TableCell>{transaction.description}</TableCell>
-                      <TableCell className={`font-medium ${transaction.amount_usd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {transaction.amount_usd >= 0 ? '+' : ''}${transaction.amount_usd?.toFixed(2)}
+                      <TableCell>{transaction.created_date ? format(new Date(transaction.created_date), 'MMM dd, yyyy') : '-'}</TableCell>
+                      <TableCell className="capitalize">
+                        {(transaction.transaction_type || '').replace('_', ' ')}
+                      </TableCell>
+                      <TableCell>{transaction.description || '-'}</TableCell>
+                      <TableCell className={`font-medium ${Number(transaction.amount_usd || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {Number(transaction.amount_usd || 0) >= 0 ? '+' : ''}
+                        ${Number(transaction.amount_usd || 0).toFixed(2)}
                       </TableCell>
                       <TableCell>
                         <Badge className={
@@ -327,7 +346,7 @@ export default function TutorEarnings() {
                           transaction.status === 'rejected' ? 'bg-red-100 text-red-800' :
                           'bg-gray-100 text-gray-800'
                         }>
-                          {transaction.status}
+                          {transaction.status || 'unknown'}
                         </Badge>
                       </TableCell>
                     </TableRow>

@@ -1,90 +1,104 @@
+// src/pages/MarketplaceAdmin.jsx
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Store, ShoppingCart, DollarSign, Users, Eye, CheckCircle, XCircle, Star, ToggleLeft, Trash2 } from 'lucide-react';
-import { Service } from '@/api/entities';
-import { MarketplaceOrder } from '@/api/entities';
-import { Vendor } from '@/api/entities';
+import { Store, ShoppingCart, DollarSign, CheckCircle, ToggleLeft } from 'lucide-react';
+
+// --- Firebase ---
+import { db } from '@/firebase';
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  updateDoc,
+  doc,
+} from 'firebase/firestore';
+
+const COLLECTIONS = {
+  services: 'services',
+  orders: 'marketplace_orders',
+  vendors: 'vendors',
+  users: 'users',
+};
 
 export default function MarketplaceAdmin() {
   const [services, setServices] = useState([]);
   const [orders, setOrders] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+
+  // Derived maps
+  const vendorById = vendors.reduce((acc, v) => { acc[v.id] = v; return acc; }, {});
+  const serviceById = services.reduce((acc, s) => { acc[s.id] = s; return acc; }, {});
+  const userById = users.reduce((acc, u) => { acc[u.id] = u; return acc; }, {});
 
   useEffect(() => {
+    const loadMarketplaceData = async () => {
+      setLoading(true);
+      try {
+        const [servicesSnap, ordersSnap, vendorsSnap, usersSnap] = await Promise.all([
+          getDocs(collection(db, COLLECTIONS.services)),
+          getDocs(query(collection(db, COLLECTIONS.orders), orderBy('created_at', 'desc'))),
+          getDocs(collection(db, COLLECTIONS.vendors)),
+          getDocs(collection(db, COLLECTIONS.users)),
+        ]);
+
+        setServices(servicesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setOrders(ordersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setVendors(vendorsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        console.error('Error loading marketplace data:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
     loadMarketplaceData();
   }, []);
 
-  const loadMarketplaceData = async () => {
-    setLoading(true);
-    try {
-      const [servicesData, ordersData, vendorsData] = await Promise.all([
-        Service.list(),
-        MarketplaceOrder.list('-created_date'),
-        Vendor.list()
-      ]);
-
-      setServices(servicesData);
-      setOrders(ordersData);
-      setVendors(vendorsData);
-    } catch (error) {
-      console.error("Error loading marketplace data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleServiceStatusChange = async (serviceId, newStatus) => {
     try {
-      await Service.update(serviceId, { status: newStatus });
-      await loadMarketplaceData();
-    } catch (error) {
-      console.error("Error updating service:", error);
+      await updateDoc(doc(db, COLLECTIONS.services, serviceId), { status: newStatus });
+      setServices(prev => prev.map(s => s.id === serviceId ? { ...s, status: newStatus } : s));
+    } catch (e) {
+      console.error('Error updating service:', e);
       alert('Failed to update service status.');
     }
   };
 
   const handleOrderStatusChange = async (orderId, newStatus) => {
     try {
-      await MarketplaceOrder.update(orderId, { status: newStatus });
-      await loadMarketplaceData();
-    } catch (error) {
-      console.error("Error updating order:", error);
+      await updateDoc(doc(db, COLLECTIONS.orders, orderId), { status: newStatus });
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    } catch (e) {
+      console.error('Error updating order:', e);
       alert('Failed to update order status.');
     }
   };
 
   const handleVendorAction = async (vendorId, action) => {
     try {
-      if (action === 'verify') {
-        await Vendor.update(vendorId, { verification_status: 'verified' });
-      } else if (action === 'suspend') {
-        await Vendor.update(vendorId, { verification_status: 'rejected' });
-      }
-      await loadMarketplaceData();
-    } catch (error) {
-      console.error("Error updating vendor:", error);
+      const newStatus =
+        action === 'verify' ? 'verified' :
+        action === 'suspend' ? 'rejected' : 'pending';
+      await updateDoc(doc(db, COLLECTIONS.vendors, vendorId), { verification_status: newStatus });
+      setVendors(prev => prev.map(v => v.id === vendorId ? { ...v, verification_status: newStatus } : v));
+    } catch (e) {
+      console.error('Error updating vendor:', e);
       alert('Failed to update vendor.');
     }
   };
-
-  const filteredServices = services.filter(service =>
-    service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    service.description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-  const filteredOrders = orders;
-  const filteredVendors = vendors;
 
   const stats = {
     totalServices: services.length,
     activeServices: services.filter(s => s.status === 'active').length,
     totalOrders: orders.length,
-    totalRevenue: orders.reduce((sum, o) => sum + (o.amount || 0), 0),
+    totalRevenue: orders.reduce((sum, o) => sum + Number(o.amount_usd || o.amount || 0), 0),
     totalVendors: vendors.length,
     verifiedVendors: vendors.filter(v => v.verification_status === 'verified').length
   };
@@ -99,7 +113,7 @@ export default function MarketplaceAdmin() {
           </h1>
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats */}
         <div className="grid md:grid-cols-4 gap-6 mb-8">
           <Card className="shadow-sm">
             <CardContent className="p-6">
@@ -112,7 +126,7 @@ export default function MarketplaceAdmin() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="shadow-sm">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -141,7 +155,7 @@ export default function MarketplaceAdmin() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-emerald-600">${stats.totalRevenue}</div>
+                  <div className="text-2xl font-bold text-emerald-600">${stats.totalRevenue.toFixed(2)}</div>
                   <p className="text-gray-600">Total Revenue</p>
                 </div>
                 <DollarSign className="w-8 h-8 text-emerald-200" />
@@ -150,7 +164,6 @@ export default function MarketplaceAdmin() {
           </Card>
         </div>
 
-        {/* Tabs */}
         {loading ? (
           <div className="text-center text-gray-500 text-lg mt-10">Loading marketplace data...</div>
         ) : (
@@ -161,6 +174,7 @@ export default function MarketplaceAdmin() {
               <TabsTrigger value="vendors">Vendors</TabsTrigger>
             </TabsList>
 
+            {/* Services */}
             <TabsContent value="services" className="mt-4">
               <Card className="shadow-lg">
                 <CardHeader>
@@ -180,28 +194,28 @@ export default function MarketplaceAdmin() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredServices.length === 0 ? (
+                        {services.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={6} className="text-center text-gray-500">No services found.</TableCell>
                           </TableRow>
                         ) : (
-                          filteredServices.map((service) => {
-                            const vendor = vendors.find(v => v.id === service.vendor_id);
+                          services.map(service => {
+                            const vendor = vendorById[service.vendor_id];
                             return (
                               <TableRow key={service.id}>
                                 <TableCell className="font-medium">{service.name}</TableCell>
                                 <TableCell>{vendor?.business_name || 'Unknown'}</TableCell>
                                 <TableCell>
-                                  <Badge variant="outline">{service.category}</Badge>
+                                  <Badge variant="outline">{service.category || 'General'}</Badge>
                                 </TableCell>
-                                <TableCell>${service.price_usd}</TableCell>
+                                <TableCell>${Number(service.price_usd || 0)}</TableCell>
                                 <TableCell>
                                   <Badge variant={
                                     service.status === 'active' ? 'default' :
                                     service.status === 'pending' ? 'secondary' :
                                     service.status === 'inactive' ? 'destructive' : 'outline'
                                   }>
-                                    {service.status}
+                                    {service.status || 'inactive'}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
@@ -209,7 +223,12 @@ export default function MarketplaceAdmin() {
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      onClick={() => handleServiceStatusChange(service.id, service.status === 'active' ? 'inactive' : 'active')}
+                                      onClick={() =>
+                                        handleServiceStatusChange(
+                                          service.id,
+                                          (service.status === 'active') ? 'inactive' : 'active'
+                                        )
+                                      }
                                       title={`Toggle Status to ${service.status === 'active' ? 'Inactive' : 'Active'}`}
                                     >
                                       <ToggleLeft className="w-4 h-4" />
@@ -227,6 +246,7 @@ export default function MarketplaceAdmin() {
               </Card>
             </TabsContent>
 
+            {/* Orders */}
             <TabsContent value="orders" className="mt-4">
               <Card className="shadow-lg">
                 <CardHeader>
@@ -245,24 +265,30 @@ export default function MarketplaceAdmin() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredOrders.length === 0 ? (
+                        {orders.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={5} className="text-center text-gray-500">No orders found.</TableCell>
                           </TableRow>
                         ) : (
-                          filteredOrders.map(order => {
+                          orders.map(order => {
+                            const svc = serviceById[order.service_id];
+                            const student = userById[order.student_id];
                             return (
                               <TableRow key={order.id}>
-                                <TableCell className="font-medium">{order.service_name}</TableCell>
-                                <TableCell>{order.student_name}</TableCell>
-                                <TableCell>${order.amount_usd || order.amount}</TableCell>
+                                <TableCell className="font-medium">
+                                  {order.service_name || svc?.name || 'Service'}
+                                </TableCell>
+                                <TableCell>
+                                  {student?.full_name || order.student_name || 'Student'}
+                                </TableCell>
+                                <TableCell>${Number(order.amount_usd || order.amount || 0)}</TableCell>
                                 <TableCell>
                                   <Badge variant={
                                     order.status === 'completed' ? 'default' :
                                     order.status === 'in_progress' ? 'secondary' :
                                     order.status === 'cancelled' ? 'destructive' : 'outline'
                                   }>
-                                    {order.status}
+                                    {order.status || 'pending'}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
@@ -286,6 +312,7 @@ export default function MarketplaceAdmin() {
               </Card>
             </TabsContent>
 
+            {/* Vendors */}
             <TabsContent value="vendors" className="mt-4">
               <Card className="shadow-lg">
                 <CardHeader>
@@ -303,25 +330,25 @@ export default function MarketplaceAdmin() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredVendors.length === 0 ? (
+                        {vendors.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={4} className="text-center text-gray-500">No vendors found.</TableCell>
                           </TableRow>
                         ) : (
-                          filteredVendors.map(vendor => (
+                          vendors.map(vendor => (
                             <TableRow key={vendor.id}>
-                              <TableCell className="font-medium">{vendor.business_name}</TableCell>
-                              <TableCell>{vendor.email}</TableCell>
+                              <TableCell className="font-medium">{vendor.business_name || '—'}</TableCell>
+                              <TableCell>{vendor.email || '—'}</TableCell>
                               <TableCell>
                                 <Badge variant={
                                   vendor.verification_status === 'verified' ? 'default' :
                                   vendor.verification_status === 'pending' ? 'secondary' :
                                   vendor.verification_status === 'rejected' ? 'destructive' : 'outline'
                                 }>
-                                  {vendor.verification_status}
+                                  {vendor.verification_status || 'pending'}
                                 </Badge>
                               </TableCell>
-                              <TableCell>
+                              <TableCell className="flex gap-2">
                                 <Button
                                   variant="ghost"
                                   size="icon"

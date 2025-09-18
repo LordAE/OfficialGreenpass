@@ -4,13 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, MapPin, GraduationCap, Star, Filter, Globe, Users, Zap, Loader2, ArrowRight } from "lucide-react";
+import { Search, MapPin, GraduationCap, Users, Loader2, ArrowRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "react-router-dom"; 
 import { createPageUrl } from '@/utils';
-import LevelSelector from '../components/LevelSelector';
 import ProvinceSelector from '../components/ProvinceSelector';
-import { getLevelLabel } from '../components/utils/EducationLevels';
 import { getProvinceLabel } from '../components/utils/CanadianProvinces';
 import _ from 'lodash';
 
@@ -19,7 +17,11 @@ const SchoolCard = ({ school, programCount }) => (
     <CardContent className="p-0">
       <div className="aspect-video overflow-hidden rounded-t-lg bg-gradient-to-br from-blue-100 to-green-100">
         <img
-          src={school.school_image_url || school.institution_logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=800&h=600&fit=crop&q=80'}
+          src={
+            school.school_image_url ||
+            school.institution_logo_url ||
+            'https://images.unsplash.com/photo-1562774053-701939374585?w=800&h=600&fit=crop&q=80'
+          }
           alt={school.school_name || school.institution_name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
@@ -54,7 +56,11 @@ const SchoolCard = ({ school, programCount }) => (
         </div>
 
         <div className="flex flex-col gap-3">
-          <Link to={createPageUrl(`Programs?school=${encodeURIComponent(school.school_name || school.institution_name)}`)}>
+          <Link
+            to={createPageUrl(
+              `Programs?school=${encodeURIComponent(school.school_name || school.institution_name)}`
+            )}
+          >
             <Button variant="outline" className="w-full group-hover:bg-green-50 group-hover:border-green-300">
               <GraduationCap className="w-4 h-4 mr-2" />
               View Programs
@@ -74,14 +80,12 @@ export default function Schools() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCountry, setSelectedCountry] = useState("all");
   const [selectedProvince, setSelectedProvince] = useState("all");
-  const [selectedCity, setSelectedCity] = useState("all");
-  const [selectedLevel, setSelectedLevel] = useState("all");
 
   const loadSchools = useCallback(async () => {
     setLoading(true);
     try {
-      // Load all school data without any limits
-      const schoolsData = await School.list('-created_date', 2000); // Increased limit to ensure we get all data
+      // ✅ Fixed: pass options object to match entities.js list(signature)
+      const schoolsData = await School.list(undefined, { limit: 2000 });
       console.log(`Loaded ${schoolsData.length} school records from database`);
       setAllSchools(schoolsData);
     } catch (error) {
@@ -100,10 +104,10 @@ export default function Schools() {
   const uniqueSchools = useMemo(() => {
     console.log(`Processing ${allSchools.length} total school records`);
     
-    // Group schools by school_name or institution_name (whichever is available)
-    const schoolGroups = _.groupBy(allSchools, (school) => {
-      return school.school_name || school.institution_name || 'Unknown School';
-    });
+    // Group by a stable displayed name; fallback to id to avoid lumping into "Unknown"
+    const schoolGroups = _.groupBy(allSchools, (school) =>
+      school.school_name || school.institution_name || school.id || 'Unknown School'
+    );
     
     // Convert groups to unique school cards with program counts
     const schools = Object.entries(schoolGroups).map(([schoolKey, schoolPrograms]) => {
@@ -125,7 +129,6 @@ export default function Schools() {
   }, [uniqueSchools]);
   
   const getUniqueCountries = useCallback(() => getUniqueValues('school_country'), [getUniqueValues]);
-  const getUniqueCities = useCallback(() => getUniqueValues('school_city'), [getUniqueValues]);
 
   const handleSearchChange = useCallback((e) => {
     e.preventDefault();
@@ -134,23 +137,12 @@ export default function Schools() {
 
   const handleCountryChange = useCallback((value) => {
     setSelectedCountry(value);
-    // Reset province and city when country changes
-    if (value !== selectedCountry) {
-      setSelectedProvince("all");
-      setSelectedCity("all");
-    }
-  }, [selectedCountry]);
+    // Reset province when country changes
+    setSelectedProvince("all");
+  }, []);
 
   const handleProvinceChange = useCallback((value) => {
     setSelectedProvince(value);
-    // Reset city when province changes
-    if (value !== selectedProvince) {
-      setSelectedCity("all");
-    }
-  }, [selectedProvince]);
-
-  const handleCityChange = useCallback((value) => {
-    setSelectedCity(value);
   }, []);
 
   // Filter schools based on search criteria
@@ -158,12 +150,12 @@ export default function Schools() {
     let filtered = uniqueSchools;
 
     if (searchTerm) {
-      const lowercasedSearchTerm = searchTerm.toLowerCase();
+      const lower = searchTerm.toLowerCase();
       filtered = filtered.filter(school =>
-        (school.school_name || '').toLowerCase().includes(lowercasedSearchTerm) ||
-        (school.institution_name || '').toLowerCase().includes(lowercasedSearchTerm) ||
-        (school.school_city || '').toLowerCase().includes(lowercasedSearchTerm) ||
-        (school.program_title || '').toLowerCase().includes(lowercasedSearchTerm)
+        (school.school_name || '').toLowerCase().includes(lower) ||
+        (school.institution_name || '').toLowerCase().includes(lower) ||
+        (school.school_city || '').toLowerCase().includes(lower) ||
+        (school.program_title || '').toLowerCase().includes(lower)
       );
     }
 
@@ -175,20 +167,14 @@ export default function Schools() {
       filtered = filtered.filter(school => school.school_province === selectedProvince);
     }
 
-    if (selectedCity !== "all") {
-      filtered = filtered.filter(school => school.school_city === selectedCity);
-    }
-
     setFilteredSchools(filtered);
-  }, [uniqueSchools, searchTerm, selectedCountry, selectedProvince, selectedCity]);
+  }, [uniqueSchools, searchTerm, selectedCountry, selectedProvince]);
 
   const clearAllFilters = useCallback((e) => {
     e.preventDefault();
     setSearchTerm("");
     setSelectedCountry("all");
     setSelectedProvince("all");
-    setSelectedCity("all");
-    setSelectedLevel("all");
   }, []);
 
   if (loading) {
@@ -277,7 +263,7 @@ export default function Schools() {
           ))}
         </div>
 
-        {filteredSchools.length === 0 && !loading && (
+        {filteredSchools.length === 0 && (
           <div className="text-center py-12">
             <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No schools found</h3>

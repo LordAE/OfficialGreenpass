@@ -1,13 +1,18 @@
+// src/pages/MyOrders.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { MarketplaceOrder } from '@/api/entities';
-import { User } from '@/api/entities';
-import { Service } from '@/api/entities';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShoppingCart, Loader2, Info } from 'lucide-react';
 import { format } from 'date-fns';
+
+// --- Firebase ---
+import { db } from '@/firebase';
+import {
+  collection, query, where, getDocs, doc, getDoc, updateDoc, orderBy
+} from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const StatusBadge = ({ status }) => {
   const colors = {
@@ -18,10 +23,27 @@ const StatusBadge = ({ status }) => {
     disputed: "bg-orange-100 text-orange-800",
     cancelled: "bg-red-100 text-red-800",
   };
-  return <Badge className={`${colors[status] || "bg-gray-100 text-gray-800"} capitalize`}>{status.replace('_', ' ')}</Badge>;
+  return <Badge className={`${colors[status] || "bg-gray-100 text-gray-800"} capitalize`}>{String(status || '').replace('_', ' ')}</Badge>;
 };
 
-export default function MyOrders() { 
+// Helper: batch fetch by ids (Firestore `in` supports up to 10)
+async function fetchDocsByIds(colName, ids) {
+  if (!ids || ids.length === 0) return {};
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+
+  const results = {};
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const q = query(collection(db, colName), where('__name__', 'in', chunk));
+      const snap = await getDocs(q);
+      snap.forEach((d) => (results[d.id] = { id: d.id, ...d.data() }));
+    })
+  );
+  return results;
+}
+
+export default function MyOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [services, setServices] = useState({});
@@ -30,31 +52,42 @@ export default function MyOrders() {
   const loadOrderData = useCallback(async () => {
     setLoading(true);
     try {
-      const currentUser = await User.me();
-      const orderData = await MarketplaceOrder.filter({ vendor_id: currentUser.id }, '-created_date');
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) {
+        setOrders([]);
+        setServices({});
+        setStudents({});
+        setLoading(false);
+        return;
+      }
+
+      // Orders for this vendor
+      const ordersQ = query(
+        collection(db, 'marketplace_orders'),
+        where('vendor_id', '==', user.uid),
+        orderBy('created_date', 'desc')
+      );
+      const ordersSnap = await getDocs(ordersQ);
+      const orderData = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       setOrders(orderData);
 
       if (orderData.length > 0) {
-        // Fetch related services and students
-        const serviceIds = [...new Set(orderData.map(o => o.service_id))];
-        const studentIds = [...new Set(orderData.map(o => o.student_id))];
+        // Related ids
+        const serviceIds = [...new Set(orderData.map(o => o.service_id).filter(Boolean))];
+        const studentIds = [...new Set(orderData.map(o => o.student_id).filter(Boolean))];
 
-        const [servicesData, studentsData] = await Promise.all([
-          Service.filter({ id: { $in: serviceIds } }),
-          User.filter({ id: { $in: studentIds } })
+        // Batch fetch related docs
+        const [servicesMap, studentsMap] = await Promise.all([
+          fetchDocsByIds('services', serviceIds),
+          fetchDocsByIds('users', studentIds)
         ]);
 
-        const servicesMap = servicesData.reduce((acc, s) => {
-          acc[s.id] = s;
-          return acc;
-        }, {});
         setServices(servicesMap);
-
-        const studentsMap = studentsData.reduce((acc, s) => {
-          acc[s.id] = s;
-          return acc;
-        }, {});
         setStudents(studentsMap);
+      } else {
+        setServices({});
+        setStudents({});
       }
     } catch (error) {
       console.error("Error loading orders:", error);
@@ -69,8 +102,7 @@ export default function MyOrders() {
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
-      await MarketplaceOrder.update(orderId, { status: newStatus });
-      // Refresh data to show the update
+      await updateDoc(doc(db, 'marketplace_orders', orderId), { status: newStatus });
       await loadOrderData();
     } catch (error) {
       console.error("Error updating order status:", error);
@@ -140,16 +172,31 @@ export default function MyOrders() {
                   {orders.map(order => {
                     const service = services[order.service_id];
                     const student = students[order.student_id];
+
+                    // Handle Timestamp or string date
+                    const dt = order.created_date?.toDate
+                      ? order.created_date.toDate()
+                      : order.created_date
+                      ? new Date(order.created_date)
+                      : null;
+
+                    const amount =
+                      typeof order.amount_usd === 'number'
+                        ? order.amount_usd
+                        : typeof order.amount === 'number'
+                        ? order.amount
+                        : 0;
+
                     return (
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">{service?.name || 'Service not found'}</TableCell>
-                        <TableCell>{student?.full_name || 'Customer not found'}</TableCell>
-                        <TableCell>{format(new Date(order.created_date), 'MMM dd, yyyy')}</TableCell>
-                        <TableCell>${order.amount_usd.toFixed(2)}</TableCell>
+                        <TableCell>{student?.full_name || student?.email || 'Customer not found'}</TableCell>
+                        <TableCell>{dt ? format(dt, 'MMM dd, yyyy') : '-'}</TableCell>
+                        <TableCell>${amount.toFixed(2)}</TableCell>
                         <TableCell><StatusBadge status={order.status} /></TableCell>
                         <TableCell>
                           <Select
-                            value={order.status}
+                            value={order.status || 'pending'}
                             onValueChange={(newStatus) => handleStatusChange(order.id, newStatus)}
                           >
                             <SelectTrigger className="w-[180px]">
@@ -161,6 +208,7 @@ export default function MyOrders() {
                               <SelectItem value="in_progress">In Progress</SelectItem>
                               <SelectItem value="completed">Completed</SelectItem>
                               <SelectItem value="cancelled">Cancelled</SelectItem>
+                              <SelectItem value="disputed">Disputed</SelectItem>
                             </SelectContent>
                           </Select>
                         </TableCell>

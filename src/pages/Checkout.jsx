@@ -1,268 +1,328 @@
-
-import React, { useState, useEffect } from 'react';
+// src/pages/Checkout.jsx
+import React, { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle, AlertTriangle, Package, CreditCard } from 'lucide-react';
-import { User } from '@/api/entities';
-import { VisaPackage } from '@/api/entities';
-import { TutorPackage } from '@/api/entities';
-import { StudentTutorPackage } from '@/api/entities';
-import { TutoringSession } from '@/api/entities'; // Added for new package type
-import { Case } from '@/api/entities';
-import SharedPaymentGateway from '../components/payments/SharedPaymentGateway';
-import { createPageUrl } from '@/utils';
-import { useNavigate } from 'react-router-dom';
+import { Loader2, AlertTriangle, Package as PackageIcon, CheckCircle, CreditCard } from "lucide-react";
+
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+
+// Firebase
+import { db, auth } from "@/firebase";
+import {
+  doc,
+  getDoc,
+  getDocs,
+  collection,
+  query,
+  where,
+  limit,
+  addDoc,
+  serverTimestamp,
+  updateDoc,
+  increment,
+} from "firebase/firestore";
+
+import SharedPaymentGateway from "../components/payments/SharedPaymentGateway";
 
 export default function Checkout() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [packageData, setPackageData] = useState(null);
-  const [user, setUser] = useState(null);
+  const [pkg, setPkg] = useState(null);
+  const [userDoc, setUserDoc] = useState(null);
+
   const navigate = useNavigate();
 
-  // Get URL parameters with extensive debugging
   const urlParams = new URLSearchParams(window.location.search);
-  const packageType = urlParams.get('type');
-  const packageId = urlParams.get('packageId') || urlParams.get('package') || urlParams.get('id');
-  
-  // Debug logging
-  console.log('Checkout Debug Info:', {
-    fullUrl: window.location.href,
-    searchParams: window.location.search,
-    packageType,
-    packageId,
-    allParams: Object.fromEntries(urlParams.entries())
-  });
+  const packageType = urlParams.get("type");
+  const packageId =
+    urlParams.get("packageId") || urlParams.get("package") || urlParams.get("id");
 
+  // ---------- helpers ----------
+  const getUserDocRef = () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return null;
+    return doc(db, "users", uid);
+  };
+
+  const safePrice = (v) => Number(v || 0);
+
+  const findByIdOrName = async (colName, idOrName) => {
+    // First try getDoc by id
+    const byIdRef = doc(db, colName, idOrName);
+    const byIdSnap = await getDoc(byIdRef);
+    if (byIdSnap.exists()) return { id: byIdSnap.id, ...byIdSnap.data() };
+
+    // fallback: query by name
+    const q = query(collection(db, colName), where("name", "==", idOrName), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const d = snap.docs[0];
+      return { id: d.id, ...d.data() };
+    }
+    return null;
+  };
+
+  const loadPackage = async (type, id) => {
+    switch (type) {
+      case "visa": {
+        const p = await findByIdOrName("visa_packages", id);
+        return p
+          ? {
+              ...p,
+              type: "visa",
+              price_usd: p.price_usd ?? p.price ?? 0,
+              name: p.name || "Unnamed Package",
+              description: p.description || "No description available",
+              features: p.features || p.key_benefits || [],
+            }
+          : null;
+      }
+      case "tutor": {
+        const p = await findByIdOrName("tutor_packages", id);
+        return p
+          ? {
+              ...p,
+              type: "tutor",
+              price_usd: p.price_usd ?? p.price ?? 0,
+              name: p.name || "Unnamed Package",
+              description: p.description || "No description available",
+              features: p.features || p.key_benefits || [],
+            }
+          : null;
+      }
+      case "student_tutor": {
+        const p = await findByIdOrName("student_tutor_packages", id);
+        return p
+          ? {
+              ...p,
+              type: "student_tutor",
+              price_usd: p.price_usd ?? p.price ?? 0,
+              name: p.name || "Unnamed Package",
+              description: p.description || "No description available",
+              features: p.features || p.key_benefits || [],
+              num_sessions: p.num_sessions || 1,
+            }
+          : null;
+      }
+      case "tutoring_session": {
+        // direct by id
+        const sRef = doc(db, "tutoring_sessions", id);
+        const sSnap = await getDoc(sRef);
+        if (!sSnap.exists()) return null;
+        const s = { id: sSnap.id, ...sSnap.data() };
+        return {
+          id: s.id,
+          type: "tutoring_session",
+          name: `Tutoring Session - ${s.subject || "Session"}`,
+          description: `${s.duration || 60} minute session`,
+          price_usd: s.price ?? s.price_usd ?? 0,
+          features: [`Subject: ${s.subject || "-"}`, `Duration: ${s.duration || 60} minutes`],
+        };
+      }
+      case "marketplace_order": {
+        const orderRef = doc(db, "marketplace_orders", id);
+        const orderSnap = await getDoc(orderRef);
+        if (!orderSnap.exists()) return null;
+        const order = { id: orderSnap.id, ...orderSnap.data() };
+
+        let serviceName = "Service";
+        let serviceDesc = "";
+        if (order.service_id) {
+          const svcRef = doc(db, "services", order.service_id);
+          const svcSnap = await getDoc(svcRef);
+          if (svcSnap.exists()) {
+            const svc = svcSnap.data();
+            serviceName = svc.name || serviceName;
+            serviceDesc = svc.description || "";
+          }
+        }
+
+        return {
+          id: order.id,
+          type: "marketplace_order",
+          name: serviceName,
+          description: serviceDesc,
+          price_usd: order.amount_usd ?? order.amount ?? 0,
+          features: [serviceName, order.category ? `Category: ${order.category}` : null].filter(
+            Boolean
+          ),
+        };
+      }
+      default:
+        throw new Error(
+          `Invalid package type: ${type}. Expected: visa, tutor, student_tutor, tutoring_session, marketplace_order`
+        );
+    }
+  };
+
+  // ---------- load ----------
   useEffect(() => {
-    const loadData = async () => {
+    (async () => {
       try {
         setLoading(true);
         setError(null);
 
-        console.log('Loading checkout data with:', { packageType, packageId });
-        console.log('Current URL:', window.location.href);
-        console.log('URL Search Params:', window.location.search);
-
-        // Load current user
-        const currentUser = await User.me();
-        setUser(currentUser);
-
-        // Validate parameters
         if (!packageType) {
-          throw new Error(`Package type is missing from URL. Current URL: ${window.location.href}. Expected ?type=visa or ?type=tutor etc.`);
+          throw new Error(
+            `Package type is missing from URL. Expected ?type=visa|tutor|student_tutor|tutoring_session|marketplace_order`
+          );
         }
-
         if (!packageId) {
-          throw new Error(`Package ID is missing from URL. Current URL: ${window.location.href}. Expected ?packageId=... parameter.`);
+          throw new Error(`Package ID is missing from URL. Expected ?packageId=...`);
         }
 
-        // Load package data based on type
-        let pkg = null;
-        let allPackages = [];
+        // user
+        const userRef = getUserDocRef();
+        if (!userRef) throw new Error("You must be signed in to checkout.");
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) throw new Error("User profile not found.");
+        setUserDoc({ id: userSnap.id, ...userSnap.data() });
 
-        try {
-          switch (packageType) {
-            case 'visa':
-              allPackages = await VisaPackage.list();
-              console.log('Available visa packages:', allPackages);
-              pkg = allPackages.find(p => p.id === packageId || p.name === packageId);
-              break;
-              
-            case 'tutor':
-              allPackages = await TutorPackage.list();
-              console.log('Available tutor packages:', allPackages);
-              pkg = allPackages.find(p => p.id === packageId || p.name === packageId);
-              break;
-              
-            case 'student_tutor':
-              allPackages = await StudentTutorPackage.list();
-              console.log('Available student tutor packages:', allPackages);
-              pkg = allPackages.find(p => p.id === packageId || p.name === packageId);
-              break;
-
-            case 'tutoring_session':
-              // Handle tutoring sessions
-              const sessions = await TutoringSession.list();
-              const session = sessions.find(s => s.id === packageId);
-              if (session) {
-                pkg = {
-                  id: session.id,
-                  name: `Tutoring Session - ${session.subject}`,
-                  description: `${session.duration} minute session`,
-                  price_usd: session.price,
-                  features: [`Subject: ${session.subject}`, `Duration: ${session.duration} minutes`],
-                  type: 'tutoring_session'
-                };
-              }
-              break;
-              
-            case 'marketplace_order':
-              // Handle marketplace orders
-              const { MarketplaceOrder } = await import('@/api/entities');
-              const { Service } = await import('@/api/entities');
-              
-              const orders = await MarketplaceOrder.list();
-              const order = orders.find(o => o.id === packageId);
-              
-              if (order) {
-                const services = await Service.list();
-                const service = services.find(s => s.id === order.service_id);
-                
-                if (service) {
-                  pkg = {
-                    id: order.id,
-                    name: service.name,
-                    description: service.description,
-                    price_usd: order.amount_usd,
-                    features: [`Service: ${service.name}`, `Category: ${service.category}`],
-                    type: 'marketplace_order'
-                  };
-                }
-              }
-              break;
-              
-            default:
-              throw new Error(`Invalid package type: ${packageType}. Expected: visa, tutor, student_tutor, tutoring_session, or marketplace_order`);
-          }
-        } catch (dbError) {
-          console.error('Database error loading packages:', dbError);
-          throw new Error(`Failed to load packages from database: ${dbError.message}`);
+        // package
+        const pkgLoaded = await loadPackage(packageType, packageId);
+        if (!pkgLoaded) {
+          throw new Error(
+            `Package not found for type=${packageType}, id/name=${packageId}.`
+          );
         }
-
-        console.log('Found package:', pkg);
-        console.log('All available packages:', allPackages);
-
-        if (!pkg) {
-          const availableIds = allPackages.map(p => p.id || p.name).filter(Boolean);
-          throw new Error(`Package not found. Looking for ID: "${packageId}" in type: "${packageType}". Available packages: [${availableIds.join(', ')}]. Current URL: ${window.location.href}`);
-        }
-
-        // Ensure package has required fields
-        const finalPackage = {
-          ...pkg,
-          type: packageType,
-          price_usd: pkg.price_usd || pkg.price || 0,
-          name: pkg.name || 'Unnamed Package',
-          description: pkg.description || 'No description available',
-          features: pkg.features || pkg.key_benefits || []
-        };
-
-        console.log('Final package data:', finalPackage);
-        setPackageData(finalPackage);
-
-      } catch (err) {
-        console.error('Checkout error details:', err);
-        setError(err.message || 'Failed to load package information. Please try again.');
+        setPkg(pkgLoaded);
+      } catch (e) {
+        console.error("Checkout load error:", e);
+        setError(e.message || "Failed to load package information.");
       } finally {
         setLoading(false);
       }
-    };
-
-    loadData();
+    })();
   }, [packageType, packageId]);
 
-  // Fixed: Proper payment success handling
+  // ---------- payment handlers ----------
   const handlePaymentSuccess = async (paymentData) => {
     try {
       setLoading(true);
-      
-      // Update user with purchased package
-      const currentPackages = user.purchased_packages || [];
-      const currentTutorPackages = user.purchased_tutor_packages || [];
-      
-      let updatedUserData = {};
-      
-      switch (packageData.type) {
-        case 'visa':
-          // Add to purchased packages and update user type to student
-          updatedUserData = {
-            purchased_packages: [...currentPackages, packageData.name],
-            user_type: 'student' // Upgrade from 'user' to 'student'
-          };
-          
-          // Create a case for the visa application
-          await Case.create({
-            student_id: user.id,
-            case_type: packageData.name,
-            package_id: packageData.id,
-            status: 'Application Started',
-            case_requirements: packageData.doc_requirements || [],
-            case_upload_tips: packageData.upload_tips || [],
-            checklist: (packageData.doc_requirements || []).map(req => ({
-              task: req.label,
-              status: 'pending'
+      setError(null);
+
+      const userRef = getUserDocRef();
+      if (!userRef) throw new Error("No authenticated user.");
+
+      // Record the payment (optional but recommended)
+      await addDoc(collection(db, "payments"), {
+        user_id: userRef.id,
+        related_entity_type: `${pkg.type}_package_purchase`,
+        related_entity_id: pkg.id,
+        amount_usd: safePrice(pkg.price_usd),
+        status: "successful",
+        provider: paymentData?.provider || "PayPal",
+        transaction_id: paymentData?.transactionId || paymentData?.id || null,
+        created_date: serverTimestamp(),
+        meta: {
+          description: `${pkg.name} - ${pkg.type} package`,
+        },
+      });
+
+      // Update user and create case if needed
+      const u = userDoc || {};
+      const updates = {};
+
+      switch (pkg.type) {
+        case "visa": {
+          const purchased = Array.isArray(u.purchased_packages) ? u.purchased_packages : [];
+          updates.purchased_packages = [...purchased, pkg.name];
+          // Upgrade type if needed
+          if (u.user_type !== "student") updates.user_type = "student";
+
+          // Create a case
+          await addDoc(collection(db, "cases"), {
+            student_id: userRef.id,
+            case_type: pkg.name,
+            package_id: pkg.id,
+            status: "Application Started",
+            case_requirements: pkg.doc_requirements || [],
+            case_upload_tips: pkg.upload_tips || [],
+            checklist: (pkg.doc_requirements || []).map((r) => ({
+              task: r.label || String(r),
+              status: "pending",
             })),
-            timeline: [{
-              event: 'Package purchased and case created',
-              date: new Date().toISOString(),
-              actor: 'system'
-            }]
+            timeline: [
+              {
+                event: "Package purchased and case created",
+                date: new Date().toISOString(),
+                actor: "system",
+              },
+            ],
+            created_date: serverTimestamp(),
           });
           break;
-          
-        case 'tutor':
-          updatedUserData = {
-            purchased_tutor_packages: [...currentTutorPackages, packageData.name],
-            user_type: 'tutor' // Set user type to tutor
-          };
+        }
+
+        case "tutor": {
+          const tPurchased = Array.isArray(u.purchased_tutor_packages)
+            ? u.purchased_tutor_packages
+            : [];
+          updates.purchased_tutor_packages = [...tPurchased, pkg.name];
+          // Set user as tutor if that’s your intended flow
+          if (u.user_type !== "tutor") updates.user_type = "tutor";
           break;
-          
-        case 'student_tutor':
-          const sessionCredits = user.session_credits || 0;
-          updatedUserData = {
-            session_credits: sessionCredits + (packageData.num_sessions || 1)
-          };
+        }
+
+        case "student_tutor": {
+          // add session credits
+          const credits = Number(u.session_credits || 0);
+          updates.session_credits = credits + Number(pkg.num_sessions || 1);
           break;
-        
-        case 'tutoring_session':
-            // No direct user update needed for a single session purchase, but could add history
-            break;
-          
-        case 'marketplace_order':
-          // No specific user data updates needed for marketplace orders
+        }
+
+        case "tutoring_session":
+          // You could add a “history” entry here if desired
+          break;
+
+        case "marketplace_order":
+          // No user field changes by default
+          break;
+
+        default:
           break;
       }
-      
-      // Update user data if there's anything to update
-      if (Object.keys(updatedUserData).length > 0) {
-        await User.updateMyUserData(updatedUserData);
+
+      if (Object.keys(updates).length) {
+        await updateDoc(userRef, updates);
       }
-      
-      // Redirect to appropriate success page
-      switch (packageData.type) {
-        case 'visa':
-          navigate(createPageUrl('VisaRequests'));
+
+      // Navigate to the right place
+      switch (pkg.type) {
+        case "visa":
+          navigate(createPageUrl("VisaRequests"));
           break;
-        case 'tutor':
-          navigate(createPageUrl('TutorAvailability'));
+        case "tutor":
+          navigate(createPageUrl("TutorAvailability"));
           break;
-        case 'student_tutor':
-          navigate(createPageUrl('Tutors'));
+        case "student_tutor":
+          navigate(createPageUrl("Tutors"));
           break;
-        case 'tutoring_session':
-          navigate(createPageUrl('StudentDashboard')); // Or a specific session confirmation page
+        case "tutoring_session":
+          navigate(createPageUrl("StudentDashboard"));
           break;
-        case 'marketplace_order':
-          navigate(createPageUrl('Dashboard'));
+        case "marketplace_order":
+          navigate(createPageUrl("Dashboard"));
           break;
         default:
-          navigate(createPageUrl('Dashboard'));
+          navigate(createPageUrl("Dashboard"));
       }
-      
-    } catch (err) {
-      console.error('Error processing successful payment:', err);
-      setError('Payment was successful, but there was an error updating your account. Please contact support.');
+    } catch (e) {
+      console.error("Post-payment update error:", e);
+      setError(
+        "Payment succeeded, but we couldn't update your account. Please contact support."
+      );
       setLoading(false);
     }
   };
 
-  // Fixed: Proper payment error handling
-  const handlePaymentError = (error) => {
-    console.error('Payment error:', error);
-    setError(error.message || 'Payment failed. Please try again.');
+  const handlePaymentError = (err) => {
+    console.error("Payment error:", err);
+    setError(err?.message || "Payment failed. Please try again.");
   };
 
+  // ---------- UI ----------
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -283,7 +343,7 @@ export default function Checkout() {
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Checkout Error</h2>
             <p className="text-gray-600 mb-4 text-sm">{error}</p>
             <div className="flex flex-col gap-2">
-              <Button onClick={() => navigate(createPageUrl('Dashboard'))} variant="outline">
+              <Button onClick={() => navigate(createPageUrl("Dashboard"))} variant="outline">
                 Return to Dashboard
               </Button>
               <Button onClick={() => window.location.reload()} size="sm" variant="ghost">
@@ -296,15 +356,15 @@ export default function Checkout() {
     );
   }
 
-  if (!packageData) {
+  if (!pkg) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardContent className="p-6 text-center">
-            <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <PackageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Package Not Found</h2>
             <p className="text-gray-600 mb-4">The requested package could not be found.</p>
-            <Button onClick={() => navigate(createPageUrl('Dashboard'))} variant="outline">
+            <Button onClick={() => navigate(createPageUrl("Dashboard"))} variant="outline">
               Return to Dashboard
             </Button>
           </CardContent>
@@ -326,22 +386,22 @@ export default function Checkout() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Package className="w-5 h-5" />
+                <PackageIcon className="w-5 h-5" />
                 Package Summary
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <h3 className="text-xl font-semibold text-gray-900">{packageData.name}</h3>
-                <p className="text-gray-600 mt-1">{packageData.description}</p>
+                <h3 className="text-xl font-semibold text-gray-900">{pkg.name}</h3>
+                <p className="text-gray-600 mt-1">{pkg.description}</p>
               </div>
-              
-              {packageData.features && packageData.features.length > 0 && (
+
+              {pkg.features?.length > 0 && (
                 <div>
                   <h4 className="font-medium text-gray-900 mb-2">Included:</h4>
                   <ul className="space-y-1">
-                    {packageData.features.map((feature, index) => (
-                      <li key={index} className="flex items-center gap-2 text-sm text-gray-600">
+                    {pkg.features.map((feature, idx) => (
+                      <li key={idx} className="flex items-center gap-2 text-sm text-gray-600">
                         <CheckCircle className="w-4 h-4 text-green-500" />
                         {feature}
                       </li>
@@ -349,12 +409,12 @@ export default function Checkout() {
                   </ul>
                 </div>
               )}
-              
+
               <div className="border-t pt-4">
                 <div className="flex justify-between items-center">
                   <span className="text-lg font-semibold">Total:</span>
                   <span className="text-2xl font-bold text-green-600">
-                    ${packageData.price_usd || 0}
+                    ${safePrice(pkg.price_usd)}
                   </span>
                 </div>
               </div>
@@ -371,10 +431,10 @@ export default function Checkout() {
             </CardHeader>
             <CardContent>
               <SharedPaymentGateway
-                entityType={`${packageData.type}_package_purchase`}
-                entityId={packageData.id}
-                amount={packageData.price_usd || 0}
-                description={`${packageData.name} - ${packageData.type} package`}
+                entityType={`${pkg.type}_package_purchase`}
+                entityId={pkg.id}
+                amount={safePrice(pkg.price_usd)}
+                description={`${pkg.name} - ${pkg.type} package`}
                 onSuccess={handlePaymentSuccess}
                 onError={handlePaymentError}
               />

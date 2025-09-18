@@ -1,11 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { VisaPackage } from '@/api/entities';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, CheckCircle, ArrowRight, Sparkles, FileText } from "lucide-react";
-import { Link } from 'react-router-dom'; // useNavigate removed as it's no longer used
-import { createPageUrl } from '@/utils';
 import IconResolver from '@/components/IconResolver';
 
 export default function VisaPackagesPage() {
@@ -16,36 +13,42 @@ export default function VisaPackagesPage() {
     const fetchPackages = async () => {
       try {
         const packageData = await VisaPackage.list();
-        console.log('Loaded visa packages:', packageData);
-        setPackages(packageData);
+        setPackages(Array.isArray(packageData) ? packageData : []);
       } catch (error) {
         console.error("Failed to fetch visa packages:", error);
+        setPackages([]); // ensure array
       } finally {
         setLoading(false);
       }
     };
     fetchPackages();
   }, []);
-  
-  const handleGetStarted = (pkg) => { // Removed 'async' keyword as no 'await' calls are made
+
+  const priceDisplay = (pkg) => {
+    const value = Number(
+      pkg?.price ?? pkg?.price_usd ?? pkg?.priceUSD ?? pkg?.amount
+    );
+    if (!Number.isFinite(value)) return '—';
     try {
-      console.log('Getting started with package:', pkg);
-      
-      // Validate package has ID
-      if (!pkg.id && !pkg.name) {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0,
+      }).format(value);
+    } catch {
+      return `$${value}`;
+    }
+  };
+
+  const handleGetStarted = (pkg) => {
+    try {
+      if (!pkg || (!pkg.id && !pkg.name)) {
         alert('Package information is incomplete. Please try again.');
         return;
       }
-      
       const packageId = pkg.id || pkg.name;
-      
-      // Use direct URL navigation to avoid any React Router issues
       const checkoutUrl = `/Checkout?type=visa&packageId=${encodeURIComponent(packageId)}`;
-      console.log('Direct navigation to:', checkoutUrl);
-      
-      // Force a direct navigation using window.location
       window.location.href = checkoutUrl;
-      
     } catch (error) {
       console.error('Error in handleGetStarted:', error);
       alert('Navigation failed. Please try again.');
@@ -75,12 +78,12 @@ export default function VisaPackagesPage() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 items-stretch max-w-7xl mx-auto">
           {packages.map((pkg) => (
             <Card
-              key={pkg.id}
+              key={pkg.id || pkg.name}
               className={`flex flex-col rounded-xl shadow-lg transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 ${
-                pkg.popular ? 'border-2 border-green-500 relative' : 'border'
+                pkg?.popular ? 'border-2 border-green-500 relative' : 'border'
               }`}
             >
-              {pkg.popular && (
+              {pkg?.popular && (
                 <div className="absolute -top-4 right-4 bg-green-500 text-white px-4 py-1 rounded-full text-sm font-semibold flex items-center gap-1 shadow-lg">
                   <Sparkles className="w-4 h-4" />
                   Most Popular
@@ -88,19 +91,25 @@ export default function VisaPackagesPage() {
               )}
               <CardHeader className="text-center pb-4">
                 <div className="mx-auto bg-green-100 text-green-600 p-4 rounded-full w-fit mb-4">
-                   <IconResolver name={pkg.icon || 'GraduationCap'} className="w-8 h-8" />
+                  <IconResolver name={pkg?.icon || 'GraduationCap'} className="w-8 h-8" />
                 </div>
-                <CardTitle className="text-2xl font-bold">{pkg.name}</CardTitle>
-                <CardDescription className="text-gray-600 text-base">{pkg.description}</CardDescription>
+                <CardTitle className="text-2xl font-bold">
+                  {pkg?.name || 'Visa Package'}
+                </CardTitle>
+                <CardDescription className="text-gray-600 text-base">
+                  {pkg?.description || 'Comprehensive support to prepare and submit your application.'}
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow flex flex-col justify-between px-6 pb-8">
                 <div className="mb-8">
                   <div className="text-center mb-6">
-                    <span className="text-4xl font-extrabold text-gray-900">${pkg.price}</span>
+                    <span className="text-4xl font-extrabold text-gray-900">
+                      {priceDisplay(pkg)}
+                    </span>
                     <span className="text-lg text-gray-500"> USD</span>
                   </div>
                   <ul className="space-y-4">
-                    {(pkg.features || []).map((feature, index) => (
+                    {(Array.isArray(pkg?.features) ? pkg.features : []).map((feature, index) => (
                       <li key={index} className="flex items-start">
                         <CheckCircle className="w-5 h-5 text-green-500 mr-3 mt-1 flex-shrink-0" />
                         <span className="text-gray-700">{feature}</span>
@@ -108,9 +117,9 @@ export default function VisaPackagesPage() {
                     ))}
                   </ul>
                 </div>
-                <Button 
-                  onClick={() => handleGetStarted(pkg)} 
-                  size="lg" 
+                <Button
+                  onClick={() => handleGetStarted(pkg)}
+                  size="lg"
                   className="w-full bg-green-600 hover:bg-green-700 text-lg font-semibold group"
                 >
                   Get Started
@@ -121,7 +130,7 @@ export default function VisaPackagesPage() {
           ))}
         </div>
 
-        {packages.length === 0 && !loading && (
+        {packages.length === 0 && (
           <div className="text-center py-12">
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No packages available</h3>

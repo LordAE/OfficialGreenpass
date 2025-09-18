@@ -1,12 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { User } from '@/api/entities';
 import { Agent } from '@/api/entities';
 import { School } from '@/api/entities';
 import { Tutor } from '@/api/entities';
 import { TutoringSession } from '@/api/entities';
-import { Case } from '@/api/entities';
+import { Case } from '@/api/entities'; // kept if you later add support
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,15 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  User as UserIcon, 
-  Briefcase, 
-  FileText, 
-  BookOpen, 
-  Save, 
-  Building, 
-  MapPin, 
-  Globe, 
+import {
+  Briefcase,
+  FileText,
+  BookOpen,
+  Save,
+  Building,
+  MapPin,
+  Globe,
   DollarSign,
   Calendar,
   Star,
@@ -38,7 +35,9 @@ import {
 } from "lucide-react";
 import { format } from 'date-fns';
 
-const SchoolDetails = ({ user, schoolData, enrolledStudents, studentsPage, setStudentsPage, totalStudents }) => (
+/* ----------------------- School Details ----------------------- */
+
+const SchoolDetails = ({ schoolData }) => (
   <Tabs defaultValue="info" className="space-y-6">
     <TabsList className="grid grid-cols-2 bg-red-100">
       <TabsTrigger value="info">School Info</TabsTrigger>
@@ -74,7 +73,7 @@ const SchoolDetails = ({ user, schoolData, enrolledStudents, studentsPage, setSt
               <label className="text-sm font-medium text-gray-600">Location</label>
               <p className="font-semibold flex items-center gap-1">
                 <MapPin className="w-4 h-4" />
-                {schoolData?.location}, {schoolData?.country}
+                {[schoolData?.location, schoolData?.country].filter(Boolean).join(', ') || 'N/A'}
               </p>
             </div>
             <div>
@@ -90,7 +89,9 @@ const SchoolDetails = ({ user, schoolData, enrolledStudents, studentsPage, setSt
             </div>
             <div>
               <label className="text-sm font-medium text-gray-600">Annual Tuition (USD)</label>
-              <p className="font-semibold text-green-600">${schoolData?.tuition_fees?.toLocaleString() || 'N/A'}</p>
+              <p className="font-semibold text-green-600">
+                {typeof schoolData?.tuition_fees === 'number' ? `$${schoolData.tuition_fees.toLocaleString()}` : 'N/A'}
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-600">Verification Status</label>
@@ -99,7 +100,7 @@ const SchoolDetails = ({ user, schoolData, enrolledStudents, studentsPage, setSt
               </Badge>
             </div>
           </div>
-          
+
           {schoolData?.about && (
             <div>
               <label className="text-sm font-medium text-gray-600">About</label>
@@ -107,7 +108,7 @@ const SchoolDetails = ({ user, schoolData, enrolledStudents, studentsPage, setSt
             </div>
           )}
 
-          {schoolData?.programs && schoolData.programs.length > 0 && (
+          {Array.isArray(schoolData?.programs) && schoolData.programs.length > 0 && (
             <div>
               <label className="text-sm font-medium text-gray-600">Programs ({schoolData.programs.length})</label>
               <div className="grid gap-3 mt-2">
@@ -116,11 +117,15 @@ const SchoolDetails = ({ user, schoolData, enrolledStudents, studentsPage, setSt
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-medium">{program.name}</p>
-                        <p className="text-sm text-gray-600">{program.level} - {program.duration}</p>
+                        <p className="text-sm text-gray-600">
+                          {[program.level, program.duration].filter(Boolean).join(' - ') || '—'}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-green-600">${program.tuition_per_year?.toLocaleString()}/year</p>
-                        <p className="text-sm text-gray-600">{program.available_seats} seats</p>
+                        <p className="font-semibold text-green-600">
+                          {typeof program.tuition_per_year === 'number' ? `$${program.tuition_per_year.toLocaleString()}/year` : '—'}
+                        </p>
+                        <p className="text-sm text-gray-600">{typeof program.available_seats === 'number' ? `${program.available_seats} seats` : ''}</p>
                       </div>
                     </div>
                   </div>
@@ -140,76 +145,23 @@ const SchoolDetails = ({ user, schoolData, enrolledStudents, studentsPage, setSt
             Enrolled Students
           </CardTitle>
           <CardDescription>
-            Total Enrolled Students: {totalStudents}
+            This section requires a `User` query helper (not available in your current `entities.js`). Add a backend query or persist student snapshots on enrollments to enable this list.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {enrolledStudents.length > 0 ? (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Program Enrolled</TableHead>
-                    <TableHead>Enrollment Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {enrolledStudents.map(student => (
-                    <TableRow key={student.id}>
-                      <TableCell className="font-medium">{student.full_name}</TableCell>
-                      <TableCell>{student.email}</TableCell>
-                      <TableCell>
-                        {student.programId ? (
-                          schoolData?.programs?.find(p => p.id === student.programId)?.name || 'Unknown Program'
-                        ) : 'Not specified'}
-                      </TableCell>
-                      <TableCell>{format(new Date(student.created_date), 'MMM dd, yyyy')}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              
-              <div className="flex items-center justify-between mt-4">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setStudentsPage(Math.max(1, studentsPage - 1))}
-                  disabled={studentsPage <= 1}
-                  className="flex items-center gap-2"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Previous
-                </Button>
-                
-                <span className="text-sm text-gray-600">
-                  Page {studentsPage} of {Math.ceil(totalStudents / 10)}
-                </span>
-                
-                <Button 
-                  variant="outline" 
-                  onClick={() => setStudentsPage(studentsPage + 1)}
-                  disabled={enrolledStudents.length < 10}
-                  className="flex items-center gap-2"
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </>
-          ) : (
-            <div className="text-center py-8">
-              <GraduationCap className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No enrolled students found for this school</p>
-            </div>
-          )}
+          <div className="text-center py-8">
+            <GraduationCap className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">No enrolled students available with the current API.</p>
+          </div>
         </CardContent>
       </Card>
     </TabsContent>
   </Tabs>
 );
 
-const AgentDetails = ({ user, agentData }) => (
+/* ----------------------- Agent Details ----------------------- */
+
+const AgentDetails = ({ agentData }) => (
   <div className="space-y-6">
     <Card>
       <CardHeader>
@@ -238,7 +190,9 @@ const AgentDetails = ({ user, agentData }) => (
           </div>
           <div>
             <label className="text-sm font-medium text-gray-600">Commission Rate</label>
-            <p className="font-semibold text-green-600">{agentData?.commission_rate ? `${(agentData.commission_rate * 100).toFixed(1)}%` : 'N/A'}</p>
+            <p className="font-semibold text-green-600">
+              {typeof agentData?.commission_rate === 'number' ? `${(agentData.commission_rate * 100).toFixed(1)}%` : 'N/A'}
+            </p>
           </div>
           <div>
             <label className="text-sm font-medium text-gray-600">Verification Status</label>
@@ -260,7 +214,7 @@ const AgentDetails = ({ user, agentData }) => (
           </div>
         )}
 
-        {agentData?.services_offered && agentData.services_offered.length > 0 && (
+        {Array.isArray(agentData?.services_offered) && agentData.services_offered.length > 0 && (
           <div>
             <label className="text-sm font-medium text-gray-600">Services Offered</label>
             <div className="flex flex-wrap gap-2 mt-1">
@@ -271,7 +225,7 @@ const AgentDetails = ({ user, agentData }) => (
           </div>
         )}
 
-        {agentData?.target_countries && agentData.target_countries.length > 0 && (
+        {Array.isArray(agentData?.target_countries) && agentData.target_countries.length > 0 && (
           <div>
             <label className="text-sm font-medium text-gray-600">Target Countries</label>
             <div className="flex flex-wrap gap-2 mt-1">
@@ -303,9 +257,13 @@ const AgentDetails = ({ user, agentData }) => (
   </div>
 );
 
-const TutorDetails = ({ user, tutorData, sessions }) => {
+/* ----------------------- Tutor Details ----------------------- */
+
+const TutorDetails = ({ tutorData, sessions }) => {
   const completedSessions = sessions.filter(s => s.status === 'completed');
-  const upcomingSessions = sessions.filter(s => s.status === 'scheduled' && new Date(s.scheduled_date) > new Date());
+  const upcomingSessions = sessions.filter(
+    s => s.status === 'scheduled' && new Date(s.scheduled_date) > new Date()
+  );
   const totalEarnings = completedSessions.reduce((sum, s) => sum + (s.price || 0), 0);
 
   return (
@@ -347,7 +305,7 @@ const TutorDetails = ({ user, tutorData, sessions }) => {
               </div>
             </div>
 
-            {tutorData?.specializations && tutorData.specializations.length > 0 && (
+            {Array.isArray(tutorData?.specializations) && tutorData.specializations.length > 0 && (
               <div>
                 <label className="text-sm font-medium text-gray-600">Specializations</label>
                 <div className="flex flex-wrap gap-2 mt-1">
@@ -358,7 +316,7 @@ const TutorDetails = ({ user, tutorData, sessions }) => {
               </div>
             )}
 
-            {tutorData?.qualifications && tutorData.qualifications.length > 0 && (
+            {Array.isArray(tutorData?.qualifications) && tutorData.qualifications.length > 0 && (
               <div>
                 <label className="text-sm font-medium text-gray-600">Qualifications</label>
                 <div className="flex flex-wrap gap-2 mt-1">
@@ -369,7 +327,7 @@ const TutorDetails = ({ user, tutorData, sessions }) => {
               </div>
             )}
 
-            {tutorData?.languages && tutorData.languages.length > 0 && (
+            {Array.isArray(tutorData?.languages) && tutorData.languages.length > 0 && (
               <div>
                 <label className="text-sm font-medium text-gray-600">Languages</label>
                 <div className="flex flex-wrap gap-2 mt-1">
@@ -421,23 +379,25 @@ const TutorDetails = ({ user, tutorData, sessions }) => {
                 <TableBody>
                   {sessions.slice(0, 10).map(session => (
                     <TableRow key={session.id}>
-                      <TableCell>Student {session.student_id.slice(-4)}</TableCell>
+                      <TableCell>{session.student_full_name || `Student ${String(session.student_id || '').slice(-4) || ''}`}</TableCell>
                       <TableCell>{session.subject}</TableCell>
                       <TableCell>
                         <div>
-                          <div>{format(new Date(session.scheduled_date), 'MMM dd, yyyy')}</div>
-                          <div className="text-sm text-gray-500">{format(new Date(session.scheduled_date), 'hh:mm a')}</div>
+                          <div>{session.scheduled_date ? format(new Date(session.scheduled_date), 'MMM dd, yyyy') : '—'}</div>
+                          <div className="text-sm text-gray-500">
+                            {session.scheduled_date ? format(new Date(session.scheduled_date), 'hh:mm a') : ''}
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell>{session.duration} min</TableCell>
-                      <TableCell className="font-medium">${session.price}</TableCell>
+                      <TableCell>{typeof session.duration === 'number' ? `${session.duration} min` : '—'}</TableCell>
+                      <TableCell className="font-medium">{typeof session.price === 'number' ? `$${session.price}` : '—'}</TableCell>
                       <TableCell>
                         <Badge className={
                           session.status === 'completed' ? 'bg-green-100 text-green-800' :
                           session.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
                           'bg-gray-100 text-gray-800'
                         }>
-                          {session.status}
+                          {session.status || '—'}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -461,14 +421,16 @@ const TutorDetails = ({ user, tutorData, sessions }) => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-2xl font-bold text-green-600">${totalEarnings}</div>
+                    <div className="text-2xl font-bold text-green-600">
+                      ${completedSessions.reduce((sum, s) => sum + (s.price || 0), 0)}
+                    </div>
                     <p className="text-gray-600 text-sm">Total Earned</p>
                   </div>
                   <DollarSign className="w-8 h-8 text-green-200" />
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -525,12 +487,12 @@ const TutorDetails = ({ user, tutorData, sessions }) => {
                   <TableBody>
                     {completedSessions.map(session => (
                       <TableRow key={session.id}>
-                        <TableCell>{format(new Date(session.scheduled_date), 'MMM dd, yyyy')}</TableCell>
-                        <TableCell>{session.subject}</TableCell>
-                        <TableCell>{session.duration} min</TableCell>
-                        <TableCell className="font-semibold text-green-600">${session.price}</TableCell>
+                        <TableCell>{session.scheduled_date ? format(new Date(session.scheduled_date), 'MMM dd, yyyy') : '—'}</TableCell>
+                        <TableCell>{session.subject || '—'}</TableCell>
+                        <TableCell>{typeof session.duration === 'number' ? `${session.duration} min` : '—'}</TableCell>
+                        <TableCell className="font-semibold text-green-600">{typeof session.price === 'number' ? `$${session.price}` : '—'}</TableCell>
                         <TableCell>
-                          {session.student_rating ? (
+                          {typeof session.student_rating === 'number' ? (
                             <div className="flex items-center gap-1">
                               <Star className="w-4 h-4 text-yellow-400 fill-current" />
                               <span>{session.student_rating}</span>
@@ -557,58 +519,23 @@ const TutorDetails = ({ user, tutorData, sessions }) => {
   );
 };
 
-const StudentDetails = ({ user, allAgents, selectedAgentId, setSelectedAgentId, handleAgentReassignment, saving, sessions }) => {
+/* ----------------------- Student Details ----------------------- */
+
+const StudentDetails = ({ sessions }) => {
   const upcomingSessions = sessions.filter(s => s.status === 'scheduled' && new Date(s.scheduled_date) > new Date());
-  const pastSessions = sessions.filter(s => s.status === 'completed' || s.status === 'cancelled' || s.status === 'missed' || (s.status === 'scheduled' && new Date(s.scheduled_date) <= new Date()));
+  const pastSessions = sessions.filter(s =>
+    s.status === 'completed' ||
+    s.status === 'cancelled' ||
+    s.status === 'missed' ||
+    (s.status === 'scheduled' && new Date(s.scheduled_date) <= new Date())
+  );
 
   return (
-    <Tabs defaultValue="agent" className="space-y-6">
+    <Tabs defaultValue="sessions" className="space-y-6">
       <TabsList className="grid grid-cols-2 bg-blue-100">
-        <TabsTrigger value="agent">Agent Management</TabsTrigger>
         <TabsTrigger value="sessions">Tutor Sessions</TabsTrigger>
+        <TabsTrigger value="agent" disabled>Agent Management</TabsTrigger>
       </TabsList>
-
-      <TabsContent value="agent">
-        <div className="grid md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Briefcase className="w-5 h-5" /> Agent Management</CardTitle>
-              <CardDescription>
-                {selectedAgentId ? "Agent assigned" : "No agent assigned."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Re-assign Agent</label>
-                <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a verified agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allAgents.map(agent => (
-                      <SelectItem key={agent.id} value={agent.id}>{agent.company_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handleAgentReassignment} disabled={saving}>
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? "Saving..." : "Save Agent Assignment"}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" /> School & Applications</CardTitle>
-              <CardDescription>Visa and school application cases.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-500">Application details will be shown here.</p>
-            </CardContent>
-          </Card>
-        </div>
-      </TabsContent>
 
       <TabsContent value="sessions">
         <div className="space-y-6">
@@ -626,16 +553,16 @@ const StudentDetails = ({ user, allAgents, selectedAgentId, setSelectedAgentId, 
                     <div key={session.id} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="font-semibold text-gray-900">{session.subject}</p>
-                          <p className="text-sm text-gray-600">Tutor: {session.tutor_id}</p>
+                          <p className="font-semibold text-gray-900">{session.subject || '—'}</p>
+                          <p className="text-sm text-gray-600">Tutor: {session.tutor_full_name || `Tutor ${String(session.tutor_id || '').slice(-4)}`}</p>
                           <div className="flex items-center gap-4 text-sm text-gray-600 mt-2">
                             <span className="flex items-center gap-1">
                               <Calendar className="w-4 h-4" />
-                              {format(new Date(session.scheduled_date), 'MMM dd, yyyy')}
+                              {session.scheduled_date ? format(new Date(session.scheduled_date), 'MMM dd, yyyy') : '—'}
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="w-4 h-4" />
-                              {format(new Date(session.scheduled_date), 'hh:mm a')}
+                              {session.scheduled_date ? format(new Date(session.scheduled_date), 'hh:mm a') : ''}
                             </span>
                           </div>
                         </div>
@@ -687,9 +614,9 @@ const StudentDetails = ({ user, allAgents, selectedAgentId, setSelectedAgentId, 
                   <TableBody>
                     {pastSessions.slice(0, 10).map(session => (
                       <TableRow key={session.id}>
-                        <TableCell>{format(new Date(session.scheduled_date), 'MMM dd, yyyy')}</TableCell>
-                        <TableCell>Tutor {session.tutor_id.slice(-4)}</TableCell>
-                        <TableCell>{session.subject}</TableCell>
+                        <TableCell>{session.scheduled_date ? format(new Date(session.scheduled_date), 'MMM dd, yyyy') : '—'}</TableCell>
+                        <TableCell>{session.tutor_full_name || `Tutor ${String(session.tutor_id || '').slice(-4)}`}</TableCell>
+                        <TableCell>{session.subject || '—'}</TableCell>
                         <TableCell>
                           <Badge className={
                             session.status === 'completed' ? 'bg-green-100 text-green-800' :
@@ -697,11 +624,11 @@ const StudentDetails = ({ user, allAgents, selectedAgentId, setSelectedAgentId, 
                             session.status === 'missed' ? 'bg-orange-100 text-orange-800' :
                             'bg-gray-100 text-gray-800'
                           }>
-                            {session.status}
+                            {session.status || '—'}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {session.student_rating ? (
+                          {typeof session.student_rating === 'number' ? (
                             <div className="flex items-center gap-1">
                               <Star className="w-4 h-4 text-yellow-400 fill-current" />
                               <span>{session.student_rating}</span>
@@ -724,141 +651,122 @@ const StudentDetails = ({ user, allAgents, selectedAgentId, setSelectedAgentId, 
           </Card>
         </div>
       </TabsContent>
+
+      <TabsContent value="agent">
+        <Card>
+          <CardHeader>
+            <CardTitle>Agent Management</CardTitle>
+            <CardDescription>
+              Reassignment requires backend support (no `User.update` in current API).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm text-gray-600">
+              To enable this, add a `User` entity with `.get(id)`, `.filter()`, and `.update()` in `entities.js`, or handle via a callable Cloud Function.
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
     </Tabs>
   );
 };
+
+/* ----------------------- Main Page ----------------------- */
 
 export default function UserDetails() {
   const [searchParams] = useSearchParams();
   const userId = searchParams.get('id');
 
-  const [user, setUser] = useState(null);
+  const [userHeader, setUserHeader] = useState(null); // { full_name, email, user_type, created_date, profile_picture }
   const [schoolData, setSchoolData] = useState(null);
   const [agentData, setAgentData] = useState(null);
   const [tutorData, setTutorData] = useState(null);
   const [sessions, setSessions] = useState([]);
-  const [enrolledStudents, setEnrolledStudents] = useState([]);
-  const [totalStudents, setTotalStudents] = useState(0);
-  const [studentsPage, setStudentsPage] = useState(1);
-  const [allAgents, setAllAgents] = useState([]);
-  const [selectedAgentId, setSelectedAgentId] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const validObjectIdRegex = /^[a-f\d]{24}$/i;
-    
-    if (!userId) {
-      setError("No user ID provided in the URL.");
-      setLoading(false);
-      return;
-    }
-    
-    if (!validObjectIdRegex.test(userId)) {
-      setError("Invalid user ID format.");
-      setLoading(false);
-      return;
-    }
-
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null); // Clear any previous errors
+    const fetchAll = async () => {
       try {
-        const userResult = await User.filter({ id: userId });
-        if (!userResult || userResult.length === 0) {
-            setError("User not found.");
-            setLoading(false);
-            return;
+        if (!userId) {
+          setError("No user ID provided in the URL.");
+          setLoading(false);
+          return;
         }
-        const userData = userResult[0];
-        setUser(userData);
 
-        // Load type-specific data based on user type
-        if (userData.user_type === 'school') {
-          const schoolResult = await School.filter({ user_id: userId });
-          if (schoolResult.length > 0) {
-            setSchoolData(schoolResult[0]);
-            
-            // Fetch enrolled students for this school
-            const studentsResult = await User.filter({ 
-              user_type: { $in: ['student', 'user'] }, 
-              schoolId: schoolResult[0].id 
-            }, '-created_date', 10, (studentsPage - 1) * 10);
-            setEnrolledStudents(studentsResult);
-            
-            // Get total count of enrolled students
-            const allStudentsResult = await User.filter({ 
-              user_type: { $in: ['student', 'user'] }, 
-              schoolId: schoolResult[0].id 
-            });
-            setTotalStudents(allStudentsResult.length);
-          }
-        } else if (userData.user_type === 'agent') {
-          const agentResult = await Agent.filter({ user_id: userId });
-          if (agentResult.length > 0) {
-            setAgentData(agentResult[0]);
-          }
-        } else if (userData.user_type === 'tutor') {
-          const tutorResult = await Tutor.filter({ user_id: userId });
-          if (tutorResult.length > 0) {
-            setTutorData(tutorResult[0]);
-          }
-          
+        // Try to infer user type by looking up type-specific collections via user_id
+        const [schoolRes, agentRes, tutorRes] = await Promise.all([
+          School.filter({ user_id: userId }),
+          Agent.filter({ user_id: userId }),
+          Tutor.filter({ user_id: userId })
+        ]);
+
+        if (schoolRes.length > 0) {
+          const s = schoolRes[0];
+          setSchoolData(s);
+          setUserHeader({
+            full_name: s.name || 'School',
+            email: s.email || '',
+            user_type: 'school',
+            created_date: s.created_date || new Date().toISOString(),
+            profile_picture: s.image_url || ''
+          });
+          // We can't list enrolled students with current API, so we only show Info tab.
+          setSessions([]); // no sessions for schools here
+        } else if (agentRes.length > 0) {
+          const a = agentRes[0];
+          setAgentData(a);
+          setUserHeader({
+            full_name: a.company_name || 'Agent',
+            email: a.email || '',
+            user_type: 'agent',
+            created_date: a.created_date || new Date().toISOString(),
+            profile_picture: a.logo_url || ''
+          });
+          setSessions([]); // not loading sessions for agents
+        } else if (tutorRes.length > 0) {
+          const t = tutorRes[0];
+          setTutorData(t);
+          setUserHeader({
+            full_name: t.display_name || 'Tutor',
+            email: t.email || '',
+            user_type: 'tutor',
+            created_date: t.created_date || new Date().toISOString(),
+            profile_picture: t.profile_picture || ''
+          });
+
           // Load tutor sessions
-          const sessionData = await TutoringSession.filter({ tutor_id: userId }, '-scheduled_date');
-          setSessions(sessionData);
-        } else if (userData.user_type === 'student' || userData.user_type === 'user') {
-          // Load student sessions
-          const sessionData = await TutoringSession.filter({ student_id: userId }, '-scheduled_date');
-          setSessions(sessionData);
-          
-          // Load agent data for reassignment
-          const validObjectIdRegex = /^[a-fA-F0-9]{24}$/; // Local regex for agent IDs
-          
-          if (userData.referred_by_agent_id && validObjectIdRegex.test(userData.referred_by_agent_id)) {
-            try {
-              const currentAgentData = await Agent.filter({ id: userData.referred_by_agent_id });
-              if (currentAgentData.length > 0) {
-                setSelectedAgentId(currentAgentData[0].id);
-              }
-            } catch (agentError) {
-              console.warn('Failed to fetch current agent:', agentError);
-              // Optionally set a specific error for agent fetch failure if critical
-            }
-          }
-          
-          const allAgentsData = await Agent.filter({ verification_status: 'verified' });
-          setAllAgents(allAgentsData);
+          const sess = await TutoringSession.filter({ tutor_id: userId });
+          // sort client-side newest first
+          const sorted = [...sess].sort(
+            (a, b) => new Date(b.scheduled_date || 0) - new Date(a.scheduled_date || 0)
+          );
+          setSessions(sorted);
+        } else {
+          // Treat as student: header will be minimal because we can't fetch user doc
+          setUserHeader({
+            full_name: `Student ${String(userId).slice(-4)}`,
+            email: '',
+            user_type: 'student',
+            created_date: new Date().toISOString(),
+            profile_picture: ''
+          });
+          const sess = await TutoringSession.filter({ student_id: userId });
+          const sorted = [...sess].sort(
+            (a, b) => new Date(b.scheduled_date || 0) - new Date(a.scheduled_date || 0)
+          );
+          setSessions(sorted);
         }
-
-      } catch (error) {
-        console.error("Failed to fetch user details:", error);
+      } catch (e) {
+        console.error(e);
         setError("An error occurred while fetching user details. Please try again later.");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
-    fetchData();
-  }, [userId, studentsPage]);
-
-  const handleAgentReassignment = async () => {
-    if (!selectedAgentId || !user) return;
-    
-    setSaving(true);
-    try {
-        await User.update(user.id, { referred_by_agent_id: selectedAgentId });
-        
-        const openCases = await Case.filter({ student_id: user.id, status: { $ne: 'Approved' } });
-        const caseUpdatePromises = openCases.map(c => Case.update(c.id, { agent_id: selectedAgentId }));
-        await Promise.all(caseUpdatePromises);
-        
-    } catch(error) {
-        console.error("Failed to reassign agent:", error);
-        alert("Failed to reassign agent. Please try again."); // Simple alert for user feedback
-    }
-    setSaving(false);
-  };
+    fetchAll();
+  }, [userId]);
 
   if (loading) {
     return (
@@ -870,60 +778,20 @@ export default function UserDetails() {
 
   if (error) {
     return (
-       <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center">
-          <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Error</h2>
-          <p className="text-gray-600">{error}</p>
-        </div>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center">
+        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
+        <h2 className="text-2xl font-bold mb-2">Error</h2>
+        <p className="text-gray-600">{error}</p>
+      </div>
     );
   }
 
-  // This check is mainly for cases where loading finished, no explicit error was set,
-  // but the user object somehow ended up null (e.g., if User.filter returned empty and
-  // the explicit setError("User not found.") wasn't hit for some edge case)
-  if (!user) {
-    return <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center">
-      <AlertTriangle className="w-16 h-16 text-gray-400 mb-4" />
-      <h2 className="text-2xl font-bold mb-2">User Not Found</h2>
-      <p className="text-gray-600">The requested user could not be loaded.</p>
-    </div>;
-  }
-
-  const renderTypeSpecificContent = () => {
-    switch (user.user_type) {
-      case 'school':
-        return <SchoolDetails 
-          user={user} 
-          schoolData={schoolData} 
-          enrolledStudents={enrolledStudents}
-          studentsPage={studentsPage}
-          setStudentsPage={setStudentsPage}
-          totalStudents={totalStudents}
-        />;
-      case 'agent':
-        return <AgentDetails user={user} agentData={agentData} />;
-      case 'tutor':
-        return <TutorDetails user={user} tutorData={tutorData} sessions={sessions} />;
-      case 'student':
-      case 'user':
-        return <StudentDetails 
-          user={user}
-          allAgents={allAgents}
-          selectedAgentId={selectedAgentId}
-          setSelectedAgentId={setSelectedAgentId}
-          handleAgentReassignment={handleAgentReassignment}
-          saving={saving}
-          sessions={sessions}
-        />;
-      default:
-        return (
-          <Card>
-            <CardContent className="p-6">
-              <p className="text-gray-600">No specific display available for user type: <Badge className="capitalize">{user.user_type}</Badge></p>
-            </CardContent>
-          </Card>
-        );
-    }
+  const header = userHeader || {
+    full_name: 'User',
+    email: '',
+    user_type: 'user',
+    created_date: new Date().toISOString(),
+    profile_picture: ''
   };
 
   return (
@@ -932,21 +800,37 @@ export default function UserDetails() {
         <Card>
           <CardHeader className="flex flex-row items-center gap-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={user.profile_picture} alt={user.full_name} />
-              <AvatarFallback>{user.full_name?.charAt(0).toUpperCase()}</AvatarFallback>
+              <AvatarImage src={header.profile_picture} alt={header.full_name} />
+              <AvatarFallback>{header.full_name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle className="text-2xl">{user.full_name}</CardTitle>
+              <CardTitle className="text-2xl">{header.full_name}</CardTitle>
               <CardDescription className="flex items-center gap-4">
-                <span>{user.email}</span>
-                <Badge className="capitalize">{user.user_type}</Badge>
-                <span>Joined {new Date(user.created_date).toLocaleDateString()}</span>
+                {header.email && <span>{header.email}</span>}
+                <Badge className="capitalize">{header.user_type}</Badge>
+                <span>Joined {new Date(header.created_date).toLocaleDateString()}</span>
               </CardDescription>
             </div>
           </CardHeader>
         </Card>
 
-        {renderTypeSpecificContent()}
+        {/* Type-specific Content */}
+        {header.user_type === 'school' && <SchoolDetails schoolData={schoolData} />}
+        {header.user_type === 'agent' && <AgentDetails agentData={agentData} />}
+        {header.user_type === 'tutor' && <TutorDetails tutorData={tutorData} sessions={sessions} />}
+        {(header.user_type === 'student' || header.user_type === 'user') && <StudentDetails sessions={sessions} />}
+
+        {/* Fallback if no content (shouldn't happen) */}
+        {!['school', 'agent', 'tutor', 'student', 'user'].includes(header.user_type) && (
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-gray-600">
+                No specific display available for user type:{' '}
+                <Badge className="capitalize">{header.user_type}</Badge>
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

@@ -14,14 +14,13 @@ const StatusBadge = ({ status }) => {
     scheduled: "bg-blue-100 text-blue-800",
     in_progress: "bg-yellow-100 text-yellow-800",
     completed: "bg-green-100 text-green-800",
-    cancelled: "bg-red-100 text-red-800"
+    cancelled: "bg-red-100 text-red-800",
   };
   return <Badge className={colors[status] || "bg-gray-100 text-gray-800"}>{status}</Badge>;
 };
 
-export default function TutorSessions() { 
+export default function TutorSessions() {
   const [sessions, setSessions] = useState([]);
-  const [students, setStudents] = useState({});
   const [wallet, setWallet] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -29,48 +28,38 @@ export default function TutorSessions() {
     const loadData = async () => {
       try {
         const currentUser = await User.me();
-        
-        // Get sessions for this tutor
-        const sessionData = await TutoringSession.filter({ 
-          tutor_id: currentUser.id 
-        }, '-scheduled_date');
-        setSessions(sessionData);
-        
-        // Get student data
-        const studentIds = [...new Set(sessionData.map(s => s.student_id))];
-        if (studentIds.length > 0) {
-          const studentData = await User.filter({ id: { $in: studentIds } });
-          const studentMap = studentData.reduce((acc, student) => {
-            acc[student.id] = student;
-            return acc;
-          }, {});
-          setStudents(studentMap);
-        }
 
-        // Get wallet data
-        const walletData = await Wallet.filter({ user_id: currentUser.id });
-        if (walletData.length > 0) {
-          setWallet(walletData[0]);
-        }
+        // Sessions for this tutor (fetch, then sort newest first)
+        const sessionData = await TutoringSession.filter({ tutor_id: currentUser.id });
+        const sorted = [...sessionData].sort((a, b) => {
+          const da = new Date(a.scheduled_date).getTime() || 0;
+          const db = new Date(b.scheduled_date).getTime() || 0;
+          return db - da;
+        });
+        setSessions(sorted);
+
+        // Wallet
+        const walletRows = await Wallet.filter({ user_id: currentUser.id });
+        if (walletRows.length > 0) setWallet(walletRows[0]);
       } catch (error) {
         console.error("Error loading sessions:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     loadData();
   }, []);
 
   const handleJoinSession = (session) => {
-    if (session.meeting_link) {
-      window.open(session.meeting_link, '_blank');
-    }
+    if (session.meeting_link) window.open(session.meeting_link, '_blank');
   };
 
+  const now = new Date();
   const stats = {
     totalSessions: sessions.length,
-    upcomingSessions: sessions.filter(s => s.status === 'scheduled' && new Date(s.scheduled_date) > new Date()).length,
+    upcomingSessions: sessions.filter(s => s.status === 'scheduled' && new Date(s.scheduled_date) > now).length,
     completedSessions: sessions.filter(s => s.status === 'completed').length,
-    totalEarnings: wallet?.total_earned || 0
+    totalEarnings: Number(wallet?.total_earned || 0),
   };
 
   if (loading) {
@@ -104,7 +93,7 @@ export default function TutorSessions() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -133,7 +122,9 @@ export default function TutorSessions() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-emerald-600">${stats.totalEarnings.toFixed(2)}</div>
+                  <div className="text-2xl font-bold text-emerald-600">
+                    ${stats.totalEarnings.toFixed(2)}
+                  </div>
                   <p className="text-gray-600">Total Earnings</p>
                 </div>
                 <DollarSign className="w-8 h-8 text-emerald-200" />
@@ -162,31 +153,50 @@ export default function TutorSessions() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sessions.map(session => {
-                    const student = students[session.student_id];
-                    
+                  {sessions.map((session) => {
+                    const studentName =
+                      session.student_full_name ||
+                      session.student_name ||
+                      session.student_email ||
+                      'Unknown';
+                    const studentEmail = session.student_email || '';
+
                     return (
                       <TableRow key={session.id}>
                         <TableCell>
                           <div>
-                            <div className="font-medium">{student?.full_name || 'Unknown'}</div>
-                            <div className="text-sm text-gray-500">{student?.email}</div>
+                            <div className="font-medium">{studentName}</div>
+                            {studentEmail && (
+                              <div className="text-sm text-gray-500">{studentEmail}</div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>{session.subject}</TableCell>
                         <TableCell>
                           <div>
-                            <div>{format(new Date(session.scheduled_date), 'MMM dd, yyyy')}</div>
-                            <div className="text-sm text-gray-500">{format(new Date(session.scheduled_date), 'hh:mm a')}</div>
+                            <div>
+                              {session.scheduled_date
+                                ? format(new Date(session.scheduled_date), 'MMM dd, yyyy')
+                                : '—'}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {session.scheduled_date
+                                ? format(new Date(session.scheduled_date), 'hh:mm a')
+                                : ''}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>{session.duration} min</TableCell>
-                        <TableCell className="font-medium">${session.price}</TableCell>
-                        <TableCell><StatusBadge status={session.status} /></TableCell>
+                        <TableCell className="font-medium">
+                          ${Number(session.price || 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={session.status} />
+                        </TableCell>
                         <TableCell>
                           {session.status === 'scheduled' && (
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               onClick={() => handleJoinSession(session)}
                               disabled={!session.meeting_link}
                             >
@@ -204,7 +214,9 @@ export default function TutorSessions() {
               <div className="text-center py-8">
                 <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Sessions Scheduled</h3>
-                <p className="text-gray-600">Student bookings will appear here once you're verified and available.</p>
+                <p className="text-gray-600">
+                  Student bookings will appear here once you're verified and available.
+                </p>
               </div>
             )}
           </CardContent>

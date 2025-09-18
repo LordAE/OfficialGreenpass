@@ -1,14 +1,39 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// src/pages/AdminSchools.jsx
+import React, { useState, useEffect, useCallback } from "react";
+import { db } from "@/firebase";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  query,
+  orderBy,
+  limit as fbLimit,
+  serverTimestamp,
+} from "firebase/firestore";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Edit, Trash2, Search, Loader2, School as SchoolIcon, Database } from "lucide-react";
-import { School } from '@/api/entities';
-import SchoolForm from '../components/admin/SchoolForm';
-import MasterDataSeeder from '../components/admin/MasterDataSeeder';
+import {
+  PlusCircle,
+  Edit,
+  Trash2,
+  Search,
+  Loader2,
+  School as SchoolIcon,
+  Database,
+} from "lucide-react";
+
+import SchoolForm from "../components/admin/SchoolForm";
+import MasterDataSeeder from "../components/admin/MasterDataSeeder";
+
+const COLL = "schoolPrograms"; // collection name in Firestore
 
 export default function AdminSchools() {
   const [schools, setSchools] = useState([]);
@@ -16,15 +41,26 @@ export default function AdminSchools() {
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedSchool, setSelectedSchool] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
 
   const loadSchools = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await School.list('-created_date', 500); // Get latest 500
-      const safeData = (data && Array.isArray(data)) ? data.filter(item => item && typeof item === 'object') : [];
-      setSchools(safeData);
-      setFilteredSchools(safeData);
+      // newest first (requires "created_at" on docs)
+      let data = [];
+      try {
+        const q = query(collection(db, COLL), orderBy("created_at", "desc"), fbLimit(500));
+        const snap = await getDocs(q);
+        data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      } catch (orderedErr) {
+        // fallback if ordering/index missing
+        const snap = await getDocs(collection(db, COLL));
+        data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      }
+
+      const safe = Array.isArray(data) ? data.filter((x) => x && typeof x === "object") : [];
+      setSchools(safe);
+      setFilteredSchools(safe);
     } catch (error) {
       console.error("Error loading school programs:", error);
       setSchools([]);
@@ -40,26 +76,34 @@ export default function AdminSchools() {
   }, [loadSchools]);
 
   useEffect(() => {
-    if (searchTerm.trim() === '') {
+    if (!searchTerm.trim()) {
       setFilteredSchools(schools);
-    } else {
-      const lowercasedTerm = searchTerm.toLowerCase();
-      const filtered = schools.filter(school => 
-        school.school_name?.toLowerCase().includes(lowercasedTerm) ||
-        school.program_title?.toLowerCase().includes(lowercasedTerm) ||
-        school.institution_name?.toLowerCase().includes(lowercasedTerm) ||
-        school.school_city?.toLowerCase().includes(lowercasedTerm)
-      );
-      setFilteredSchools(filtered);
+      return;
     }
+    const t = searchTerm.toLowerCase();
+    const filtered = schools.filter((s) => {
+      const a = (s?.school_name || "").toLowerCase();
+      const b = (s?.program_title || "").toLowerCase();
+      const c = (s?.institution_name || "").toLowerCase();
+      const d = (s?.school_city || "").toLowerCase();
+      return a.includes(t) || b.includes(t) || c.includes(t) || d.includes(t);
+    });
+    setFilteredSchools(filtered);
   }, [schools, searchTerm]);
 
   const handleSave = async (formData) => {
     try {
-      if (selectedSchool) {
-        await School.update(selectedSchool.id, formData);
+      if (selectedSchool?.id) {
+        await updateDoc(doc(db, COLL, selectedSchool.id), {
+          ...formData,
+          updated_at: serverTimestamp(),
+        });
       } else {
-        await School.create(formData);
+        await addDoc(collection(db, COLL), {
+          ...formData,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        });
       }
       setIsFormOpen(false);
       setSelectedSchool(null);
@@ -71,9 +115,10 @@ export default function AdminSchools() {
   };
 
   const handleDelete = async (schoolId) => {
+    if (!schoolId) return;
     if (window.confirm("Are you sure you want to delete this school program? This action cannot be undone.")) {
       try {
-        await School.delete(schoolId);
+        await deleteDoc(doc(db, COLL, schoolId));
         await loadSchools();
       } catch (error) {
         console.error("Error deleting school program:", error);
@@ -86,9 +131,9 @@ export default function AdminSchools() {
     setSelectedSchool(school);
     setIsFormOpen(true);
   };
-  
+
   const handleSeedSuccess = () => {
-    alert('Database seeded successfully! Reloading programs...');
+    alert("Database seeded successfully! Reloading programs...");
     loadSchools();
   };
 
@@ -113,25 +158,29 @@ export default function AdminSchools() {
               <SchoolForm
                 school={selectedSchool}
                 onSave={handleSave}
-                onCancel={() => { setIsFormOpen(false); setSelectedSchool(null); }}
+                onCancel={() => {
+                  setIsFormOpen(false);
+                  setSelectedSchool(null);
+                }}
               />
             </DialogContent>
           </Dialog>
         </div>
 
         <Card className="mb-6 border-blue-200 bg-blue-50/50">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-blue-800">
-                    <Database className="w-5 h-5" />
-                    Master Data Operations
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <p className="text-sm text-blue-700 mb-4">
-                    If your lists are empty, you can seed the database with comprehensive sample data. This will populate Institutions, School Programs, and School Profiles.
-                </p>
-                <MasterDataSeeder onSeedSuccess={handleSeedSuccess} />
-            </CardContent>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-blue-800">
+              <Database className="w-5 h-5" />
+              Master Data Operations
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-blue-700 mb-4">
+              If your lists are empty, you can seed the database with comprehensive sample data. This will populate Institutions,
+              School Programs, and School Profiles.
+            </p>
+            <MasterDataSeeder onSeedSuccess={handleSeedSuccess} />
+          </CardContent>
         </Card>
 
         <Card className="mb-6">
@@ -181,17 +230,27 @@ export default function AdminSchools() {
                     <TableRow key={school.id}>
                       <TableCell className="font-medium">{school.program_title}</TableCell>
                       <TableCell>{school.school_name}</TableCell>
-                      <TableCell>{school.institution_name || 'N/A'}</TableCell>
-                      <TableCell>{school.school_city}, {school.school_province}</TableCell>
+                      <TableCell>{school.institution_name || "N/A"}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{school.program_level?.replace(/_/g, ' ')}</Badge>
+                        {school.school_city}
+                        {school.school_province ? `, ${school.school_province}` : ""}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {(school.program_level || "").replace(/_/g, " ")}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button variant="outline" size="sm" onClick={() => openForm(school)}>
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => handleDelete(school.id)} className="text-red-600 hover:text-red-700">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(school.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>

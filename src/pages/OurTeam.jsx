@@ -1,11 +1,15 @@
+// src/pages/OurTeam.jsx
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Mail, Phone, Linkedin, MessageCircle } from "lucide-react";
-import { OurTeamPageContent } from '@/api/entities';
-import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Mail, MessageCircle } from "lucide-react";
+import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+
+// --- Firebase ---
+import { db } from '@/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 export default function OurTeam() {
   const [teamContent, setTeamContent] = useState(null);
@@ -13,21 +17,20 @@ export default function OurTeam() {
   const [flippedCard, setFlippedCard] = useState(null);
 
   useEffect(() => {
+    const loadTeamContent = async () => {
+      try {
+        // Reads from Firestore collection 'our_team_page_content' and takes the first doc
+        const snap = await getDocs(collection(db, 'our_team_page_content'));
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setTeamContent(docs[0] || null);
+      } catch (error) {
+        console.error("Error loading team content:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
     loadTeamContent();
   }, []);
-
-  const loadTeamContent = async () => {
-    try {
-      const content = await OurTeamPageContent.list();
-      if (content.length > 0) {
-        setTeamContent(content[0]);
-      }
-    } catch (error) {
-      console.error("Error loading team content:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCardFlip = (memberId) => {
     setFlippedCard(flippedCard === memberId ? null : memberId);
@@ -35,14 +38,11 @@ export default function OurTeam() {
 
   const groupedMembers = teamContent?.team_members?.reduce((acc, member) => {
     const category = member.category || 'Team Member';
-    if (!acc[category]) {
-      acc[category] = [];
-    }
+    if (!acc[category]) acc[category] = [];
     acc[category].push(member);
     return acc;
   }, {}) || {};
 
-  // Sort categories: Founder first, then Leadership, then Team Member
   const sortedCategories = Object.keys(groupedMembers).sort((a, b) => {
     const order = { 'Founder': 1, 'Leadership': 2, 'Team Member': 3 };
     return (order[a] || 999) - (order[b] || 999);
@@ -193,7 +193,7 @@ export default function OurTeam() {
                               </a>
                             )}
                             <a 
-                              href={`https://wa.me/1234567890?text=Hi ${member.name}, I'd like to learn more about your services.`}
+                              href={`https://wa.me/1234567890?text=Hi ${encodeURIComponent(member.name || '')}, I'd like to learn more about your services.`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center text-sm hover:bg-white/10 p-2 rounded transition-colors"
@@ -244,15 +244,9 @@ export default function OurTeam() {
       </div>
 
       <style jsx>{`
-        .perspective-1000 {
-          perspective: 1000px;
-        }
-        .transform-style-preserve-3d {
-          transform-style: preserve-3d;
-        }
-        .backface-hidden {
-          backface-visibility: hidden;
-        }
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-preserve-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
       `}</style>
     </div>
   );

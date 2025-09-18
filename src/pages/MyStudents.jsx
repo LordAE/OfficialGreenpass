@@ -1,6 +1,5 @@
+// src/pages/MyStudents.jsx
 import React, { useState, useEffect } from 'react';
-import { User } from '@/api/entities';
-import { Case } from '@/api/entities';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -11,58 +10,116 @@ import { Loader2, Search, ArrowRight, User as UserIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
+// --- Firebase ---
+import { getAuth } from 'firebase/auth';
+import { db } from '@/firebase';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+} from 'firebase/firestore';
+
 export default function MyStudents() {
   const [students, setStudents] = useState([]);
-  const [cases, setCases] = useState({});
+  const [casesByStudent, setCasesByStudent] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [agent, setAgent] = useState(null);
+  const [agentUid, setAgentUid] = useState(null);
+
+  // Chunk helper for Firestore 'in' queries (max 10)
+  const chunk = (arr, size = 10) => {
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  };
+
+  const safeFormatDate = (value) => {
+    if (!value) return '';
+    // Handle Firestore Timestamp or ISO string
+    try {
+      const d =
+        typeof value?.toDate === 'function'
+          ? value.toDate()
+          : typeof value === 'string'
+          ? new Date(value)
+          : new Date(value);
+      return isNaN(d.getTime()) ? '' : format(d, 'MMM dd, yyyy');
+    } catch {
+      return '';
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const currentAgent = await User.me();
-        setAgent(currentAgent);
-
-        const studentData = await User.filter({ referred_by_agent_id: currentAgent.id });
-        setStudents(studentData);
-
-        if (studentData.length > 0) {
-          const studentIds = studentData.map(s => s.id);
-          const caseData = await Case.filter({ student_id: { $in: studentIds } });
-          
-          const casesByStudent = caseData.reduce((acc, currentCase) => {
-            if (!acc[currentCase.student_id]) {
-              acc[currentCase.student_id] = [];
-            }
-            acc[currentCase.student_id].push(currentCase);
-            return acc;
-          }, {});
-          setCases(casesByStudent);
+        const auth = getAuth();
+        const me = auth.currentUser;
+        if (!me) {
+          setAgentUid(null);
+          setStudents([]);
+          setCasesByStudent({});
+          setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error("Error fetching students:", error);
+        setAgentUid(me.uid);
+
+        // 1) Load students referred by this agent
+        const studentsQ = query(
+          collection(db, 'users'),
+          where('referred_by_agent_id', '==', me.uid)
+        );
+        const studentsSnap = await getDocs(studentsQ);
+        const studentDocs = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setStudents(studentDocs);
+
+        // 2) Load cases for those students
+        const ids = studentDocs.map(s => s.id);
+        const agg = {};
+        if (ids.length) {
+          for (const batch of chunk(ids, 10)) {
+            const casesQ = query(
+              collection(db, 'cases'),
+              where('student_id', 'in', batch)
+            );
+            const casesSnap = await getDocs(casesQ);
+            casesSnap.forEach(c => {
+              const data = { id: c.id, ...c.data() };
+              const sid = data.student_id;
+              if (!agg[sid]) agg[sid] = [];
+              agg[sid].push(data);
+            });
+          }
+        }
+        setCasesByStudent(agg);
+      } catch (err) {
+        console.error('Error fetching students/cases:', err);
       } finally {
         setLoading(false);
       }
     };
+
     fetchData();
   }, []);
 
   const filteredStudents = students.filter(student =>
-    student.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    (student.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (student.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
-    return <div className="p-6"><Loader2 className="animate-spin w-8 h-8" /></div>;
+    return (
+      <div className="p-6">
+        <Loader2 className="animate-spin w-8 h-8" />
+      </div>
+    );
   }
 
   return (
     <div className="p-4 sm:p-6">
       <h1 className="text-2xl sm:text-3xl font-bold mb-6">My Students</h1>
-      
+
       <Card>
         <CardHeader>
           <CardTitle>Referred Students List</CardTitle>
@@ -79,7 +136,7 @@ export default function MyStudents() {
           </div>
         </CardHeader>
         <CardContent>
-           {/* Desktop Table */}
+          {/* Desktop Table */}
           <div className="hidden md:block">
             <Table>
               <TableHeader>
@@ -95,11 +152,11 @@ export default function MyStudents() {
                 {filteredStudents.map(student => (
                   <TableRow key={student.id}>
                     <TableCell>
-                      <div className="font-medium">{student.full_name}</div>
-                      <div className="text-sm text-muted-foreground">{student.email}</div>
+                      <div className="font-medium">{student.full_name || 'Unnamed'}</div>
+                      <div className="text-sm text-muted-foreground">{student.email || 'No email'}</div>
                     </TableCell>
-                    <TableCell>{format(new Date(student.created_date), 'MMM dd, yyyy')}</TableCell>
-                    <TableCell>{cases[student.id]?.length || 0}</TableCell>
+                    <TableCell>{safeFormatDate(student.created_date)}</TableCell>
+                    <TableCell>{casesByStudent[student.id]?.length || 0}</TableCell>
                     <TableCell>
                       <Badge variant={student.onboarding_completed ? 'default' : 'secondary'}>
                         {student.onboarding_completed ? 'Complete' : 'Incomplete'}
@@ -117,29 +174,33 @@ export default function MyStudents() {
               </TableBody>
             </Table>
           </div>
+
           {/* Mobile Card View */}
           <div className="md:hidden grid grid-cols-1 gap-4">
             {filteredStudents.map(student => (
               <Card key={student.id} className="p-4">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="font-bold">{student.full_name}</p>
-                    <p className="text-sm text-gray-500">{student.email}</p>
+                    <p className="font-bold">{student.full_name || 'Unnamed'}</p>
+                    <p className="text-sm text-gray-500">{student.email || 'No email'}</p>
                   </div>
-                   <Link to={createPageUrl(`UserDetails?id=${student.id}`)}>
-                      <Button variant="ghost" size="icon">
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                  <Link to={createPageUrl(`UserDetails?id=${student.id}`)}>
+                    <Button variant="ghost" size="icon">
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
                 </div>
                 <div className="mt-4 pt-4 border-t flex justify-between text-sm">
                   <div>
                     <p className="text-gray-500">Cases</p>
-                    <p className="font-semibold">{cases[student.id]?.length || 0}</p>
+                    <p className="font-semibold">{casesByStudent[student.id]?.length || 0}</p>
                   </div>
                   <div>
                     <p className="text-gray-500">Status</p>
-                    <Badge variant={student.onboarding_completed ? 'default' : 'secondary'} className="mt-1">
+                    <Badge
+                      variant={student.onboarding_completed ? 'default' : 'secondary'}
+                      className="mt-1"
+                    >
                       {student.onboarding_completed ? 'Complete' : 'Incomplete'}
                     </Badge>
                   </div>
@@ -147,6 +208,7 @@ export default function MyStudents() {
               </Card>
             ))}
           </div>
+
           {filteredStudents.length === 0 && (
             <div className="text-center py-12">
               <UserIcon className="mx-auto h-12 w-12 text-gray-400" />

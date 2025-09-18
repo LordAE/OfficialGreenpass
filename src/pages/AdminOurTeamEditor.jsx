@@ -1,17 +1,54 @@
-import React, { useState, useEffect } from 'react';
-import { OurTeamPageContent } from '@/api/entities';
-import { UploadFile } from '@/api/integrations';
+// src/pages/AdminOurTeamEditor.jsx
+import React, { useState, useEffect } from "react";
+import { db, storage } from "@/firebase";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, Upload, Edit, Trash2, Plus, Users, ArrowUp, ArrowDown } from "lucide-react";
+import {
+  Loader2,
+  Save,
+  Upload,
+  Edit,
+  Trash2,
+  Plus,
+  Users,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
 
-const TeamMemberCard = ({ member, index, totalMembers, onEdit, onDelete, onMoveUp, onMoveDown }) => {
+const COLL = "ourTeam";
+const ID = "SINGLETON";
+
+/* ------------ Small Card for each member ------------ */
+const TeamMemberCard = ({
+  member,
+  index,
+  totalMembers,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+}) => {
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4">
@@ -36,7 +73,7 @@ const TeamMemberCard = ({ member, index, totalMembers, onEdit, onDelete, onMoveU
               <ArrowDown className="w-3 h-3" />
             </Button>
           </div>
-          
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="font-semibold truncate">{member.name}</h3>
@@ -50,8 +87,8 @@ const TeamMemberCard = ({ member, index, totalMembers, onEdit, onDelete, onMoveU
 
           <div className="flex items-center gap-2 flex-shrink-0">
             {member.image_url && (
-              <img 
-                src={member.image_url} 
+              <img
+                src={member.image_url}
                 alt={member.name}
                 className="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
               />
@@ -81,34 +118,37 @@ const TeamMemberCard = ({ member, index, totalMembers, onEdit, onDelete, onMoveU
   );
 };
 
+/* ------------ Member form with Firebase Storage upload ------------ */
 const TeamMemberForm = ({ member, onSave, onCancel }) => {
   const [formData, setFormData] = useState(
     member || {
       id: `member_${Date.now()}`,
-      name: '',
-      title: '',
-      bio: '',
-      image_url: '',
-      category: 'Team Member',
-      sort_order: 99
+      name: "",
+      title: "",
+      bio: "",
+      image_url: "",
+      category: "Team Member",
+      sort_order: 99,
     }
   );
   const [uploading, setUploading] = useState(false);
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleImageUpload = async (file) => {
     if (!file) return;
-    
     setUploading(true);
     try {
-      const { file_url } = await UploadFile({ file });
-      handleInputChange('image_url', file_url);
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      alert('Failed to upload image. Please try again.');
+      const path = `our-team/members/${formData.id}/${Date.now()}-${file.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      handleInputChange("image_url", url);
+    } catch (err) {
+      console.error("Error uploading image:", err);
+      alert("Failed to upload image. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -126,7 +166,7 @@ const TeamMemberForm = ({ member, onSave, onCancel }) => {
         <Input
           id="name"
           value={formData.name}
-          onChange={(e) => handleInputChange('name', e.target.value)}
+          onChange={(e) => handleInputChange("name", e.target.value)}
           required
         />
       </div>
@@ -136,14 +176,17 @@ const TeamMemberForm = ({ member, onSave, onCancel }) => {
         <Input
           id="title"
           value={formData.title}
-          onChange={(e) => handleInputChange('title', e.target.value)}
+          onChange={(e) => handleInputChange("title", e.target.value)}
           required
         />
       </div>
 
       <div>
         <Label htmlFor="category">Category</Label>
-        <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
+        <Select
+          value={formData.category}
+          onValueChange={(value) => handleInputChange("category", value)}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -160,7 +203,7 @@ const TeamMemberForm = ({ member, onSave, onCancel }) => {
         <Textarea
           id="bio"
           value={formData.bio}
-          onChange={(e) => handleInputChange('bio', e.target.value)}
+          onChange={(e) => handleInputChange("bio", e.target.value)}
           rows={4}
           placeholder="Brief biography..."
         />
@@ -169,26 +212,30 @@ const TeamMemberForm = ({ member, onSave, onCancel }) => {
       <div>
         <Label>Profile Photo</Label>
         <div className="flex items-center gap-4 mt-2">
-          <input 
-            type="file" 
-            id="photo-upload" 
-            accept="image/*" 
-            onChange={(e) => e.target.files[0] && handleImageUpload(e.target.files[0])} 
-            className="hidden" 
+          <input
+            type="file"
+            id="photo-upload"
+            accept="image/*"
+            onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
+            className="hidden"
           />
-          <Button 
-            type="button" 
-            variant="outline" 
-            onClick={() => document.getElementById('photo-upload').click()}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => document.getElementById("photo-upload").click()}
             disabled={uploading}
           >
-            {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+            {uploading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Upload className="w-4 h-4 mr-2" />
+            )}
             Upload Photo
           </Button>
           {formData.image_url && (
-            <img 
-              src={formData.image_url} 
-              alt="Preview" 
+            <img
+              src={formData.image_url}
+              alt="Preview"
               className="w-16 h-16 rounded-full object-cover border"
             />
           )}
@@ -199,14 +246,13 @@ const TeamMemberForm = ({ member, onSave, onCancel }) => {
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">
-          {member ? 'Update Member' : 'Add Member'}
-        </Button>
+        <Button type="submit">{member ? "Update Member" : "Add Member"}</Button>
       </div>
     </form>
   );
 };
 
+/* ------------ Main page (Firestore + Storage) ------------ */
 export default function AdminOurTeamEditor() {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -222,20 +268,24 @@ export default function AdminOurTeamEditor() {
   const loadContent = async () => {
     setLoading(true);
     try {
-      const teamContent = await OurTeamPageContent.list();
-      if (teamContent.length > 0) {
-        setContent(teamContent[0]);
+      const refDoc = doc(db, COLL, ID);
+      const snap = await getDoc(refDoc);
+
+      if (snap.exists()) {
+        setContent({ id: ID, ...snap.data() });
       } else {
-        const defaultContent = {
-          singleton_key: 'SINGLETON',
-          hero_title: 'Meet Our Team',
-          hero_subtitle: 'The passionate professionals driving our mission forward',
-          hero_image_url: '',
-          contact_email: 'team@greenpassgroup.com',
-          team_members: []
+        const defaults = {
+          singleton_key: "SINGLETON",
+          hero_title: "Meet Our Team",
+          hero_subtitle: "The passionate professionals driving our mission forward",
+          hero_image_url: "",
+          contact_email: "team@greenpassgroup.com",
+          team_members: [],
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
         };
-        const created = await OurTeamPageContent.create(defaultContent);
-        setContent(created);
+        await setDoc(refDoc, defaults);
+        setContent({ id: ID, ...defaults });
       }
     } catch (error) {
       console.error("Error loading Our Team content:", error);
@@ -245,69 +295,76 @@ export default function AdminOurTeamEditor() {
   };
 
   const handleInputChange = (field, value) => {
-    setContent(prev => ({ ...prev, [field]: value }));
+    setContent((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleHeroImageUpload = async (file) => {
     if (!file) return;
-
     setUploading(true);
     try {
-      const { file_url } = await UploadFile({ file });
-      handleInputChange('hero_image_url', file_url);
-    } catch (error) {
-      console.error("Error uploading hero image:", error);
-      alert('Failed to upload image. Please try again.');
+      const path = `our-team/hero/${Date.now()}-${file.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      handleInputChange("hero_image_url", url);
+    } catch (err) {
+      console.error("Error uploading hero image:", err);
+      alert("Failed to upload image. Please try again.");
     } finally {
       setUploading(false);
     }
   };
 
   const handleSaveMember = (memberData) => {
-    const updatedMembers = [...(content.team_members || [])];
-    const existingIndex = updatedMembers.findIndex(m => m.id === memberData.id);
-    
-    if (existingIndex >= 0) {
-      updatedMembers[existingIndex] = memberData;
-    } else {
-      updatedMembers.push(memberData);
-    }
-    
-    handleInputChange('team_members', updatedMembers);
+    const updated = [...(content?.team_members || [])];
+    const idx = updated.findIndex((m) => m.id === memberData.id);
+    if (idx >= 0) updated[idx] = memberData;
+    else updated.push(memberData);
+    handleInputChange("team_members", updated);
     setEditingMember(null);
     setIsFormOpen(false);
   };
 
   const handleDeleteMember = (memberId) => {
-    if (confirm('Are you sure you want to delete this team member?')) {
-      const updatedMembers = (content.team_members || []).filter(m => m.id !== memberId);
-      handleInputChange('team_members', updatedMembers);
+    if (window.confirm("Are you sure you want to delete this team member?")) {
+      const updated = (content?.team_members || []).filter((m) => m.id !== memberId);
+      handleInputChange("team_members", updated);
     }
   };
 
   const handleMoveUp = (index) => {
     if (index === 0) return;
-    const updatedMembers = [...(content.team_members || [])];
-    [updatedMembers[index - 1], updatedMembers[index]] = [updatedMembers[index], updatedMembers[index - 1]];
-    handleInputChange('team_members', updatedMembers);
+    const updated = [...(content?.team_members || [])];
+    [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
+    handleInputChange("team_members", updated);
   };
 
   const handleMoveDown = (index) => {
-    const members = content.team_members || [];
-    if (index === members.length - 1) return;
-    const updatedMembers = [...members];
-    [updatedMembers[index], updatedMembers[index + 1]] = [updatedMembers[index + 1], updatedMembers[index]];
-    handleInputChange('team_members', updatedMembers);
+    const list = content?.team_members || [];
+    if (index === list.length - 1) return;
+    const updated = [...list];
+    [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
+    handleInputChange("team_members", updated);
   };
 
   const handleSave = async () => {
+    if (!content) return;
     setSaving(true);
     try {
-      await OurTeamPageContent.update(content.id, content);
-      alert('Our Team page updated successfully!');
+      const refDoc = doc(db, COLL, ID);
+      const payload = {
+        hero_title: content.hero_title || "",
+        hero_subtitle: content.hero_subtitle || "",
+        hero_image_url: content.hero_image_url || "",
+        contact_email: content.contact_email || "",
+        team_members: Array.isArray(content.team_members) ? content.team_members : [],
+        updated_at: serverTimestamp(),
+      };
+      await updateDoc(refDoc, payload);
+      alert("Our Team page updated successfully!");
     } catch (error) {
       console.error("Error saving Our Team content:", error);
-      alert('Failed to save content. Please try again.');
+      alert("Failed to save content. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -344,6 +401,7 @@ export default function AdminOurTeamEditor() {
         </div>
 
         <div className="space-y-8">
+          {/* Page Settings */}
           <Card>
             <CardHeader>
               <CardTitle>Page Settings</CardTitle>
@@ -353,18 +411,18 @@ export default function AdminOurTeamEditor() {
                 <Label htmlFor="hero_title">Page Title</Label>
                 <Input
                   id="hero_title"
-                  value={content?.hero_title || ''}
-                  onChange={(e) => handleInputChange('hero_title', e.target.value)}
+                  value={content?.hero_title || ""}
+                  onChange={(e) => handleInputChange("hero_title", e.target.value)}
                   placeholder="Meet Our Team"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="hero_subtitle">Page Subtitle</Label>
                 <Textarea
                   id="hero_subtitle"
-                  value={content?.hero_subtitle || ''}
-                  onChange={(e) => handleInputChange('hero_subtitle', e.target.value)}
+                  value={content?.hero_subtitle || ""}
+                  onChange={(e) => handleInputChange("hero_subtitle", e.target.value)}
                   placeholder="The passionate professionals driving our mission forward"
                   rows={2}
                 />
@@ -375,8 +433,8 @@ export default function AdminOurTeamEditor() {
                 <Input
                   id="contact_email"
                   type="email"
-                  value={content?.contact_email || ''}
-                  onChange={(e) => handleInputChange('contact_email', e.target.value)}
+                  value={content?.contact_email || ""}
+                  onChange={(e) => handleInputChange("contact_email", e.target.value)}
                   placeholder="team@greenpassgroup.com"
                 />
               </div>
@@ -384,26 +442,30 @@ export default function AdminOurTeamEditor() {
               <div>
                 <Label>Hero Background Image</Label>
                 <div className="flex items-center gap-4 mt-2">
-                  <input 
-                    type="file" 
-                    id="hero-upload" 
-                    accept="image/*" 
-                    onChange={(e) => e.target.files[0] && handleHeroImageUpload(e.target.files[0])} 
-                    className="hidden" 
+                  <input
+                    type="file"
+                    id="hero-upload"
+                    accept="image/*"
+                    onChange={(e) => e.target.files?.[0] && handleHeroImageUpload(e.target.files[0])}
+                    className="hidden"
                   />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => document.getElementById('hero-upload').click()}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById("hero-upload").click()}
                     disabled={uploading}
                   >
-                    {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                    {uploading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4 mr-2" />
+                    )}
                     Upload Image
                   </Button>
                   {content?.hero_image_url && (
-                    <img 
-                      src={content.hero_image_url} 
-                      alt="Hero preview" 
+                    <img
+                      src={content.hero_image_url}
+                      alt="Hero preview"
                       className="w-24 h-16 rounded object-cover border"
                     />
                   )}
@@ -412,6 +474,7 @@ export default function AdminOurTeamEditor() {
             </CardContent>
           </Card>
 
+          {/* Team Members */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -461,7 +524,7 @@ export default function AdminOurTeamEditor() {
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>
-                {editingMember ? 'Edit Team Member' : 'Add Team Member'}
+                {editingMember ? "Edit Team Member" : "Add Team Member"}
               </DialogTitle>
             </DialogHeader>
             <TeamMemberForm

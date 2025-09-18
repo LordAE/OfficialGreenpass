@@ -178,23 +178,19 @@ export default function SchoolPrograms() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
+
       const currentUser = await User.me();
       setUser(currentUser);
 
-      if (currentUser.user_type !== 'school') {
-        setError('Access denied. Only schools can manage programs.');
-        return;
-      }
-
       // Find the school associated with this user
-      const schools = await School.list();
-      const userSchool = schools.find(s => s.user_id === currentUser.id);
-      
+      const [userSchool] = await School.filter({ user_id: currentUser.id });
       if (!userSchool) {
         setError('No school profile found. Please complete your school profile first.');
         return;
@@ -202,11 +198,9 @@ export default function SchoolPrograms() {
 
       setSchool(userSchool);
 
-      // Load programs for this school
-      const allPrograms = await Program.list();
-      const schoolPrograms = allPrograms.filter(p => p.schoolId === userSchool.id);
+      // Load programs for this school (server-side filter)
+      const schoolPrograms = await Program.filter({ schoolId: userSchool.id });
       setPrograms(schoolPrograms);
-
     } catch (err) {
       console.error('Error loading data:', err);
       setError('Failed to load data. Please try again.');
@@ -222,7 +216,7 @@ export default function SchoolPrograms() {
       } else {
         await Program.create(programData);
       }
-      
+
       setIsFormOpen(false);
       setSelectedProgram(null);
       await loadData();
@@ -235,7 +229,7 @@ export default function SchoolPrograms() {
   const handleDeleteProgram = async (programId) => {
     if (window.confirm('Are you sure you want to delete this program?')) {
       try {
-        await Program.delete(programId);
+        await Program.remove(programId); // <-- use .remove (not .delete)
         await loadData();
       } catch (error) {
         console.error('Error deleting program:', error);
@@ -275,7 +269,7 @@ export default function SchoolPrograms() {
           <h1 className="text-3xl font-bold text-gray-900">My Programs</h1>
           <p className="text-gray-600 mt-2">Manage your school's academic programs</p>
         </div>
-        
+
         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
           <DialogTrigger asChild>
             <Button onClick={() => openForm()}>

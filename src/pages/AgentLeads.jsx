@@ -1,75 +1,107 @@
-import React, { useState, useEffect } from 'react';
-import { User } from '@/api/entities';
+// src/pages/AgentLeads.jsx
+import React, { useState, useEffect, useMemo } from "react";
+import { db, auth } from "@/firebase";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+} from "firebase/firestore";
+
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Users, Search, Phone, Mail, MessageCircle, TrendingUp } from 'lucide-react';
+import { Users, Search, Phone, Mail, MessageCircle, TrendingUp, Loader2 } from "lucide-react";
+import { format } from "date-fns";
+
+const toJsDate = (v) => {
+  if (!v) return null;
+  try {
+    return typeof v?.toDate === "function" ? v.toDate() : new Date(v);
+  } catch {
+    return null;
+  }
+};
+
+const StatusBadge = ({ status }) => {
+  const colors = {
+    new: "bg-blue-100 text-blue-800",
+    contacted: "bg-yellow-100 text-yellow-800",
+    qualified: "bg-green-100 text-green-800",
+    converted: "bg-emerald-100 text-emerald-800",
+    lost: "bg-red-100 text-red-800",
+  };
+  return <Badge className={colors[status] || "bg-gray-100 text-gray-800"}>{status}</Badge>;
+};
 
 export default function AgentLeads() {
-  const [leads, setLeads] = useState([
-    {
-      id: 1,
-      name: "Nguyen Van A",
-      email: "nguyenvana@email.com",
-      phone: "+84 901 234 567",
-      country: "Vietnam",
-      status: "new",
-      interest: "Canada - Computer Science",
-      source: "Website",
-      created_date: "2024-12-20"
-    },
-    {
-      id: 2,
-      name: "Tran Thi B",
-      email: "tranthib@email.com", 
-      phone: "+84 902 345 678",
-      country: "Vietnam",
-      status: "contacted",
-      interest: "Australia - Business",
-      source: "Referral",
-      created_date: "2024-12-19"
-    },
-    {
-      id: 3,
-      name: "Le Van C",
-      email: "levanc@email.com",
-      phone: "+84 903 456 789", 
-      country: "Vietnam",
-      status: "qualified",
-      interest: "UK - Engineering",
-      source: "Social Media",
-      created_date: "2024-12-18"
-    }
-  ]);
-  
+  const [leads, setLeads] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const StatusBadge = ({ status }) => {
-    const colors = {
-      new: "bg-blue-100 text-blue-800",
-      contacted: "bg-yellow-100 text-yellow-800",
-      qualified: "bg-green-100 text-green-800",
-      converted: "bg-emerald-100 text-emerald-800",
-      lost: "bg-red-100 text-red-800"
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      // If you do route-guarding elsewhere, you can redirect instead.
+      setLoading(false);
+      return;
+    }
+
+    // Real-time stream of leads assigned to this agent
+    const q = query(
+      collection(db, "leads"),
+      where("assigned_agent_id", "==", uid),
+      orderBy("created_at", "desc")
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setLeads(rows);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Failed to load leads:", err);
+        setLeads([]);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, []);
+
+  const filteredLeads = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return leads;
+    return leads.filter((lead) =>
+      [lead.name, lead.email, lead.interest]
+        .filter(Boolean)
+        .some((v) => v.toLowerCase().includes(term))
+    );
+  }, [leads, searchTerm]);
+
+  const stats = useMemo(() => {
+    const totalLeads = leads.length;
+    const by = (s) => leads.filter((l) => l.status === s).length;
+    return {
+      totalLeads,
+      newLeads: by("new"),
+      qualifiedLeads: by("qualified"),
+      convertedLeads: by("converted"),
     };
-    return <Badge className={colors[status] || "bg-gray-100 text-gray-800"}>{status}</Badge>;
-  };
+  }, [leads]);
 
-  const filteredLeads = leads.filter(lead =>
-    lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.interest.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const stats = {
-    totalLeads: leads.length,
-    newLeads: leads.filter(l => l.status === 'new').length,
-    qualifiedLeads: leads.filter(l => l.status === 'qualified').length,
-    convertedLeads: leads.filter(l => l.status === 'converted').length
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-emerald-50">
+        <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-6">
@@ -94,7 +126,7 @@ export default function AgentLeads() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -166,32 +198,46 @@ export default function AgentLeads() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLeads.map(lead => (
-                  <TableRow key={lead.id}>
-                    <TableCell className="font-medium">{lead.name}</TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Mail className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm">{lead.email}</span>
+                {filteredLeads.map((lead) => {
+                  const created = toJsDate(lead.created_at);
+                  return (
+                    <TableRow key={lead.id}>
+                      <TableCell className="font-medium">{lead.name}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {lead.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm">{lead.email}</span>
+                            </div>
+                          )}
+                          {lead.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm">{lead.phone}</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm">{lead.phone}</span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{lead.interest}</TableCell>
-                    <TableCell><StatusBadge status={lead.status} /></TableCell>
-                    <TableCell>{lead.source}</TableCell>
-                    <TableCell>{lead.created_date}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm">
-                        <MessageCircle className="w-4 h-4" />
-                      </Button>
+                      </TableCell>
+                      <TableCell>{lead.interest || "-"}</TableCell>
+                      <TableCell><StatusBadge status={lead.status} /></TableCell>
+                      <TableCell>{lead.source || "-"}</TableCell>
+                      <TableCell>{created ? format(created, "yyyy-MM-dd") : "-"}</TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="sm" title="Message">
+                          <MessageCircle className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {filteredLeads.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                      No leads found.
                     </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </CardContent>

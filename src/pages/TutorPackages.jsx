@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { TutorPackage } from '@/api/entities';
 import { Button } from "@/components/ui/button";
@@ -14,9 +13,10 @@ export default function TutorPackagesPage() {
     const fetchPackages = async () => {
       try {
         const packageData = await TutorPackage.list();
-        setPackages(packageData);
+        setPackages(Array.isArray(packageData) ? packageData : []);
       } catch (error) {
         console.error("Failed to fetch tutor packages:", error);
+        setPackages([]);
       } finally {
         setLoading(false);
       }
@@ -26,23 +26,13 @@ export default function TutorPackagesPage() {
   
   const handleGetStarted = (pkg) => {
     try {
-      console.log('Getting started with tutor package:', pkg);
-      
-      // Validate package has ID
-      if (!pkg.id && !pkg.name) {
+      if (!pkg || (!pkg.id && !pkg.name)) {
         alert('Package information is incomplete. Please try again.');
         return;
       }
-      
       const packageId = pkg.id || pkg.name;
-      
-      // Use direct URL navigation to avoid any React Router issues
       const checkoutUrl = `/Checkout?type=tutor&packageId=${encodeURIComponent(packageId)}`;
-      console.log('Direct navigation to:', checkoutUrl);
-      
-      // Force a direct navigation using window.location
       window.location.href = checkoutUrl;
-      
     } catch (error) {
       console.error('Error in handleGetStarted:', error);
       alert('Navigation failed. Please try again.');
@@ -70,63 +60,72 @@ export default function TutorPackagesPage() {
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 items-stretch max-w-7xl mx-auto">
-          {packages.map((pkg) => (
-            <Card
-              key={pkg.id}
-              className={`flex flex-col rounded-xl shadow-lg transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 ${
-                pkg.popular ? 'border-2 border-purple-500 relative' : 'border'
-              }`}
-            >
-              {pkg.popular && (
-                <div className="absolute -top-4 right-4 bg-purple-500 text-white px-4 py-1 rounded-full text-sm font-semibold flex items-center gap-1 shadow-lg">
-                  <Sparkles className="w-4 h-4" />
-                  Most Popular
-                </div>
-              )}
-              <CardHeader className="text-center pb-4">
-                <div className="mx-auto bg-purple-100 text-purple-600 p-4 rounded-full w-fit mb-4">
-                  <IconResolver name={pkg.icon || 'Star'} className="w-8 h-8" />
-                </div>
-                <CardTitle className="text-2xl font-bold">{pkg.name}</CardTitle>
-                <CardDescription className="text-gray-600 text-base">
-                  Join our tutor network and help students succeed
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-grow flex flex-col justify-between px-6 pb-8">
-                <div className="mb-8">
-                  <div className="text-center mb-6">
-                    <span className="text-4xl font-extrabold text-gray-900">
-                      {pkg.price_cad_monthly === 0 ? 'Free' : `$${pkg.price_cad_monthly}`}
-                    </span>
-                    {pkg.price_cad_monthly > 0 && <span className="text-lg text-gray-500"> CAD/month</span>}
+          {packages.map((pkg) => {
+            const monthly = Number(pkg?.price_cad_monthly ?? 0);
+            const benefits = Array.isArray(pkg?.key_benefits) ? pkg.key_benefits : [];
+            const commission = pkg?.commission_rate != null ? Number(pkg.commission_rate) : null;
+            const isPopular = Boolean(pkg?.popular);
+
+            return (
+              <Card
+                key={pkg.id || pkg.name}
+                className={`flex flex-col rounded-xl shadow-lg transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 ${
+                  isPopular ? 'border-2 border-purple-500 relative' : 'border'
+                }`}
+              >
+                {isPopular && (
+                  <div className="absolute -top-4 right-4 bg-purple-500 text-white px-4 py-1 rounded-full text-sm font-semibold flex items-center gap-1 shadow-lg">
+                    <Sparkles className="w-4 h-4" />
+                    Most Popular
                   </div>
-                  <ul className="space-y-4">
-                    {(pkg.key_benefits || []).map((benefit, index) => (
-                      <li key={index} className="flex items-start">
+                )}
+                <CardHeader className="text-center pb-4">
+                  <div className="mx-auto bg-purple-100 text-purple-600 p-4 rounded-full w-fit mb-4">
+                    <IconResolver name={pkg?.icon || 'Star'} className="w-8 h-8" />
+                  </div>
+                  <CardTitle className="text-2xl font-bold">{pkg?.name || 'Tutor Package'}</CardTitle>
+                  <CardDescription className="text-gray-600 text-base">
+                    Join our tutor network and help students succeed
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-grow flex flex-col justify-between px-6 pb-8">
+                  <div className="mb-8">
+                    <div className="text-center mb-6">
+                      <span className="text-4xl font-extrabold text-gray-900">
+                        {monthly <= 0 ? 'Free' : `$${monthly}`}
+                      </span>
+                      {monthly > 0 && <span className="text-lg text-gray-500"> CAD/month</span>}
+                    </div>
+                    <ul className="space-y-4">
+                      {benefits.map((benefit, index) => (
+                        <li key={index} className="flex items-start">
+                          <CheckCircle className="w-5 h-5 text-purple-500 mr-3 mt-1 flex-shrink-0" />
+                          <span className="text-gray-700">{benefit}</span>
+                        </li>
+                      ))}
+                      <li className="flex items-start">
                         <CheckCircle className="w-5 h-5 text-purple-500 mr-3 mt-1 flex-shrink-0" />
-                        <span className="text-gray-700">{benefit}</span>
+                        <span className="text-gray-700">
+                          Commission: {commission !== null ? `${commission}%` : 'N/A'} per session
+                        </span>
                       </li>
-                    ))}
-                    <li className="flex items-start">
-                      <CheckCircle className="w-5 h-5 text-purple-500 mr-3 mt-1 flex-shrink-0" />
-                      <span className="text-gray-700">Commission: {pkg.commission_rate}% per session</span>
-                    </li>
-                  </ul>
-                </div>
-                <Button 
-                  onClick={() => handleGetStarted(pkg)} 
-                  size="lg" 
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-lg font-semibold group"
-                >
-                  Get Started
-                  <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                    </ul>
+                  </div>
+                  <Button 
+                    onClick={() => handleGetStarted(pkg)} 
+                    size="lg" 
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-lg font-semibold group"
+                  >
+                    Get Started
+                    <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
-        {packages.length === 0 && !loading && (
+        {packages.length === 0 && (
           <div className="text-center py-12">
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No packages available</h3>
             <p className="text-gray-600">Tutor packages are currently being updated. Please check back soon.</p>

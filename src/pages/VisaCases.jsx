@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Case } from '@/api/entities';
 import { User } from '@/api/entities';
-// Remove direct School import and load dynamically when needed
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -13,70 +12,117 @@ import { format } from 'date-fns';
 const StatusBadge = ({ status }) => {
   const colors = {
     "Application Started": "bg-blue-100 text-blue-800",
-    "Documents Pending": "bg-yellow-100 text-yellow-800", 
+    "Documents Pending": "bg-yellow-100 text-yellow-800",
     "Under Review": "bg-purple-100 text-purple-800",
     "Approved": "bg-green-100 text-green-800",
     "Rejected": "bg-red-100 text-red-800"
   };
-  return <Badge className={colors[status] || "bg-gray-100 text-gray-800"}>{status}</Badge>;
+  return <Badge className={colors[status] || "bg-gray-100 text-gray-800"}>{status || 'Unknown'}</Badge>;
 };
 
-export default function VisaCases() { 
+const safeFormatDate = (value, fmt = 'MMM dd, yyyy') => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  try {
+    return format(d, fmt);
+  } catch {
+    return '—';
+  }
+};
+
+export default function VisaCases() {
   const [cases, setCases] = useState([]);
   const [students, setStudents] = useState({});
   const [schools, setSchools] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     const loadData = async () => {
       try {
         const currentUser = await User.me();
-        
-        // Get cases for this agent
-        const caseData = await Case.filter({ agent_id: currentUser.id }, '-created_date');
-        setCases(caseData);
-        
-        // Get student and school data
-        const studentIds = [...new Set(caseData.map(c => c.student_id))];
-        const schoolIds = [...new Set(caseData.map(c => c.school_id).filter(Boolean))];
-        
-        if (studentIds.length > 0) {
-          const studentData = await User.filter({ id: { $in: studentIds } });
-          const studentMap = studentData.reduce((acc, student) => {
-            acc[student.id] = student;
-            return acc;
-          }, {});
-          setStudents(studentMap);
+        if (!currentUser?.id) {
+          if (isMounted) {
+            setCases([]);
+            setStudents({});
+            setSchools({});
+            setLoading(false);
+          }
+          return;
         }
-        
-        if (schoolIds.length > 0) {
+
+        const caseData = await Case.filter({ agent_id: currentUser.id }, '-created_date');
+        const caseList = Array.isArray(caseData) ? caseData : [];
+        if (isMounted) setCases(caseList);
+
+        const studentIds = [...new Set(caseList.map(c => c?.student_id).filter(Boolean))];
+        const schoolIds  = [...new Set(caseList.map(c => c?.school_id).filter(Boolean))];
+
+        if (studentIds.length > 0) {
           try {
-            // Dynamically import School entity to avoid build issues
-            const { School } = await import('@/api/entities');
-            const schoolData = await School.filter({ id: { $in: schoolIds } });
-            const schoolMap = schoolData.reduce((acc, school) => {
-              acc[school.id] = school;
+            const studentData = await User.filter({ id: { $in: studentIds } });
+            const studentMap = (Array.isArray(studentData) ? studentData : []).reduce((acc, s) => {
+              if (s?.id) acc[s.id] = s;
               return acc;
             }, {});
-            setSchools(schoolMap);
-          } catch (schoolError) {
-            console.warn("Could not load school data:", schoolError);
-            // Continue without school data if there's an import issue
+            if (isMounted) setStudents(studentMap);
+          } catch (e) {
+            console.warn('Failed to load students for cases', e);
+            if (isMounted) setStudents({});
           }
+        } else if (isMounted) {
+          setStudents({});
+        }
+
+        if (schoolIds.length > 0) {
+          try {
+            const mod = await import('@/api/entities');
+            const School = mod?.School;
+            if (School && typeof School.filter === 'function') {
+              const schoolData = await School.filter({ id: { $in: schoolIds } });
+              const schoolMap = (Array.isArray(schoolData) ? schoolData : []).reduce((acc, s) => {
+                if (s?.id) acc[s.id] = s;
+                return acc;
+              }, {});
+              if (isMounted) setSchools(schoolMap);
+            } else {
+              console.warn('School entity not available at runtime');
+              if (isMounted) setSchools({});
+            }
+          } catch (schoolError) {
+            console.warn('Could not load school data:', schoolError);
+            if (isMounted) setSchools({});
+          }
+        } else if (isMounted) {
+          setSchools({});
         }
       } catch (error) {
-        console.error("Error loading cases:", error);
+        console.error('Error loading cases:', error);
+        if (isMounted) {
+          setCases([]);
+          setStudents({});
+          setSchools({});
+        }
+      } finally {
+        if (isMounted) setLoading(false);
       }
-      setLoading(false);
     };
+
     loadData();
+    return () => { isMounted = false; };
   }, []);
 
   const getProgress = (caseData) => {
-    if (!caseData.checklist || caseData.checklist.length === 0) return 0;
-    const completed = caseData.checklist.filter(item => item.status === 'verified').length;
-    return (completed / caseData.checklist.length) * 100;
-  };
+    const checklist = Array.isArray(caseData?.checklist) ? caseData.checklist : [];
+    if (checklist.length === 0) return 0;
+    const completed = checklist.filter(item => item?.status === 'verified').length;
+    const pct = (completed / checklist.length) * 100;
+    if (!Number.isFinite(pct)) return 0;
+    // clamp 0..100 for the Progress component
+    return Math.max(0, Math.min(100, pct));
+    };
 
   if (loading) {
     return (
@@ -115,38 +161,38 @@ export default function VisaCases() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {cases.map(caseData => {
-                    const student = students[caseData.student_id];
-                    const school = schools[caseData.school_id];
-                    const progress = getProgress(caseData);
-                    
+                  {cases.map((c, idx) => {
+                    const student = students[c?.student_id];
+                    const school  = schools[c?.school_id];
+                    const progress = getProgress(c);
+
                     return (
-                      <TableRow key={caseData.id}>
+                      <TableRow key={c?.id || `case-${idx}`}>
                         <TableCell>
                           <div>
                             <div className="font-medium">{student?.full_name || 'Unknown'}</div>
-                            <div className="text-sm text-gray-500">{student?.email}</div>
+                            <div className="text-sm text-gray-500">{student?.email || '—'}</div>
                           </div>
                         </TableCell>
-                        <TableCell>{caseData.case_type}</TableCell>
+                        <TableCell>{c?.case_type || '—'}</TableCell>
                         <TableCell>{school?.name || 'TBD'}</TableCell>
-                        <TableCell><StatusBadge status={caseData.status} /></TableCell>
+                        <TableCell><StatusBadge status={c?.status} /></TableCell>
                         <TableCell>
                           <div className="w-24">
                             <Progress value={progress} className="h-2" />
                             <div className="text-xs text-gray-500 mt-1">{Math.round(progress)}%</div>
                           </div>
                         </TableCell>
-                        <TableCell>{format(new Date(caseData.created_date), 'MMM dd, yyyy')}</TableCell>
+                        <TableCell>{safeFormatDate(c?.created_date)}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" title="View">
                               <Eye className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" title="Message">
                               <MessageCircle className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" title="Upload">
                               <Upload className="w-4 h-4" />
                             </Button>
                           </div>

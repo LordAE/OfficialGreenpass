@@ -9,10 +9,7 @@ import { UserPlus, Copy, Check, ExternalLink, Share } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 
 export default function InviteUserModal({ isOpen, onOpenChange }) {
-  const [inviteData, setInviteData] = useState({
-    role: 'user',
-    message: ''
-  });
+  const [inviteData, setInviteData] = useState({ role: 'user', message: '' });
   const [inviteLink, setInviteLink] = useState('');
   const [copied, setCopied] = useState(false);
 
@@ -24,17 +21,30 @@ export default function InviteUserModal({ isOpen, onOpenChange }) {
     { value: 'school', label: 'School Representative', description: 'Can manage school profile and programs' }
   ];
 
+  const resetForm = () => {
+    setInviteData({ role: 'user', message: '' });
+    setInviteLink('');
+    setCopied(false);
+  };
+
+  // Ensure we reset on ANY close (overlay/esc/X)
+  const handleOpenChange = (open) => {
+    if (!open) resetForm();
+    onOpenChange?.(open);
+  };
+
   const generateInviteLink = () => {
-    const baseUrl = window.location.origin;
-    const welcomePage = createPageUrl('Welcome');
-    const params = new URLSearchParams();
-    
+    // Guard for SSR
+    if (typeof window === 'undefined') return;
+
+    const base = new URL(window.location.origin);
+    const path = createPageUrl('Welcome') || '/Welcome';
+    const url = new URL(path, base); // robust path join
+
     if (inviteData.role && inviteData.role !== 'user') {
-      params.append('role', inviteData.role);
+      url.searchParams.set('role', inviteData.role);
     }
-    
-    const fullLink = `${baseUrl}${welcomePage}${params.toString() ? '?' + params.toString() : ''}`;
-    setInviteLink(fullLink);
+    setInviteLink(url.toString());
   };
 
   const copyToClipboard = async () => {
@@ -43,7 +53,7 @@ export default function InviteUserModal({ isOpen, onOpenChange }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      // Fallback for older browsers
+      // Fallback
       const textArea = document.createElement('textarea');
       textArea.value = inviteLink;
       document.body.appendChild(textArea);
@@ -71,24 +81,27 @@ Looking forward to having you on board!`;
   };
 
   const shareViaEmail = () => {
-    const subject = `You're invited to join GreenPass!`;
+    const subject = encodeURIComponent(`You're invited to join GreenPass!`);
     const body = encodeURIComponent(generateInviteMessage());
     window.open(`mailto:?subject=${subject}&body=${body}`);
   };
 
-  const resetForm = () => {
-    setInviteData({ role: 'user', message: '' });
-    setInviteLink('');
-    setCopied(false);
-  };
-
-  const handleClose = () => {
-    resetForm();
-    onOpenChange(false);
+  const shareGeneric = async () => {
+    const text = generateInviteMessage();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'GreenPass Invitation', text, url: inviteLink });
+      } catch (e) {
+        // user canceled or share failed; fall back to copy
+        copyToClipboard();
+      }
+    } else {
+      copyToClipboard();
+    }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -96,11 +109,14 @@ Looking forward to having you on board!`;
             Generate Invitation Link
           </DialogTitle>
         </DialogHeader>
-        
+
         <div className="py-4 space-y-4">
           <div>
             <Label htmlFor="role">Suggested Role (Optional)</Label>
-            <Select value={inviteData.role} onValueChange={(value) => setInviteData(prev => ({...prev, role: value}))}>
+            <Select
+              value={inviteData.role}
+              onValueChange={(value) => setInviteData(prev => ({ ...prev, role: value }))}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
@@ -128,18 +144,8 @@ Looking forward to having you on board!`;
               <div>
                 <Label htmlFor="invite-link">Invitation Link</Label>
                 <div className="flex gap-2 mt-1">
-                  <Input
-                    id="invite-link"
-                    value={inviteLink}
-                    readOnly
-                    className="bg-gray-50"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={copyToClipboard}
-                    className="flex-shrink-0"
-                  >
+                  <Input id="invite-link" value={inviteLink} readOnly className="bg-gray-50" />
+                  <Button variant="outline" size="icon" onClick={copyToClipboard} className="flex-shrink-0">
                     {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                   </Button>
                 </div>
@@ -148,39 +154,15 @@ Looking forward to having you on board!`;
 
               <div>
                 <Label htmlFor="invite-message">Ready-to-Send Message</Label>
-                <Textarea
-                  id="invite-message"
-                  value={generateInviteMessage()}
-                  readOnly
-                  className="bg-gray-50 h-32"
-                />
+                <Textarea id="invite-message" value={generateInviteMessage()} readOnly className="bg-gray-50 h-32" />
               </div>
 
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={shareViaEmail}
-                  className="flex-1"
-                >
+                <Button variant="outline" onClick={shareViaEmail} className="flex-1">
                   <ExternalLink className="w-4 h-4 mr-2" />
                   Share via Email
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const text = generateInviteMessage();
-                    if (navigator.share) {
-                      navigator.share({
-                        title: 'GreenPass Invitation',
-                        text: text,
-                        url: inviteLink
-                      });
-                    } else {
-                      copyToClipboard();
-                    }
-                  }}
-                  className="flex-1"
-                >
+                <Button variant="outline" onClick={shareGeneric} className="flex-1">
                   <Share className="w-4 h-4 mr-2" />
                   Share
                 </Button>
@@ -190,7 +172,7 @@ Looking forward to having you on board!`;
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Close
           </Button>
         </DialogFooter>

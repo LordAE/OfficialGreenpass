@@ -34,20 +34,20 @@ const TimeSlot = ({ slot, onUpdate, onDelete }) => (
           ))}
         </SelectContent>
       </Select>
-      
+
       <Input
         type="time"
         value={slot.start_time}
         onChange={(e) => onUpdate({ ...slot, start_time: e.target.value })}
       />
-      
+
       <Input
         type="time"
         value={slot.end_time}
         onChange={(e) => onUpdate({ ...slot, end_time: e.target.value })}
       />
     </div>
-    
+
     <Button size="icon" variant="outline" onClick={onDelete}>
       <Trash2 className="w-4 h-4" />
     </Button>
@@ -67,6 +67,7 @@ export default function TutorAvailability() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -75,25 +76,23 @@ export default function TutorAvailability() {
       const currentUser = await User.me();
       setUser(currentUser);
 
-      if (currentUser.user_type !== 'tutor') {
-        setMessage({ type: 'error', text: 'Access denied. Only tutors can manage availability.' });
-        return;
-      }
+      // 🔧 Firestore-friendly: query tutor by user_id
+      const tutors = await Tutor.filter({ user_id: currentUser.id });
+      const tutor = tutors[0];
 
-      // Find tutor data
-      const tutors = await Tutor.list();
-      const tutor = tutors.find(t => t.user_id === currentUser.id);
-      
       if (!tutor) {
         setMessage({ type: 'error', text: 'Tutor profile not found. Please complete your profile first.' });
         return;
       }
 
       setTutorData(tutor);
-      
+
       // Load existing availability or set defaults
       if (tutor.availability) {
-        setAvailability(tutor.availability);
+        setAvailability({
+          timezone: tutor.availability.timezone || 'America/Toronto',
+          schedule: Array.isArray(tutor.availability.schedule) ? tutor.availability.schedule : []
+        });
       } else {
         setAvailability({
           timezone: 'America/Toronto',
@@ -124,7 +123,7 @@ export default function TutorAvailability() {
   const updateTimeSlot = (index, updatedSlot) => {
     setAvailability(prev => ({
       ...prev,
-      schedule: prev.schedule.map((slot, i) => i === index ? updatedSlot : slot)
+      schedule: prev.schedule.map((slot, i) => (i === index ? updatedSlot : slot))
     }));
   };
 
@@ -138,34 +137,29 @@ export default function TutorAvailability() {
   const saveAvailability = async () => {
     try {
       setSaving(true);
-      
-      // Validate schedule
+
       if (availability.schedule.length === 0) {
         setMessage({ type: 'error', text: 'Please add at least one time slot.' });
         return;
       }
 
-      // Check for overlapping slots
-      const sortedSchedule = availability.schedule.sort((a, b) => {
+      // 🔧 clone before sort to avoid mutating state
+      const sortedSchedule = [...availability.schedule].sort((a, b) => {
         if (a.day !== b.day) {
           return days.indexOf(a.day) - days.indexOf(b.day);
         }
         return a.start_time.localeCompare(b.start_time);
       });
 
-      // Update tutor availability
       await Tutor.update(tutorData.id, {
         availability: {
           ...availability,
           schedule: sortedSchedule
         }
       });
-      
+
       setMessage({ type: 'success', text: 'Availability updated successfully!' });
-      
-      // Clear message after 3 seconds
       setTimeout(() => setMessage(null), 3000);
-      
     } catch (error) {
       console.error('Error saving availability:', error);
       setMessage({ type: 'error', text: 'Failed to save availability. Please try again.' });
@@ -224,8 +218,8 @@ export default function TutorAvailability() {
           <CardContent>
             <div className="max-w-md">
               <Label htmlFor="timezone">Your Time Zone</Label>
-              <Select 
-                value={availability.timezone} 
+              <Select
+                value={availability.timezone}
                 onValueChange={(value) => setAvailability(prev => ({ ...prev, timezone: value }))}
               >
                 <SelectTrigger>
@@ -263,10 +257,10 @@ export default function TutorAvailability() {
                   <span>Start Time</span>
                   <span>End Time</span>
                 </div>
-                
+
                 {availability.schedule.map((slot, index) => (
                   <TimeSlot
-                    key={index}
+                    key={`${slot.day}-${slot.start_time}-${slot.end_time}-${index}`}
                     slot={slot}
                     onUpdate={(updatedSlot) => updateTimeSlot(index, updatedSlot)}
                     onDelete={() => deleteTimeSlot(index)}
@@ -299,7 +293,7 @@ export default function TutorAvailability() {
                       {daySlots.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {daySlots.map((slot, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
+                            <Badge key={`${day}-${index}`} variant="outline" className="text-xs">
                               {slot.start_time}-{slot.end_time}
                             </Badge>
                           ))}
@@ -317,8 +311,8 @@ export default function TutorAvailability() {
 
         {/* Save Button */}
         <div className="flex justify-end">
-          <Button 
-            onClick={saveAvailability} 
+          <Button
+            onClick={saveAvailability}
             disabled={saving || availability.schedule.length === 0}
             size="lg"
           >

@@ -1,9 +1,6 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Case } from '@/api/entities';
-import { VisaDocument } from '@/api/entities';
-import { User } from '@/api/entities';
+import { useSearchParams, Link } from 'react-router-dom';
+import { Case, VisaDocument, User, VisaPackage } from '@/api/entities';
 import { UploadFile } from '@/api/integrations';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,33 +27,46 @@ import {
   Info
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { VisaPackage } from '@/api/entities'; // Added import for VisaPackage
 
 const DEFAULT_UPLOAD_TIPS = [
-    "Ensure all scans are clear and high-resolution (300 DPI recommended).",
-    "Merge multi-page documents like bank statements into a single PDF file.",
-    "File size should not exceed 4MB (240KB for photos).",
-    "Accepted formats: PDF, JPG, JPEG, PNG, DOC, DOCX.",
-    "Use clear filenames, e.g., 'JohnDoe-Passport.pdf'."
+  'Ensure all scans are clear and high-resolution (300 DPI recommended).',
+  'Merge multi-page documents like bank statements into a single PDF file.',
+  'File size should not exceed 4MB (240KB for photos).',
+  'Accepted formats: PDF, JPG, JPEG, PNG, DOC, DOCX.',
+  "Use clear filenames, e.g., 'JohnDoe-Passport.pdf'."
 ];
 
-const StatusBadge = ({ status }) => {
-  const statusConfig = {
-    pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock },
-    approved: { color: "bg-green-100 text-green-800", icon: CheckCircle },
-    denied: { color: "bg-red-100 text-red-800", icon: XCircle },
-    changes_requested: { color: "bg-orange-100 text-orange-800", icon: AlertCircle }
-  };
+// --- small utilities ---
+const safeFormatDate = (value, fmt = 'MMMM d, yyyy') => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  try {
+    return format(d, fmt);
+  } catch {
+    return '—';
+  }
+};
 
-  const config = statusConfig[status] || statusConfig.pending;
+const isArray = (v) => Array.isArray(v);
+
+// --- UI bits ---
+const StatusBadge = ({ status }) => {
+  const norm = (status || 'pending').toLowerCase();
+  const statusConfig = {
+    pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock, label: 'PENDING' },
+    approved: { color: 'bg-green-100 text-green-800', icon: CheckCircle, label: 'APPROVED' },
+    denied: { color: 'bg-red-100 text-red-800', icon: XCircle, label: 'DENIED' },
+    changes_requested: { color: 'bg-orange-100 text-orange-800', icon: AlertCircle, label: 'CHANGES REQUESTED' },
+  };
+  const config = statusConfig[norm] || statusConfig.pending;
   const IconComponent = config.icon;
 
   return (
     <Badge className={`${config.color} flex items-center gap-1`}>
       <IconComponent className="w-3 h-3" />
-      {status.replace(/_/g, ' ').toUpperCase()}
+      {config.label}
     </Badge>
   );
 };
@@ -66,32 +76,49 @@ const DocumentCard = ({ document, onDelete }) => (
     <CardContent className="p-4">
       <div className="flex justify-between items-start mb-3">
         <div>
-          <h3 className="font-semibold text-gray-900">{document.label}</h3>
+          <h3 className="font-semibold text-gray-900">{document.label || 'Untitled document'}</h3>
           <p className="text-sm text-gray-500">
-            Uploaded on {format(new Date(document.uploaded_at || document.created_date), 'MMMM d, yyyy')}
+            Uploaded on {safeFormatDate(document.uploaded_at || document.created_date)}
           </p>
         </div>
         <StatusBadge status={document.status} />
       </div>
 
-      {document.reviewer_note && (
+      {document.reviewer_note ? (
         <div className="bg-gray-50 p-3 rounded-lg mb-3">
-            <p className="font-medium text-sm flex items-center gap-1"><Info className="w-4 h-4 text-blue-500"/>Note from Reviewer</p>
-            <p className="text-sm text-gray-600 mt-1">{document.reviewer_note}</p>
+          <p className="font-medium text-sm flex items-center gap-1">
+            <Info className="w-4 h-4 text-blue-500" />
+            Note from Reviewer
+          </p>
+          <p className="text-sm text-gray-600 mt-1">{document.reviewer_note}</p>
         </div>
-      )}
+      ) : null}
 
       <div className="flex gap-2">
-        <Button asChild variant="ghost" size="sm">
-          <a href={document.file_url} target="_blank" rel="noopener noreferrer">
-            <Eye className="w-4 h-4" />
-          </a>
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => window.open(document.file_url, '_blank')}>
-          <Download className="w-4 h-4" />
-        </Button>
+        {document.file_url ? (
+          <>
+            <Button asChild variant="ghost" size="sm" title="View">
+              <a href={document.file_url} target="_blank" rel="noopener noreferrer">
+                <Eye className="w-4 h-4" />
+              </a>
+            </Button>
+            {/* Use a real download attribute so it downloads instead of opening in a new tab */}
+            <Button asChild variant="ghost" size="sm" title="Download">
+              <a href={document.file_url} download>
+                <Download className="w-4 h-4" />
+              </a>
+            </Button>
+          </>
+        ) : null}
+
         {document.status !== 'approved' && (
-          <Button variant="ghost" size="sm" onClick={() => onDelete(document)} className="text-red-600 hover:text-red-700">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(document)}
+            className="text-red-600 hover:text-red-700"
+            title="Delete"
+          >
             <Trash2 className="w-4 h-4" />
           </Button>
         )}
@@ -101,34 +128,44 @@ const DocumentCard = ({ document, onDelete }) => (
 );
 
 const RequiredDocumentsCard = ({ requirements, checklist }) => {
-  const getRequirementStatus = useCallback((requirement) => {
-    const taskLabel = requirement.optional ? `${requirement.label} (Optional)` : requirement.label;
-    const checklistItem = checklist?.find(item => item.task === taskLabel);
+  const getRequirementStatus = useCallback(
+    (requirement) => {
+      const taskLabel = requirement.optional ? `${requirement.label} (Optional)` : requirement.label;
+      const list = isArray(checklist) ? checklist : [];
+      const checklistItem = list.find((item) => item?.task === taskLabel);
 
-    if (!checklistItem || !checklistItem.document_url) return 'missing';
+      if (!checklistItem || !checklistItem.document_url) return 'missing';
 
-    // Map case.checklist status to UI status
-    const statusMap = {
-      'verified': 'approved',
-      'uploaded': 'uploaded',
-      'rejected': 'denied',
-      'pending': 'uploaded' // If URL exists but status is pending, it's considered "uploaded" by user
-    };
-    return statusMap[checklistItem.status] || 'uploaded';
-  }, [checklist]);
+      const statusMap = {
+        verified: 'approved',
+        uploaded: 'uploaded',
+        rejected: 'denied',
+        pending: 'uploaded', // url exists but still pending review
+      };
+      return statusMap[(checklistItem.status || '').toLowerCase()] || 'uploaded';
+    },
+    [checklist]
+  );
 
   const statusIcons = {
     approved: <CheckCircle className="w-5 h-5 text-green-500" />,
     uploaded: <Clock className="w-5 h-5 text-yellow-500" />,
     denied: <XCircle className="w-5 h-5 text-red-500" />,
-    missing: <div className="w-5 h-5 flex items-center justify-center"><div className="w-2.5 h-2.5 bg-gray-300 rounded-full"></div></div>,
+    missing: (
+      <div className="w-5 h-5 flex items-center justify-center">
+        <div className="w-2.5 h-2.5 bg-gray-300 rounded-full"></div>
+      </div>
+    ),
   };
 
   const { approvedCount, totalRequired } = useMemo(() => {
-    const required = requirements.filter(r => !r.optional);
-    const approved = required.filter(r => getRequirementStatus(r) === 'approved').length;
+    const reqs = isArray(requirements) ? requirements : [];
+    const required = reqs.filter((r) => !r.optional);
+    const approved = required.filter((r) => getRequirementStatus(r) === 'approved').length;
     return { approvedCount: approved, totalRequired: required.length };
   }, [requirements, getRequirementStatus]);
+
+  const reqList = isArray(requirements) ? requirements : [];
 
   return (
     <Card>
@@ -140,14 +177,14 @@ const RequiredDocumentsCard = ({ requirements, checklist }) => {
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
-          {requirements?.map((req) => {
+          {reqList.map((req) => {
             const status = getRequirementStatus(req);
             return (
               <div key={req.key} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 pointer-events-none">
                 {statusIcons[status]}
                 <div className="flex-1">
                   <p className="font-medium text-sm">{req.label}</p>
-                  {req.optional && <span className="text-xs text-gray-500">(Optional)</span>}
+                  {req.optional ? <span className="text-xs text-gray-500">(Optional)</span> : null}
                 </div>
               </div>
             );
@@ -158,23 +195,26 @@ const RequiredDocumentsCard = ({ requirements, checklist }) => {
   );
 };
 
-const UploadTipsCard = ({ tips }) => (
-  <Card>
-    <CardHeader>
-      <CardTitle className="text-lg">Upload Tips</CardTitle>
-    </CardHeader>
-    <CardContent>
-      <ul className="space-y-3 text-sm">
-        {(tips && tips.length > 0 ? tips : DEFAULT_UPLOAD_TIPS).map((tip, index) => (
-          <li key={index} className="flex items-start gap-2">
-            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5 flex-shrink-0"></div>
-            <span>{tip}</span>
-          </li>
-        ))}
-      </ul>
-    </CardContent>
-  </Card>
-);
+const UploadTipsCard = ({ tips }) => {
+  const list = isArray(tips) && tips.length > 0 ? tips : DEFAULT_UPLOAD_TIPS;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Upload Tips</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-3 text-sm">
+          {list.map((tip, index) => (
+            <li key={index} className="flex items-start gap-2">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5 flex-shrink-0"></div>
+              <span>{tip}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+};
 
 export default function VisaDocuments() {
   const [searchParams] = useSearchParams();
@@ -203,43 +243,48 @@ export default function VisaDocuments() {
     if (!caseId) return;
     setLoading(true);
     try {
-        const currentUser = await User.me();
-        setUser(currentUser);
+      const currentUser = await User.me();
+      setUser(currentUser);
 
-        const caseResult = await Case.filter({ id: caseId });
-        if (!caseResult || caseResult.length === 0) {
-            throw new Error("Case not found");
+      const caseResult = await Case.filter({ id: caseId });
+      const caseList = isArray(caseResult) ? caseResult : [];
+      if (caseList.length === 0) {
+        throw new Error('Case not found');
+      }
+      const currentCase = caseList[0] || null;
+      setCaseData(currentCase);
+
+      // requirements: prefer embedded; fallback to package
+      if (isArray(currentCase?.case_requirements) && currentCase.case_requirements.length > 0) {
+        setRequiredDocs(currentCase.case_requirements);
+      } else if (currentCase?.package_id) {
+        try {
+          const pkg = await VisaPackage.get(currentCase.package_id);
+          if (pkg && isArray(pkg.doc_requirements)) {
+            setRequiredDocs(pkg.doc_requirements);
+          } else {
+            setRequiredDocs([]);
+          }
+        } catch (pkgError) {
+          console.error('Could not fetch package for fallback requirements:', pkgError);
+          setRequiredDocs([]);
         }
-        const currentCase = caseResult[0];
-        setCaseData(currentCase);
+      } else {
+        setRequiredDocs([]);
+      }
 
-        // Use case-specific requirements, with a fallback for older cases
-        if (currentCase.case_requirements && currentCase.case_requirements.length > 0) {
-            setRequiredDocs(currentCase.case_requirements);
-        } else if (currentCase.package_id) {
-            console.warn("Case is missing embedded requirements. Falling back to package lookup.");
-            try {
-                const pkg = await VisaPackage.get(currentCase.package_id);
-                if (pkg && pkg.doc_requirements) {
-                    setRequiredDocs(pkg.doc_requirements);
-                } else {
-                    setRequiredDocs([]);
-                }
-            } catch (pkgError) {
-                console.error("Could not fetch package for fallback requirements:", pkgError);
-                setRequiredDocs([]);
-            }
-        } else {
-            setRequiredDocs([]); // Fallback to empty if not set
-        }
-
-        const documentsResult = await VisaDocument.filter({ case_id: caseId, user_id: currentUser.id }, '-uploaded_at');
-        setDocuments(documentsResult);
-
+      const documentsResult = await VisaDocument.filter(
+        { case_id: caseId, user_id: currentUser.id },
+        '-uploaded_at'
+      );
+      setDocuments(isArray(documentsResult) ? documentsResult : []);
     } catch (error) {
-        console.error('Error loading case data:', error);
+      console.error('Error loading case data:', error);
+      setCaseData(null);
+      setRequiredDocs([]);
+      setDocuments([]);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   }, [caseId]);
 
@@ -247,31 +292,35 @@ export default function VisaDocuments() {
     loadCaseData();
   }, [loadCaseData]);
 
+  const selectedRequirement = requiredDocs.find((req) => req.key === selectedDocKey);
+
   const handleFileUpload = async () => {
     if (!uploadFile || !selectedDocKey || !caseData || !user) return;
 
-    const selectedReq = requiredDocs.find(req => req.key === selectedDocKey);
+    const selectedReq = requiredDocs.find((req) => req.key === selectedDocKey);
     if (!selectedReq) return;
 
     // Validate file
     const maxKB = selectedReq.max_size_kb ?? 4096;
-    const allowedFormats = selectedReq.formats ?? ["PDF","JPG","JPEG","PNG","DOC","DOCX"];
+    const allowedFormats = selectedReq.formats ?? ['PDF', 'JPG', 'JPEG', 'PNG', 'DOC', 'DOCX'];
     const fileSizeKB = Math.ceil(uploadFile.size / 1024);
-    const fileExtension = uploadFile.name.split('.').pop().toUpperCase();
+    const fileExtension = (uploadFile.name.split('.').pop() || '').toUpperCase();
 
     if (fileSizeKB > maxKB) {
-      alert(`File size exceeds limit. Max size: ${maxKB / 1024} MB`);
+      alert(`File size exceeds limit. Max size: ${(maxKB / 1024).toFixed(1)} MB`);
       return;
     }
 
-    if (!allowedFormats.includes(fileExtension)) {
+    if (!allowedFormats.map((f) => f.toUpperCase()).includes(fileExtension)) {
       alert(`File format not accepted. Please use one of: ${allowedFormats.join(', ')}`);
       return;
     }
 
     setUploading(true);
     try {
-      const { file_url } = await UploadFile({ file: uploadFile });
+      const uploaded = await UploadFile({ file: uploadFile });
+      const file_url = uploaded?.file_url;
+      if (!file_url) throw new Error('Upload failed—no file URL returned');
 
       // Create VisaDocument record
       await VisaDocument.create({
@@ -279,49 +328,49 @@ export default function VisaDocuments() {
         user_id: user.id,
         name_key: selectedReq.key,
         label: selectedReq.label,
-        file_url: file_url,
-        mime_type: uploadFile.type,
+        file_url,
+        mime_type: uploadFile.type || '',
         size_kb: fileSizeKB,
         status: 'pending',
         note_from_user: userNote,
         uploaded_at: new Date().toISOString()
       });
 
-      // Update case checklist and timeline
-      const updatedCase = { ...caseData };
+      // Update case checklist and timeline (ensure arrays exist)
+      const existingChecklist = isArray(caseData?.checklist) ? [...caseData.checklist] : [];
+      const existingTimeline = isArray(caseData?.timeline) ? [...caseData.timeline] : [];
+
       const taskLabel = selectedReq.optional ? `${selectedReq.label} (Optional)` : selectedReq.label;
-      let checklistIndex = updatedCase.checklist.findIndex(item => item.task === taskLabel);
+      const checklistIndex = existingChecklist.findIndex((item) => item?.task === taskLabel);
 
       if (checklistIndex !== -1) {
-        updatedCase.checklist[checklistIndex].document_url = file_url;
-        updatedCase.checklist[checklistIndex].status = 'uploaded';
+        const item = { ...existingChecklist[checklistIndex] };
+        item.document_url = file_url;
+        item.status = 'uploaded';
+        existingChecklist[checklistIndex] = item;
       } else {
-        // If task not found, add it. This is a safeguard.
-        updatedCase.checklist.push({ task: taskLabel, status: 'uploaded', document_url: file_url });
+        existingChecklist.push({ task: taskLabel, status: 'uploaded', document_url: file_url });
       }
 
-      updatedCase.timeline.push({
+      existingTimeline.push({
         event: `Uploaded: ${selectedReq.label}`,
         date: new Date().toISOString(),
-        actor: user.full_name
+        actor: user.full_name || 'User'
       });
 
       await Case.update(caseId, {
-        checklist: updatedCase.checklist,
-        timeline: updatedCase.timeline
+        checklist: existingChecklist,
+        timeline: existingTimeline
       });
 
       alert('Document uploaded successfully!');
 
-      // Refresh all data and switch tab
+      // Refresh and reset
       await loadCaseData();
       setActiveTab('documents');
-
-      // Reset form
       setSelectedDocKey('');
       setUploadFile(null);
       setUserNote('');
-
     } catch (error) {
       console.error('Upload error:', error);
       alert('Failed to upload document. Please try again.');
@@ -331,41 +380,45 @@ export default function VisaDocuments() {
   };
 
   const handleDeleteDocument = async (documentToDelete) => {
+    if (!documentToDelete) return;
     if (documentToDelete.status === 'approved') {
       alert('Cannot delete approved documents.');
       return;
     }
+    if (!window.confirm('Delete this document? This action cannot be undone.')) return;
 
-    if (window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
-      try {
-        await VisaDocument.delete(documentToDelete.id);
+    try {
+      await VisaDocument.delete(documentToDelete.id);
 
-        // Optimistically update UI
-        setDocuments(prev => prev.filter(doc => doc.id !== documentToDelete.id));
+      // Optimistic update
+      setDocuments((prev) => prev.filter((d) => d.id !== documentToDelete.id));
 
-        const updatedCase = { ...caseData };
-        const taskLabel = documentToDelete.label;
-        const checklistIndex = updatedCase.checklist.findIndex(item =>
-          item.task === taskLabel || item.task === `${taskLabel} (Optional)`
+      // If checklist shows this doc type and there is no other doc of same type, reset that task to pending
+      const existingChecklist = isArray(caseData?.checklist) ? [...caseData.checklist] : [];
+      const taskLabel = documentToDelete.label;
+      const checklistIndex = existingChecklist.findIndex(
+        (item) => item?.task === taskLabel || item?.task === `${taskLabel} (Optional)`
+      );
+
+      if (checklistIndex !== -1) {
+        const stillHasSameType = documents.some(
+          (d) => d.name_key === documentToDelete.name_key && d.id !== documentToDelete.id
         );
+        if (!stillHasSameType) {
+          const item = { ...existingChecklist[checklistIndex] };
+          item.document_url = '';
+          item.status = 'pending';
+          existingChecklist[checklistIndex] = item;
 
-        if (checklistIndex !== -1) {
-          // Check if there's another document of the same type. If not, reset checklist item.
-          const otherDocs = documents.filter(d => d.name_key === documentToDelete.name_key && d.id !== documentToDelete.id);
-          if (otherDocs.length === 0) {
-            updatedCase.checklist[checklistIndex].document_url = '';
-            updatedCase.checklist[checklistIndex].status = 'pending';
-            await Case.update(caseId, { checklist: updatedCase.checklist });
-            setCaseData(updatedCase);
-          }
+          await Case.update(caseId, { checklist: existingChecklist });
+          setCaseData((prev) => (prev ? { ...prev, checklist: existingChecklist } : prev));
         }
-        alert('Document deleted.');
-      } catch (error) {
-        console.error('Delete error:', error);
-        alert('Failed to delete document.');
-        // Re-fetch data to correct optimistic update
-        loadCaseData();
       }
+      alert('Document deleted.');
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Failed to delete document. Please try again.');
+      loadCaseData(); // correct optimistic update on failure
     }
   };
 
@@ -389,24 +442,22 @@ export default function VisaDocuments() {
     );
   }
 
-  // Filter documents for "My Documents" tab
-  const filteredDocuments = documents.filter(doc => {
-    const searchMatch = doc.label.toLowerCase().includes(searchTerm.toLowerCase());
-    const statusMatch = statusFilter === 'all' || doc.status === statusFilter;
-    return searchMatch && statusMatch;
+  // Filter/paginate "My Documents"
+  const filteredDocuments = documents.filter((doc) => {
+    const name = (doc.label || '').toLowerCase();
+    const matchesSearch = name.includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || (doc.status || '').toLowerCase() === statusFilter;
+    return matchesSearch && matchesStatus;
   });
-
   const startIndex = (documentsPage - 1) * documentsPerPage;
   const paginatedDocuments = filteredDocuments.slice(startIndex, startIndex + documentsPerPage);
-  const totalPages = Math.ceil(filteredDocuments.length / documentsPerPage);
-
-  const selectedRequirement = requiredDocs.find(req => req.key === selectedDocKey);
+  const totalPages = Math.max(1, Math.ceil(filteredDocuments.length / documentsPerPage));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center gap-4 mb-8">
-          <Link to={createPageUrl("VisaRequests")} className="text-gray-600 hover:text-gray-900">
+          <Link to={createPageUrl('VisaRequests')} className="text-gray-600 hover:text-gray-900">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Applications
@@ -416,9 +467,7 @@ export default function VisaDocuments() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent">
               Document Management
             </h1>
-            <p className="text-gray-600 text-lg mt-1">
-              {caseData.case_type} Application
-            </p>
+            <p className="text-gray-600 text-lg mt-1">{caseData.case_type} Application</p>
           </div>
         </div>
 
@@ -468,11 +517,7 @@ export default function VisaDocuments() {
                   <>
                     <div className="grid md:grid-cols-2 gap-4">
                       {paginatedDocuments.map((doc) => (
-                        <DocumentCard
-                          key={doc.id}
-                          document={doc}
-                          onDelete={handleDeleteDocument}
-                        />
+                        <DocumentCard key={doc.id} document={doc} onDelete={handleDeleteDocument} />
                       ))}
                     </div>
 
@@ -480,7 +525,7 @@ export default function VisaDocuments() {
                       <div className="flex justify-center items-center gap-4 mt-6">
                         <Button
                           variant="outline"
-                          onClick={() => setDocumentsPage(prev => Math.max(1, prev - 1))}
+                          onClick={() => setDocumentsPage((prev) => Math.max(1, prev - 1))}
                           disabled={documentsPage === 1}
                         >
                           <ChevronLeft className="w-4 h-4 mr-2" /> Previous
@@ -490,7 +535,7 @@ export default function VisaDocuments() {
                         </span>
                         <Button
                           variant="outline"
-                          onClick={() => setDocumentsPage(prev => Math.min(totalPages, prev + 1))}
+                          onClick={() => setDocumentsPage((prev) => Math.min(totalPages, prev + 1))}
                           disabled={documentsPage === totalPages}
                         >
                           Next <ChevronRight className="w-4 h-4 ml-2" />
@@ -514,18 +559,19 @@ export default function VisaDocuments() {
                           <SelectValue placeholder="Select document type" />
                         </SelectTrigger>
                         <SelectContent>
-                          {requiredDocs.map((req) => (
+                          {(isArray(requiredDocs) ? requiredDocs : []).map((req) => (
                             <SelectItem key={req.key} value={req.key}>
-                              {req.label} {req.optional && '(Optional)'}
+                              {req.label} {req.optional ? '(Optional)' : ''}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      {selectedRequirement && (
+                      {selectedRequirement ? (
                         <p className="text-sm text-gray-600 mt-2">
-                          Accepted: {(selectedRequirement.formats || []).join(', ')} • Max size: {((selectedRequirement.max_size_kb || 4096) / 1024).toFixed(1)} MB
+                          Accepted: {(selectedRequirement.formats || []).join(', ') || '—'} • Max size:{' '}
+                          {(((selectedRequirement.max_size_kb || 4096) / 1024) || 4).toFixed(1)} MB
                         </p>
-                      )}
+                      ) : null}
                     </div>
 
                     <div>
@@ -533,13 +579,17 @@ export default function VisaDocuments() {
                       <Input
                         id="file"
                         type="file"
-                        onChange={(e) => setUploadFile(e.target.files[0])}
-                        accept={selectedRequirement?.formats?.map(f => `.${f.toLowerCase()}`).join(',')}
+                        onChange={(e) => setUploadFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+                        accept={
+                          selectedRequirement?.formats
+                            ? selectedRequirement.formats.map((f) => `.${String(f).toLowerCase()}`).join(',')
+                            : undefined
+                        }
                         className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
                       />
-                      {selectedRequirement?.description && (
+                      {selectedRequirement?.description ? (
                         <p className="text-sm text-gray-600 mt-2">{selectedRequirement.description}</p>
-                      )}
+                      ) : null}
                     </div>
 
                     <div>
@@ -569,10 +619,7 @@ export default function VisaDocuments() {
 
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
-            <RequiredDocumentsCard
-              requirements={requiredDocs}
-              checklist={caseData.checklist}
-            />
+            <RequiredDocumentsCard requirements={requiredDocs} checklist={caseData.checklist} />
             <UploadTipsCard tips={caseData.case_upload_tips} />
           </div>
         </div>

@@ -1,9 +1,6 @@
-
+// src/pages/EventCheckIn.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Event } from '@/api/entities';
-import { EventRegistration } from '@/api/entities';
-import { User } from '@/api/entities';
+import { useSearchParams, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,18 +9,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { QrCode, Users, UserCheck, DollarSign, Search, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, UserCheck, DollarSign, Search, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import QRScanner from '../components/events/QRScanner';
 import SharedPaymentGateway from '../components/payments/SharedPaymentGateway';
 import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+
+// ---- Firebase ----
+import { db } from '@/firebase';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+  doc,
+  serverTimestamp,
+  orderBy,
+} from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+
+const EVENTS_COLLECTION = 'events';
+const REGS_COLLECTION = 'event_registrations';
 
 export default function EventCheckIn() {
   const [searchParams] = useSearchParams();
   const eventId = searchParams.get('eventId');
   const initialTab = searchParams.get('tab') || 'attendees';
-  
+
   const [event, setEvent] = useState(null);
   const [registrations, setRegistrations] = useState([]);
   const [filteredRegistrations, setFilteredRegistrations] = useState([]);
@@ -33,76 +46,82 @@ export default function EventCheckIn() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [stats, setStats] = useState({
-    total: 0,
-    checked_in: 0,
-    paid: 0,
-    pending: 0
-  });
+  const [stats, setStats] = useState({ total: 0, checked_in: 0, paid: 0, pending: 0 });
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedRegistration, setSelectedRegistration] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const user = await User.me();
-        setCurrentUser(user);
-      } catch (e) {
-        console.error("No user logged in", e);
-      }
-    };
-    fetchUser();
+    // grab current auth user email if available
+    try {
+      const auth = getAuth();
+      setCurrentUserEmail(auth?.currentUser?.email || null);
+    } catch (_) {
+      // auth not configured; it's fine
+    }
   }, []);
 
   const calculateStats = (regs) => {
-    const stats = {
+    const next = {
       total: regs.length,
-      checked_in: regs.filter(r => r.checked_in).length,
+      checked_in: regs.filter(r => !!r.checked_in).length,
       paid: regs.filter(r => r.status === 'paid').length,
-      pending: regs.filter(r => r.status === 'pending_payment').length
+      pending: regs.filter(r => r.status === 'pending_payment').length,
     };
-    setStats(stats);
+    setStats(next);
   };
 
   const loadEventData = useCallback(async () => {
     if (!eventId) return;
-    
     setLoading(true);
     try {
-      // The current implementation already fetches the event by its 'event_id' property.
-      // Assuming Event.filter({ event_id: eventId }) is the correct API call
-      // to retrieve an event using the 'event_id' field.
-      const [eventData, registrationData] = await Promise.all([
-        Event.filter({ event_id: eventId }),
-        EventRegistration.filter({ event_id: eventId })
-      ]);
+      // Event (lookup by event_id field)
+      const evQ = query(
+        collection(db, EVENTS_COLLECTION),
+        where('event_id', '==', eventId)
+      );
+      const evSnap = await getDocs(evQ);
+      const ev = evSnap.docs[0]?.data() ? { id: evSnap.docs[0].id, ...evSnap.docs[0].data() } : null;
+      setEvent(ev);
 
-      if (eventData.length > 0) {
-        setEvent(eventData[0]);
+      // Registrations (lookup by event_id field)
+      // Try to order by created_at if you have it; otherwise omit orderBy
+      let regQ;
+      try {
+        regQ = query(
+          collection(db, REGS_COLLECTION),
+          where('event_id', '==', eventId),
+          orderBy('created_at', 'desc')
+        );
+      } catch {
+        regQ = query(collection(db, REGS_COLLECTION), where('event_id', '==', eventId));
       }
-      setRegistrations(registrationData);
-      calculateStats(registrationData);
+      const regSnap = await getDocs(regQ);
+      const regs = regSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setRegistrations(regs);
+      calculateStats(regs);
     } catch (error) {
       console.error("Error loading event data:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [eventId]);
 
   const filterRegistrations = useCallback(() => {
     let filtered = registrations;
 
     if (searchTerm) {
+      const s = searchTerm.toLowerCase();
       filtered = filtered.filter(reg =>
-        reg.contact_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        reg.contact_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        reg.reservation_code.toLowerCase().includes(searchTerm.toLowerCase())
+        (reg.contact_name || '').toLowerCase().includes(s) ||
+        (reg.contact_email || '').toLowerCase().includes(s) ||
+        (reg.reservation_code || '').toLowerCase().includes(s)
       );
     }
 
     if (statusFilter !== 'all') {
       if (statusFilter === 'checked_in') {
-        filtered = filtered.filter(reg => reg.checked_in);
+        filtered = filtered.filter(reg => !!reg.checked_in);
       } else if (statusFilter === 'not_checked_in') {
         filtered = filtered.filter(reg => !reg.checked_in);
       } else {
@@ -111,6 +130,7 @@ export default function EventCheckIn() {
     }
 
     setFilteredRegistrations(filtered);
+    setCurrentPage(1); // reset to first page on filter
   }, [registrations, searchTerm, statusFilter]);
 
   useEffect(() => {
@@ -123,14 +143,12 @@ export default function EventCheckIn() {
 
   const handleCheckIn = async (registration) => {
     try {
-      await EventRegistration.update(registration.id, {
+      await updateDoc(doc(db, REGS_COLLECTION, registration.id), {
         checked_in: true,
-        check_in_time: new Date().toISOString(),
-        checked_in_by: currentUser?.email || 'admin'
+        check_in_time: serverTimestamp(),
+        checked_in_by: currentUserEmail || 'admin',
       });
-      
-      // Refresh data
-      loadEventData();
+      await loadEventData();
     } catch (error) {
       console.error("Error checking in attendee:", error);
       alert("Failed to check in attendee. Please try again.");
@@ -142,45 +160,41 @@ export default function EventCheckIn() {
     setIsPaymentModalOpen(true);
   };
 
-  const handlePaymentSuccess = async (paymentType, transactionId, details) => {
+  const handlePaymentSuccess = async () => {
     if (!selectedRegistration) return;
-
     try {
-        await EventRegistration.update(selectedRegistration.id, {
-            status: 'paid',
-            payment_method: 'same_day',
-            payment_date: new Date().toISOString(),
-        });
-        
-        setIsPaymentModalOpen(false);
-        setSelectedRegistration(null);
-        await loadEventData();
-        alert('Payment processed and registration updated successfully!');
+      await updateDoc(doc(db, REGS_COLLECTION, selectedRegistration.id), {
+        status: 'paid',
+        payment_method: 'same_day',
+        payment_date: serverTimestamp(),
+      });
 
+      setIsPaymentModalOpen(false);
+      setSelectedRegistration(null);
+      await loadEventData();
+      alert('Payment processed and registration updated successfully!');
     } catch (error) {
-        console.error("Error updating registration after payment:", error);
-        alert("Payment was successful, but failed to update the registration status. Please check manually.");
+      console.error("Error updating registration after payment:", error);
+      alert("Payment was successful, but failed to update the registration status. Please check manually.");
     }
   };
-
 
   const getStatusBadge = (registration) => {
     if (registration.checked_in) {
       return <Badge className="bg-green-100 text-green-800">Checked In</Badge>;
     }
-    
     switch (registration.status) {
       case 'paid':
         return <Badge className="bg-blue-100 text-blue-800">Paid - Not Checked In</Badge>;
       case 'pending_payment':
         return <Badge className="bg-yellow-100 text-yellow-800">Pending Payment</Badge>;
       default:
-        return <Badge className="bg-gray-100 text-gray-800">{registration.status}</Badge>;
+        return <Badge className="bg-gray-100 text-gray-800">{registration.status || 'unknown'}</Badge>;
     }
   };
 
   // Pagination
-  const totalPages = Math.ceil(filteredRegistrations.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredRegistrations.length / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const currentRegistrations = filteredRegistrations.slice(startIndex, endIndex);
@@ -223,7 +237,7 @@ export default function EventCheckIn() {
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold">{event.title}</h1>
               <p className="text-gray-600">
-                {format(new Date(event.start), 'PPP')} • {event.location}
+                {event.start ? format(new Date(event.start.seconds ? event.start.toDate() : event.start), 'PPP') : ''} • {event.location}
               </p>
             </div>
           </div>
@@ -241,7 +255,7 @@ export default function EventCheckIn() {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -342,22 +356,21 @@ export default function EventCheckIn() {
                               <TableCell>
                                 <Badge variant="outline">{registration.role}</Badge>
                               </TableCell>
+                              <TableCell>{getStatusBadge(registration)}</TableCell>
                               <TableCell>
-                                {getStatusBadge(registration)}
-                              </TableCell>
-                              <TableCell>
-                                {registration.check_in_time 
-                                  ? format(new Date(registration.check_in_time), 'PPp')
-                                  : '-'
-                                }
+                                {registration.check_in_time
+                                  ? format(
+                                      registration.check_in_time.seconds
+                                        ? registration.check_in_time.toDate()
+                                        : new Date(registration.check_in_time),
+                                      'PPp'
+                                    )
+                                  : '-'}
                               </TableCell>
                               <TableCell>
                                 <div className="flex gap-2">
                                   {!registration.checked_in && (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleCheckIn(registration)}
-                                    >
+                                    <Button size="sm" onClick={() => handleCheckIn(registration)}>
                                       <UserCheck className="w-4 h-4 mr-2" />
                                       Check In
                                     </Button>
@@ -431,23 +444,27 @@ export default function EventCheckIn() {
           </TabsContent>
         </Tabs>
       </div>
-      
+
       {selectedRegistration && (
         <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Process Same-Day Payment</DialogTitle>
-                </DialogHeader>
-                <div className="py-4">
-                  <SharedPaymentGateway
-                      amountUSD={selectedRegistration.amount_usd}
-                      amountCAD={selectedRegistration.amount_vnd ? selectedRegistration.amount_vnd / 23000 : selectedRegistration.amount_usd * 1.35}
-                      itemDescription={`Payment for ${selectedRegistration.contact_name} at ${event.title}`}
-                      onCardPaymentSuccess={handlePaymentSuccess}
-                      onBankTransferInitiated={handlePaymentSuccess}
-                  />
-                </div>
-            </DialogContent>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Process Same-Day Payment</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <SharedPaymentGateway
+                amountUSD={selectedRegistration.amount_usd}
+                amountCAD={
+                  selectedRegistration.amount_vnd
+                    ? selectedRegistration.amount_vnd / 23000
+                    : (selectedRegistration.amount_usd || 0) * 1.35
+                }
+                itemDescription={`Payment for ${selectedRegistration.contact_name} at ${event.title}`}
+                onCardPaymentSuccess={handlePaymentSuccess}
+                onBankTransferInitiated={handlePaymentSuccess}
+              />
+            </div>
+          </DialogContent>
         </Dialog>
       )}
     </div>

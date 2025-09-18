@@ -1,28 +1,28 @@
+// src/pages/MySessions.jsx
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { TutoringSession } from '@/api/entities';
-import { User } from '@/api/entities';
-import { Tutor } from '@/api/entities';
 import { Calendar, Clock, Video, Star, BookOpen, User as UserIcon, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
+// --- Firebase ---
+import { getAuth } from 'firebase/auth';
+import { db } from '@/firebase';
+import {
+  collection, query, where, orderBy, getDocs, doc, updateDoc
+} from 'firebase/firestore';
+
 const SessionCard = ({ session, tutorData, onJoin, onRate }) => {
   const getStatusColor = (status) => {
     switch (status) {
-      case 'scheduled':
-        return 'bg-blue-100 text-blue-800';
-      case 'in_progress':
-        return 'bg-green-100 text-green-800';
-      case 'completed':
-        return 'bg-gray-100 text-gray-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      case 'scheduled': return 'bg-blue-100 text-blue-800';
+      case 'in_progress': return 'bg-green-100 text-green-800';
+      case 'completed': return 'bg-gray-100 text-gray-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -30,14 +30,12 @@ const SessionCard = ({ session, tutorData, onJoin, onRate }) => {
     if (session.status !== 'scheduled') return false;
     const sessionTime = new Date(session.scheduled_date);
     const now = new Date();
-    const timeDiff = sessionTime.getTime() - now.getTime();
-    // Allow joining 15 minutes before session starts
-    return timeDiff <= 15 * 60 * 1000 && timeDiff >= -30 * 60 * 1000;
+    const diff = sessionTime.getTime() - now.getTime();
+    // Join from -30m to +15m window
+    return diff <= 15 * 60 * 1000 && diff >= -30 * 60 * 1000;
   };
 
-  const canRateSession = () => {
-    return session.status === 'completed' && !session.student_rating;
-  };
+  const canRateSession = () => session.status === 'completed' && !session.student_rating;
 
   return (
     <Card className="hover:shadow-lg transition-shadow">
@@ -53,22 +51,18 @@ const SessionCard = ({ session, tutorData, onJoin, onRate }) => {
         </div>
 
         <div className="space-y-3 mb-4">
-          {/* Fixed: Display session date and time */}
           <div className="flex items-center gap-2 text-gray-600">
             <Calendar className="w-4 h-4" />
             <span>{format(new Date(session.scheduled_date), 'EEEE, MMMM do, yyyy')}</span>
           </div>
-          
           <div className="flex items-center gap-2 text-gray-600">
             <Clock className="w-4 h-4" />
             <span>{format(new Date(session.scheduled_date), 'h:mm a')} ({session.duration} minutes)</span>
           </div>
-
           <div className="flex items-center gap-2 text-gray-600">
             <BookOpen className="w-4 h-4" />
             <span>{session.session_type === 'individual' ? 'One-on-One' : 'Group Session'}</span>
           </div>
-
           <div className="flex items-center gap-2 text-gray-600">
             <UserIcon className="w-4 h-4" />
             <span>Price: ${session.price}</span>
@@ -89,14 +83,14 @@ const SessionCard = ({ session, tutorData, onJoin, onRate }) => {
               Join Session
             </Button>
           )}
-          
+
           {canRateSession() && (
             <Button variant="outline" onClick={() => onRate(session)} className="flex-1">
               <Star className="w-4 h-4 mr-2" />
               Rate Session
             </Button>
           )}
-          
+
           {session.status === 'scheduled' && !canJoinSession() && (
             <Button variant="outline" disabled className="flex-1">
               Session Scheduled
@@ -112,11 +106,7 @@ const SessionCard = ({ session, tutorData, onJoin, onRate }) => {
                 {[...Array(5)].map((_, i) => (
                   <Star
                     key={i}
-                    className={`w-4 h-4 ${
-                      i < session.student_rating
-                        ? 'text-yellow-400 fill-yellow-400'
-                        : 'text-gray-300'
-                    }`}
+                    className={`w-4 h-4 ${i < session.student_rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
                   />
                 ))}
               </div>
@@ -136,43 +126,54 @@ export default function MySessions() {
   const [sessions, setSessions] = useState([]);
   const [tutors, setTutors] = useState({});
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const [me, setMe] = useState(null);
+
+  // helper: chunk array for Firestore where-in (max 10)
+  const chunk = (arr, size = 10) => {
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  };
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const currentUser = await User.me();
-        setUser(currentUser);
+        setLoading(true);
+        const auth = getAuth();
+        const user = auth.currentUser;
+        if (!user) {
+          setMe(null);
+          setSessions([]);
+          setTutors({});
+          setLoading(false);
+          return;
+        }
+        setMe(user);
 
-        // Load user's sessions
-        const userSessions = await TutoringSession.filter(
-          { student_id: currentUser.id },
-          '-scheduled_date'
+        // Sessions for this student
+        const q = query(
+          collection(db, 'tutoring_sessions'),
+          where('student_id', '==', user.uid),
+          orderBy('scheduled_date', 'desc')
         );
+        const snap = await getDocs(q);
+        const userSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setSessions(userSessions);
 
-        // Load tutor data for sessions
-        const tutorIds = [...new Set(userSessions.map(s => s.tutor_id))];
-        const tutorDataArray = await Promise.all(
-          tutorIds.map(async (tutorId) => {
-            try {
-              // Get the user data for the tutor
-              const tutorUsers = await User.filter({ id: tutorId });
-              return tutorUsers.length > 0 ? { id: tutorId, ...tutorUsers[0] } : null;
-            } catch (error) {
-              console.warn(`Failed to load tutor ${tutorId}:`, error);
-              return null;
-            }
-          })
-        );
-
-        const tutorsMap = tutorDataArray.reduce((acc, tutor) => {
-          if (tutor) acc[tutor.id] = tutor;
-          return acc;
-        }, {});
+        // Load tutors (from users collection) for display names/avatars
+        const tutorIds = [...new Set(userSessions.map(s => s.tutor_id).filter(Boolean))];
+        const tutorsMap = {};
+        for (const ids of chunk(tutorIds, 10)) {
+          const tq = query(collection(db, 'users'), where('id', 'in', ids));
+          const ts = await getDocs(tq);
+          ts.forEach(docu => {
+            const data = docu.data();
+            tutorsMap[data.id] = data; // expects user docs to contain `id` field == auth uid
+          });
+        }
         setTutors(tutorsMap);
-      } catch (error) {
-        console.error('Error loading sessions:', error);
+      } catch (err) {
+        console.error('Error loading sessions:', err);
       } finally {
         setLoading(false);
       }
@@ -189,22 +190,24 @@ export default function MySessions() {
     }
   };
 
-  const handleRateSession = (session) => {
-    const rating = prompt('Rate this session (1-5 stars):');
-    if (rating && rating >= 1 && rating <= 5) {
-      const feedback = prompt('Leave feedback (optional):') || '';
-      
-      // Update session with rating
-      TutoringSession.update(session.id, {
-        student_rating: parseInt(rating),
-        student_feedback: feedback
-      }).then(() => {
-        // Refresh sessions
-        window.location.reload();
-      }).catch(error => {
-        console.error('Error rating session:', error);
-        alert('Failed to submit rating. Please try again.');
+  const handleRateSession = async (session) => {
+    const ratingStr = prompt('Rate this session (1-5 stars):');
+    const rating = Number(ratingStr);
+    if (!rating || rating < 1 || rating > 5) return;
+
+    const feedback = prompt('Leave feedback (optional):') || '';
+    try {
+      await updateDoc(doc(db, 'tutoring_sessions', session.id), {
+        student_rating: rating,
+        student_feedback: feedback,
       });
+      // Optimistic local update
+      setSessions(prev =>
+        prev.map(s => (s.id === session.id ? { ...s, student_rating: rating, student_feedback: feedback } : s))
+      );
+    } catch (err) {
+      console.error('Error rating session:', err);
+      alert('Failed to submit rating. Please try again.');
     }
   };
 
@@ -219,10 +222,10 @@ export default function MySessions() {
     );
   }
 
-  const upcomingSessions = sessions.filter(s => 
+  const upcomingSessions = sessions.filter(s =>
     s.status === 'scheduled' && new Date(s.scheduled_date) > new Date()
   );
-  const pastSessions = sessions.filter(s => 
+  const pastSessions = sessions.filter(s =>
     s.status === 'completed' || (s.status === 'scheduled' && new Date(s.scheduled_date) <= new Date())
   );
 
@@ -236,7 +239,8 @@ export default function MySessions() {
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-600">Session Credits Available</p>
-            <p className="text-2xl font-bold text-green-600">{user?.session_credits || 0}</p>
+            {/* If you store credits in user profile doc, fetch and show it. */}
+            <p className="text-2xl font-bold text-green-600">{/* e.g., userProfile?.session_credits ?? 0 */}0</p>
           </div>
         </div>
 
@@ -253,7 +257,6 @@ export default function MySessions() {
           </Card>
         ) : (
           <div className="space-y-8">
-            {/* Upcoming Sessions */}
             {upcomingSessions.length > 0 && (
               <div>
                 <h2 className="text-2xl font-semibold text-gray-900 mb-4">Upcoming Sessions</h2>
@@ -271,7 +274,6 @@ export default function MySessions() {
               </div>
             )}
 
-            {/* Past Sessions */}
             {pastSessions.length > 0 && (
               <div>
                 <h2 className="text-2xl font-semibold text-gray-900 mb-4">Past Sessions</h2>

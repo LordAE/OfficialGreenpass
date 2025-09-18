@@ -1,35 +1,51 @@
+// src/pages/AdminPayments.jsx
+import React, { useState, useEffect } from "react";
+import { db } from "@/firebase";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+} from "firebase/firestore";
 
-import React, { useState, useEffect } from 'react';
-import { Payment } from '@/api/entities';
-import { User } from '@/api/entities';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  DollarSign, 
-  Search, 
-  Download, 
-  Filter,
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DollarSign,
+  Search,
+  RefreshCw,
   CreditCard,
   Building,
   Globe,
   CheckCircle,
   AlertTriangle,
   Clock,
-  RefreshCw,
-  Loader2
-} from 'lucide-react';
-import { format } from 'date-fns';
+  Loader2,
+} from "lucide-react";
+import { format } from "date-fns";
+
+/** Helper: supports Firestore Timestamp, ISO string, or number */
+function toDate(val) {
+  try {
+    if (!val) return null;
+    if (val?.toDate) return val.toDate();
+    if (typeof val === "string" || typeof val === "number") return new Date(val);
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function AdminPayments() {
   const [payments, setPayments] = useState([]);
   const [users, setUsers] = useState({});
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     loadPayments();
@@ -38,17 +54,18 @@ export default function AdminPayments() {
   const loadPayments = async () => {
     setLoading(true);
     try {
-      const [paymentData, userData] = await Promise.all([
-        Payment.list('-created_date'),
-        User.list()
+      // Payments (newest first)
+      const payQ = query(collection(db, "payments"), orderBy("created_date", "desc"));
+      const [paySnap, userSnap] = await Promise.all([
+        getDocs(payQ),
+        getDocs(collection(db, "users")),
       ]);
-      
+
+      const paymentData = paySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setPayments(paymentData);
-      
-      const usersMap = userData.reduce((acc, user) => {
-        acc[user.id] = user;
-        return acc;
-      }, {});
+
+      const usersMap = {};
+      userSnap.docs.forEach((d) => (usersMap[d.id] = { id: d.id, ...d.data() }));
       setUsers(usersMap);
     } catch (error) {
       console.error("Error loading payments:", error);
@@ -57,52 +74,35 @@ export default function AdminPayments() {
     }
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'successful':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'failed':
-        return <AlertTriangle className="w-4 h-4 text-red-500" />;
-      case 'pending':
-      case 'pending_verification':
-        return <Clock className="w-4 h-4 text-yellow-500" />;
-      default:
-        return <Clock className="w-4 h-4 text-gray-500" />;
-    }
-  };
-
-  const getProviderIcon = (provider) => {
-    switch (provider) {
-      case 'PayPal':
-        return <CreditCard className="w-4 h-4 text-blue-500" />;
-      case 'Bank Transfer':
-        return <Building className="w-4 h-4 text-gray-500" />;
-      case 'E-Transfer':
-        return <Globe className="w-4 h-4 text-purple-500" />;
-      default:
-        return <DollarSign className="w-4 h-4 text-green-500" />;
-    }
-  };
-
-  const filteredPayments = payments.filter(payment => {
+  const filteredPayments = payments.filter((payment) => {
     const user = users[payment.user_id];
-    const matchesSearch = !searchTerm || 
-      user?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.transaction_id?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
-    
+    const term = searchTerm.trim().toLowerCase();
+
+    const matchesSearch =
+      !term ||
+      user?.full_name?.toLowerCase().includes(term) ||
+      user?.email?.toLowerCase().includes(term) ||
+      payment.transaction_id?.toLowerCase().includes(term) ||
+      payment.paypal_order_id?.toLowerCase().includes(term);
+
+    const matchesStatus = statusFilter === "all" || payment.status === statusFilter;
+
     return matchesSearch && matchesStatus;
   });
 
-  const paypalPayments = filteredPayments.filter(p => p.provider === 'PayPal');
-  const bankPayments = filteredPayments.filter(p => p.provider === 'Bank Transfer' || p.provider === 'E-Transfer');
+  const paypalPayments = filteredPayments.filter((p) => p.provider === "PayPal");
+  const bankPayments = filteredPayments.filter(
+    (p) => p.provider === "Bank Transfer" || p.provider === "E-Transfer"
+  );
 
   const totalPayments = payments.length;
-  const successfulPayments = payments.filter(p => p.status === 'successful').length;
-  const pendingPayments = payments.filter(p => p.status === 'pending' || p.status === 'pending_verification').length;
-  const totalRevenue = payments.filter(p => p.status === 'successful').reduce((sum, p) => sum + (p.amount_usd || 0), 0);
+  const successfulPayments = payments.filter((p) => p.status === "successful").length;
+  const pendingPayments = payments.filter(
+    (p) => p.status === "pending" || p.status === "pending_verification"
+  ).length;
+  const totalRevenue = payments
+    .filter((p) => p.status === "successful")
+    .reduce((sum, p) => sum + (Number(p.amount_usd) || 0), 0);
 
   if (loading) {
     return (
@@ -128,7 +128,7 @@ export default function AdminPayments() {
           </Button>
         </div>
 
-        {/* Payment Statistics */}
+        {/* Stats */}
         <div className="grid md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
@@ -141,7 +141,7 @@ export default function AdminPayments() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -170,7 +170,9 @@ export default function AdminPayments() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-emerald-600">${totalRevenue.toFixed(2)}</div>
+                  <div className="text-2xl font-bold text-emerald-600">
+                    ${Number(totalRevenue).toFixed(2)}
+                  </div>
                   <p className="text-gray-600">Total Revenue</p>
                 </div>
                 <DollarSign className="w-8 h-8 text-emerald-200" />
@@ -179,16 +181,17 @@ export default function AdminPayments() {
           </Card>
         </div>
 
-        {/* Search and Filter */}
+        {/* Search & Filter */}
         <Card className="mb-6">
           <CardContent className="p-6">
             <div className="flex gap-4">
-              <div className="flex-1">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <Input
                   placeholder="Search by user name, email, or transaction ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
+                  className="w-full pl-10"
                 />
               </div>
               <select
@@ -210,8 +213,12 @@ export default function AdminPayments() {
         <Tabs defaultValue="all" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="all">All Payments</TabsTrigger>
-            <TabsTrigger value="paypal">PayPal <Badge className="ml-2">{paypalPayments.length}</Badge></TabsTrigger>
-            <TabsTrigger value="transfers">Bank/E-Transfer <Badge className="ml-2">{bankPayments.length}</Badge></TabsTrigger>
+            <TabsTrigger value="paypal">
+              PayPal <Badge className="ml-2">{paypalPayments.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="transfers">
+              Bank/E-Transfer <Badge className="ml-2">{bankPayments.length}</Badge>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="all">
@@ -234,12 +241,12 @@ export default function AdminPayments() {
 const PaymentTable = ({ payments, users }) => {
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'successful':
+      case "successful":
         return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'failed':
+      case "failed":
         return <AlertTriangle className="w-4 h-4 text-red-500" />;
-      case 'pending':
-      case 'pending_verification':
+      case "pending":
+      case "pending_verification":
         return <Clock className="w-4 h-4 text-yellow-500" />;
       default:
         return <Clock className="w-4 h-4 text-gray-500" />;
@@ -248,11 +255,11 @@ const PaymentTable = ({ payments, users }) => {
 
   const getProviderIcon = (provider) => {
     switch (provider) {
-      case 'PayPal':
+      case "PayPal":
         return <CreditCard className="w-4 h-4 text-blue-500" />;
-      case 'Bank Transfer':
+      case "Bank Transfer":
         return <Building className="w-4 h-4 text-gray-500" />;
-      case 'E-Transfer':
+      case "E-Transfer":
         return <Globe className="w-4 h-4 text-purple-500" />;
       default:
         return <DollarSign className="w-4 h-4 text-green-500" />;
@@ -276,13 +283,14 @@ const PaymentTable = ({ payments, users }) => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {payments.map(payment => {
+              {payments.map((payment) => {
                 const user = users[payment.user_id];
+                const created = toDate(payment.created_date);
                 return (
                   <TableRow key={payment.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{user?.full_name || 'Unknown User'}</p>
+                        <p className="font-medium">{user?.full_name || "Unknown User"}</p>
                         <p className="text-sm text-gray-500">{user?.email}</p>
                         {payment.payer_email && payment.payer_email !== user?.email && (
                           <p className="text-xs text-blue-600">Paid by: {payment.payer_email}</p>
@@ -292,32 +300,41 @@ const PaymentTable = ({ payments, users }) => {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {getProviderIcon(payment.provider)}
-                        <span>{payment.provider}</span>
+                        <span>{payment.provider || "—"}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="font-medium">${payment.amount_usd?.toFixed(2)}</TableCell>
+                    <TableCell className="font-medium">
+                      ${Number(payment.amount_usd || 0).toFixed(2)}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {payment.related_entity_type?.replace('_', ' ')}
+                        {(payment.related_entity_type || "—").replace("_", " ")}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-mono text-sm">
-                      {payment.transaction_id || payment.paypal_order_id || 'N/A'}
+                      {payment.transaction_id || payment.paypal_order_id || "N/A"}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {getStatusIcon(payment.status)}
-                        <Badge className={
-                          payment.status === 'successful' ? 'bg-green-100 text-green-800' :
-                          payment.status === 'failed' ? 'bg-red-100 text-red-800' :
-                          payment.status === 'pending_verification' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }>
-                          {payment.status.replace('_', ' ')}
+                        <Badge
+                          className={
+                            payment.status === "successful"
+                              ? "bg-green-100 text-green-800"
+                              : payment.status === "failed"
+                              ? "bg-red-100 text-red-800"
+                              : payment.status === "pending_verification"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-gray-100 text-gray-800"
+                          }
+                        >
+                          {(payment.status || "unknown").replace("_", " ")}
                         </Badge>
                       </div>
                     </TableCell>
-                    <TableCell>{format(new Date(payment.created_date), 'MMM dd, yyyy HH:mm')}</TableCell>
+                    <TableCell>
+                      {created ? format(created, "MMM dd, yyyy HH:mm") : "—"}
+                    </TableCell>
                   </TableRow>
                 );
               })}
