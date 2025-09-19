@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -20,18 +19,14 @@ const ProgramCard = ({ program, onCompareClick, isCompared, isCompareFull }) => 
   const handleCompareClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    console.log('Compare clicked for program:', program.id, program.program_title);
-    
+
     if (isCompared) {
-      // Remove from comparison
       onCompareClick(program, 'remove');
       toast({
         title: "Removed from Comparison",
         description: `${program.program_title} has been removed from your comparison list.`,
       });
     } else {
-      // Add to comparison
       const result = onCompareClick(program, 'add');
       if (result?.error) {
         toast({
@@ -53,12 +48,12 @@ const ProgramCard = ({ program, onCompareClick, isCompared, isCompareFull }) => 
       <CardContent className="p-4 flex flex-col flex-grow">
         <div className="flex items-start gap-4">
           <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0 bg-white">
-            <img 
-              src={program.institution_logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop'} 
-              alt={`${program.institution_name || 'School'} logo`} 
+            <img
+              src={program.institution_logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop'}
+              alt={`${program.institution_name || 'School'} logo`}
               className="w-full h-full object-contain"
               onError={(e) => {
-                e.target.src = 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop';
+                e.currentTarget.src = 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop';
               }}
             />
           </div>
@@ -84,7 +79,7 @@ const ProgramCard = ({ program, onCompareClick, isCompared, isCompareFull }) => 
             <span>${(program.tuition_fee_cad || 0).toLocaleString()} CAD / year</span>
           </div>
         </div>
-        
+
         <div className="mt-auto pt-4 flex items-center space-x-2">
           <Link to={createPageUrl(`ProgramDetail?id=${program.id}`)} className="flex-1">
             <Button className="w-full bg-green-600 hover:bg-green-700">
@@ -130,10 +125,15 @@ function ProgramsPageContent() {
 
   const activeTab = useMemo(() => searchParams.get('view') || 'browse', [searchParams]);
 
+  // Pagination constants/state derived from URL
+  const PAGE_SIZE = 15;
+  const rawPage = useMemo(() => parseInt(searchParams.get('page') || '1', 10), [searchParams]);
+  const page = Number.isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+
   const filters = useMemo(() => {
     const params = {};
     for (const [key, value] of searchParams.entries()) {
-      if (key !== 'view') {
+      if (key !== 'view' && key !== 'page') {
         params[key] = value;
       }
     }
@@ -144,16 +144,12 @@ function ProgramsPageContent() {
     setLoading(true);
     setError(null);
     try {
-      console.log('Loading programs from School entity...');
       const programsData = await School.list('-created_date', 1000);
-      console.log('Loaded programs:', programsData.length);
-      
       if (!programsData || programsData.length === 0) {
         setError('No programs found. Please use the Master Data Seeder to populate program data.');
         setAllProgramsData([]);
         return;
       }
-      
       setAllProgramsData(programsData);
     } catch (error) {
       console.error("Error loading programs:", error);
@@ -168,19 +164,21 @@ function ProgramsPageContent() {
     loadPrograms();
   }, [loadPrograms]);
 
+  // Apply filters
   useEffect(() => {
     let results = allProgramsData;
     if (Object.keys(filters).length > 0) {
       results = allProgramsData.filter(p => {
         return Object.entries(filters).every(([key, value]) => {
           if (!value || value === 'all') return true;
-          
+
           switch (key) {
-            case 'search':
+            case 'search': {
               const searchLower = value.toLowerCase();
               return (p.program_title || '').toLowerCase().includes(searchLower) ||
                      (p.institution_name || '').toLowerCase().includes(searchLower) ||
                      (p.school_name || '').toLowerCase().includes(searchLower);
+            }
             case 'country': return p.school_country === value;
             case 'province': return p.school_province === value;
             case 'city': return p.school_city === value;
@@ -196,13 +194,32 @@ function ProgramsPageContent() {
     setPrograms(results);
   }, [allProgramsData, filters]);
 
+  // Ensure page stays within bounds when results change
+  const totalPages = Math.max(1, Math.ceil(programs.length / PAGE_SIZE));
+  useEffect(() => {
+    if (page > totalPages) {
+      const currentParams = new URLSearchParams(searchParams);
+      currentParams.set('page', String(totalPages));
+      setSearchParams(currentParams, { replace: true });
+    }
+  }, [page, totalPages, searchParams, setSearchParams]);
+
+  // Slice for current page
+  const startIndex = (Math.min(page, totalPages) - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, programs.length);
+  const paginatedPrograms = useMemo(
+    () => programs.slice(startIndex, endIndex),
+    [programs, startIndex, endIndex]
+  );
+
   const handleFilterChange = (newFilters) => {
     const currentParams = new URLSearchParams(searchParams);
-    
+
     if (!currentParams.has('view')) {
       currentParams.set('view', 'browse');
     }
 
+    // Apply incoming filters
     Object.entries(newFilters).forEach(([key, value]) => {
       if (value && value !== 'all') {
         currentParams.set(key, value);
@@ -211,12 +228,13 @@ function ProgramsPageContent() {
       }
     });
 
+    // Reset to first page whenever filters change
+    currentParams.set('page', '1');
+
     setSearchParams(currentParams);
   };
 
   const handleCompareClick = useCallback((program, action) => {
-    console.log('handleCompareClick called:', program.id, action);
-    
     if (action === 'remove') {
       remove(program.id);
       return { success: true };
@@ -229,8 +247,20 @@ function ProgramsPageContent() {
     if (value === 'compare') {
       navigate(createPageUrl('ComparePrograms'));
     } else {
-      setSearchParams({ view: 'browse', ...filters });
+      const currentParams = new URLSearchParams(searchParams);
+      currentParams.set('view', 'browse');
+      // keep filters, reset to page 1
+      currentParams.set('page', '1');
+      setSearchParams(currentParams);
     }
+  };
+
+  const goToPage = (nextPage) => {
+    const clamped = Math.min(Math.max(nextPage, 1), totalPages);
+    const currentParams = new URLSearchParams(searchParams);
+    currentParams.set('page', String(clamped));
+    // preserve current filters & view
+    setSearchParams(currentParams);
   };
 
   if (loading || !isReady) {
@@ -274,12 +304,15 @@ function ProgramsPageContent() {
           onFilterChange={handleFilterChange}
           initialFilters={filters}
         />
-        
+
         <div className="mb-4 text-sm text-gray-600">
-          Showing {programs.length} of {allProgramsData.length} programs
+          {programs.length > 0
+            ? <>Showing <span className="font-medium">{startIndex + 1}</span>–<span className="font-medium">{endIndex}</span> of <span className="font-medium">{programs.length}</span> programs</>
+            : <>Showing 0 of 0 programs</>
+          }
         </div>
 
-        {programs.length === 0 && !loading ? (
+        {programs.length === 0 ? (
           <div className="text-center py-12">
             <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No Programs Found</h3>
@@ -289,17 +322,56 @@ function ProgramsPageContent() {
             </Link>
           </div>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {programs.map((program) => (
-              <ProgramCard 
-                key={program.id} 
-                program={program}
-                onCompareClick={handleCompareClick}
-                isCompared={contains(program.id)}
-                isCompareFull={isFull()}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {paginatedPrograms.map((program) => (
+                <ProgramCard
+                  key={program.id}
+                  program={program}
+                  onCompareClick={handleCompareClick}
+                  isCompared={contains(program.id)}
+                  isCompareFull={isFull()}
+                />
+              ))}
+            </div>
+
+            {/* Pagination controls */}
+            <div className="mt-8 flex items-center justify-between gap-4">
+              <div className="text-sm text-gray-600">
+                Page <span className="font-medium">{Math.min(page, totalPages)}</span> of <span className="font-medium">{totalPages}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => goToPage(1)}
+                  disabled={page <= 1}
+                >
+                  First
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page <= 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= totalPages}
+                >
+                  Next
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => goToPage(totalPages)}
+                  disabled={page >= totalPages}
+                >
+                  Last
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -307,7 +379,5 @@ function ProgramsPageContent() {
 }
 
 export default function ProgramsPage() {
-  return (
-    <ProgramsPageContent />
-  );
+  return <ProgramsPageContent />;
 }
