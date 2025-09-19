@@ -33,7 +33,7 @@ import {
 import SchoolForm from "../components/admin/SchoolForm";
 import MasterDataSeeder from "../components/admin/MasterDataSeeder";
 
-const COLL = "schoolPrograms"; // collection name in Firestore
+const COLL = "schools"; // collection name in Firestore
 
 export default function AdminSchools() {
   const [schools, setSchools] = useState([]);
@@ -44,32 +44,34 @@ export default function AdminSchools() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const loadSchools = useCallback(async () => {
-    setLoading(true);
-    try {
-      // newest first (requires "created_at" on docs)
-      let data = [];
-      try {
-        const q = query(collection(db, COLL), orderBy("created_at", "desc"), fbLimit(500));
-        const snap = await getDocs(q);
-        data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      } catch (orderedErr) {
-        // fallback if ordering/index missing
-        const snap = await getDocs(collection(db, COLL));
-        data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      }
+  setLoading(true);
+  try {
+    const snap = await getDocs(collection(db, COLL));
+    // Map and normalize
+    const data = snap.docs.map((d) => {
+      const obj = { id: d.id, ...d.data() };
+      // created_at can be a Firestore Timestamp or missing
+      const ts = obj.created_at && typeof obj.created_at.toMillis === "function"
+        ? obj.created_at.toMillis()
+        : 0;
+      return { ...obj, __createdAtMs: ts };
+    });
 
-      const safe = Array.isArray(data) ? data.filter((x) => x && typeof x === "object") : [];
-      setSchools(safe);
-      setFilteredSchools(safe);
-    } catch (error) {
-      console.error("Error loading school programs:", error);
-      setSchools([]);
-      setFilteredSchools([]);
-      alert("Failed to load school programs.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    // Sort newest first, but include everything
+    data.sort((a, b) => b.__createdAtMs - a.__createdAtMs);
+
+    const safe = Array.isArray(data) ? data.filter((x) => x && typeof x === "object") : [];
+    setSchools(safe);
+    setFilteredSchools(safe);
+  } catch (error) {
+    console.error("Error loading school programs:", error);
+    setSchools([]);
+    setFilteredSchools([]);
+    alert("Failed to load school programs.");
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => {
     loadSchools();
