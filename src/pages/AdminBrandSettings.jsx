@@ -45,7 +45,7 @@ export default function AdminBrandSettings() {
           singleton_key: "SINGLETON",
           company_name: "GreenPass",
           logo_url:
-            "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/52125f446_GP2withnameTransparent.png",
+            "null",
           primary_color: "#059669",
           secondary_color: "#0f766e",
           tagline: "Your comprehensive super app for studying abroad",
