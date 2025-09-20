@@ -5,299 +5,361 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.token.admin == true; }
 
-      // AboutPageContent
-      match /AboutPageContent/{docId} {
-        allow read, write: if isAdmin();
-      }
+    // ── Helpers for registration payloads ──────────────────────────────────────
+    // Guests: NO user_id field allowed. Validate required fields + types.
+    function hasGuestEventRegistrationFields() {
+      return
+        // only the listed fields (no user_id)
+        request.resource.data.keys().hasOnly([
+          'event_id','role','contact_name','contact_email','phone',
+          'organization_name','guest_country','amount_usd','amount_cad',
+          'fx_rate','is_guest_registration','reservation_code','created_at'
+        ]) &&
+        request.resource.data.event_id is string &&
+        request.resource.data.role is string &&
+        request.resource.data.contact_name is string &&
+        request.resource.data.contact_email is string &&
+        request.resource.data.phone is string &&
+        request.resource.data.organization_name is string &&
+        request.resource.data.guest_country is string &&
+        request.resource.data.amount_usd is number &&
+        request.resource.data.amount_cad is number &&
+        request.resource.data.fx_rate is number &&
+        request.resource.data.is_guest_registration == true &&
+        request.resource.data.reservation_code is string &&
+        // force server timestamp
+        request.resource.data.created_at == request.time;
+    }
 
-      // Agent
-      match /Agent/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Authed users: must include user_id matching auth.uid
+    function hasAuthedEventRegistrationFields() {
+      return
+        request.resource.data.keys().hasOnly([
+          'event_id','role','contact_name','contact_email','phone',
+          'organization_name','guest_country','amount_usd','amount_cad',
+          'fx_rate','is_guest_registration','reservation_code','created_at','user_id'
+        ]) &&
+        request.resource.data.user_id is string &&
+        request.resource.data.user_id == request.auth.uid &&
+        request.resource.data.event_id is string &&
+        request.resource.data.role is string &&
+        request.resource.data.contact_name is string &&
+        request.resource.data.contact_email is string &&
+        request.resource.data.phone is string &&
+        request.resource.data.organization_name is string &&
+        request.resource.data.guest_country is string &&
+        request.resource.data.amount_usd is number &&
+        request.resource.data.amount_cad is number &&
+        request.resource.data.fx_rate is number &&
+        // for signed-in flows this can be either true/false
+        request.resource.data.is_guest_registration is bool &&
+        request.resource.data.reservation_code is string &&
+        request.resource.data.created_at == request.time;
+    }
 
-      // AgentPackage
-      match /AgentPackage/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // ── Collections ───────────────────────────────────────────────────────────
 
-      // Asset
-      match /Asset/{docId} {
-        allow read: if true;
-        allow write: if false;
-      }
+    // AboutPageContent
+    match /AboutPageContent/{docId} {
+      allow read, write: if isAdmin();
+    }
 
-      // BankSettings
-      match /BankSettings/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Agent
+    match /Agent/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // BrandSettings
-      match /BrandSettings/{docId} {
-        allow read, write: if isAdmin();
-      }
+    // AgentPackage
+    match /AgentPackage/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Case
-      match /Case/{docId} {
-        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
-      }
+    // Asset
+    match /Asset/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
 
-      // ChatSettings
-      match /ChatSettings/{docId} {
-        allow read, write: if isAdmin();
-      }
+    // BankSettings
+    match /BankSettings/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Contact
-      match /Contact/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // BrandSettings
+    match /BrandSettings/{docId} {
+      allow read, write: if isAdmin();
+    }
 
-      // ContactPageContent
-      match /ContactPageContent/{docId} {
-        allow read, write: if isAdmin();
-      }
+    // Case
+    match /Case/{docId} {
+      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+    }
 
-      // Conversation
-      match /Conversation/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // ChatSettings
+    match /ChatSettings/{docId} {
+      allow read, write: if isAdmin();
+    }
 
-      // Event
-      match /Event/{docId} {
-        allow read: if true;
-        allow write: if false;
-      }
+    // Contact
+    match /Contact/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // EventAssignment
-      match /EventAssignment/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // ContactPageContent
+    match /ContactPageContent/{docId} {
+      allow read, write: if isAdmin();
+    }
 
-      // EventRegistration
-      match /EventRegistration/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Conversation
+    match /Conversation/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // ExhibitorRegistration
-      match /ExhibitorRegistration/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Event
+    match /Event/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
 
-      // FAQ
-      match /FAQ/{docId} {
-        allow read: if true;
-        allow write: if false;
-      }
+    // EventAssignment
+    match /EventAssignment/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // FairEvent
-      match /FairEvent/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // EventRegistration  ✅ allow guests
+    match /EventRegistration/{docId} {
+      allow create: if isAdmin() ||
+                    (signedIn() && hasAuthedEventRegistrationFields()) ||
+                    (!signedIn() && hasGuestEventRegistrationFields());
+      // keep your current read/update policy
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid || isAdmin();
+    }
 
-      // HomePageContent
-      match /HomePageContent/{docId} {
-        allow read, write: if isAdmin();
-      }
+    // ExhibitorRegistration  ✅ allow guests
+    match /ExhibitorRegistration/{docId} {
+      allow create: if isAdmin() ||
+                    (signedIn() && hasAuthedEventRegistrationFields()) ||
+                    (!signedIn() && hasGuestEventRegistrationFields());
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid || isAdmin();
+    }
 
-      // Institution
-      match /Institution/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // FAQ
+    match /FAQ/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
 
-      // KnowledgeBase
-      match /KnowledgeBase/{docId} {
-        allow read: if true;
-        allow write: if false;
-      }
+    // FairEvent
+    match /FairEvent/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Lead
-      match /Lead/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // HomePageContent
+    match /HomePageContent/{docId} {
+      allow read, write: if isAdmin();
+    }
 
-      // MarketplaceOrder
-      match /MarketplaceOrder/{docId} {
-        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
-      }
+    // Institution
+    match /Institution/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Message
-      match /Message/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // KnowledgeBase
+    match /KnowledgeBase/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
 
-      // OurTeamPageContent
-      match /OurTeamPageContent/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Lead
+    match /Lead/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Package
-      match /Package/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // MarketplaceOrder
+    match /MarketplaceOrder/{docId} {
+      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+    }
 
-      // Payment
-      match /Payment/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Message
+    match /Message/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Post
-      match /Post/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // OurTeamPageContent
+    match /OurTeamPageContent/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Program
-      match /Program/{docId} {
-        allow read: if true;
-        allow write: if false;
-      }
+    // Package
+    match /Package/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Registration
-      match /Registration/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Payment
+    match /Payment/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Reservation
-      match /Reservation/{docId} {
-        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
-      }
+    // Post
+    match /Post/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // School
-      match /School/{docId} {
-        allow read: if true;
-        allow write: if false;
-      }
+    // Program
+    match /Program/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
 
-      // SchoolProfile
-      match /SchoolProfile/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Registration
+    match /Registration/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Service
-      match /Service/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Reservation
+    match /Reservation/{docId} {
+      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+    }
 
-      // StudentRSVP
-      match /StudentRSVP/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // School
+    match /School/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
 
-      // StudentTutorPackage
-      match /StudentTutorPackage/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // SchoolProfile
+    match /SchoolProfile/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // SupportAgent
-      match /SupportAgent/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Service
+    match /Service/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // SupportTicket
-      match /SupportTicket/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // StudentRSVP  ✅ allow guests
+    match /StudentRSVP/{docId} {
+      allow create: if isAdmin() ||
+                    (signedIn() && hasAuthedEventRegistrationFields()) ||
+                    (!signedIn() && hasGuestEventRegistrationFields());
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid || isAdmin();
+    }
 
-      // Tutor
-      match /Tutor/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // StudentTutorPackage
+    match /StudentTutorPackage/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // TutorPackage
-      match /TutorPackage/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // SupportAgent
+    match /SupportAgent/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // TutoringSession
-      match /TutoringSession/{docId} {
-        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
-      }
+    // SupportTicket
+    match /SupportTicket/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // User
-      match /User/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // Tutor
+    match /Tutor/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Vendor
-      match /Vendor/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // TutorPackage
+    match /TutorPackage/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // VisaDocument
-      match /VisaDocument/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // TutoringSession
+    match /TutoringSession/{docId} {
+      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+    }
 
-      // VisaPackage
-      match /VisaPackage/{docId} {
-        allow create: if signedIn();
-        allow read: if signedIn();
-        allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // User
+    match /User/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // VisaRequest
-      match /VisaRequest/{docId} {
-        allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
-      }
+    // Vendor
+    match /Vendor/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // Wallet
-      match /Wallet/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // VisaDocument
+    match /VisaDocument/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
-      // WalletTransaction
-      match /WalletTransaction/{docId} {
-        allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-        allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
-      }
+    // VisaPackage
+    match /VisaPackage/{docId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
 
+    // VisaRequest
+    match /VisaRequest/{docId} {
+      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+    }
+
+    // Wallet
+    match /Wallet/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
+
+    // WalletTransaction
+    match /WalletTransaction/{docId} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Final deny-all
     match /{document=**} {
       allow read, write: if false;
     }

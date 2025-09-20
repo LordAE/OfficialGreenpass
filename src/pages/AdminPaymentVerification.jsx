@@ -11,7 +11,6 @@ import {
   orderBy,
   updateDoc,
   serverTimestamp,
-  limit,
 } from "firebase/firestore";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -19,168 +18,182 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-
-import {
-  Eye,
-  CheckCircle,
-  XCircle,
-  Clock,
-  FileText,
-  Loader2,
-  RefreshCw,
-} from "lucide-react";
+import { Eye, CheckCircle, XCircle, FileText, Loader2, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
-import { sendEventRegistrationInvoice } from "../components/utils/invoiceSender";
+import { sendEventRegistrationInvoice } from "@/components/utils/invoiceSender";
 
-// ----- small utils -----
-function toDate(val) {
+/* ------------------------------ helpers ------------------------------ */
+const toDate = (v) => {
   try {
-    if (!val) return null;
-    if (typeof val?.toDate === "function") return val.toDate();
-    if (typeof val === "string" || typeof val === "number") return new Date(val);
+    if (!v) return null;
+    if (typeof v?.toDate === "function") return v.toDate();
+    if (typeof v === "string" || typeof v === "number") return new Date(v);
     return null;
   } catch {
     return null;
   }
-}
+};
 
-async function getRegistration(regId) {
-  if (!regId) return null;
-  try {
-    const snap = await getDoc(doc(db, "eventRegistrations", regId));
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-  } catch {
-    return null;
-  }
-}
+const getRegistration = async (id) => {
+  if (!id) return null;
+  const snap = await getDoc(doc(db, "event_registrations", id));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
 
-async function getEventByIdOrField(eventId) {
+const getEvent = async (eventId) => {
   if (!eventId) return null;
-  // Try direct doc first
+  // try direct document id
   const direct = await getDoc(doc(db, "events", eventId));
   if (direct.exists()) return { id: direct.id, ...direct.data() };
-
-  // Fallback: some schemas store a field "event_id" equal to the id
-  const q = query(collection(db, "events"), where("event_id", "==", eventId), limit(1));
-  const snap = await getDocs(q);
-  if (!snap.empty) {
-    const d = snap.docs[0];
+  // fallback: match natural key in events.event_id
+  const qEvt = query(collection(db, "events"), where("event_id", "==", eventId));
+  const s = await getDocs(qEvt);
+  if (!s.empty) {
+    const d = s.docs[0];
     return { id: d.id, ...d.data() };
   }
   return null;
-}
+};
 
-async function getUser(uid) {
-  if (!uid) return null;
-  try {
-    const snap = await getDoc(doc(db, "users", uid));
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-  } catch {
-    return null;
-  }
-}
+const norm = (s) => (s || "").toString().trim().toLowerCase();
+const providerLabel = (key) => (key || "—").replaceAll("_", " ");
+const toMs = (v) => {
+  if (!v) return 0;
+  if (typeof v?.toDate === "function") return v.toDate().getTime();
+  const t = new Date(v).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
 
+/* ------------------------------ component ---------------------------- */
 export default function AdminPaymentVerification() {
-  const [payments, setPayments] = useState([]);
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState(null);
+  const [processing, setProcessing] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
-  const loadPendingPayments = useCallback(async () => {
+  const hydrateRows = async (payments) => {
+    return Promise.all(
+      payments.map(async (p) => {
+        const registration = await getRegistration(p.related_entity_id);
+        const event = registration ? await getEvent(registration.event_id) : null;
+
+        return {
+          id: p.id, // payment id
+          created_date: p.created_date || registration?.created_date || registration?.created_at || null,
+          payer_name: p.payer_name || registration?.contact_name || "—",
+          payer_email: p.payer_email || registration?.contact_email || "—",
+          amount_usd: p.amount_usd ?? 0,
+          provider: p.provider || "—", // "bank_transfer" | "etransfer" | ...
+          receipt_url: p.receipt_url || registration?.proof_url || null,
+          registration,
+          event,
+        };
+      })
+    );
+  };
+
+  const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
+
     try {
-      // equality filter + orderBy (may prompt Firestore to suggest an index, which is fine)
-      const payQ = query(
+      // Preferred: with orderBy(created_date desc) — requires a composite index.
+      const qPay = query(
         collection(db, "payments"),
         where("status", "==", "pending_verification"),
         orderBy("created_date", "desc")
       );
-      const paySnap = await getDocs(payQ);
-      const base = paySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const snap = await getDocs(qPay);
+      const base = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const hydrated = await hydrateRows(base);
+      setRows(hydrated);
+    } catch (orderedErr) {
+      console.warn("Ordered payments query failed, falling back to client-side sort:", orderedErr?.message || orderedErr);
 
-      const populated = await Promise.all(
-        base.map(async (payment) => {
-          try {
-            const registration = await getRegistration(payment.related_entity_id);
-            const event = registration ? await getEventByIdOrField(registration.event_id) : null;
-            const user = payment.user_id ? await getUser(payment.user_id) : null;
-            return { ...payment, registration, event, user };
-          } catch (e) {
-            console.error(`Failed to populate payment ${payment.id}`, e);
-            return payment;
-          }
-        })
-      );
+      try {
+        // Fallback: read without orderBy and sort in-memory by created_date.
+        const qPayNoOrder = query(
+          collection(db, "payments"),
+          where("status", "==", "pending_verification")
+        );
+        const snap2 = await getDocs(qPayNoOrder);
+        const base2 = snap2.docs.map((d) => ({ id: d.id, ...d.data() }));
+        base2.sort((a, b) => toMs(b.created_date) - toMs(a.created_date));
 
-      setPayments(populated);
-    } catch (error) {
-      console.error("Error loading pending payments:", error);
+        const hydrated2 = await hydrateRows(base2);
+        setRows(hydrated2);
+      } catch (fallbackErr) {
+        console.error("Fallback payments query failed:", fallbackErr);
+        setRows([]);
+        setLoadError("Failed to load pending payments.");
+      }
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadPendingPayments();
-  }, [loadPendingPayments]);
+    load();
+  }, [load]);
 
-  const handleAction = async (payment, action) => {
-    setProcessingId(payment.id);
+  const act = async (row, action) => {
+    setProcessing(row.id);
     setActionError(null);
-    try {
-      const newStatus = action === "approve" ? "successful" : "failed";
 
-      // 1) Update payment
-      await updateDoc(doc(db, "payments", payment.id), {
-        status: newStatus,
-        receipt_verified: action === "approve",
+    const approve = action === "approve";
+    const newPaymentStatus = approve ? "successful" : "failed";
+
+    try {
+      // 1) Update the payment document
+      await updateDoc(doc(db, "payments", row.id), {
+        status: newPaymentStatus,
         verified_at: serverTimestamp(),
-        // verified_by: currentUserId (wire this if/when you have auth context)
+        receipt_verified: approve,
       });
 
-      // 2) If approved, update registration + send invoice
-      if (action === "approve" && payment.registration) {
-        await updateDoc(doc(db, "eventRegistrations", payment.registration.id), {
-          status: "paid",
+      // 2) Update the related registration (if present)
+      if (row.registration?.id) {
+        await updateDoc(doc(db, "event_registrations", row.registration.id), {
+          status: approve ? "paid" : "rejected",
+          payment_method: providerLabel(row.provider),
           updated_at: serverTimestamp(),
+          verified_at: approve ? serverTimestamp() : null,
+          verification_note: approve ? "Verified by admin" : "Rejected by admin",
         });
+      }
 
-        if (payment.event) {
-          const invoiceResult = await sendEventRegistrationInvoice(
-            payment.registration,
-            payment.event,
-            { ...payment, status: newStatus }
+      // 3) Email the invoice if approved
+      if (approve && row.registration && row.event) {
+        try {
+          const invoiceRes = await sendEventRegistrationInvoice(
+            { ...row.registration, status: "paid" },
+            row.event,
+            {
+              id: row.id,
+              status: newPaymentStatus,
+              provider: row.provider,
+              amount_usd: row.amount_usd,
+              receipt_url: row.receipt_url,
+              verified_at: new Date().toISOString(),
+            }
           );
-
-          if (invoiceResult?.success) {
-            await updateDoc(doc(db, "eventRegistrations", payment.registration.id), {
-              invoice_sent: true,
-              updated_at: serverTimestamp(),
-            });
-          } else if (invoiceResult?.skipped) {
-            // Guest registrations with no email, etc. — benign
-            console.log("Invoice skipped:", invoiceResult.reason);
-          } else if (invoiceResult?.isRestrictionError) {
-            console.log("Email restriction:", invoiceResult.error);
-            setActionError(`Payment approved. Note: ${invoiceResult.error}`);
-          } else if (invoiceResult && invoiceResult.error) {
-            console.error("Invoice failed:", invoiceResult.error);
-            setActionError(
-              `Payment approved, but failed to send invoice to ${
-                payment.registration.contact_email || "recipient"
-              }. Reason: ${invoiceResult.error}. Please send manually.`
-            );
+          if (!invoiceRes?.success && !invoiceRes?.skipped) {
+            setActionError(invoiceRes?.error || "Failed to send invoice email.");
           }
+        } catch (mailErr) {
+          console.warn("Invoice email failed:", mailErr);
+          setActionError("Invoice sent failed (but payment was updated).");
         }
       }
 
-      // 3) Remove from local list
-      setPayments((prev) => prev.filter((p) => p.id !== payment.id));
-    } catch (error) {
-      console.error(`Error ${action}ing payment:`, error);
-      setActionError(`Failed to ${action} payment. Please check console for details.`);
+      // 4) Remove from table
+      setRows((prev) => prev.filter((p) => p.id !== row.id));
+    } catch (e) {
+      console.error("Action error:", e);
+      setActionError(`Failed to ${action} payment.`);
     } finally {
-      setProcessingId(null);
+      setProcessing(null);
     }
   };
 
@@ -194,7 +207,7 @@ export default function AdminPaymentVerification() {
               Payment Verification
             </h1>
           </div>
-          <Button onClick={loadPendingPayments} disabled={loading}>
+          <Button onClick={load} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
@@ -202,8 +215,15 @@ export default function AdminPaymentVerification() {
 
         {actionError && (
           <Alert variant="destructive" className="mb-4">
-            <AlertTitle>Action Warning</AlertTitle>
+            <AlertTitle>Action Notice</AlertTitle>
             <AlertDescription>{actionError}</AlertDescription>
+          </Alert>
+        )}
+
+        {loadError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>Load Error</AlertTitle>
+            <AlertDescription>{loadError}</AlertDescription>
           </Alert>
         )}
 
@@ -216,7 +236,7 @@ export default function AdminPaymentVerification() {
               <div className="flex justify-center items-center py-16">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
               </div>
-            ) : payments.length > 0 ? (
+            ) : rows.length ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -230,34 +250,27 @@ export default function AdminPaymentVerification() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payments.map((payment) => {
-                    const created = toDate(payment.created_date);
+                  {rows.map((p) => {
+                    const when = toDate(p.created_date);
                     return (
-                      <TableRow key={payment.id}>
+                      <TableRow key={p.id}>
+                        <TableCell>{when ? format(when, "MMM dd, yyyy") : "—"}</TableCell>
                         <TableCell>
-                          {created ? format(created, "MMM dd, yyyy") : "—"}
+                          <div className="font-medium">{p.payer_name || "—"}</div>
+                          <div className="text-sm text-gray-500">{p.payer_email || "—"}</div>
                         </TableCell>
-                        <TableCell>
-                          <div className="font-medium">{payment.payer_name || payment.user?.full_name || "—"}</div>
-                          <div className="text-sm text-gray-500">
-                            {payment.payer_email || payment.user?.email || "—"}
-                          </div>
-                          <Badge variant="outline" className="mt-1">
-                            {payment.user_id ? "Registered" : "Guest"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{payment.event?.title || "N/A"}</TableCell>
+                        <TableCell>{p.event?.title || "—"}</TableCell>
                         <TableCell className="font-medium">
-                          ${Number(payment.amount_usd || 0).toFixed(2)}
+                          ${Number(p.amount_usd || 0).toFixed(2)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={payment.provider === "Bank Transfer" ? "default" : "secondary"}>
-                            {payment.provider || "—"}
+                          <Badge variant={norm(p.provider) === "bank_transfer" ? "default" : "secondary"}>
+                            {providerLabel(p.provider)}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {payment.receipt_url ? (
-                            <a href={payment.receipt_url} target="_blank" rel="noopener noreferrer">
+                          {p.receipt_url ? (
+                            <a href={p.receipt_url} target="_blank" rel="noreferrer">
                               <Button variant="outline" size="sm">
                                 <Eye className="w-4 h-4 mr-2" /> View
                               </Button>
@@ -267,21 +280,21 @@ export default function AdminPaymentVerification() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {processingId === payment.id ? (
+                          {processing === p.id ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
                           ) : (
                             <div className="flex gap-2">
                               <Button
                                 size="sm"
                                 className="bg-green-600 hover:bg-green-700"
-                                onClick={() => handleAction(payment, "approve")}
+                                onClick={() => act(p, "approve")}
                               >
                                 <CheckCircle className="w-4 h-4 mr-2" /> Approve
                               </Button>
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                onClick={() => handleAction(payment, "reject")}
+                                onClick={() => act(p, "reject")}
                               >
                                 <XCircle className="w-4 h-4 mr-2" /> Reject
                               </Button>

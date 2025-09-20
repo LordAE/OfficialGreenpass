@@ -1,7 +1,15 @@
 // src/pages/EventRegistrationPage.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Event, EventRegistration, User, BankSettings, Payment } from '@/api/entities';
+
+import {
+  Event,
+  EventRegistration,
+  User,
+  BankSettings,
+  Payment,
+} from '@/api/entities';
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -9,15 +17,36 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Calendar, MapPin, CheckCircle, Info, ChevronLeft } from "lucide-react";
 import { format } from 'date-fns';
-import DynamicRegistrationForm from '../components/events/DynamicRegistrationForm';
-import SharedPaymentGateway from '../components/payments/SharedPaymentGateway';
-import PayPalCheckout from '@/components/payments/PayPalCheckout';
+
+import DynamicRegistrationForm from '@/components/events/DynamicRegistrationForm';
+import SharedPaymentGateway from '@/components/payments/SharedPaymentGateway';
+
 import { createPageUrl } from '@/components/URLRedirect';
 import { getText } from '@/pages/Layout';
+import { sendEventRegistrationInvoice } from '@/components/utils/invoiceSender';
+import { sendEventRegistrationConfirmation } from '@/components/utils/eventEmailSender';
 
-const toNumber = (v, d = 0) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : d;
+// Coerce Firestore strings/Timestamps into JS Date
+const toDate = (v) => (v instanceof Date ? v : new Date(v || 0));
+
+/** Remove undefined/null, empty objects/arrays, and strip File/Blob anywhere */
+const prune = (val) => {
+  if (val === undefined || val === null) return undefined;
+  if (typeof File !== 'undefined' && (val instanceof File || val instanceof Blob)) return undefined;
+
+  if (Array.isArray(val)) {
+    const arr = val.map(prune).filter((v) => v !== undefined);
+    return arr.length ? arr : undefined;
+  }
+  if (typeof val === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(val)) {
+      const c = prune(v);
+      if (c !== undefined) out[k] = c;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return val;
 };
 
 export default function EventRegistrationPage() {
@@ -27,213 +56,128 @@ export default function EventRegistrationPage() {
 
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [pageBusy, setPageBusy] = useState(false); // for “Next/Back/Pay” spinners
+  const [pageBusy, setPageBusy] = useState(false);
   const [error, setError] = useState(null);
+
   const [selectedTier, setSelectedTier] = useState(null);
-  const [currentStep, setCurrentStep] = useState(1); // 1: Tier, 2: Form, 3: Payment
+  const [currentStep, setCurrentStep] = useState(1); // 1: Tier → 2: Form → 3: Payment
   const [currentUser, setCurrentUser] = useState(null);
+
   const [registrationError, setRegistrationError] = useState(null);
   const [createdRegistration, setCreatedRegistration] = useState(null);
-  const [fxRate, setFxRate] = useState(1.35); // CAD per USD (fallback)
+  const [createdPayment, setCreatedPayment] = useState(null);
 
-  const getParamEventId = () =>
-    searchParams.get('eventid') ||
-    searchParams.get('eventId') ||
-    searchParams.get('id');
+  // Default FX (overridden by BankSettings if available)
+  const [fxRate, setFxRate] = useState(1.35);
 
-  const safeNormalizeEvent = (e) => ({
-    ...e,
-    title: e?.title || getText('Untitled Event'),
-    location: e?.location || (e?.is_online ? getText('Online Event') : '-'),
-    start: e?.start || e?.startDate,
-    end: e?.end || e?.endDate,
-    registration_tiers: Array.isArray(e?.registration_tiers) ? e.registration_tiers : [],
-  });
-
-  const fetchEventDetails = useCallback(async (rawId) => {
+  const fetchEventDetails = useCallback(async (eventId) => {
     setLoading(true);
     setError(null);
+
     try {
-      if (!rawId) {
-        setError(getText('Event ID is missing.'));
-        return;
-      }
-
-      // Try by event_id first
-      let e = null;
-      try {
-        const [byEventId] = await Event.filter({ event_id: rawId });
-        if (byEventId) e = byEventId;
-      } catch {}
-
-      // Fallback: try direct get by doc id (if your entities layer supports it)
-      if (!e && typeof Event.get === 'function') {
-        try {
-          const byDoc = await Event.get(rawId);
-          if (byDoc) e = byDoc;
-        } catch {}
-      }
-
-      // Last fallback: brute force (avoid if your dataset is huge)
-      if (!e) {
-        try {
-          const all = await Event.list();
-          e = all.find(x => String(x.id) === String(rawId) || String(x.event_id) === String(rawId));
-        } catch {}
-      }
-
-      if (!e) {
+      // 1) Event (prefers natural key event_id via entities.js)
+      const [eventData] = await Event.filter({ event_id: eventId });
+      if (!eventData) {
         setError(getText('Event not found.'));
+        navigate(createPageUrl('Events'));
         return;
       }
+      setEvent(eventData);
 
-      const normalized = safeNormalizeEvent(e);
-      setEvent(normalized);
-
-      // Load current user (optional)
+      // 2) Current user (optional)
       try {
-        const me = await User.me();
-        setCurrentUser(me || null);
+        const user = await User.me();
+        setCurrentUser(user || null);
       } catch {
         setCurrentUser(null);
       }
 
-      // FX rate (optional)
+      // 3) FX rate (from BankSettings)
       try {
-        const bankSettings = await BankSettings.filter({ key: 'CAD_USD_FX_RATE' });
-        if (bankSettings?.length) setFxRate(toNumber(bankSettings[0].value, 1.35));
-      } catch {}
+        const rows = await BankSettings.filter({ key: 'CAD_USD_FX_RATE' });
+        if (Array.isArray(rows) && rows.length > 0) {
+          const v = parseFloat(rows[0].value);
+          if (!Number.isNaN(v)) setFxRate(v);
+        }
+      } catch (fxErr) {
+        console.warn('FX rate fetch failed, using default.', fxErr);
+      }
 
-      // Preselect tier: URL > single-tier > cheapest paid tier
-      const tiers = normalized.registration_tiers;
+      // 4) Preselect tier (URL ?tierKey=...) or single-tier default
       const tierKey = searchParams.get('tierKey');
-      if (tierKey && tiers?.length) {
-        const t = tiers.find(t => t.key === tierKey);
+      if (tierKey && Array.isArray(eventData.registration_tiers)) {
+        const t = eventData.registration_tiers.find(x => x.key === tierKey);
         if (t) setSelectedTier(t);
-      } else if (tiers?.length === 1) {
-        setSelectedTier(tiers[0]);
-      } else if (tiers?.length > 1) {
-        const cheapest = [...tiers].sort((a, b) => toNumber(a.price_usd) - toNumber(b.price_usd))[0];
-        setSelectedTier(cheapest || null);
+      } else if (eventData.registration_tiers?.length === 1) {
+        setSelectedTier(eventData.registration_tiers[0]);
       }
     } catch (err) {
-      console.error("Error fetching event details:", err);
+      console.error('Error fetching event details:', err);
       setError(getText('Failed to load event details. Please try again.'));
+      navigate(createPageUrl('Events'));
     } finally {
       setLoading(false);
     }
-  }, [searchParams]);
+  }, [navigate, searchParams]);
 
   useEffect(() => {
-    fetchEventDetails(getParamEventId());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.search]);
+    // Accept multiple casings/keys to match inbound links
+    const eventId =
+      searchParams.get('eventId') ||
+      searchParams.get('eventid') ||
+      searchParams.get('id');
 
-  // Legacy direct submit handler (kept for compatibility)
-  const handleRegistrationSubmit = async (formData) => {
-    if (!event || !selectedTier) return;
-    setPageBusy(true);
-    setRegistrationError(null);
-
-    const eventId = event.event_id || event.id;
-
-    try {
-      const priceUSD = toNumber(selectedTier.price_usd, 0);
-      const registrationPayload = {
-        event_id: eventId,
-        role: selectedTier.key,
-        contact_name: formData.contact_name || '',
-        contact_email: formData.contact_email || '',
-        phone: formData.phone || '',
-        organization_name: formData.organization_name || '',
-        guest_country: formData.guest_country || '',
-        amount_usd: priceUSD,
-        amount_cad: priceUSD * fxRate,
-        fx_rate: fxRate,
-        is_guest_registration: !currentUser,
-        ...formData,
-        reservation_code: `EVT-${String(eventId).slice(-4)}-${Date.now().toString().slice(-6)}`,
-        ...(currentUser && { user_id: currentUser.id }),
-        status: priceUSD > 0 ? 'pending_payment' : 'free',
-      };
-
-      const newRegistration = await EventRegistration.create(registrationPayload);
-
-      // Generate QR for check-in
-      const qrDataString = JSON.stringify({
-        reservation_code: newRegistration.reservation_code,
-        event_id: eventId,
-        registration_id: newRegistration.id,
-        attendee_name: registrationPayload.contact_name,
-        organization: registrationPayload.organization_name,
-        tier: selectedTier.name
-      });
-      const qr_code_url = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrDataString)}`;
-
-      const finalRegistration = await EventRegistration.update(newRegistration.id, {
-        qr_data: qrDataString,
-        qr_code_url
-      });
-
-      // If free tier, skip payment step
-      if (priceUSD <= 0) {
-        await EventRegistration.update(finalRegistration.id, {
-          status: 'paid',
-          payment_method: 'free',
-          payment_date: new Date().toISOString(),
-        });
-        navigate(createPageUrl(`EventRegistrationSuccess?registrationId=${finalRegistration.id}`));
-        return;
+    if (eventId) {
+      fetchEventDetails(eventId);
+    } else {
+      if (location.pathname.toLowerCase().includes('/eventregistration')) {
+        setError(getText('Event ID is missing.'));
       }
-
-      setCreatedRegistration(finalRegistration);
-      setCurrentStep(3);
-    } catch (err) {
-      console.error("Registration failed:", err);
-      setRegistrationError(err.message || getText("An unexpected error occurred during registration."));
-    } finally {
-      setPageBusy(false);
+      setLoading(false);
     }
-  };
+  }, [searchParams, fetchEventDetails, location.pathname]);
 
+  // ---------- Payment helpers ----------
   const createPaymentRecord = async (registration, method, status, transactionId, receiptUrl, paymentDetails) => {
-    const paymentPayload = {
+    const payload = prune({
       related_entity_id: registration.id,
       related_entity_type: 'event_registration',
-      provider: method,
-      amount_usd: toNumber(registration.amount_usd),
-      amount_cad: toNumber(registration.amount_cad),
-      fx_rate: toNumber(registration.fx_rate, fxRate),
-      status,
-      transaction_id: transactionId,
+      provider: method, // 'paypal' | 'bank_transfer' | 'etransfer'
+      amount_usd: registration.amount_usd,
+      amount_cad: registration.amount_cad,
+      fx_rate: registration.fx_rate,
+      status,                            // 'successful' | 'pending_verification' | 'failed'
+      transaction_id: transactionId || null,
       receipt_url: receiptUrl || null,
       payer_name: registration.contact_name,
       payer_email: registration.contact_email,
-      payment_details: paymentDetails || {},
+      payment_details: paymentDetails || null,
       ...(currentUser && { user_id: currentUser.id }),
-    };
+    });
 
-    const newPayment = await Payment.create(paymentPayload);
+    const newPayment = await Payment.create(payload); // entities.js adds timestamps
     await EventRegistration.update(registration.id, { payment_id: newPayment.id });
+    setCreatedPayment(newPayment);
     return newPayment;
   };
 
   const handlePaymentSuccess = async (paymentMethod, transactionId, paymentDetails) => {
     setPageBusy(true);
     setRegistrationError(null);
+
     try {
-      if (!createdRegistration) throw new Error("No registration found to update.");
+      if (!createdRegistration) throw new Error('No registration found to update.');
 
       const newPayment = await createPaymentRecord(
         createdRegistration,
-        paymentMethod,            // "paypal" | "card" | "bank_transfer" (card/bank come from SharedPaymentGateway)
+        paymentMethod,           // 'paypal'
         'successful',
         transactionId,
         null,
-        paymentDetails
+        prune(paymentDetails)
       );
 
-      await EventRegistration.update(createdRegistration.id, {
+      const finalReg = await EventRegistration.update(createdRegistration.id, {
         status: 'paid',
         payment_method: paymentMethod,
         payment_date: new Date().toISOString(),
@@ -241,10 +185,20 @@ export default function EventRegistrationPage() {
         payment_id: newPayment.id,
       });
 
+      // Email: confirmation/invoice
+      try {
+        const sent = await sendEventRegistrationInvoice(finalReg, event, newPayment);
+        if (sent?.success) {
+          await EventRegistration.update(finalReg.id, { invoice_sent: true, qr_email_sent: true });
+        }
+      } catch (e) {
+        console.warn('Invoice email failed:', e);
+      }
+
       navigate(createPageUrl(`EventRegistrationSuccess?registrationId=${createdRegistration.id}`));
     } catch (err) {
-      console.error("Error processing payment success:", err);
-      setRegistrationError(err.message || getText("Payment was successful but there was an error updating your registration. Please contact support."));
+      console.error('Error processing payment success:', err);
+      setRegistrationError(err.message || getText('Payment was successful but there was an error updating your registration. Please contact support.'));
     } finally {
       setPageBusy(false);
     }
@@ -253,48 +207,58 @@ export default function EventRegistrationPage() {
   const handleBankTransferSubmit = async (paymentMethod, receiptUrl, referenceCode, details, bankInfo) => {
     setPageBusy(true);
     setRegistrationError(null);
-    try {
-      if (!createdRegistration) throw new Error("No registration found to update.");
 
-      const paymentDetails = {
-        additional_info: details,
-        bank_account_used: bankInfo
-          ? {
-              nickname: bankInfo.account_nickname,
-              bank_name: bankInfo.bank_name,
-              currency: bankInfo.currency
-            }
-          : null
-      };
+    try {
+      if (!createdRegistration) throw new Error('No registration found to update.');
+
+      const paymentDetails = prune({
+        additional_info: details || '',
+        bank_account_used: bankInfo ? prune({
+          nickname: bankInfo.account_nickname,
+          bank_name: bankInfo.bank_name,
+          currency: bankInfo.currency,
+        }) : undefined,
+      });
 
       const newPayment = await createPaymentRecord(
         createdRegistration,
-        paymentMethod, // "bank_transfer"
+        paymentMethod,          // 'bank_transfer' | 'etransfer'
         'pending_verification',
         referenceCode,
         receiptUrl,
         paymentDetails
       );
 
-      await EventRegistration.update(createdRegistration.id, {
+      const finalReg = await EventRegistration.update(createdRegistration.id, {
         status: 'pending_verification',
         payment_method: paymentMethod,
-        proof_url: receiptUrl,
-        transaction_id: referenceCode,
+        proof_url: receiptUrl || null,
+        transaction_id: referenceCode || null,
         payment_date: new Date().toISOString(),
         payment_id: newPayment.id,
       });
 
+      // Simple holding email (optional)
+      try {
+        await sendEventRegistrationConfirmation(finalReg, event, {
+          amount_usd: finalReg.amount_usd,
+          provider: paymentMethod,
+        });
+        await EventRegistration.update(finalReg.id, { pending_email_sent: true });
+      } catch (e) {
+        console.warn('Pending verification email failed:', e);
+      }
+
       navigate(createPageUrl(`EventRegistrationSuccess?registrationId=${createdRegistration.id}`));
     } catch (err) {
-      console.error("Error processing bank transfer:", err);
-      setRegistrationError(err.message || getText("Failed to submit payment. Please try again."));
+      console.error('Error processing bank transfer:', err);
+      setRegistrationError(err.message || getText('Failed to submit payment. Please try again.'));
     } finally {
       setPageBusy(false);
     }
   };
 
-  // ---- RENDER GUARDS ----
+  // ---------- Loading & Guards ----------
   if (loading && !event) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -304,12 +268,13 @@ export default function EventRegistrationPage() {
     );
   }
 
-  if (error) {
+  // If loading is done but we still have no event, show a friendly error
+  if (!loading && !event) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center p-6 bg-white rounded-lg shadow-md">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">{getText('Error Loading Event')}</h2>
-          <p className="text-gray-700 mb-6">{error}</p>
+          <h2 className="text-2xl font-bold text-red-600 mb-4">{getText('Event not found')}</h2>
+          <p className="text-gray-700 mb-6">{error || getText('Please check your link and try again.')}</p>
           <Link to={createPageUrl('Events')}>
             <Button>{getText('Back to Events')}</Button>
           </Link>
@@ -318,25 +283,8 @@ export default function EventRegistrationPage() {
     );
   }
 
-  if (!event) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center p-6 bg-white rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-2">{getText('Event unavailable')}</h2>
-          <p className="text-gray-600 mb-6">{getText('We could not load this event.')}</p>
-          <Link to={createPageUrl('Events')}>
-            <Button>{getText('Back to Events')}</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // Past-event lockout (safe)
   const now = new Date();
-  const eventStart = event?.start ? new Date(event.start) : null;
-  const isPastEvent = eventStart ? eventStart < now : false;
-
+  const isPastEvent = toDate(event.start) < now;
   if (isPastEvent) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -351,10 +299,7 @@ export default function EventRegistrationPage() {
     );
   }
 
-  // ---- MAIN VIEW ----
-  const priceUSD = toNumber(selectedTier?.price_usd, 0);
-  const approxCAD = (priceUSD * fxRate).toFixed(2);
-
+  // ---------- UI ----------
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8 pt-8">
@@ -364,13 +309,14 @@ export default function EventRegistrationPage() {
             <div className="flex items-center gap-4 text-gray-600 mt-2 text-sm">
               <div className="flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
-                <span>{event.start ? format(new Date(event.start), 'PPP') : '-'}</span>
+                <span>{format(toDate(event.start), 'PPP')}</span>
               </div>
               <div className="flex items-center gap-1">
                 <MapPin className="w-4 h-4" />
-                <span>{event.location || '-'}</span>
+                <span>{event.location}</span>
               </div>
             </div>
+
             {registrationError && (
               <Alert variant="destructive" className="mt-4">
                 <Info className="h-4 w-4" />
@@ -385,10 +331,12 @@ export default function EventRegistrationPage() {
               <h3 className="text-xl font-semibold mb-4">{getText('Select Registration Type')}</h3>
               <RadioGroup
                 value={selectedTier?.key || ''}
-                onValueChange={(value) => setSelectedTier(event.registration_tiers?.find(t => t.key === value))}
+                onValueChange={(value) =>
+                  setSelectedTier(event.registration_tiers.find((t) => t.key === value))
+                }
                 className="space-y-4"
               >
-                {event.registration_tiers?.length ? (
+                {Array.isArray(event.registration_tiers) && event.registration_tiers.length > 0 ? (
                   event.registration_tiers.map((tier) => (
                     <div
                       key={tier.key}
@@ -404,16 +352,14 @@ export default function EventRegistrationPage() {
                             )}
                           </div>
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-green-600">
-                              ${toNumber(tier.price_usd, 0)}
-                            </div>
+                            <div className="text-2xl font-bold text-green-600">${tier.price_usd}</div>
                             <div className="text-sm text-gray-500">{getText('USD')}</div>
                           </div>
                         </div>
-                        {tier.benefits?.length > 0 && (
+                        {Array.isArray(tier.benefits) && tier.benefits.length > 0 && (
                           <ul className="mt-3 space-y-1 text-sm text-gray-700">
-                            {tier.benefits.map((benefit, bIndex) => (
-                              <li key={bIndex} className="flex items-start gap-2">
+                            {tier.benefits.map((benefit, idx) => (
+                              <li key={idx} className="flex items-start gap-2">
                                 <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
                                 <span>{benefit}</span>
                               </li>
@@ -425,21 +371,24 @@ export default function EventRegistrationPage() {
                   ))
                 ) : (
                   <Alert>
-                    <AlertDescription>{getText('Registration options are not available for this event.')}</AlertDescription>
+                    <AlertDescription>
+                      {getText('Registration options are not available for this event.')}
+                    </AlertDescription>
                   </Alert>
                 )}
               </RadioGroup>
+
               <Button
                 onClick={() => setCurrentStep(2)}
-                disabled={!selectedTier || pageBusy}
+                disabled={!selectedTier || loading}
                 className="w-full mt-6"
               >
-                {pageBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : getText('Next')}
+                {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : getText('Next')}
               </Button>
             </div>
           )}
 
-          {/* Step 2: Registration Form */}
+          {/* Step 2: Registration Form (Dynamic) */}
           {currentStep === 2 && selectedTier && (
             <div className="p-6 sm:p-8">
               <button
@@ -448,32 +397,32 @@ export default function EventRegistrationPage() {
               >
                 <ChevronLeft className="w-4 h-4" /> {getText('Back to options')}
               </button>
+
               <h3 className="text-xl font-semibold mb-4">{getText('Your Information')}</h3>
+
               <DynamicRegistrationForm
                 event={event}
                 selectedTier={selectedTier}
                 currentUser={currentUser}
                 fxRate={fxRate}
                 onRegistrationComplete={(registration) => {
-                  // If DynamicRegistrationForm already created the registration, go straight to payment
                   setCreatedRegistration(registration);
-                  setCurrentStep(toNumber(selectedTier.price_usd, 0) > 0 ? 3 : 2);
-                  setPageBusy(false);
+                  setCurrentStep(3); // proceed to SharedPaymentGateway
                 }}
-                // If you want to keep the legacy “submit” path:
-                onLegacySubmit={handleRegistrationSubmit}
               />
             </div>
           )}
 
-          {/* Step 3: Payment */}
-          {currentStep === 3 && createdRegistration && toNumber(selectedTier?.price_usd, 0) > 0 && (
+          {/* Step 3: Payment (SharedPaymentGateway ONLY) */}
+          {currentStep === 3 && createdRegistration && (
             <div className="p-6 sm:p-8">
               <h3 className="text-xl font-semibold mb-4">{getText('Complete Your Payment')}</h3>
               <p className="text-gray-600 mb-6">
                 {getText('Your registration for')}{' '}
                 <span className="font-semibold">
-                  {createdRegistration.contact_name || createdRegistration.organization_name || getText('this event')}
+                  {createdRegistration.contact_name ||
+                    createdRegistration.organization_name ||
+                    getText('this event')}
                 </span>{' '}
                 {getText('is being held. Please complete the payment to confirm your spot.')}
               </p>
@@ -488,41 +437,18 @@ export default function EventRegistrationPage() {
                 <CardContent>
                   <div className="flex justify-between items-center text-lg font-semibold text-gray-800 mb-2">
                     <span>{getText('Amount Due (USD):')}</span>
-                    <span>${toNumber(selectedTier.price_usd, 0).toFixed(2)}</span>
+                    <span>${Number(selectedTier.price_usd).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm text-gray-600">
                     <span>{getText('Amount Due (CAD Approx.):')}</span>
-                    <span>${approxCAD}</span>
+                    <span>${(Number(selectedTier.price_usd) * Number(fxRate)).toFixed(2)}</span>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* PayPal */}
-              <div className="mb-6">
-                <PayPalCheckout
-                  amountUSD={toNumber(selectedTier.price_usd, 0)}
-                  itemDescription={`${event.title} - ${selectedTier.name} Registration`}
-                  registrationId={createdRegistration.id}
-                  payerName={createdRegistration.contact_name}
-                  payerEmail={createdRegistration.contact_email}
-                  onProcessing={() => setPageBusy(true)}
-                  onSuccess={handlePaymentSuccess} // ("paypal", captureId, details)
-                  onError={(msg) => setRegistrationError(msg)}
-                />
-              </div>
-
-              {/* Divider */}
-              <div className="relative my-6">
-                <div className="border-t" />
-                <div className="absolute inset-0 -top-3 flex justify-center">
-                  <span className="bg-white px-3 text-xs text-gray-500">{getText('or')}</span>
-                </div>
-              </div>
-
-              {/* Cards / Bank transfer */}
               <SharedPaymentGateway
-                amountUSD={toNumber(selectedTier.price_usd, 0)}
-                amountCAD={toNumber(selectedTier.price_usd, 0) * fxRate}
+                amountUSD={Number(selectedTier.price_usd)}
+                amountCAD={Number(selectedTier.price_usd) * Number(fxRate)}
                 itemDescription={`${event.title} - ${selectedTier.name} Registration`}
                 relatedEntityId={createdRegistration.id}
                 relatedEntityType="event_registration"
@@ -531,6 +457,8 @@ export default function EventRegistrationPage() {
                 onCardPaymentSuccess={handlePaymentSuccess}
                 onBankTransferInitiated={handleBankTransferSubmit}
                 onProcessing={() => setPageBusy(true)}
+                onDoneProcessing={() => setPageBusy(false)}
+                onError={(e) => setRegistrationError(e?.message || 'Payment error')}
               />
 
               <Button
@@ -539,10 +467,12 @@ export default function EventRegistrationPage() {
                 className="w-full mt-4 flex items-center justify-center text-gray-600"
                 disabled={pageBusy}
               >
-                <ChevronLeft className="w-4 h-4 mr-2" /> {getText('Back to Information')}
+                <ChevronLeft className="w-4 h-4 mr-2" />
+                {getText('Back to Information')}
               </Button>
             </div>
           )}
+
         </div>
       </div>
     </div>

@@ -80,6 +80,7 @@ import UserDetails from "@/pages/UserDetails";
 import MyStudents from "./pages/MyStudents";
 import Profile from "./pages/Profile";
 import AuthForm from "./pages/AuthForm";
+import EventRegistrationSuccess from "@/pages/EventRegistrationSuccess";
 
 export default function App() {
   return (
@@ -105,6 +106,7 @@ export default function App() {
         <Route path="eventdetails" element={<EventDetails />} />
         <Route path="eventregistration" element={<EventRegistrationPage />} />
         <Route path="login" element={<AuthForm />} />
+        <Route path="/EventRegistrationSuccess" element={<EventRegistrationSuccess />} />
         {/* Private routes */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="onboarding" element={<Onboarding />} />

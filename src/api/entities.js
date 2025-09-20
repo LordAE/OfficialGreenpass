@@ -1,7 +1,7 @@
 // src/api/entities.js
 import {
   collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc,
-  query, where, limit as qLimit, or, documentId
+  query, where, limit as qLimit
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "@/firebase";
@@ -39,12 +39,10 @@ async function listEq(coll, filters = {}, { limit } = {}) {
   const inFilters = entries.filter(([_, v]) => v && typeof v === 'object' && '$in' in v && Array.isArray(v.$in) && v.$in.length > 0);
   const eqFilters  = entries.filter(([_, v]) => !(v && typeof v === 'object' && '$in' in v));
 
-  // If there is at least one $in filter, we must fan out the queries (Firestore allows at most one 'in' per query in many cases)
+  // If there is at least one $in filter, we must fan out the queries
   if (inFilters.length > 0) {
-    // For simplicity, support a single $in filter per query (common across your pages).
-    // If multiple $in appear, we AND them by client-side intersection.
     const [inField, inSpec] = inFilters[0];
-    const otherIn = inFilters.slice(1); // rarely used in your code; will be intersected client-side
+    const otherIn = inFilters.slice(1); // intersect client-side if more than one
 
     const results = await runInChunks(
       coll,
@@ -60,7 +58,6 @@ async function listEq(coll, filters = {}, { limit } = {}) {
       }
     );
 
-    // If there were multiple $in filters, intersect client-side
     if (otherIn.length > 0) {
       return results.filter(r => otherIn.every(([k, spec]) => spec.$in.includes(r[k])));
     }
@@ -117,15 +114,14 @@ function makeEntity(collectionName, opts = {}) {
     },
 
     async list(sortField, options = {}) {
-      // Sorting omitted for simplicity; callers already pass a sort hint like '-created_date'
-      // If you need server-side ordering, add orderBy here.
+      // Sorting omitted for simplicity
       return await listEq(collectionName, {}, options);
     },
 
     async create(payload) { return await createIn(collectionName, payload); },
     async update(id, patch) { return await updateIn(collectionName, id, patch); },
     async remove(id) { return await removeIn(collectionName, id); },
-    async delete(id) { return await removeIn(collectionName, id); }, // alias for convenience
+    async delete(id) { return await removeIn(collectionName, id); }, // alias
   };
 }
 
@@ -133,7 +129,7 @@ function makeEntity(collectionName, opts = {}) {
 const C = {
   Agent: "agents",
   Tutor: "tutors",
-  Users: "users", // NEW
+  Users: "users",
   VisaRequest: "visa_requests",
   TutoringSession: "tutoring_sessions",
   Reservation: "reservations",
@@ -165,8 +161,10 @@ const C = {
   EventRegistration: "event_registrations",
   ExhibitorRegistration: "exhibitor_registrations",
   Organization: "organizations",
-  BankSettings: "bank_settings",
-  BrandSettings: "brand_settings",
+  BankSettings: "bank_settings",          // legacy/single-key style storage
+  BankAccount: "bank_accounts",           // admin-managed bank accounts
+  PaymentSetting: "payment_settings",     // admin-managed e-transfer / paypal settings
+  BrandSettings: "brandSettings",
   AboutPageContent: "about_page_contents",
   ContactPageContent: "contact_page_contents",
   HomePageContent: "home_page_contents",
@@ -234,12 +232,21 @@ export const SchoolProfile       = makeEntity(C.SchoolProfile);
 export const OurTeamPageContent  = makeEntity(C.OurTeamPageContent);
 export const PackageEntity       = makeEntity(C.Package);
 
+// NEW: admin-managed collections
+export const BankAccount         = makeEntity(C.BankAccount);
+export const PaymentSetting      = makeEntity(C.PaymentSetting);
+
 // ---------- specialized entities ----------
 export const BankSettings = {
-  async filter({ key }) {
-    if (!key) return [];
+  // GENERAL filter so you can still query older rows however you like.
+  async filter(filters = {}, options = {}) {
+    return await listEq(C.BankSettings, filters, options);
+  },
+  // Convenience for the legacy “single keyed value” pattern.
+  async getValue(key) {
+    if (!key) return null;
     const rows = await listEq(C.BankSettings, { key }, { limit: 1 });
-    return rows.length ? [rows[0]] : [];
+    return rows.length ? (rows[0].value ?? rows[0]) : null;
   },
 };
 
@@ -248,7 +255,7 @@ export const Event = {
   ...makeEntity(C.Event, { idField: 'event_id' }),
 };
 
-// EventRegistration: inherit filter/get/list, add default timestamps/status
+// EventRegistration: add default timestamps/status
 export const EventRegistration = {
   ...makeEntity(C.EventRegistration),
   async create(payload) {
@@ -297,13 +304,11 @@ export const User = {
   // Auth + profile merge
   async me() {
     const u = await getAuthedFirebaseUser();
-    // load profile doc (id == uid)
     const profile = await getById(C.Users, u.uid);
     return {
       id: u.uid,
       email: u.email || "",
       display_name: u.displayName || "",
-      // merge profile fields (full_name, assigned_agent_id, session_credits, etc.)
       ...(profile || {}),
     };
   },
@@ -320,7 +325,6 @@ export const User = {
   // Convenience: update current user's profile doc
   async updateMyUserData(patch) {
     const u = await getAuthedFirebaseUser();
-    // ensure doc exists; if not, create it with id = uid
     const existing = await getById(C.Users, u.uid);
     if (existing) {
       return await updateIn(C.Users, u.uid, patch);
