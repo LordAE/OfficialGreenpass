@@ -32,7 +32,7 @@ export default function PayPalCheckout({
   }), []);
 
   const createOrderOnServer = async () => {
-    const res = await fetch("/src/api/paypal/create-order", {
+    const res = await fetch("/src/api/paypal/create_order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -50,7 +50,7 @@ export default function PayPalCheckout({
   };
 
   const captureOrderOnServer = async (orderID) => {
-    const res = await fetch("/src/api/paypal/capture-order", {
+    const res = await fetch("/src/api/paypal/capture_order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderID }),
