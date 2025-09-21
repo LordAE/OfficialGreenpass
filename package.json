@@ -1,5 +1,5 @@
 {
-  "name": "base44-app",
+  "name": "GreenPass",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@base44/sdk": "^0.1.2",
     "@hello-pangea/dnd": "^18.0.1",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^4.1.2",
