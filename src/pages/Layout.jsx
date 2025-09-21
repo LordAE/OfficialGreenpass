@@ -1088,7 +1088,7 @@ export default function Layout() {
   // Brand visuals
   const getLogoUrl = () =>
     brandSettings?.logo_url ||
-    "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/52125f442_GP2withnameTransparent.png";
+    "";
   const getCompanyName = () => brandSettings?.company_name || "GreenPass";
 
   if (loading) {
