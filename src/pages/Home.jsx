@@ -16,7 +16,8 @@ import YouTubeEmbed from '../components/YouTubeEmbed';
 
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
-import { collection, doc, getDoc, getDocs, limit } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore'; // removed doc/getDoc/limit
+import { fetchFlamelinkContent } from '@/api/fetchFlamelinkContent'; // added
 
 /* =========================
    Helpers
@@ -674,9 +675,9 @@ export default function Home() {
     (async () => {
       setLoading(true);
       try {
-        // 1) Home content (from AdminHomeEditor: home_page_contents/SINGLETON)
-        const homeSnap = await getDoc(doc(db, 'home_page_contents', 'SINGLETON'));
-        const homeData = homeSnap.exists() ? sanitizeHomeContent(homeSnap.data()) : sanitizeHomeContent({});
+        // 1) Home content via Flamelink
+        const homeDataRaw = await fetchFlamelinkContent('homePage');
+        const homeData = sanitizeHomeContent(homeDataRaw || {});
         setContent(homeData);
 
         // 2) Events (simple fetch, sort client-side; avoids index requirements)
@@ -704,7 +705,7 @@ export default function Home() {
 
         // 3) Schools / Programs
         // Try programs first (richer), fallback to schools
-        const progSnap = await getDocs(collection(db, 'programs'), /* optionally: limit(60) */);
+        const progSnap = await getDocs(collection(db, 'programs'));
         let items = progSnap.docs.map(mapProgramDoc);
 
         if (items.length === 0) {
