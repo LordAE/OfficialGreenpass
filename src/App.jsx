@@ -107,6 +107,7 @@ export default function App() {
         <Route path="eventregistration" element={<EventRegistrationPage />} />
         <Route path="login" element={<AuthForm />} />
         <Route path="/EventRegistrationSuccess" element={<EventRegistrationSuccess />} />
+        <Route path="programdetail" element={<ProgramDetail />} />
         {/* Private routes */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="onboarding" element={<Onboarding />} />
