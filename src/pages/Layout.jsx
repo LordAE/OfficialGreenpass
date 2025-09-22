@@ -1088,7 +1088,7 @@ export default function Layout() {
   // Brand visuals
   const getLogoUrl = () =>
     brandSettings?.logo_url ||
-    "";
+    "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/rawdatas%2FGreenPass%20Official.png?alt=media&token=809da08b-22f6-4049-bbbf-9b82342630e8";
   const getCompanyName = () => brandSettings?.company_name || "GreenPass";
 
   if (loading) {
