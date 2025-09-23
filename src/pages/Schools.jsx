@@ -1,4 +1,3 @@
-// src/pages/Schools.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { School } from "@/api/entities";
 import { Institution } from "@/api/entities";
@@ -11,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Link, useSearchParams } from "react-router-dom";
 import { createPageUrl } from '@/utils';
 import ProvinceSelector from '../components/ProvinceSelector';
+import CountrySelector from '@/components/CountrySelector';
 import { getProvinceLabel } from '../components/utils/CanadianProvinces';
 import _ from 'lodash';
 
@@ -18,7 +18,7 @@ const PAGE_SIZE = 15;
 
 /* -----------------------------
    Helpers: name normalization
------------------------------ */
+   ----------------------------- */
 const normalize = (s = "") =>
   String(s)
     .toLowerCase()
@@ -28,104 +28,102 @@ const normalize = (s = "") =>
     .replace(/[^a-z0-9]/g, "")
     .trim();
 
-/* -----------------------------
-   Card
------------------------------ */
-const SchoolCard = ({ school, programCount, isInstitution = false, detailsHref }) => (
-  <Card className="group hover:shadow-xl transition-all duration-300 border border-gray-200 hover:border-green-300">
-    <CardContent className="p-0">
-      <div className="aspect-video overflow-hidden rounded-t-lg bg-gradient-to-br from-blue-100 to-green-100 relative">
-        <img
-          src={
-            school.logoUrl ||
-            school.school_image_url ||
-            school.institution_logo_url ||
-            "https://images.unsplash.com/photo-1562774053-701939374585?w=800&h=600&fit=crop&q=80"
-          }
-          alt={school.name || school.school_name || school.institution_name || "Institution logo"}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-        />
-        {school.isFeatured && (
-          <div className="absolute top-3 right-3">
-            <Badge className="bg-yellow-500 text-white">
-              <Star className="w-3 h-3 mr-1" />
-              Featured
-            </Badge>
-          </div>
-        )}
-        {school.isDLI && (
-          <div className="absolute top-3 left-3">
-            <Badge className="bg-green-500 text-white">
-              <Award className="w-3 h-3 mr-1" />
-              DLI
-            </Badge>
-          </div>
-        )}
-      </div>
+const SchoolCard = ({ school, programCount, isInstitution = false }) => {
+  // Choose an id for routing to SchoolDetails
+  const targetId = school.id || school.school_id || school.institution_id;
+  const schoolName = school.name || school.school_name || school.institution_name;
 
-      <div className="p-6">
-        <div className="mb-3">
-          <Badge className="mb-2" variant="secondary">
-            {isInstitution ? "Institution" : (school.institution_type || "School")}
-          </Badge>
-        </div>
-
-        <h3 className="text-xl font-bold text-gray-900 group-hover:text-green-600 transition-colors">
-          {school.name || school.school_name || school.institution_name}
-        </h3>
-
-        <div className="flex items-center text-gray-600 mt-1 mb-4">
-          <MapPin className="w-4 h-4 mr-1" />
-          <span className="text-sm">
-            {(school.city || school.school_city || "City")},{" "}
-            {getProvinceLabel(school.province || school.school_province) || "Province"},{" "}
-            {school.country || school.school_country || "Country"}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-          <div>
-            <p className="text-gray-500">Programs</p>
-            <p className="font-bold text-blue-600">{programCount || school.programCount || 0}+</p>
-          </div>
-          <div>
-            <p className="text-gray-500">{isInstitution ? "Type" : "Institution"}</p>
-            <p className="font-bold text-gray-800 truncate">
-              {isInstitution ? (school.isPublic ? "Public" : "Private") : (school.institution_name || school.school_name)}
-            </p>
-          </div>
-        </div>
-
-        {isInstitution && school.about && (
-          <p className="text-sm text-gray-600 mb-4 line-clamp-2">{school.about}</p>
-        )}
-
-        <div className="flex flex-col gap-3">
-          <Link to={detailsHref}>
-            <Button variant="outline" className="w-full group-hover:bg-green-50 group-hover:border-green-300">
-              <GraduationCap className="w-4 h-4 mr-2" />
-              View Programs
-              <ArrowRight className="w-4 h-4 ml-auto" />
-            </Button>
-          </Link>
-
-          {isInstitution && school.website && (
-            <a href={school.website} target="_blank" rel="noopener noreferrer" className="w-full">
-              <Button variant="ghost" size="sm" className="w-full">
-                <Globe className="w-4 h-4 mr-2" />
-                Visit Website
-              </Button>
-            </a>
+  return (
+    <Card className="group hover:shadow-xl transition-all duration-300 border border-gray-200 hover:border-green-300">
+      <CardContent className="p-0">
+        <div className="aspect-video overflow-hidden rounded-t-lg bg-gradient-to-br from-blue-100 to-green-100 relative">
+          <img
+            src={
+              school.logoUrl ||
+              school.school_image_url ||
+              school.institution_logo_url ||
+              "https://images.unsplash.com/photo-1562774053-701939374585?w=800&h=600&fit=crop&q=80"
+            }
+            alt={schoolName || "Institution logo"}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+          {school.isFeatured && (
+            <div className="absolute top-3 right-3">
+              <Badge className="bg-yellow-500 text-white">
+                <Star className="w-3 h-3 mr-1" />
+                Featured
+              </Badge>
+            </div>
+          )}
+          {school.isDLI && (
+            <div className="absolute top-3 left-3">
+              <Badge className="bg-green-500 text-white">
+                <Award className="w-3 h-3 mr-1" />
+                DLI
+              </Badge>
+            </div>
           )}
         </div>
-      </div>
-    </CardContent>
-  </Card>
-);
 
-/* -----------------------------
-   Page
------------------------------ */
+        <div className="p-6">
+          <div className="mb-3">
+            <Badge className="mb-2" variant="secondary">
+              {isInstitution ? "Institution" : (school.institution_type || "School")}
+            </Badge>
+            <h3 className="text-xl font-bold text-gray-900 group-hover:text-green-600 transition-colors">
+              {schoolName}
+            </h3>
+          </div>
+
+          <div className="flex items-center text-gray-600 mb-4">
+            <MapPin className="w-4 h-4 mr-1" />
+            <span className="text-sm">
+              {(school.city || school.school_city || "City")},{" "}
+              {getProvinceLabel(school.province || school.school_province) || "Province"},{" "}
+              {school.country || school.school_country || "Country"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+            <div>
+              <p className="text-gray-500">Programs</p>
+              <p className="font-bold text-blue-600">{programCount || school.programCount || 0}+</p>
+            </div>
+            <div>
+              <p className="text-gray-500">{isInstitution ? "Type" : "Institution"}</p>
+              <p className="font-bold text-gray-800 truncate">
+                {isInstitution ? (school.isPublic ? "Public" : "Private") : (school.institution_name || school.school_name)}
+              </p>
+            </div>
+          </div>
+
+          {isInstitution && school.about && (
+            <p className="text-sm text-gray-600 mb-4 line-clamp-2">{school.about}</p>
+          )}
+
+          <div className="flex flex-col gap-3">
+            <Link to={createPageUrl(`SchoolDetails?id=${encodeURIComponent(targetId || "")}`)}>
+              <Button variant="outline" className="w-full group-hover:bg-green-50 group-hover:border-green-300">
+                <GraduationCap className="w-4 h-4 mr-2" />
+                View Programs
+                <ArrowRight className="w-4 h-4 ml-auto" />
+              </Button>
+            </Link>
+            {isInstitution && school.website && (
+              <Link to={school.website} target="_blank" rel="noopener noreferrer">
+                <Button variant="ghost" size="sm" className="w-full">
+                  <Globe className="w-4 h-4 mr-2" />
+                  Visit Website
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 export default function Schools() {
   const [allSchools, setAllSchools] = useState([]);
   const [allInstitutions, setAllInstitutions] = useState([]);
@@ -217,9 +215,6 @@ export default function Schools() {
         about: matchedInst?.about || representative.about || null,
         institution_type: matchedInst?.type || representative.institution_type || null,
 
-        // Prefer IDs we can route with
-        id: representative.school_id || representative.institution_id || representative.id,
-
         // Normalize location for filters
         city: representative.city || representative.school_city || matchedInst?.city || null,
         province: representative.province || representative.school_province || matchedInst?.province || null,
@@ -241,30 +236,19 @@ export default function Schools() {
         institution_type: inst.type || null,
         school_key: inst.name,
         isInstitution: true,
-        id: inst.id, // ensure details link works for institutions too
       }));
 
     return [...schoolCards, ...institutionCards];
   }, [allSchools, allInstitutions, institutionsByName]);
 
-  const getUniqueValues = useCallback(
-    (field) => {
-      const values = [
-        ...new Set(
-          mergedSchools.map((school) => {
-            if (field === "country") return school.country || school.school_country;
-            if (field === "province") return school.province || school.school_province;
-            if (field === "city") return school.city || school.school_city;
-            return school[field];
-          })
-        ),
-      ].filter(Boolean);
-      return values.sort();
-    },
-    [mergedSchools]
-  );
-
-  const getUniqueCountries = useCallback(() => getUniqueValues("country"), [getUniqueValues]);
+  // Build country options from data + make sure priority countries exist
+  const countryOptions = useMemo(() => {
+    const fromData = mergedSchools
+      .map((s) => s.country || s.school_country)
+      .filter(Boolean);
+    const priority = ["Australia","Germany","Ireland","United Kingdom","United States","New Zealand","Canada"];
+    return Array.from(new Set([...fromData, ...priority]));
+  }, [mergedSchools]);
 
   const handleSearchChange = useCallback((e) => {
     e.preventDefault();
@@ -380,17 +364,6 @@ export default function Schools() {
     setSelectedType("all");
   }, []);
 
-  // Build SchoolDetails href for each card
-  const getDetailsHref = useCallback((s) => {
-    const id = s.id || s.school_id || s.institution_id || null;
-    if (id) {
-      return createPageUrl(`SchoolDetails?id=${encodeURIComponent(id)}`);
-    }
-    // fallback: still show a rich page with mock data if no id available
-    const name = s.name || s.school_name || s.institution_name || "School";
-    return createPageUrl(`SchoolDetails?mock=1&id=mock&name=${encodeURIComponent(name)}`);
-  }, []);
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -430,19 +403,16 @@ export default function Schools() {
                   </div>
                 </div>
 
-                <Select value={selectedCountry} onValueChange={handleCountryChange}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="All Countries" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Countries</SelectItem>
-                    {getUniqueCountries().map((country) => (
-                      <SelectItem key={country} value={country}>
-                        {country}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Country selector (reusable, with All Countries + extended list) */}
+                <CountrySelector
+                  value={selectedCountry}
+                  onChange={handleCountryChange}
+                  options={countryOptions}
+                  includeAll
+                  allLabel="All Countries"
+                  placeholder="All Countries"
+                  className="h-11"
+                />
 
                 <ProvinceSelector
                   value={selectedProvince}
@@ -468,6 +438,7 @@ export default function Schools() {
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
                   {filteredSchools.length > 0 ? (
@@ -478,7 +449,9 @@ export default function Schools() {
                       ({allSchools.length} programs, {allInstitutions.length} institutions)
                     </>
                   ) : (
-                    <>Showing 0 of {mergedSchools.length} schools & institutions ({allSchools.length} programs, {allInstitutions.length} institutions)</>
+                    <>
+                      Showing 0 of {mergedSchools.length} schools & institutions ({allSchools.length} programs, {allInstitutions.length} institutions)
+                    </>
                   )}
                 </div>
                 <Button type="button" variant="outline" onClick={clearAllFilters} className="text-sm">
@@ -497,7 +470,6 @@ export default function Schools() {
               school={school}
               programCount={school.programCount}
               isInstitution={school.isInstitution}
-              detailsHref={getDetailsHref(school)}
             />
           ))}
         </div>
@@ -515,7 +487,7 @@ export default function Schools() {
               Prev
             </Button>
 
-            {pageNumbers.map((p, i) =>
+            {getPageNumbers(page, totalPages).map((p, i) =>
               p === "…" ? (
                 <span key={`ellipsis-${i}`} className="px-2 text-gray-500 select-none">…</span>
               ) : (
