@@ -1,16 +1,14 @@
-import React, { useState, useEffect } from "react";
+// src/pages/SchoolDetails.jsx
+import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { School } from "@/api/entities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  MapPin, 
-  Globe, 
-  Calendar, 
-  DollarSign, 
-  Star, 
-  Users, 
+import {
+  MapPin,
+  Globe,
+  Calendar,
+  Star,
   GraduationCap,
   ChevronLeft,
   ChevronRight,
@@ -18,33 +16,214 @@ import {
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 
+/* ---------- Firestore ---------- */
+import { db } from "@/firebase";
+import {
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+  limit
+} from "firebase/firestore";
+
+/* ---------- helpers ---------- */
+const pickFirst = (...vals) =>
+  vals.find((v) => v !== undefined && v !== null && (`${v}`.trim?.() ?? `${v}`) !== "") ?? undefined;
+
+const ensureArray = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+
+const money = (amount) => {
+  if (amount === undefined || amount === null) return "";
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(Number(amount));
+  } catch {
+    return `$${Number(amount || 0).toLocaleString()}`;
+  }
+};
+
 export default function SchoolDetails() {
   const [searchParams] = useSearchParams();
-  const schoolId = searchParams.get('id');
-  
-  const [school, setSchool] = useState(null);
+  const schoolId = searchParams.get("id");
+
+  const [school, setSchool] = useState(null);   // header card data (from school_profiles or fallback)
+  const [programs, setPrograms] = useState([]); // programs from `schools` collection
   const [loading, setLoading] = useState(true);
   const [programsPage, setProgramsPage] = useState(1);
   const programsPerPage = 10;
 
+  const formatLocation = (s) => {
+    const parts = [s?.location, s?.province, s?.country].filter(Boolean);
+    return parts.join(", ");
+  };
+
+  // Map a Firestore `schools` doc to the program card shape
+  const mapProgramFromSchoolDoc = (snap) => {
+    const d = { id: snap.id, ...snap.data() };
+    return {
+      id: snap.id,
+      name: pickFirst(d.program_title, d.title, d.program_name, "Program"),
+      level: pickFirst(d.program_level, d.level, ""),
+      duration: pickFirst(d.duration_display, d.duration, "Contact School"),
+      tuition_per_year: Number(
+        pickFirst(d.tuition_per_year_cad, d.tuition_fee_cad, d.tuition, 0)
+      ),
+      intakes: ensureArray(pickFirst(d.intake_dates, d.intakes, [])),
+      available_seats: d.available_seats
+    };
+  };
+
+  // Normalize a `school_profiles` doc into the header object
+  // ❗Annual Tuition comes **strictly** from school_profiles.tuition_fees
+  const buildHeaderFromProfile = (p) => ({
+    id: p.id,
+    name: pickFirst(p.name, p.title, "Institution"),
+    image_url: pickFirst(p.logoUrl, p.logo_url, p.institution_logo_url, p.image_url),
+    verification_status: pickFirst(p.verification_status, p.verified && "verified"),
+    account_type: pickFirst(p.account_type, "real"),
+    address: pickFirst(p.address, p.street_address),
+    website: pickFirst(p.website, p.url, p.homepage),
+    founded_year: pickFirst(p.founded_year, p.established),
+    tuition_fees: Number(p.tuition_fees ?? 0) || 0, // <-- only school_profiles.tuition_fees
+    application_fee: Number(p.application_fee ?? 0) || 0,
+    rating: Number(p.rating ?? 0) || undefined,
+    acceptance_rate: Number(p.acceptance_rate ?? 0) || undefined,
+    location: pickFirst(p.city, p.location),
+    province: pickFirst(p.province, p.state),
+    country: pickFirst(p.country, "Canada"),
+    about: pickFirst(p.about, p.description)
+  });
+
+  // Fallback: build header from a single `schools` doc (if id was a school row)
+  // (We do NOT set tuition_fees here to keep Annual Tuition sourced from school_profiles only.)
+  const buildHeaderFromSchoolDoc = (s) => ({
+    id: s.id,
+    name: pickFirst(s.institution_name, s.school_name, s.name, "Institution"),
+    image_url: pickFirst(s.institution_logo_url, s.school_image_url, s.logo_url, s.image_url),
+    verification_status: pickFirst(s.verification_status, s.verified && "verified"),
+    account_type: pickFirst(s.account_type, "real"),
+    address: pickFirst(s.address, s.school_address),
+    website: s.website,
+    founded_year: pickFirst(s.founded_year, s.established),
+    tuition_fees: undefined,
+    application_fee: Number(pickFirst(s.application_fee, 0)) || 0,
+    rating: Number(pickFirst(s.rating, 0)) || undefined,
+    acceptance_rate: Number(pickFirst(s.acceptance_rate, 0)) || undefined,
+    location: pickFirst(s.city, s.school_city, s.location),
+    province: pickFirst(s.province, s.school_province, s.state),
+    country: pickFirst(s.country, s.school_country, "Canada"),
+    about: pickFirst(s.institution_about, s.about)
+  });
+
   useEffect(() => {
-    const fetchSchool = async () => {
-      if (!schoolId) return;
-      
+    let cancelled = false;
+
+    (async () => {
+      if (!schoolId) {
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
-        const schoolData = await School.filter({ id: schoolId });
-        if (schoolData && schoolData.length > 0) {
-          setSchool(schoolData[0]);
+        /* 1) Try to load a school profile by id */
+        let profileSnap = await getDoc(doc(db, "school_profiles", schoolId));
+        if (!profileSnap.exists()) {
+          // optional casing fallback
+          profileSnap = await getDoc(doc(db, "SchoolProfiles", schoolId));
         }
-      } catch (error) {
-        console.error("Error fetching school:", error);
-      }
-      setLoading(false);
-    };
 
-    fetchSchool();
+        let header = null;
+        let nameForMatch = null;
+
+        if (profileSnap.exists()) {
+          const profile = { id: profileSnap.id, ...profileSnap.data() };
+          header = buildHeaderFromProfile(profile);
+          nameForMatch = header.name;
+        } else {
+          /* 2) If not a profile id, try a school doc by id */
+          let sSnap = await getDoc(doc(db, "schools", schoolId));
+          if (!sSnap.exists()) {
+            sSnap = await getDoc(doc(db, "Schools", schoolId));
+          }
+
+          if (sSnap.exists()) {
+            const s = { id: sSnap.id, ...sSnap.data() };
+            header = buildHeaderFromSchoolDoc(s);
+            nameForMatch = pickFirst(s.institution_name, s.school_name, header?.name);
+          }
+        }
+
+        if (!header) {
+          if (!cancelled) {
+            setSchool(null);
+            setPrograms([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (!cancelled) setSchool(header);
+
+        /* 3) Programs: query `schools` where institution_name == name(profile)
+              and also where school_name == name(profile). */
+        const programsFound = [];
+
+        const q1 = query(
+          collection(db, "schools"),
+          where("institution_name", "==", nameForMatch),
+          limit(500)
+        );
+        const res1 = await getDocs(q1);
+        res1.forEach((snap) => programsFound.push(mapProgramFromSchoolDoc(snap)));
+
+        const q2 = query(
+          collection(db, "schools"),
+          where("school_name", "==", nameForMatch),
+          limit(500)
+        );
+        const res2 = await getDocs(q2);
+        res2.forEach((snap) => {
+          const id = snap.id;
+          if (!programsFound.find((p) => p.id === id)) {
+            programsFound.push(mapProgramFromSchoolDoc(snap));
+          }
+        });
+
+        if (!cancelled) setPrograms(programsFound);
+      } catch (err) {
+        console.error("Error fetching SchoolDetails:", err);
+        if (!cancelled) {
+          setSchool(null);
+          setPrograms([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [schoolId]);
+
+  /* ---------- Average Tuition (fallback) ---------- */
+  const avgTuition = useMemo(() => {
+    const vals = programs
+      .map((p) => Number(p.tuition_per_year))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (!vals.length) return null;
+    const sum = vals.reduce((a, b) => a + b, 0);
+    return Math.round(sum / vals.length);
+  }, [programs]);
+
+  /* ---------- UI ---------- */
 
   if (loading) {
     return (
@@ -66,32 +245,20 @@ export default function SchoolDetails() {
     );
   }
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const programs = school.programs || [];
   const totalPrograms = programs.length;
   const startIndex = (programsPage - 1) * programsPerPage;
   const endIndex = startIndex + programsPerPage;
   const currentPrograms = programs.slice(startIndex, endIndex);
-  const totalPages = Math.ceil(totalPrograms / programsPerPage);
-
-  const formatLocation = () => {
-    const parts = [school.location, school.province, school.country].filter(Boolean);
-    return parts.join(', ');
-  };
+  const totalPages = Math.max(1, Math.ceil(totalPrograms / programsPerPage));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-6">
       <div className="max-w-6xl mx-auto">
         {/* Back Navigation */}
-        <Link to={createPageUrl("Schools")} className="inline-flex items-center text-emerald-600 hover:text-emerald-700 mb-6">
+        <Link
+          to={createPageUrl("Schools")}
+          className="inline-flex items-center text-emerald-600 hover:text-emerald-700 mb-6"
+        >
           <ChevronLeft className="w-4 h-4 mr-1" />
           Back to Schools
         </Link>
@@ -102,8 +269,8 @@ export default function SchoolDetails() {
             <div className="flex flex-col lg:flex-row gap-8">
               <div className="flex-shrink-0">
                 {school.image_url ? (
-                  <img 
-                    src={school.image_url} 
+                  <img
+                    src={school.image_url}
                     alt={school.name}
                     className="w-48 h-32 object-cover rounded-lg shadow-md"
                   />
@@ -118,12 +285,28 @@ export default function SchoolDetails() {
                 <div className="flex flex-wrap items-center gap-3 mb-4">
                   <h1 className="text-4xl font-bold text-gray-900">{school.name}</h1>
                   <div className="flex gap-2">
-                    <Badge className={school.verification_status === 'verified' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                      {school.verification_status === 'verified' ? '✓ Verified' : 'Pending'}
-                    </Badge>
-                    <Badge className={school.account_type === 'real' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}>
-                      {school.account_type === 'real' ? 'Real' : 'Demo'}
-                    </Badge>
+                    {school.verification_status && (
+                      <Badge
+                        className={
+                          school.verification_status === "verified"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }
+                      >
+                        {school.verification_status === "verified" ? "✓ Verified" : "Pending"}
+                      </Badge>
+                    )}
+                    {school.account_type && (
+                      <Badge
+                        className={
+                          school.account_type === "real"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-gray-100 text-gray-800"
+                        }
+                      >
+                        {school.account_type === "real" ? "Real" : "Demo"}
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -131,7 +314,7 @@ export default function SchoolDetails() {
                   <div className="space-y-3">
                     <div className="flex items-center text-gray-600">
                       <MapPin className="w-5 h-5 mr-2 text-emerald-600" />
-                      <span>{formatLocation()}</span>
+                      <span>{formatLocation(school)}</span>
                     </div>
                     {school.address && (
                       <div className="flex items-start text-gray-600">
@@ -142,7 +325,12 @@ export default function SchoolDetails() {
                     {school.website && (
                       <div className="flex items-center text-gray-600">
                         <Globe className="w-5 h-5 mr-2 text-emerald-600" />
-                        <a href={school.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        <a
+                          href={school.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
                           {school.website}
                         </a>
                       </div>
@@ -156,26 +344,45 @@ export default function SchoolDetails() {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
-                      <span className="text-gray-700">Annual Tuition</span>
-                      <span className="font-bold text-emerald-600">{formatCurrency(school.tuition_fees)}</span>
-                    </div>
-                    {school.application_fee && (
+                    {/* Show Annual Tuition from school_profiles; else show Average Tuition from programs */}
+                    {(school.tuition_fees !== undefined && school.tuition_fees !== null) ? (
+                      <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
+                        <span className="text-gray-700">Annual Tuition</span>
+                        <span className="font-bold text-emerald-600">
+                          {money(school.tuition_fees)}
+                        </span>
+                      </div>
+                    ) : (
+                      avgTuition !== null && (
+                        <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
+                          <span className="text-gray-700">Average Tuition</span>
+                          <span className="font-bold text-emerald-600">
+                            {money(avgTuition)}
+                          </span>
+                        </div>
+                      )
+                    )}
+
+                    {Number.isFinite(school.application_fee) && school.application_fee > 0 && (
                       <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
                         <span className="text-gray-700">Application Fee</span>
-                        <span className="font-bold text-blue-600">{formatCurrency(school.application_fee)}</span>
+                        <span className="font-bold text-blue-600">
+                          {money(school.application_fee)}
+                        </span>
                       </div>
                     )}
-                    {school.rating && (
+                    {Number.isFinite(school.rating) && (
                       <div className="flex items-center p-3 bg-yellow-50 rounded-lg">
                         <Star className="w-5 h-5 text-yellow-400 fill-current mr-2" />
                         <span className="font-bold text-yellow-600">{school.rating}/5</span>
                       </div>
                     )}
-                    {school.acceptance_rate && (
+                    {Number.isFinite(school.acceptance_rate) && (
                       <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
                         <span className="text-gray-700">Acceptance Rate</span>
-                        <span className="font-bold text-purple-600">{school.acceptance_rate}%</span>
+                        <span className="font-bold text-purple-600">
+                          {school.acceptance_rate}%
+                        </span>
                       </div>
                     )}
                   </div>
@@ -198,7 +405,7 @@ export default function SchoolDetails() {
             <div className="flex justify-between items-center">
               <CardTitle className="text-2xl">Available Programs</CardTitle>
               <span className="text-gray-600">
-                Showing {startIndex + 1}-{Math.min(endIndex, totalPrograms)} of {totalPrograms} programs
+                Showing {totalPrograms === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, totalPrograms)} of {totalPrograms} programs
               </span>
             </div>
           </CardHeader>
@@ -219,31 +426,45 @@ export default function SchoolDetails() {
                           <div>
                             <h4 className="text-xl font-bold text-gray-900 mb-2">{program.name}</h4>
                             <div className="flex gap-2 mb-2">
-                              <Badge variant="secondary">{program.level}</Badge>
-                              <Badge variant="outline">{program.duration}</Badge>
+                              {program.level && <Badge variant="secondary">{program.level}</Badge>}
+                              {program.duration && <Badge variant="outline">{program.duration}</Badge>}
                             </div>
                           </div>
-                          {program.available_seats !== undefined && (
-                            <Badge className={program.available_seats > 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+                          {Number.isFinite(program.available_seats) && (
+                            <Badge
+                              className={
+                                program.available_seats > 0
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                              }
+                            >
                               {program.available_seats} seats
                             </Badge>
                           )}
                         </div>
 
                         <div className="space-y-3 mb-4">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Tuition per year</span>
-                            <span className="font-bold text-emerald-600">{formatCurrency(program.tuition_per_year)}</span>
-                          </div>
+                          {Number.isFinite(program.tuition_per_year) && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Tuition per year</span>
+                              <span className="font-bold text-emerald-600">
+                                {money(program.tuition_per_year)}
+                              </span>
+                            </div>
+                          )}
                           {program.intakes && program.intakes.length > 0 && (
                             <div>
                               <span className="text-gray-600">Intakes: </span>
-                              <span className="text-gray-900">{program.intakes.join(', ')}</span>
+                              <span className="text-gray-900">{program.intakes.join(", ")}</span>
                             </div>
                           )}
                         </div>
 
-                        <Link to={createPageUrl(`ProgramDetails?schoolId=${school.id}&programId=${program.id}`)}>
+                        <Link
+                          to={createPageUrl(
+                            `ProgramDetails?schoolId=${encodeURIComponent(school.id)}&programId=${encodeURIComponent(program.id)}`
+                          )}
+                        >
                           <Button className="w-full bg-gradient-to-r from-emerald-600 to-blue-600 text-white">
                             View Program Details
                           </Button>
@@ -258,7 +479,7 @@ export default function SchoolDetails() {
                   <div className="flex justify-center items-center gap-4">
                     <Button
                       variant="outline"
-                      onClick={() => setProgramsPage(prev => Math.max(1, prev - 1))}
+                      onClick={() => setProgramsPage((prev) => Math.max(1, prev - 1))}
                       disabled={programsPage === 1}
                     >
                       <ChevronLeft className="w-4 h-4 mr-2" />
@@ -269,7 +490,7 @@ export default function SchoolDetails() {
                     </span>
                     <Button
                       variant="outline"
-                      onClick={() => setProgramsPage(prev => Math.min(totalPages, prev + 1))}
+                      onClick={() => setProgramsPage((prev) => Math.min(totalPages, prev + 1))}
                       disabled={programsPage === totalPages}
                     >
                       Next

@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  ArrowRight, Play, Star, Users, GraduationCap, TrendingUp, Check, BookOpen,
-  School as SchoolIcon, Globe, CheckCircle, MapPin, DollarSign, Calendar
+  ArrowRight, Star, Users, GraduationCap, TrendingUp,
+  School as SchoolIcon, MapPin, DollarSign, Calendar
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -16,7 +16,7 @@ import YouTubeEmbed from '../components/YouTubeEmbed';
 
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
-import { collection, doc, getDoc, getDocs, limit } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 
 /* =========================
    Helpers
@@ -32,6 +32,16 @@ const toDate = (v) => {
 };
 
 const ensureArray = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
+
+/** Name normalizer (same idea as Schools page) */
+const normalize = (s = "") =>
+  String(s)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\b(the|of|and|for|at|in|de|la|le|du|des|université|universite)\b/g, "")
+    .replace(/\b(university|college|institute|polytechnic|school|academy|centre|center)\b/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
 
 /* ---------- Labels ---------- */
 const getLevelLabel = (level) => {
@@ -95,10 +105,32 @@ const sanitizeHomeContent = (loaded = {}) => {
   };
 };
 
+const mapSchoolDoc = (snap) => {
+  const d = { id: snap.id, ...snap.data() };
+  // Map a 'schools' document to the card fields
+  return {
+    id: snap.id,
+    is_featured: !!pickFirst(d.is_featured, d.featured, d.recommended),
+    rating: Number(pickFirst(d.rating, 4.5)) || 4.5,
+    school_image_url: pickFirst(d.school_image_url, d.institution_logo_url, d.logo_url, d.image_url, ''),
+    school_name: pickFirst(d.school_name, d.name, d.institution_name, 'Institution'),
+    institution_name: pickFirst(d.institution_name, d.school_name, d.name, 'Institution'),
+    school_city: pickFirst(d.school_city, d.city, ''),
+    school_province: pickFirst(d.school_province, d.province, d.state, ''),
+    program_level: pickFirst(d.top_program_level, d.program_level, 'undergraduate'),
+    program_title: pickFirst(d.top_program_title, d.program_title, 'View programs'),
+    institution_type: pickFirst(d.institution_type, d.type, 'University'),
+    tuition_fee_cad: Number(pickFirst(d.avg_tuition_cad, 0)) || 0,
+    intake_dates: ensureArray(pickFirst(d.intake_dates, [])),
+    institution_logo_url: pickFirst(d.institution_logo_url, ''), // will be enriched from institutions
+  };
+};
+
 const mapEventDoc = (snap) => {
   const d = { id: snap.id, ...snap.data() };
   return {
     id: snap.id,
+    ...d, // spread FIRST so converted fields below overwrite it
     event_id: pickFirst(d.event_id, snap.id),
     title: pickFirst(d.title, d.name, 'Untitled Event'),
     location: pickFirst(d.location, d.city, ''),
@@ -107,49 +139,16 @@ const mapEventDoc = (snap) => {
     archive_at: toDate(pickFirst(d.archive_at, d.archiveAt)),
     sort_order: d.sort_order ?? d.sortOrder ?? 999,
     banner_url: pickFirst(d.banner_url, d.image_url, d.coverImageUrl, ''),
-    ...d,
   };
 };
 
-const mapProgramDoc = (snap) => {
-  const d = { id: snap.id, ...snap.data() };
-  return {
-    id: snap.id,
-    is_featured: !!pickFirst(d.is_featured, d.featured, d.recommended),
-    rating: Number(pickFirst(d.rating, d.school_rating, 4.5)) || 4.5,
-    school_image_url: pickFirst(d.school_image_url, d.institution_logo_url, d.image_url, d.logo_url, ''),
-    school_name: pickFirst(d.school_name, d.institution_name, d.name, 'Institution'),
-    school_city: pickFirst(d.school_city, d.city, ''),
-    school_province: pickFirst(d.school_province, d.province, d.state, ''),
-    program_level: pickFirst(d.program_level, d.level, ''),
-    program_title: pickFirst(d.program_title, d.title, 'Program'),
-    institution_type: pickFirst(d.institution_type, d.type, 'University'),
-    tuition_fee_cad: Number(pickFirst(d.tuition_fee_cad, d.tuition_per_year_cad, d.tuition, 0)) || 0,
-    intake_dates: ensureArray(pickFirst(d.intake_dates, d.intakes, [])),
-  };
-};
 
-const mapSchoolDoc = (snap) => {
-  const d = { id: snap.id, ...snap.data() };
-  // Fallback mapper if you have a 'schools' collection without program details
-  return {
-    id: snap.id,
-    is_featured: !!pickFirst(d.is_featured, d.featured, d.recommended),
-    rating: Number(pickFirst(d.rating, 4.5)) || 4.5,
-    school_image_url: pickFirst(d.school_image_url, d.institution_logo_url, d.logo_url, d.image_url, ''),
-    school_name: pickFirst(d.school_name, d.name, d.institution_name, 'Institution'),
-    school_city: pickFirst(d.school_city, d.city, ''),
-    school_province: pickFirst(d.school_province, d.province, d.state, ''),
-    program_level: pickFirst(d.top_program_level, 'undergraduate'),
-    program_title: pickFirst(d.top_program_title, 'View programs'),
-    institution_type: pickFirst(d.institution_type, d.type, 'University'),
-    tuition_fee_cad: Number(pickFirst(d.avg_tuition_cad, 0)) || 0,
-    intake_dates: ensureArray(pickFirst(d.intake_dates, [])),
-  };
-};
+
+
+
 
 /* =========================
-   Sections (unchanged UI)
+   Sections (UI)
 ========================= */
 const Hero = ({ content }) => (
   <div className="relative text-white overflow-hidden">
@@ -476,6 +475,9 @@ const SchoolProgramsSection = ({ content, schools }) => (
   </div>
 );
 
+/* =========================
+   Other sections
+========================= */
 const Stats = ({ stats }) => (
   <div className="bg-gradient-to-r from-green-600 via-green-700 to-green-800 py-16 relative overflow-hidden">
     <div className="absolute inset-0 bg-black/10"></div>
@@ -674,16 +676,15 @@ export default function Home() {
     (async () => {
       setLoading(true);
       try {
-        // 1) Home content (from AdminHomeEditor: home_page_contents/SINGLETON)
+        // 1) Home content
         const homeSnap = await getDoc(doc(db, 'home_page_contents', 'SINGLETON'));
         const homeData = homeSnap.exists() ? sanitizeHomeContent(homeSnap.data()) : sanitizeHomeContent({});
         setContent(homeData);
 
-        // 2) Events (simple fetch, sort client-side; avoids index requirements)
+        // 2) Events (simple fetch, sort client-side)
         const evSnap = await getDocs(collection(db, 'events'));
         const evs = evSnap.docs.map(mapEventDoc);
 
-        // Sort: sort_order asc, then start date asc
         evs.sort((a, b) => {
           const orderA = a.sort_order ?? 999;
           const orderB = b.sort_order ?? 999;
@@ -693,7 +694,6 @@ export default function Home() {
           return aStart - bStart;
         });
 
-        // Upcoming only (end >= now) and not archived
         const now = Date.now();
         const upcoming = evs.filter((e) => {
           const endMs = e.end ? e.end.getTime() : 0;
@@ -702,26 +702,60 @@ export default function Home() {
         });
         setEvents(upcoming);
 
-        // 3) Schools / Programs
-        // Try programs first (richer), fallback to schools
-        const progSnap = await getDocs(collection(db, 'programs'), /* optionally: limit(60) */);
-        let items = progSnap.docs.map(mapProgramDoc);
-
-        if (items.length === 0) {
-          const schoolsSnap = await getDocs(collection(db, 'schools'));
-          items = schoolsSnap.docs.map(mapSchoolDoc);
+        // 3) Recommended Schools = 'schools' where is_featured == true
+        let sSnap = await getDocs(
+          query(
+            collection(db, 'schools'),
+            where('is_featured', '==', true),
+            limit(60)
+          )
+        );
+        if (sSnap.empty) {
+          // Optional fallback to capitalized collection name
+          sSnap = await getDocs(
+            query(
+              collection(db, 'Schools'),
+              where('is_featured', '==', true),
+              limit(60)
+            )
+          );
         }
+        const featuredSchools = sSnap.docs.map(mapSchoolDoc);
 
-        // Apply "show_featured_only" from content
-        let finalSchools = items;
-        if (homeData?.schools_programs_section?.show_featured_only) {
-          const featured = items.filter((x) => x.is_featured);
-          finalSchools = featured.length ? featured : items.slice(0, 6);
+        // 4) Fetch institutions to enrich logos (logoUrl)
+        let instSnap = await getDocs(collection(db, 'institutions'));
+        if (instSnap.empty) {
+          instSnap = await getDocs(collection(db, 'Institutions'));
         }
+        const institutions = instSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        setSchools(finalSchools);
+        // Build a fast lookup: normalized name -> institution row
+        const instMap = new Map(
+          institutions.map((inst) => {
+            const key = normalize(inst.name || inst.institution_name || inst.title || '');
+            return [key, inst];
+          })
+        );
+
+        // 5) Merge: prefer institution.logoUrl for images when names match
+        const merged = featuredSchools.map((s) => {
+          const key = normalize(s.school_name || s.institution_name || '');
+          const inst = instMap.get(key);
+
+          const logoFromInst = pickFirst(inst?.logoUrl, inst?.logo_url, inst?.image_url, inst?.institution_logo_url);
+
+          return {
+            ...s,
+            // Use institution logo first, then existing fields, then placeholder
+            school_image_url: pickFirst(logoFromInst, s.school_image_url, s.institution_logo_url),
+            institution_logo_url: pickFirst(logoFromInst, s.institution_logo_url),
+          };
+        });
+
+        setSchools(merged);
       } catch (err) {
         console.error('Error loading home content:', err);
+        setSchools([]); // show "no schools" state if query fails
       } finally {
         setLoading(false);
       }

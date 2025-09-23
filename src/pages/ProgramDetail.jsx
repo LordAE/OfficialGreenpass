@@ -77,6 +77,8 @@ export default function ProgramDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // ✅ keep all hooks at the top level (fixes “Rendered more hooks than during the previous render”)
+  const [expanded, setExpanded] = useState(false);
 
   const loadProgramDetails = useCallback(async () => {
     setLoading(true);
@@ -168,7 +170,6 @@ export default function ProgramDetail() {
   const intakes = Array.isArray(program.intake_dates) ? program.intake_dates : [];
 
   const { short: overviewShort, truncated } = clampWords(programOverview, 140);
-  const [expanded, setExpanded] = useState(false);
 
   // data for modal
   const modalProgramData = {

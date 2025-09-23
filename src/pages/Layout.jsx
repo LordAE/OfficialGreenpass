@@ -384,7 +384,7 @@ ListItem.displayName = "ListItem";
 const exploreForStudents = [
   {
     title: getText("findSchoolsPrograms"),
-    href: createPageUrl("Programs"),
+    href: createPageUrl("Schools"),
     icon: Search,
     description: getText("searchTopSchools"),
   },

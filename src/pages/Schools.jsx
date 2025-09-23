@@ -1,3 +1,4 @@
+// src/pages/Schools.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { School } from "@/api/entities";
 import { Institution } from "@/api/entities";
@@ -17,7 +18,7 @@ const PAGE_SIZE = 15;
 
 /* -----------------------------
    Helpers: name normalization
-   ----------------------------- */
+----------------------------- */
 const normalize = (s = "") =>
   String(s)
     .toLowerCase()
@@ -27,7 +28,10 @@ const normalize = (s = "") =>
     .replace(/[^a-z0-9]/g, "")
     .trim();
 
-const SchoolCard = ({ school, programCount, isInstitution = false }) => (
+/* -----------------------------
+   Card
+----------------------------- */
+const SchoolCard = ({ school, programCount, isInstitution = false, detailsHref }) => (
   <Card className="group hover:shadow-xl transition-all duration-300 border border-gray-200 hover:border-green-300">
     <CardContent className="p-0">
       <div className="aspect-video overflow-hidden rounded-t-lg bg-gradient-to-br from-blue-100 to-green-100 relative">
@@ -64,12 +68,13 @@ const SchoolCard = ({ school, programCount, isInstitution = false }) => (
           <Badge className="mb-2" variant="secondary">
             {isInstitution ? "Institution" : (school.institution_type || "School")}
           </Badge>
-          <h3 className="text-xl font-bold text-gray-900 group-hover:text-green-600 transition-colors">
-            {school.name || school.school_name || school.institution_name}
-          </h3>
         </div>
 
-        <div className="flex items-center text-gray-600 mb-4">
+        <h3 className="text-xl font-bold text-gray-900 group-hover:text-green-600 transition-colors">
+          {school.name || school.school_name || school.institution_name}
+        </h3>
+
+        <div className="flex items-center text-gray-600 mt-1 mb-4">
           <MapPin className="w-4 h-4 mr-1" />
           <span className="text-sm">
             {(school.city || school.school_city || "City")},{" "}
@@ -96,24 +101,21 @@ const SchoolCard = ({ school, programCount, isInstitution = false }) => (
         )}
 
         <div className="flex flex-col gap-3">
-          <Link
-            to={createPageUrl(
-              `Programs?school=${encodeURIComponent(school.name || school.school_name || school.institution_name)}`
-            )}
-          >
+          <Link to={detailsHref}>
             <Button variant="outline" className="w-full group-hover:bg-green-50 group-hover:border-green-300">
               <GraduationCap className="w-4 h-4 mr-2" />
               View Programs
               <ArrowRight className="w-4 h-4 ml-auto" />
             </Button>
           </Link>
+
           {isInstitution && school.website && (
-            <Link to={school.website} target="_blank" rel="noopener noreferrer">
+            <a href={school.website} target="_blank" rel="noopener noreferrer" className="w-full">
               <Button variant="ghost" size="sm" className="w-full">
                 <Globe className="w-4 h-4 mr-2" />
                 Visit Website
               </Button>
-            </Link>
+            </a>
           )}
         </div>
       </div>
@@ -121,6 +123,9 @@ const SchoolCard = ({ school, programCount, isInstitution = false }) => (
   </Card>
 );
 
+/* -----------------------------
+   Page
+----------------------------- */
 export default function Schools() {
   const [allSchools, setAllSchools] = useState([]);
   const [allInstitutions, setAllInstitutions] = useState([]);
@@ -212,6 +217,9 @@ export default function Schools() {
         about: matchedInst?.about || representative.about || null,
         institution_type: matchedInst?.type || representative.institution_type || null,
 
+        // Prefer IDs we can route with
+        id: representative.school_id || representative.institution_id || representative.id,
+
         // Normalize location for filters
         city: representative.city || representative.school_city || matchedInst?.city || null,
         province: representative.province || representative.school_province || matchedInst?.province || null,
@@ -233,6 +241,7 @@ export default function Schools() {
         institution_type: inst.type || null,
         school_key: inst.name,
         isInstitution: true,
+        id: inst.id, // ensure details link works for institutions too
       }));
 
     return [...schoolCards, ...institutionCards];
@@ -371,6 +380,17 @@ export default function Schools() {
     setSelectedType("all");
   }, []);
 
+  // Build SchoolDetails href for each card
+  const getDetailsHref = useCallback((s) => {
+    const id = s.id || s.school_id || s.institution_id || null;
+    if (id) {
+      return createPageUrl(`SchoolDetails?id=${encodeURIComponent(id)}`);
+    }
+    // fallback: still show a rich page with mock data if no id available
+    const name = s.name || s.school_name || s.institution_name || "School";
+    return createPageUrl(`SchoolDetails?mock=1&id=mock&name=${encodeURIComponent(name)}`);
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -454,8 +474,8 @@ export default function Schools() {
                     <>
                       Showing <span className="font-medium">{startIndex + 1}</span>–
                       <span className="font-medium">{endIndex}</span> of{" "}
-                      <span className="font-medium">{filteredSchools.length}</span> schools & institutions
-                      {" "}({allSchools.length} programs, {allInstitutions.length} institutions)
+                      <span className="font-medium">{filteredSchools.length}</span> schools & institutions{" "}
+                      ({allSchools.length} programs, {allInstitutions.length} institutions)
                     </>
                   ) : (
                     <>Showing 0 of {mergedSchools.length} schools & institutions ({allSchools.length} programs, {allInstitutions.length} institutions)</>
@@ -477,6 +497,7 @@ export default function Schools() {
               school={school}
               programCount={school.programCount}
               isInstitution={school.isInstitution}
+              detailsHref={getDetailsHref(school)}
             />
           ))}
         </div>
