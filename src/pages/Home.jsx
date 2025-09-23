@@ -252,7 +252,7 @@ const Features = ({ features }) => {
     <div className="py-20 sm:py-28 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16 sm:mb-20 space-y-4">
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Top Leading Schools</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Everything You Need for Your Study Abroad Journey</h2>
           <p className="text-lg sm:text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
             From finding the perfect program to landing in your new country, we've got every step covered.
           </p>
