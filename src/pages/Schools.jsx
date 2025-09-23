@@ -5,23 +5,40 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, MapPin, GraduationCap, Star, Filter, Globe, Users, Zap, Loader2, ArrowRight, Building, Award } from "lucide-react";
+import { Search, MapPin, GraduationCap, Star, Globe, Loader2, ArrowRight, Building, Award } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Link } from "react-router-dom"; 
+import { Link, useSearchParams } from "react-router-dom";
 import { createPageUrl } from '@/utils';
-import LevelSelector from '../components/LevelSelector';
 import ProvinceSelector from '../components/ProvinceSelector';
-import { getLevelLabel } from '../components/utils/EducationLevels';
 import { getProvinceLabel } from '../components/utils/CanadianProvinces';
 import _ from 'lodash';
+
+const PAGE_SIZE = 15;
+
+/* -----------------------------
+   Helpers: name normalization
+   ----------------------------- */
+const normalize = (s = "") =>
+  String(s)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\b(the|of|and|for|at|in|de|la|le|du|des|université|universite)\b/g, "")
+    .replace(/\b(university|college|institute|polytechnic|school|academy|centre|center)\b/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
 
 const SchoolCard = ({ school, programCount, isInstitution = false }) => (
   <Card className="group hover:shadow-xl transition-all duration-300 border border-gray-200 hover:border-green-300">
     <CardContent className="p-0">
       <div className="aspect-video overflow-hidden rounded-t-lg bg-gradient-to-br from-blue-100 to-green-100 relative">
         <img
-          src={school.logoUrl || school.school_image_url || school.institution_logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=800&h=600&fit=crop&q=80'}
-          alt={school.name || school.school_name || school.institution_name}
+          src={
+            school.logoUrl ||
+            school.school_image_url ||
+            school.institution_logo_url ||
+            "https://images.unsplash.com/photo-1562774053-701939374585?w=800&h=600&fit=crop&q=80"
+          }
+          alt={school.name || school.school_name || school.institution_name || "Institution logo"}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
         {school.isFeatured && (
@@ -41,21 +58,23 @@ const SchoolCard = ({ school, programCount, isInstitution = false }) => (
           </div>
         )}
       </div>
-      
+
       <div className="p-6">
         <div className="mb-3">
           <Badge className="mb-2" variant="secondary">
-            {isInstitution ? 'Institution' : (school.institution_type || 'School')}
+            {isInstitution ? "Institution" : (school.institution_type || "School")}
           </Badge>
           <h3 className="text-xl font-bold text-gray-900 group-hover:text-green-600 transition-colors">
             {school.name || school.school_name || school.institution_name}
           </h3>
         </div>
-        
+
         <div className="flex items-center text-gray-600 mb-4">
           <MapPin className="w-4 h-4 mr-1" />
           <span className="text-sm">
-            {school.city || school.school_city || 'City'}, {getProvinceLabel(school.province || school.school_province) || 'Province'}, {school.country || school.school_country || 'Country'}
+            {(school.city || school.school_city || "City")},{" "}
+            {getProvinceLabel(school.province || school.school_province) || "Province"},{" "}
+            {school.country || school.school_country || "Country"}
           </span>
         </div>
 
@@ -65,9 +84,9 @@ const SchoolCard = ({ school, programCount, isInstitution = false }) => (
             <p className="font-bold text-blue-600">{programCount || school.programCount || 0}+</p>
           </div>
           <div>
-            <p className="text-gray-500">{isInstitution ? 'Type' : 'Institution'}</p>
+            <p className="text-gray-500">{isInstitution ? "Type" : "Institution"}</p>
             <p className="font-bold text-gray-800 truncate">
-              {isInstitution ? (school.isPublic ? 'Public' : 'Private') : (school.institution_name || school.school_name)}
+              {isInstitution ? (school.isPublic ? "Public" : "Private") : (school.institution_name || school.school_name)}
             </p>
           </div>
         </div>
@@ -77,7 +96,11 @@ const SchoolCard = ({ school, programCount, isInstitution = false }) => (
         )}
 
         <div className="flex flex-col gap-3">
-          <Link to={createPageUrl(`Programs?school=${encodeURIComponent(school.name || school.school_name || school.institution_name)}`)}>
+          <Link
+            to={createPageUrl(
+              `Programs?school=${encodeURIComponent(school.name || school.school_name || school.institution_name)}`
+            )}
+          >
             <Button variant="outline" className="w-full group-hover:bg-green-50 group-hover:border-green-300">
               <GraduationCap className="w-4 h-4 mr-2" />
               View Programs
@@ -107,20 +130,36 @@ export default function Schools() {
   const [selectedCountry, setSelectedCountry] = useState("all");
   const [selectedProvince, setSelectedProvince] = useState("all");
   const [selectedCity, setSelectedCity] = useState("all");
-  const [selectedType, setSelectedType] = useState("all"); // New filter for institution type
+  const [selectedType, setSelectedType] = useState("all");
+
+  // pagination
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [page, setPage] = useState(1);
+
+  // read initial page from URL
+  useEffect(() => {
+    const p = parseInt(searchParams.get("page") || "1", 10);
+    setPage(Number.isFinite(p) && p > 0 ? p : 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
+
+  const updatePage = useCallback((nextPage) => {
+    setPage(nextPage);
+    const next = new URLSearchParams(searchParams);
+    if (nextPage > 1) next.set("page", String(nextPage));
+    else next.delete("page");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // Load both school programs and institutions
       const [schoolsData, institutionsData] = await Promise.all([
-        School.list('-created_date', 2000),
-        Institution.list('-created_date', 1000)
+        School.list("-created_date", 2000),
+        Institution.list("-created_date", 1000),
       ]);
-      
-      console.log(`Loaded ${schoolsData.length} school records and ${institutionsData.length} institution records`);
-      setAllSchools(schoolsData);
-      setAllInstitutions(institutionsData);
+      setAllSchools(schoolsData || []);
+      setAllInstitutions(institutionsData || []);
     } catch (error) {
       console.error("Error loading data:", error);
       setAllSchools([]);
@@ -134,122 +173,194 @@ export default function Schools() {
     loadData();
   }, [loadData]);
 
-  // Merge and process schools data
+  /** Build a fast lookup map: normalized institution name -> institution row */
+  const institutionsByName = useMemo(() => {
+    return Object.fromEntries(
+      (allInstitutions || []).map((inst) => [normalize(inst.name), inst])
+    );
+  }, [allInstitutions]);
+
+  // Merge and process schools data (attach logoUrl from institutions when names match)
   const mergedSchools = useMemo(() => {
-    console.log(`Processing ${allSchools.length} school records and ${allInstitutions.length} institution records`);
-    
-    // Group schools by school_name or institution_name
-    const schoolGroups = _.groupBy(allSchools, (school) => {
-      return school.school_name || school.institution_name || 'Unknown School';
-    });
-    
-    // Convert school groups to unique school cards with program counts
+    // Group program rows by school name
+    const schoolGroups = _.groupBy(allSchools, (s) => s.school_name || s.institution_name || "Unknown School");
+
+    // Turn each group into a single card; pull institution fields by name match
     const schoolCards = Object.entries(schoolGroups).map(([schoolKey, schoolPrograms]) => {
       const representative = schoolPrograms[0];
+
+      // Find matching institution by name (normalized)
+      const matchKey = normalize(
+        representative.institution_name || representative.school_name || representative.name
+      );
+      const matchedInst = institutionsByName[matchKey];
+
       return {
         ...representative,
         programCount: schoolPrograms.length,
         school_key: schoolKey,
-        isInstitution: false
+        isInstitution: false,
+
+        // Pull preferred display fields from institution when available
+        logoUrl:
+          matchedInst?.logoUrl ||
+          representative.logoUrl ||
+          representative.school_image_url ||
+          representative.institution_logo_url ||
+          null,
+        website: matchedInst?.website || representative.website || null,
+        about: matchedInst?.about || representative.about || null,
+        institution_type: matchedInst?.type || representative.institution_type || null,
+
+        // Normalize location for filters
+        city: representative.city || representative.school_city || matchedInst?.city || null,
+        province: representative.province || representative.school_province || matchedInst?.province || null,
+        country: representative.country || representative.school_country || matchedInst?.country || null,
       };
     });
 
-    // Add institutions that aren't already represented in schools
-    const schoolInstitutionNames = new Set(allSchools.map(s => s.institution_name).filter(Boolean));
-    
-    const institutionCards = allInstitutions
-      .filter(inst => !schoolInstitutionNames.has(inst.name)) // Only include institutions not already represented
-      .map(institution => ({
-        ...institution,
-        school_key: institution.name,
-        isInstitution: true
+    // Add institutions not represented in school data (so they also appear)
+    const schoolInstitutionNames = new Set(
+      allSchools.map((s) => (s.institution_name || s.school_name || "").trim()).filter(Boolean)
+    );
+
+    const institutionCards = (allInstitutions || [])
+      .filter((inst) => !schoolInstitutionNames.has(inst.name))
+      .map((inst) => ({
+        ...inst,
+        logoUrl: inst.logoUrl || null,
+        website: inst.website || null,
+        institution_type: inst.type || null,
+        school_key: inst.name,
+        isInstitution: true,
       }));
 
-    const combined = [...schoolCards, ...institutionCards];
-    console.log(`Created ${combined.length} combined school/institution cards`);
-    return combined;
-  }, [allSchools, allInstitutions]);
+    return [...schoolCards, ...institutionCards];
+  }, [allSchools, allInstitutions, institutionsByName]);
 
-  const getUniqueValues = useCallback((field) => {
-    const values = [...new Set(mergedSchools.map(school => {
-      if (field === 'country') return school.country || school.school_country;
-      if (field === 'province') return school.province || school.school_province;
-      if (field === 'city') return school.city || school.school_city;
-      return school[field];
-    }))].filter(Boolean);
-    return values.sort();
-  }, [mergedSchools]);
-  
-  const getUniqueCountries = useCallback(() => getUniqueValues('country'), [getUniqueValues]);
-  const getUniqueCities = useCallback(() => getUniqueValues('city'), [getUniqueValues]);
+  const getUniqueValues = useCallback(
+    (field) => {
+      const values = [
+        ...new Set(
+          mergedSchools.map((school) => {
+            if (field === "country") return school.country || school.school_country;
+            if (field === "province") return school.province || school.school_province;
+            if (field === "city") return school.city || school.school_city;
+            return school[field];
+          })
+        ),
+      ].filter(Boolean);
+      return values.sort();
+    },
+    [mergedSchools]
+  );
+
+  const getUniqueCountries = useCallback(() => getUniqueValues("country"), [getUniqueValues]);
 
   const handleSearchChange = useCallback((e) => {
     e.preventDefault();
     setSearchTerm(e.target.value);
   }, []);
 
-  const handleCountryChange = useCallback((value) => {
-    setSelectedCountry(value);
-    if (value !== selectedCountry) {
-      setSelectedProvince("all");
-      setSelectedCity("all");
-    }
-  }, [selectedCountry]);
+  const handleCountryChange = useCallback(
+    (value) => {
+      setSelectedCountry(value);
+      if (value !== selectedCountry) {
+        setSelectedProvince("all");
+        setSelectedCity("all");
+      }
+    },
+    [selectedCountry]
+  );
 
-  const handleProvinceChange = useCallback((value) => {
-    setSelectedProvince(value);
-    if (value !== selectedProvince) {
-      setSelectedCity("all");
-    }
-  }, [selectedProvince]);
+  const handleProvinceChange = useCallback(
+    (value) => {
+      setSelectedProvince(value);
+      if (value !== selectedProvince) {
+        setSelectedCity("all");
+      }
+    },
+    [selectedProvince]
+  );
+
+  // Reset to page 1 whenever filters/search change
+  useEffect(() => {
+    updatePage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, selectedCountry, selectedProvince, selectedCity, selectedType, mergedSchools.length]);
 
   // Filter schools based on search criteria
   useEffect(() => {
     let filtered = mergedSchools;
 
     if (searchTerm) {
-      const lowercasedSearchTerm = searchTerm.toLowerCase();
-      filtered = filtered.filter(school =>
-        (school.name || school.school_name || school.institution_name || '').toLowerCase().includes(lowercasedSearchTerm) ||
-        (school.city || school.school_city || '').toLowerCase().includes(lowercasedSearchTerm) ||
-        (school.program_title || '').toLowerCase().includes(lowercasedSearchTerm) ||
-        (school.about || '').toLowerCase().includes(lowercasedSearchTerm)
+      const q = searchTerm.toLowerCase();
+      filtered = filtered.filter((school) =>
+        (school.name || school.school_name || school.institution_name || "").toLowerCase().includes(q) ||
+        (school.city || school.school_city || "").toLowerCase().includes(q) ||
+        (school.program_title || "").toLowerCase().includes(q) ||
+        (school.about || "").toLowerCase().includes(q)
       );
     }
 
     if (selectedCountry !== "all") {
-      filtered = filtered.filter(school => 
-        (school.country || school.school_country) === selectedCountry
-      );
+      filtered = filtered.filter((s) => (s.country || s.school_country) === selectedCountry);
     }
-    
+
     if (selectedProvince !== "all") {
-      filtered = filtered.filter(school => 
-        (school.province || school.school_province) === selectedProvince
-      );
+      filtered = filtered.filter((s) => (s.province || s.school_province) === selectedProvince);
     }
 
     if (selectedCity !== "all") {
-      filtered = filtered.filter(school => 
-        (school.city || school.school_city) === selectedCity
-      );
+      filtered = filtered.filter((s) => (s.city || s.school_city) === selectedCity);
     }
 
     if (selectedType !== "all") {
       if (selectedType === "institution") {
-        filtered = filtered.filter(school => school.isInstitution);
+        filtered = filtered.filter((s) => s.isInstitution);
       } else if (selectedType === "program") {
-        filtered = filtered.filter(school => !school.isInstitution);
+        filtered = filtered.filter((s) => !s.isInstitution);
       } else {
-        // Filter by specific institution type
-        filtered = filtered.filter(school => 
-          (school.institution_type || '').toLowerCase() === selectedType.toLowerCase()
+        // specific institution type
+        filtered = filtered.filter(
+          (s) => (s.institution_type || "").toLowerCase() === selectedType.toLowerCase()
         );
       }
     }
 
     setFilteredSchools(filtered);
   }, [mergedSchools, searchTerm, selectedCountry, selectedProvince, selectedCity, selectedType]);
+
+  // Clamp page when filtered length changes
+  const totalPages = Math.max(1, Math.ceil(filteredSchools.length / PAGE_SIZE));
+  useEffect(() => {
+    if (page > totalPages) updatePage(totalPages);
+    if (page < 1) updatePage(1);
+  }, [page, totalPages, updatePage]);
+
+  // Slice for current page
+  const startIndex = (page - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, filteredSchools.length);
+  const pagedSchools = filteredSchools.slice(startIndex, endIndex);
+
+  // Compact page numbers: 1 … (p-1) p (p+1) … N
+  const getPageNumbers = (current, total) => {
+    const pages = [];
+    const add = (x) => pages.push(x);
+    const windowSize = 1; // neighbors around current
+    if (total <= 7) {
+      for (let i = 1; i <= total; i++) add(i);
+      return pages;
+    }
+    add(1);
+    if (current - windowSize > 2) add("…");
+    for (let i = Math.max(2, current - windowSize); i <= Math.min(total - 1, current + windowSize); i++) add(i);
+    if (current + windowSize < total - 1) add("…");
+    add(total);
+    return pages;
+  };
+
+  const pageNumbers = getPageNumbers(page, totalPages);
 
   const clearAllFilters = useCallback((e) => {
     e.preventDefault();
@@ -265,7 +376,6 @@ export default function Schools() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-green-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading schools and institutions...</p>
         </div>
       </div>
     );
@@ -313,7 +423,7 @@ export default function Schools() {
                     ))}
                   </SelectContent>
                 </Select>
-                
+
                 <ProvinceSelector
                   value={selectedProvince}
                   onValueChange={handleProvinceChange}
@@ -340,7 +450,16 @@ export default function Schools() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  Showing {filteredSchools.length} of {mergedSchools.length} schools & institutions ({allSchools.length} programs, {allInstitutions.length} institutions)
+                  {filteredSchools.length > 0 ? (
+                    <>
+                      Showing <span className="font-medium">{startIndex + 1}</span>–
+                      <span className="font-medium">{endIndex}</span> of{" "}
+                      <span className="font-medium">{filteredSchools.length}</span> schools & institutions
+                      {" "}({allSchools.length} programs, {allInstitutions.length} institutions)
+                    </>
+                  ) : (
+                    <>Showing 0 of {mergedSchools.length} schools & institutions ({allSchools.length} programs, {allInstitutions.length} institutions)</>
+                  )}
                 </div>
                 <Button type="button" variant="outline" onClick={clearAllFilters} className="text-sm">
                   Clear All Filters
@@ -350,19 +469,61 @@ export default function Schools() {
           </CardContent>
         </Card>
 
-        {/* Schools Grid */}
+        {/* Grid (paged) */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredSchools.map((school) => (
-            <SchoolCard 
-              key={school.school_key || school.id} 
-              school={school} 
-              programCount={school.programCount} 
+          {pagedSchools.map((school) => (
+            <SchoolCard
+              key={school.school_key || school.id}
+              school={school}
+              programCount={school.programCount}
               isInstitution={school.isInstitution}
             />
           ))}
         </div>
 
-        {filteredSchools.length === 0 && !loading && (
+        {/* Pagination Bar */}
+        {filteredSchools.length > 0 && totalPages > 1 && (
+          <nav aria-label="Pagination" className="mt-8 flex items-center justify-center gap-2 flex-wrap">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => updatePage(Math.max(1, page - 1))}
+              disabled={page === 1}
+            >
+              Prev
+            </Button>
+
+            {pageNumbers.map((p, i) =>
+              p === "…" ? (
+                <span key={`ellipsis-${i}`} className="px-2 text-gray-500 select-none">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  type="button"
+                  size="sm"
+                  variant={p === page ? "default" : "outline"}
+                  onClick={() => updatePage(p)}
+                  aria-current={p === page ? "page" : undefined}
+                >
+                  {p}
+                </Button>
+              )
+            )}
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => updatePage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+            >
+              Next
+            </Button>
+          </nav>
+        )}
+
+        {filteredSchools.length === 0 && (
           <div className="text-center py-12">
             <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No schools or institutions found</h3>

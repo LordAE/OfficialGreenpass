@@ -42,7 +42,7 @@ export const sendEventRegistrationConfirmation = async (
   );
   if (!to) return { success: false, skipped: true, error: 'No recipient email.' };
 
-  const fromEmail = opts.fromEmail || 'no-reply@your-verified-domain.com'; // <- change to verified domain
+  const fromEmail = opts.fromEmail || 'no-reply@greenpassgroup.com'; // <- change to verified domain
   const fromName  = opts.fromName  || 'GreenPass Events';
   const appBase   = opts.appBaseUrl || 'https://app.greenpass.example';    // <- set your real base URL
 
