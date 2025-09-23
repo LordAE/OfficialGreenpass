@@ -1,9 +1,5 @@
 // src/pages/OurTeam.jsx
-<<<<<<< HEAD
 import React, { useState, useEffect } from "react";
-=======
-import React, { useState, useEffect, useMemo, useCallback } from "react";
->>>>>>> 138b677a64496a6ad492485d29de17ca90a550a0
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Mail, MessageCircle } from "lucide-react";
@@ -13,11 +9,7 @@ import { createPageUrl } from "@/utils";
 
 // --- Firebase ---
 import { db } from "@/firebase";
-<<<<<<< HEAD
 import { doc, getDoc } from "firebase/firestore";
-=======
-import { doc, onSnapshot } from "firebase/firestore";
->>>>>>> 138b677a64496a6ad492485d29de17ca90a550a0
 
 export default function OurTeam() {
   const [teamContent, setTeamContent] = useState(null);
@@ -25,7 +17,6 @@ export default function OurTeam() {
   const [flippedCard, setFlippedCard] = useState(null);
 
   useEffect(() => {
-<<<<<<< HEAD
     const loadTeamContent = async () => {
       try {
         // FIX: read the singleton doc ourTeam/SINGLETON (matches your Firestore)
@@ -35,29 +26,16 @@ export default function OurTeam() {
       } catch (error) {
         console.error("Error loading team content:", error);
       } finally {
-=======
-    // subscribe to ourTeam/SINGLETON for live updates
-    const ref = doc(db, "ourTeam", "SINGLETON");
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        setTeamContent(snap.exists() ? snap.data() : null);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Error loading team content:", err);
->>>>>>> 138b677a64496a6ad492485d29de17ca90a550a0
         setLoading(false);
       }
-    );
-    return () => unsub();
+    };
+    loadTeamContent();
   }, []);
 
-  const handleCardFlip = useCallback((memberId) => {
-    setFlippedCard((prev) => (prev === memberId ? null : memberId));
-  }, []);
+  const handleCardFlip = (memberId) => {
+    setFlippedCard(flippedCard === memberId ? null : memberId);
+  };
 
-<<<<<<< HEAD
   const groupedMembers =
     (teamContent?.team_members || []).reduce((acc, member) => {
       const category = member?.category || "Team Member";
@@ -70,41 +48,11 @@ export default function OurTeam() {
     const order = { Founder: 1, Leadership: 2, "Team Member": 3 };
     return (order[a] || 999) - (order[b] || 999);
   });
-=======
-  const groupedMembers = useMemo(() => {
-    const list = Array.isArray(teamContent?.team_members)
-      ? [...teamContent.team_members]
-      : [];
-
-    // group by category and sort inside each group by sort_order
-    const groups = list.reduce((acc, member) => {
-      const category = member?.category || "Team Member";
-      if (!acc[category]) acc[category] = [];
-      acc[category].push(member);
-      return acc;
-    }, {});
-
-    Object.keys(groups).forEach((k) =>
-      groups[k].sort(
-        (a, b) => (a?.sort_order ?? 99) - (b?.sort_order ?? 99)
-      )
-    );
-
-    return groups;
-  }, [teamContent]);
-
-  const sortedCategories = useMemo(() => {
-    const order = { Founder: 1, Leadership: 2, "Team Member": 3 };
-    return Object.keys(groupedMembers).sort(
-      (a, b) => (order[a] ?? 999) - (order[b] ?? 999)
-    );
-  }, [groupedMembers]);
->>>>>>> 138b677a64496a6ad492485d29de17ca90a550a0
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-white to-blue-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
       </div>
     );
   }
@@ -113,11 +61,7 @@ export default function OurTeam() {
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
       {/* Hero Section */}
       <div className="relative overflow-hidden">
-<<<<<<< HEAD
         {/* Image first */}
-=======
-        <div className="absolute inset-0 bg-gradient-to-r from-green-600 to-blue-600 opacity-90" />
->>>>>>> 138b677a64496a6ad492485d29de17ca90a550a0
         {teamContent?.hero_image_url && (
           <img
             src={teamContent.hero_image_url}
@@ -165,7 +109,6 @@ export default function OurTeam() {
             </motion.h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-<<<<<<< HEAD
               {groupedMembers[category]
                 .slice()
                 .sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99))
@@ -217,59 +160,11 @@ export default function OurTeam() {
                                 <span>Click to learn more</span>
                                 <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
                               </div>
-=======
-              {groupedMembers[category].map((member) => (
-                <motion.div
-                  key={member.id}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6 }}
-                  className="perspective-1000"
-                  style={{ perspective: "1000px" }}
-                >
-                  <Card
-                    className="relative h-96 cursor-pointer transform-style-preserve-3d transition-transform duration-700 hover:shadow-2xl"
-                    style={{
-                      transformStyle: "preserve-3d",
-                      transform:
-                        flippedCard === member.id
-                          ? "rotateY(180deg)"
-                          : "rotateY(0deg)",
-                    }}
-                    onClick={() => handleCardFlip(member.id)}
-                  >
-                    {/* Front Side */}
-                    <div
-                      className="absolute inset-0 backface-hidden"
-                      style={{ backfaceVisibility: "hidden" }}
-                    >
-                      <CardContent className="p-0 h-full">
-                        <div className="relative h-full overflow-hidden rounded-lg">
-                          <img
-                            src={
-                              member.image_url ||
-                              "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&q=60"
-                            }
-                            alt={member.name}
-                            className="w-full h-64 object-cover"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-                          <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
-                            <h3 className="text-xl font-bold mb-2">
-                              {member.name}
-                            </h3>
-                            <p className="text-sm opacity-90">{member.title}</p>
-                            <div className="mt-4 flex items-center text-xs opacity-75">
-                              <span>Click to learn more</span>
-                              <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
->>>>>>> 138b677a64496a6ad492485d29de17ca90a550a0
                             </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </div>
+                        </CardContent>
+                      </div>
 
-<<<<<<< HEAD
                       {/* Back Side */}
                       <div
                         className="absolute inset-0 backface-hidden bg-gradient-to-br from-green-500 to-blue-600 text-white rounded-lg"
@@ -306,36 +201,8 @@ export default function OurTeam() {
                               {member.bio ||
                                 "Passionate about helping students achieve their dreams of studying abroad."}
                             </p>
-=======
-                    {/* Back Side */}
-                    <div
-                      className="absolute inset-0 backface-hidden bg-gradient-to-br from-green-500 to-blue-600 text-white rounded-lg"
-                      style={{
-                        backfaceVisibility: "hidden",
-                        transform: "rotateY(180deg)",
-                      }}
-                    >
-                      <CardContent className="p-6 h-full flex flex-col">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <h3 className="text-xl font-bold">{member.name}</h3>
-                            <p className="text-sm opacity-90">{member.title}</p>
->>>>>>> 138b677a64496a6ad492485d29de17ca90a550a0
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCardFlip(member.id);
-                            }}
-                            className="text-white hover:bg-white/20"
-                          >
-                            <ArrowLeft className="w-4 h-4" />
-                          </Button>
-                        </div>
 
-<<<<<<< HEAD
                           <div className="mt-4 pt-4 border-t border-white/20">
                             {teamContent?.contact_email && (
                               <Button asChild variant="ghost" className="w-full justify-start text-white hover:bg-white/10">
@@ -367,44 +234,6 @@ export default function OurTeam() {
                     </Card>
                   </motion.div>
                 ))}
-=======
-                        <div className="flex-1 overflow-y-auto">
-                          <p className="text-sm leading-relaxed mb-4 opacity-95">
-                            {member.bio ||
-                              "Passionate about helping students achieve their dreams of studying abroad."}
-                          </p>
-                        </div>
-
-                        <div className="mt-4 pt-4 border-t border-white/20">
-                          {teamContent?.contact_email && (
-                            <a
-                              href={`mailto:${teamContent.contact_email}`}
-                              className="flex items-center text-sm hover:bg-white/10 p-2 rounded transition-colors"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Mail className="w-4 h-4 mr-2" />
-                              Contact Us
-                            </a>
-                          )}
-                          <a
-                            href={`https://wa.me/1234567890?text=${encodeURIComponent(
-                              `Hi ${member.name}, I'd like to learn more about your services.`
-                            )}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center text-sm hover:bg-white/10 p-2 rounded transition-colors"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MessageCircle className="w-4 h-4 mr-2" />
-                            WhatsApp
-                          </a>
-                        </div>
-                      </CardContent>
-                    </div>
-                  </Card>
-                </motion.div>
-              ))}
->>>>>>> 138b677a64496a6ad492485d29de17ca90a550a0
             </div>
           </div>
         ))}
