@@ -1,14 +1,72 @@
+// src/pages/ProgramDetails.jsx
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Program } from '@/api/entities';
-import { School } from '@/api/entities';
+import { useSearchParams, Link } from 'react-router-dom';
+import { Program, School } from '@/api/entities';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, GraduationCap, Building, DollarSign, Calendar, Info, MapPin } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Loader2, AlertCircle, Building, DollarSign, Calendar, Info, MapPin } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 import ReserveSeatModal from '../components/schools/ReserveSeatModal';
+
+/* ---------- Firestore ---------- */
+import { db } from '@/firebase';
+import { doc, getDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
+
+/* ---------- helpers ---------- */
+const ensureArray = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+const num = (v) => (v === undefined || v === null || v === '' ? undefined : Number(v));
+
+const normalizeProgram = (id, d = {}) => ({
+  id,
+  programTitle: d.programTitle || d.program_title || d.title || 'Program',
+  programLevel: d.programLevel || d.program_level || d.level || '',
+  duration: d.duration || d.duration_display || d.program_duration || '',
+  tuitionFee: num(d.tuitionFee ?? d.tuition_per_year_cad ?? d.tuition_fee_cad ?? d.tuition),
+  costOfLiving: num(d.costOfLiving),
+  intakeDates: ensureArray(d.intakeDates || d.intake_dates || d.intakes),
+  overview: d.overview || d.description || d.program_overview || '',
+  schoolId: d.schoolId || d.school_id,
+  schoolName: d.schoolName || d.school_name || d.institution_name
+});
+
+const buildSchoolHeaderFromProfile = (id, p) => ({
+  id,
+  name: p?.name || p?.title || 'Institution',
+  image_url: p?.logoUrl || p?.logo_url || p?.institution_logo_url || p?.image_url,
+  verification_status: p?.verification_status || (p?.verified && 'verified'),
+  account_type: p?.account_type || 'real',
+  address: p?.address || p?.street_address,
+  website: p?.website || p?.url || p?.homepage,
+  founded_year: p?.founded_year || p?.established,
+  tuition_fees: num(p?.tuition_fees),
+  application_fee: num(p?.application_fee),
+  rating: num(p?.rating),
+  acceptance_rate: num(p?.acceptance_rate),
+  location: p?.city || p?.location,
+  province: p?.province || p?.state,
+  country: p?.country || 'Canada',
+  about: p?.about || p?.description
+});
+
+const buildSchoolHeaderFromSchoolDoc = (id, s) => ({
+  id,
+  name: s?.institution_name || s?.school_name || s?.name || 'Institution',
+  image_url: s?.institution_logo_url || s?.school_image_url || s?.logo_url || s?.image_url,
+  verification_status: s?.verification_status || (s?.verified && 'verified'),
+  account_type: s?.account_type || 'real',
+  address: s?.address || s?.school_address,
+  website: s?.website,
+  founded_year: s?.founded_year || s?.established,
+  tuition_fees: undefined, // keep “Annual Tuition” only from profiles
+  application_fee: num(s?.application_fee),
+  rating: num(s?.rating),
+  acceptance_rate: num(s?.acceptance_rate),
+  location: s?.city || s?.school_city || s?.location,
+  province: s?.province || s?.school_province || s?.state,
+  country: s?.country || s?.school_country || 'Canada',
+  about: s?.institution_about || s?.about
+});
 
 export default function ProgramDetails() {
   const [searchParams] = useSearchParams();
@@ -19,51 +77,147 @@ export default function ProgramDetails() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    const fetchProgramDetails = async () => {
-      const programId = searchParams.get('id');
+    (async () => {
+      setLoading(true);
+      setError(null);
+
+      const programId =
+        searchParams.get('id') ||
+        searchParams.get('programId') ||
+        searchParams.get('programid');
+
+      const schoolIdFromQuery =
+        searchParams.get('schoolId') ||
+        searchParams.get('schoolid');
+
+      console.log('[ProgramDetails] raw params', Object.fromEntries(searchParams.entries()));
+      console.log('[ProgramDetails] resolved IDs ->', { programId, schoolIdFromQuery });
+
       if (!programId) {
-        setError("No program ID provided.");
+        setError('No program ID provided.');
         setLoading(false);
         return;
       }
 
-      setLoading(true);
-      setError(null);
-
       try {
-        // Try to find program by ID first
-        const allPrograms = await Program.list();
-        const fetchedProgram = allPrograms.find(p => p.id === programId);
-        
-        if (!fetchedProgram) {
-          throw new Error("Program not found.");
-        }
-        
-        setProgram(fetchedProgram);
+        let pr = null;
 
-        // Fetch associated school
-        if (fetchedProgram.schoolId) {
-          const allSchools = await School.list();
-          const associatedSchool = allSchools.find(s => s.id === fetchedProgram.schoolId);
-          if (associatedSchool) {
-            setSchool(associatedSchool);
+        // 1) Try your entity list (if it exists)
+        try {
+          const allPrograms = await Program.list();
+          const hit = allPrograms.find(p => p.id === programId || p.programId === programId);
+          if (hit) pr = normalizeProgram(hit.id ?? programId, hit);
+        } catch (e) {
+          // entity may not be wired yet — ignore
+        }
+
+        // 2) Try Firestore `programs` / `Programs`
+        if (!pr) {
+          let snap = await getDoc(doc(db, 'programs', programId));
+          if (!snap.exists()) snap = await getDoc(doc(db, 'Programs', programId));
+          if (snap.exists()) pr = normalizeProgram(snap.id, snap.data());
+        }
+
+        // 3) Try Firestore `schools` (many program rows live here)
+        if (!pr) {
+          let snap = await getDoc(doc(db, 'schools', programId));
+          if (!snap.exists()) snap = await getDoc(doc(db, 'Schools', programId));
+          if (snap.exists()) pr = normalizeProgram(snap.id, snap.data());
+        }
+
+        if (!pr) throw new Error('Program not found.');
+
+        setProgram(pr);
+
+        // Fetch school header
+        let sh = null;
+
+        // a) explicit schoolId from URL
+        if (schoolIdFromQuery) {
+          let s1 = await getDoc(doc(db, 'school_profiles', schoolIdFromQuery));
+          if (!s1.exists()) s1 = await getDoc(doc(db, 'SchoolProfiles', schoolIdFromQuery));
+          if (s1.exists()) {
+            sh = buildSchoolHeaderFromProfile(s1.id, s1.data());
+          } else {
+            let s2 = await getDoc(doc(db, 'schools', schoolIdFromQuery));
+            if (!s2.exists()) s2 = await getDoc(doc(db, 'Schools', schoolIdFromQuery));
+            if (s2.exists()) sh = buildSchoolHeaderFromSchoolDoc(s2.id, s2.data());
           }
         }
+
+        // b) program.schoolId
+        if (!sh && pr.schoolId) {
+          let s1 = await getDoc(doc(db, 'school_profiles', pr.schoolId));
+          if (!s1.exists()) s1 = await getDoc(doc(db, 'SchoolProfiles', pr.schoolId));
+          if (s1.exists()) {
+            sh = buildSchoolHeaderFromProfile(s1.id, s1.data());
+          } else {
+            let s2 = await getDoc(doc(db, 'schools', pr.schoolId));
+            if (!s2.exists()) s2 = await getDoc(doc(db, 'Schools', pr.schoolId));
+            if (s2.exists()) sh = buildSchoolHeaderFromSchoolDoc(s2.id, s2.data());
+          }
+        }
+
+        // c) match by name from the program row (school_name / institution_name)
+        if (!sh && pr.schoolName) {
+          const q1 = query(
+            collection(db, 'school_profiles'),
+            where('name', '==', pr.schoolName),
+            limit(1)
+          );
+          const r1 = await getDocs(q1);
+          if (!r1.empty) {
+            const d = r1.docs[0];
+            sh = buildSchoolHeaderFromProfile(d.id, d.data());
+          }
+          if (!sh) {
+            const q2 = query(
+              collection(db, 'schools'),
+              where('institution_name', '==', pr.schoolName),
+              limit(1)
+            );
+            const r2 = await getDocs(q2);
+            if (!r2.empty) {
+              const d = r2.docs[0];
+              sh = buildSchoolHeaderFromSchoolDoc(d.id, d.data());
+            }
+          }
+        }
+
+        // d) final fallback: try your School entity
+        if (!sh) {
+          try {
+            const allSchools = await School.list();
+            const hit =
+              allSchools.find(s => s.id === schoolIdFromQuery) ||
+              allSchools.find(s => s.name === pr.schoolName);
+            if (hit) {
+              sh = {
+                id: hit.id,
+                name: hit.name,
+                image_url: hit.logoUrl || hit.image_url,
+                location: hit.city || hit.location,
+                province: hit.province,
+                country: hit.country || 'Canada',
+                website: hit.website,
+                about: hit.about
+              };
+            }
+          } catch {}
+        }
+
+        setSchool(sh || null);
       } catch (e) {
-        console.error("Failed to fetch program details:", e);
-        setError(e.message || "An error occurred while fetching program details.");
+        console.error('Failed to fetch program details:', e);
+        setError(e.message || 'An error occurred while fetching program details.');
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchProgramDetails();
+    })();
   }, [searchParams]);
 
   const handleReserveProgram = () => {
-    if (program && school) {
-      setIsModalOpen(true);
-    }
+    if (program && school) setIsModalOpen(true);
   };
 
   if (loading) {
@@ -133,17 +287,25 @@ export default function ProgramDetails() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900">Tuition Fee</p>
-                    <p className="text-gray-600">${program?.tuitionFee?.toLocaleString() || 'Contact school'}</p>
+                    <p className="text-gray-600">
+                      {typeof program?.tuitionFee === 'number'
+                        ? `$${program.tuitionFee.toLocaleString()}`
+                        : 'Contact school'}
+                    </p>
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900">Cost of Living</p>
-                    <p className="text-gray-600">${program?.costOfLiving?.toLocaleString() || 'Not specified'}</p>
+                    <p className="text-gray-600">
+                      {typeof program?.costOfLiving === 'number'
+                        ? `$${program.costOfLiving.toLocaleString()}`
+                        : 'Not specified'}
+                    </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {program?.intakeDates?.length > 0 && (
+            {Array.isArray(program?.intakeDates) && program.intakeDates.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -175,7 +337,9 @@ export default function ProgramDetails() {
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-gray-500" />
-                    <span>{school.location}, {school.province}</span>
+                    <span>
+                      {[school.location, school.province, school.country].filter(Boolean).join(', ')}
+                    </span>
                   </div>
                   <Link to={createPageUrl(`SchoolDetails?id=${school.id}`)}>
                     <Button variant="outline" className="w-full">
@@ -194,8 +358,8 @@ export default function ProgramDetails() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Button 
-                  onClick={handleReserveProgram} 
+                <Button
+                  onClick={() => school && setIsModalOpen(true)}
                   className="w-full"
                   disabled={!school}
                 >
