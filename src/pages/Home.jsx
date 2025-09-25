@@ -184,7 +184,7 @@ const Hero = ({ content }) => (
           >
             <Link to={createPageUrl("Welcome")}>
               <Button size="lg" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200">
-                Get Started <ArrowRight className="ml-2 h-5 w-5" />
+                Sign Up<ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </Link>
             <Link to={createPageUrl("Programs")}>
