@@ -1,12 +1,13 @@
 // src/pages/Home.jsx
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowRight, Star, Users, GraduationCap, TrendingUp,
-  School as SchoolIcon, MapPin, DollarSign, Calendar
+  School as SchoolIcon, MapPin, DollarSign, Calendar,
+  ChevronLeft, ChevronRight, Clock, Newspaper
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -130,7 +131,7 @@ const mapEventDoc = (snap) => {
   const d = { id: snap.id, ...snap.data() };
   return {
     id: snap.id,
-    ...d, // spread FIRST so converted fields below overwrite it
+    ...d,
     event_id: pickFirst(d.event_id, snap.id),
     title: pickFirst(d.title, d.name, 'Untitled Event'),
     location: pickFirst(d.location, d.city, ''),
@@ -141,11 +142,6 @@ const mapEventDoc = (snap) => {
     banner_url: pickFirst(d.banner_url, d.image_url, d.coverImageUrl, ''),
   };
 };
-
-
-
-
-
 
 /* =========================
    Sections (UI)
@@ -213,6 +209,178 @@ const Hero = ({ content }) => (
   </div>
 );
 
+/* =========================
+   NEW: News & Highlights Carousel
+========================= */
+const mockNews = [
+  {
+    id: 'n1',
+    title: 'IRCC announces streamlined visa process for students',
+    summary: 'Canada introduces faster processing for eligible institutions and programs.',
+    image: 'https://images.unsplash.com/photo-1555949963-aa79dcee981d?w=1200&q=80',
+    tag: 'Policy Update',
+    date: '2 days ago',
+    href: '#'
+  },
+  {
+    id: 'n2',
+    title: 'University of Toronto ranked top in Canada again',
+    summary: 'UofT leads national rankings with strong research and student outcomes.',
+    image: 'https://images.unsplash.com/photo-1562774053-701939374585?w=1200&q=80',
+    tag: 'Rankings',
+    date: '5 days ago',
+    href: '#'
+  },
+  {
+    id: 'n3',
+    title: 'Scholarships: $10M available for 2025 intakes',
+    summary: 'New merit-based scholarships across partner institutions.',
+    image: 'https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?w=1200&q=80',
+    tag: 'Scholarships',
+    date: '1 week ago',
+    href: '#'
+  },
+];
+
+function NewsHighlights() {
+  const items = mockNews;
+  const [index, setIndex] = useState(0);
+  const timeoutRef = useRef(null);
+
+  const next = () => setIndex((i) => (i + 1) % items.length);
+  const prev = () => setIndex((i) => (i - 1 + items.length) % items.length);
+
+  useEffect(() => {
+    timeoutRef.current = setInterval(next, 5500);
+    return () => clearInterval(timeoutRef.current);
+  }, []);
+
+  const pause = () => clearInterval(timeoutRef.current);
+  const resume = () => {
+    clearInterval(timeoutRef.current);
+    timeoutRef.current = setInterval(next, 5500);
+  };
+
+  const active = items[index];
+
+  return (
+    <div className="bg-white py-14 sm:py-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+              <Newspaper className="w-5 h-5 text-green-700" />
+            </div>
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">News & Highlights</h2>
+              <p className="text-slate-600">Stay updated on policy changes, rankings, and scholarships</p>
+            </div>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={prev} onMouseEnter={pause} onMouseLeave={resume}>
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={next} onMouseEnter={pause} onMouseLeave={resume}>
+              <ChevronRight className="w-5 h-5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Carousel */}
+        <Card className="overflow-hidden border-0 shadow-md">
+          <div
+            className="relative w-full h-[22rem] sm:h-[26rem] lg:h-[28rem]"
+            onMouseEnter={pause}
+            onMouseLeave={resume}
+          >
+            <AnimatePresence initial={false} mode="wait">
+              <motion.div
+                key={active.id}
+                className="absolute inset-0"
+                initial={{ opacity: 0.0, x: 40 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -40 }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+              >
+                <div className="absolute inset-0">
+                  <img
+                    src={active.image}
+                    alt={active.title}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+                </div>
+
+                {/* Content overlay */}
+                <div className="relative z-10 h-full flex items-end">
+                  <div className="p-6 sm:p-10 text-white w-full">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Badge className="bg-white/20 text-white border-white/30">{active.tag}</Badge>
+                      <span className="text-white/80 text-sm inline-flex items-center gap-1">
+                        <Clock className="w-4 h-4" /> {active.date}
+                      </span>
+                    </div>
+                    <h3 className="text-2xl sm:text-3xl font-bold leading-snug drop-shadow">
+                      {active.title}
+                    </h3>
+                    <p className="mt-2 text-white/90 max-w-2xl">
+                      {active.summary}
+                    </p>
+                    <div className="mt-5">
+                      <Link to={active.href}>
+                        <Button className="bg-green-600 hover:bg-green-700">
+                          Read more <ArrowRight className="ml-2 w-4 h-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+
+            {/* Controls (mobile) */}
+            <div className="sm:hidden absolute inset-x-0 bottom-4 px-4 flex items-center justify-between">
+              <button
+                aria-label="Previous"
+                onClick={prev}
+                className="p-2 rounded-full bg-white/90 shadow hover:bg-white"
+              >
+                <ChevronLeft className="w-5 h-5 text-slate-800" />
+              </button>
+              <button
+                aria-label="Next"
+                onClick={next}
+                className="p-2 rounded-full bg-white/90 shadow hover:bg-white"
+              >
+                <ChevronRight className="w-5 h-5 text-slate-800" />
+              </button>
+            </div>
+
+            {/* Dots */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+              {items.map((it, i) => (
+                <button
+                  key={it.id}
+                  onClick={() => setIndex(i)}
+                  className={`h-2.5 rounded-full transition-all ${
+                    i === index ? 'w-6 bg-white' : 'w-2.5 bg-white/60'
+                  }`}
+                  aria-label={`Go to slide ${i + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Features
+========================= */
 const Features = ({ features }) => {
   const defaultFeatures = [
     {
@@ -773,6 +941,8 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Hero content={content} />
+      {/* NEW SECTION: News & Highlights carousel */}
+      <NewsHighlights />
       <Features features={content?.features_section} />
       <SchoolProgramsSection content={content} schools={schools} />
       <Stats stats={content?.stats_section} />

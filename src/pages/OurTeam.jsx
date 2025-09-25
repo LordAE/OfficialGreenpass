@@ -145,7 +145,7 @@ export default function OurTeam() {
                                 "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&q=60"
                               }
                               alt={member.name || "Team member"}
-                              className="w-full h-64 object-cover"
+                              className="w-full h-64 object-contain bg-gray-100"  // ← only change
                               loading="lazy"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>

@@ -81,6 +81,7 @@ import MyStudents from "./pages/MyStudents";
 import Profile from "./pages/Profile";
 import AuthForm from "./pages/AuthForm";
 import EventRegistrationSuccess from "@/pages/EventRegistrationSuccess";
+import ResetPassword from "./pages/ResetPassword.jsx";
 
 export default function App() {
   return (
@@ -108,6 +109,7 @@ export default function App() {
         <Route path="login" element={<AuthForm />} />
         <Route path="/EventRegistrationSuccess" element={<EventRegistrationSuccess />} />
         <Route path="programdetail" element={<ProgramDetail />} />
+        <Route path="resetpassword" element={<ResetPassword />} />
         {/* Private routes */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="onboarding" element={<Onboarding />} />
