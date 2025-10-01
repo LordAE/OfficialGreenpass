@@ -216,7 +216,7 @@ const Hero = ({ content }) => {
               className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight"
               style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}
             >
-              {hero.title || <>Want to study abroad? Keep calm, let <span className="text-green-400">GreenPass</span> handle it</>}
+              {hero.title || <><span className="text-green-400"></span></>}
             </h1>
           </motion.div>
 
@@ -237,14 +237,10 @@ const Hero = ({ content }) => {
             className="flex flex-col sm:flex-row gap-4"
           >
             <Link to={createPageUrl("Welcome")}>
-              <Button size="lg" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200">
-                Sign Up<ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
+              
             </Link>
             <Link to={createPageUrl("Programs")}>
-              <Button variant="outline" size="lg" className="w-full sm:w-auto bg-white/20 border-white/50 text-white hover:bg-white/30 px-8 py-4 text-lg font-semibold transition-all duration-200">
-                Browse Programs
-              </Button>
+  
             </Link>
           </motion.div>
         </div>
