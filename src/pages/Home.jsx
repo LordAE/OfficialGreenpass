@@ -177,7 +177,7 @@ const Hero = ({ content }) => {
   }, [bgVideo]);
 
   return (
-    <div className="relative text-white overflow-hidden">
+    <div className="relative text-white overflow-hidden min-h-[calc(100vh-80px)]">
       {/* Background media */}
       {!useImage && bgVideo ? (
         <video
