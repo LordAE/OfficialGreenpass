@@ -183,7 +183,7 @@ const Hero = ({ content }) => {
         <video
           key={bgVideo}
           ref={videoRef}
-          className="absolute inset-0 w-auto h-full"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[200%] w-auto"
           src={bgVideo}
           poster={poster}
           autoPlay
