@@ -149,7 +149,9 @@ const mapEventDoc = (snap) => {
     banner_url: pickFirst(d.banner_url, d.image_url, d.coverImageUrl, ''),
   };
 };
-// Minimal, video-only Hero that fits to the video's height
+/* =========================
+   Hero (video-only, fits height)
+========================= */
 const DEFAULT_POSTER =
   "https://images.unsplash.com/photo-1523240795612-9a0540bd8644";
 
@@ -161,7 +163,7 @@ const Hero = ({ content }) => {
   const [useImage, setUseImage] = React.useState(!src);
   const videoRef = React.useRef(null);
 
-  // Autoplay nudge (iOS/Safari)
+  // Nudge autoplay on iOS/Safari
   React.useEffect(() => {
     if (!src || !videoRef.current) return;
     const el = videoRef.current;
@@ -171,14 +173,14 @@ const Hero = ({ content }) => {
     return () => el.removeEventListener("canplay", tryPlay);
   }, [src]);
 
-  // Height follows the video (no cropping)
+  // No absolute positioning -> container height follows the video
   return (
     <section className="bg-black">
       {!useImage && src ? (
         <video
           key={src}
           ref={videoRef}
-          className="block w-full h-auto"
+          className="block w-full h-auto"  // <-- fits height to video
           src={src}
           poster={poster}
           autoPlay
@@ -189,12 +191,16 @@ const Hero = ({ content }) => {
           onError={() => setUseImage(true)}
         />
       ) : (
-        <img src={poster} alt="Hero" className="block w-full h-auto" loading="eager" />
+        <img
+          src={poster}
+          alt="Hero"
+          className="block w-full h-auto"
+          loading="eager"
+        />
       )}
     </section>
   );
 };
-
 
       {/* Overlays (MSM Unify vibe) */}
       <div className="absolute inset-0">
