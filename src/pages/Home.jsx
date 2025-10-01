@@ -205,7 +205,7 @@ const Hero = ({ content }) => {
        {/* Overlays (MSM Unify vibe) */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-black/55" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/700 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-g/7 to-transparent" />
       </div>
 
       {/* Content */}
@@ -216,7 +216,7 @@ const Hero = ({ content }) => {
               className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight"
               style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}
             >
-              {hero.title || <><span className="text-green-400"></span></>}
+              {hero.title || <> <br /><br />  <span className="text-green-400">  <br /><br /> </span>   <br /><br /> </>}
             </h1>
           </motion.div>
 
@@ -227,7 +227,7 @@ const Hero = ({ content }) => {
             className="text-xl text-gray-200 leading-relaxed"
             style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
           >
-            {hero.subtitle || ''}
+            {hero.subtitle || '<br /><br /><br />'}
           </motion.p>
 
           <motion.div
