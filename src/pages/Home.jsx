@@ -201,48 +201,6 @@ const Hero = ({ content }) => {
           loading="eager"
         />
       )}
-
-      {/* Overlays (MSM Unify vibe) */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-black/55" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-transparent" />
-      </div>
-
-      {/* Content */}
-      <div className="relative z-10 max-w-7xl mx-auto py-24 sm:py-32 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl space-y-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            <h1
-              className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight"
-              style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}
-            >
-              {hero.title || <><span className="text-green-400"></span></>}
-            </h1>
-          </motion.div>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-xl text-gray-200 leading-relaxed"
-            style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
-          >
-            {hero.subtitle || "Connect with verified schools, agents, and tutors. From visa applications to arrival support - everything you need in one platform."}
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="flex flex-col sm:flex-row gap-4"
-          >
-            <Link to={createPageUrl("Welcome")}>
-              
-            </Link>
-            <Link to={createPageUrl("Programs")}>
-  
-            </Link>
-          </motion.div>
         </div>
       </div>
     </div>
