@@ -149,7 +149,6 @@ const mapEventDoc = (snap) => {
     banner_url: pickFirst(d.banner_url, d.image_url, d.coverImageUrl, ''),
   };
 };
-
 // Minimal, video-only Hero that fits to the video's height
 const DEFAULT_POSTER =
   "https://images.unsplash.com/photo-1523240795612-9a0540bd8644";
@@ -172,14 +171,13 @@ const Hero = ({ content }) => {
     return () => el.removeEventListener("canplay", tryPlay);
   }, [src]);
 
-  // Wrapper is just a block so the height follows the video's intrinsic height
+  // Height follows the video (no cropping)
   return (
     <section className="bg-black">
       {!useImage && src ? (
         <video
           key={src}
           ref={videoRef}
-          // IMPORTANT: width 100% + height auto => container height fits the video
           className="block w-full h-auto"
           src={src}
           poster={poster}
@@ -191,16 +189,12 @@ const Hero = ({ content }) => {
           onError={() => setUseImage(true)}
         />
       ) : (
-        <img
-          src={poster}
-          alt="Hero"
-          className="block w-full h-auto"
-          loading="eager"
-        />
+        <img src={poster} alt="Hero" className="block w-full h-auto" loading="eager" />
       )}
     </section>
   );
 };
+
 
       {/* Overlays (MSM Unify vibe) */}
       <div className="absolute inset-0">
