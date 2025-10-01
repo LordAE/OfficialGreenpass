@@ -227,7 +227,7 @@ const Hero = ({ content }) => {
             className="text-xl text-gray-200 leading-relaxed"
             style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
           >
-            {hero.subtitle || '<br /><br /><br />'}
+            {hero.subtitle || ''}
           </motion.p>
 
           <motion.div
