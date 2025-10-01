@@ -77,7 +77,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       subtitle: '', 
       image_url: '', 
       video_url: '',             // (optional) keep if you still embed YouTube in the right card
-      background_video_url: '',  // NEW: background mp4/webm (loops)
+      background_video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/GreenPass%20Intro.mp4?alt=media&token=b772f97d-eb1a-467d-b2a8-4726026326be',  // NEW: background mp4/webm (loops)
       poster_url: ''             // NEW: poster/fallback image
     },
     features_section: [],
@@ -183,7 +183,7 @@ const Hero = ({ content }) => {
         <video
           key={bgVideo}
           ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-auto"
           src={bgVideo}
           poster={poster}
           autoPlay
