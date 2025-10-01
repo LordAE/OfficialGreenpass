@@ -77,7 +77,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       subtitle: '', 
       image_url: '', 
       video_url: '',             // (optional) keep if you still embed YouTube in the right card
-      background_video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/GreenPass%20Intro.mp4?alt=media&token=b772f97d-eb1a-467d-b2a8-4726026326be',  // NEW: background mp4/webm (loops)
+      background_video_url: '',  // NEW: background mp4/webm (loops)
       poster_url: ''             // NEW: poster/fallback image
     },
     features_section: [],
@@ -149,39 +149,42 @@ const mapEventDoc = (snap) => {
     banner_url: pickFirst(d.banner_url, d.image_url, d.coverImageUrl, ''),
   };
 };
+
 /* =========================
-   Hero (video-only, fits height)
+   Sections (UI)
 ========================= */
 const DEFAULT_POSTER =
   "https://images.unsplash.com/photo-1523240795612-9a0540bd8644";
 
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
-  const src = hero.background_video_url || hero.video_url || "";
+
+  // Prefer a dedicated background video; fall back to video_url if present
+  const bgVideo = hero.background_video_url || hero.video_url || "";
   const poster = hero.poster_url || hero.image_url || DEFAULT_POSTER;
 
-  const [useImage, setUseImage] = React.useState(!src);
+  const [useImage, setUseImage] = React.useState(!bgVideo);
   const videoRef = React.useRef(null);
 
-  // Nudge autoplay on iOS/Safari
+  // Encourage autoplay on iOS/Safari
   React.useEffect(() => {
-    if (!src || !videoRef.current) return;
+    if (!bgVideo || !videoRef.current) return;
     const el = videoRef.current;
     const tryPlay = () => el.play().catch(() => {});
     if (el.readyState >= 2) tryPlay();
     else el.addEventListener("canplay", tryPlay, { once: true });
     return () => el.removeEventListener("canplay", tryPlay);
-  }, [src]);
+  }, [bgVideo]);
 
-  // No absolute positioning -> container height follows the video
   return (
-    <section className="bg-black">
-      {!useImage && src ? (
+    <div className="relative text-white overflow-hidden">
+      {/* Background media */}
+      {!useImage && bgVideo ? (
         <video
-          key={src}
+          key={bgVideo}
           ref={videoRef}
-          className="block w-full h-auto"  // <-- fits height to video
-          src={src}
+          className="absolute inset-0 w-full h-full object-cover"
+          src={bgVideo}
           poster={poster}
           autoPlay
           loop
@@ -193,14 +196,11 @@ const Hero = ({ content }) => {
       ) : (
         <img
           src={poster}
-          alt="Hero"
-          className="block w-full h-auto"
+          alt="Study Abroad Students"
+          className="absolute inset-0 w-full h-full object-cover"
           loading="eager"
         />
       )}
-    </section>
-  );
-};
 
       {/* Overlays (MSM Unify vibe) */}
       <div className="absolute inset-0">
