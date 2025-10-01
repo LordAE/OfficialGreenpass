@@ -154,7 +154,7 @@ const mapEventDoc = (snap) => {
    Sections (UI)
 ========================= */
 const DEFAULT_POSTER =
-  "https://images.unsplash.com/photo-1523240795612-9a0540bd8644";
+  '';
 
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
@@ -196,8 +196,8 @@ const Hero = ({ content }) => {
       ) : (
         <img
           src={poster}
-          alt="Study Abroad Students"
-          className="absolute inset-0 w-full h-full object-cover"
+          alt=''
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[200%] w-auto"
           loading="eager"
         />
       )}
