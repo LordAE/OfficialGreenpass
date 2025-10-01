@@ -150,41 +150,38 @@ const mapEventDoc = (snap) => {
   };
 };
 
-/* =========================
-   Sections (UI)
-========================= */
+// Minimal, video-only Hero that fits to the video's height
 const DEFAULT_POSTER =
   "https://images.unsplash.com/photo-1523240795612-9a0540bd8644";
 
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
-
-  // Prefer a dedicated background video; fall back to video_url if present
-  const bgVideo = hero.background_video_url || hero.video_url || "";
+  const src = hero.background_video_url || hero.video_url || "";
   const poster = hero.poster_url || hero.image_url || DEFAULT_POSTER;
 
-  const [useImage, setUseImage] = React.useState(!bgVideo);
+  const [useImage, setUseImage] = React.useState(!src);
   const videoRef = React.useRef(null);
 
-  // Encourage autoplay on iOS/Safari
+  // Autoplay nudge (iOS/Safari)
   React.useEffect(() => {
-    if (!bgVideo || !videoRef.current) return;
+    if (!src || !videoRef.current) return;
     const el = videoRef.current;
     const tryPlay = () => el.play().catch(() => {});
     if (el.readyState >= 2) tryPlay();
     else el.addEventListener("canplay", tryPlay, { once: true });
     return () => el.removeEventListener("canplay", tryPlay);
-  }, [bgVideo]);
+  }, [src]);
 
+  // Wrapper is just a block so the height follows the video's intrinsic height
   return (
-    <div className="relative text-white overflow-hidden">
-      {/* Background media */}
-      {!useImage && bgVideo ? (
+    <section className="bg-black">
+      {!useImage && src ? (
         <video
-          key={bgVideo}
+          key={src}
           ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
-          src={bgVideo}
+          // IMPORTANT: width 100% + height auto => container height fits the video
+          className="block w-full h-auto"
+          src={src}
           poster={poster}
           autoPlay
           loop
@@ -196,11 +193,14 @@ const Hero = ({ content }) => {
       ) : (
         <img
           src={poster}
-          alt="Study Abroad Students"
-          className="absolute inset-0 w-full h-full object-cover"
+          alt="Hero"
+          className="block w-full h-auto"
           loading="eager"
         />
       )}
+    </section>
+  );
+};
 
       {/* Overlays (MSM Unify vibe) */}
       <div className="absolute inset-0">
