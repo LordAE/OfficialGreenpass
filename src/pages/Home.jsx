@@ -16,8 +16,9 @@ import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
 
 /* ---------- Firebase ---------- */
-import { db } from '@/firebase';
+import { db, app } from '@/firebase'; // ensure you export `app` from your firebase init
 import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { getStorage, ref as storageRef, getDownloadURL } from 'firebase/storage';
 
 /* =========================
    Helpers
@@ -75,10 +76,12 @@ const sanitizeHomeContent = (loaded = {}) => {
     hero_section: { 
       title: '', 
       subtitle: '', 
-      image_url: '', 
-      video_url: '',             // (optional) keep if you still embed YouTube in the right card
-      background_video_url: '',  // NEW: background mp4/webm (loops)
-      poster_url: ''             // NEW: poster/fallback image
+      image_url: '',                // old image field (still supported)
+      video_url: '',                // old YouTube/video field for right card in fallback
+      background_video_url: '',     // NEW: full-bleed background video (mp4/webm URL)
+      poster_url: '',               // NEW: poster/fallback image for background video
+      video_storage_path: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/GreenPass%20Intro.mp4?alt=media&token=b772f97d-eb1a-467d-b2a8-4726026326be',       // OPTIONAL: Firebase Storage path (e.g., "media/hero/hero.mp4")
+      poster_storage_path: ''       // OPTIONAL: Firebase Storage path for poster
     },
     features_section: [],
     testimonials_section: [],
@@ -156,96 +159,201 @@ const mapEventDoc = (snap) => {
 const DEFAULT_POSTER =
   "https://images.unsplash.com/photo-1523240795612-9a0540bd8644";
 
+/** Resolve a Firebase Storage path (or gs://) to a download URL */
+const useResolvedStorageUrl = (path) => {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!path) { setUrl(''); return; }
+      try {
+        const storage = getStorage(app);
+        const ref = storageRef(storage, path); // supports "media/foo.mp4" or "gs://bucket/media/foo.mp4"
+        const dl = await getDownloadURL(ref);
+        if (!cancelled) setUrl(dl);
+      } catch (e) {
+        if (!cancelled) setUrl(''); // leave empty on error
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [path]);
+  return url;
+};
+
+/* =========================
+   Hero (conditional BG video, with Firebase Storage support)
+========================= */
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
 
-  // Prefer a dedicated background video; fall back to video_url if present
-  const bgVideo = hero.background_video_url || hero.video_url || "";
-  const poster = hero.poster_url || hero.image_url || DEFAULT_POSTER;
+  // Resolve Firebase paths if provided
+  const resolvedBgFromStorage = useResolvedStorageUrl(hero.video_storage_path);
+  const resolvedPosterFromStorage = useResolvedStorageUrl(hero.poster_storage_path);
 
-  const [useImage, setUseImage] = React.useState(!bgVideo);
-  const videoRef = React.useRef(null);
+  // Pick background video/poster in priority order: storage path -> direct URL -> fallback
+  const bgVideo =
+    pickFirst(resolvedBgFromStorage, hero.background_video_url, '') || '';
+  const poster =
+    pickFirst(resolvedPosterFromStorage, hero.poster_url, hero.image_url, DEFAULT_POSTER);
 
-  // Encourage autoplay on iOS/Safari
-  React.useEffect(() => {
-    if (!bgVideo || !videoRef.current) return;
+  const hasBG = Boolean(bgVideo); // decides which variant to render
+
+  // For background video playback
+  const [useImage, setUseImage] = useState(!bgVideo);
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    setUseImage(!bgVideo);
+  }, [bgVideo]);
+
+  // Nudge iOS/Safari to start playback for background video mode
+  useEffect(() => {
+    if (!hasBG || !bgVideo || !videoRef.current) return;
     const el = videoRef.current;
     const tryPlay = () => el.play().catch(() => {});
     if (el.readyState >= 2) tryPlay();
     else el.addEventListener("canplay", tryPlay, { once: true });
     return () => el.removeEventListener("canplay", tryPlay);
-  }, [bgVideo]);
+  }, [hasBG, bgVideo]);
 
+  if (hasBG) {
+    // ===== Variant A: MSM-Unify style with full-bleed background video (no right card)
+    return (
+      <div className="relative text-white overflow-hidden">
+        {/* Background media */}
+        {!useImage && bgVideo ? (
+          <video
+            key={bgVideo}
+            ref={videoRef}
+            className="absolute inset-0 w-full h-full object-cover"
+            src={bgVideo}
+            poster={poster}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            onError={() => setUseImage(true)}
+          />
+        ) : (
+          <img
+            src={poster}
+            alt="Study Abroad Students"
+            className="absolute inset-0 w-full h-full object-cover"
+            loading="eager"
+          />
+        )}
+
+        {/* Overlays */}
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-black/55" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-transparent" />
+        </div>
+
+        {/* Content (single column) */}
+        <div className="relative z-10 max-w-7xl mx-auto py-24 sm:py-32 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl space-y-8">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+              <h1
+                className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight"
+                style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}
+              >
+                {hero.title || <>Want to study abroad? Keep calm, let <span className="text-green-400">GreenPass</span> handle it</>}
+              </h1>
+            </motion.div>
+
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="text-xl text-gray-200 leading-relaxed"
+              style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
+            >
+              {hero.subtitle || "Connect with verified schools, agents, and tutors. From visa applications to arrival support - everything you need in one platform."}
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="flex flex-col sm:flex-row gap-4"
+            >
+              <Link to={createPageUrl("Welcome")}>
+                <Button size="lg" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200">
+                  Sign Up<ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
+              <Link to={createPageUrl("Programs")}>
+                <Button variant="outline" size="lg" className="w-full sm:w-auto bg-white/20 border-white/50 text-white hover:bg-white/30 px-8 py-4 text-lg font-semibold transition-all duration-200">
+                  Browse Programs
+                </Button>
+              </Link>
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Variant B: Your original image hero with right media card (no background video)
   return (
     <div className="relative text-white overflow-hidden">
-      {/* Background media */}
-      {!useImage && bgVideo ? (
-        <video
-          key={bgVideo}
-          ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
-          src={bgVideo}
-          poster={poster}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          onError={() => setUseImage(true)}
-        />
-      ) : (
-        <img
-          src={poster}
-          alt="Study Abroad Students"
-          className="absolute inset-0 w-full h-full object-cover"
-          loading="eager"
-        />
-      )}
-
-      {/* Overlays (MSM Unify vibe) */}
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-black/55" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-transparent" />
+        <img
+          src={hero.image_url || "https://images.unsplash.com/photo-1523240795612-9a054b0db644"}
+          alt="Study Abroad Students"
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-black/60 bg-gradient-to-r from-black/70 to-transparent"></div>
       </div>
 
-      {/* Content */}
       <div className="relative z-10 max-w-7xl mx-auto py-24 sm:py-32 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl space-y-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            <h1
-              className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight"
-              style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <div className="space-y-8">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight" style={{textShadow:'2px 2px 4px rgba(0,0,0,0.5)'}}>
+                {hero.title || <>Want to study abroad? Keep calm, let <span className="text-green-400">GreenPass</span> handle it</>}
+              </h1>
+            </motion.div>
+
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="text-xl text-gray-200 leading-relaxed max-w-xl"
+              style={{textShadow:'1px 1px 2px rgba(0,0,0,0.7)'}}
             >
-              {hero.title || <>Want to study abroad? Keep calm, let <span className="text-green-400">GreenPass</span> handle it</>}
-            </h1>
-          </motion.div>
+              {hero.subtitle || "Connect with verified schools, agents, and tutors. From visa applications to arrival support - everything you need in one platform."}
+            </motion.p>
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-xl text-gray-200 leading-relaxed"
-            style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
-          >
-            {hero.subtitle || "Connect with verified schools, agents, and tutors. From visa applications to arrival support - everything you need in one platform."}
-          </motion.p>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="flex flex-col sm:flex-row gap-4"
+            >
+              <Link to={createPageUrl("Welcome")}>
+                <Button size="lg" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200">
+                  Sign Up<ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
+              <Link to={createPageUrl("Programs")}>
+                <Button variant="outline" size="lg" className="w-full sm:w-auto bg-white/20 border-white/50 text-white hover:bg-white/30 px-8 py-4 text-lg font-semibold transition-all duration-200">
+                  Browse Programs
+                </Button>
+              </Link>
+            </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="flex flex-col sm:flex-row gap-4"
-          >
-            <Link to={createPageUrl("Welcome")}>
-              <Button size="lg" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200">
-                Sign Up<ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-            <Link to={createPageUrl("Programs")}>
-              <Button variant="outline" size="lg" className="w-full sm:w-auto bg-white/20 border-white/50 text-white hover:bg-white/30 px-8 py-4 text-lg font-semibold transition-all duration-200">
-                Browse Programs
-              </Button>
-            </Link>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.6 }} className="relative">
+            <div className="relative bg-white/10 backdrop-blur-sm p-2 rounded-2xl shadow-2xl">
+              {hero.video_url ? (
+                <YouTubeEmbed url={hero.video_url} className="w-full h-64 md:h-80 rounded-xl" />
+              ) : (
+                <img src="https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=600&h=400&fit=crop" alt="Students studying abroad" className="w-full h-auto rounded-xl" />
+              )}
+            </div>
           </motion.div>
         </div>
       </div>
@@ -358,7 +466,7 @@ function NewsHighlights() {
                 </div>
 
                 {/* Content overlay */}
-                <div className="relative z-10 h-full flex items-end">
+                <div className="relative z-10 h-full flex items=end">
                   <div className="p-6 sm:p-10 text-white w-full">
                     <div className="flex items-center gap-2 mb-3">
                       <Badge className="bg-white/20 text-white border-white/30">{active.tag}</Badge>
@@ -841,7 +949,7 @@ const FinalCTA = ({ ctaContent }) => (
         viewport={{ once: true }}
         className="space-y-8"
       >
-        <h2 className="text-3xl font-extrabold text-white sm:text-4xl">
+        <h2 className="text-3xl font-extrabold text:white sm:text-4xl">
           <span className="block">{ctaContent?.title || "Ready to start your journey?"}</span>
           <span className="block bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent mt-2">
             {ctaContent?.subtitle || "Join thousands of successful students"}
