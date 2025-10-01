@@ -72,7 +72,14 @@ const getProvinceLabel = (code) => {
 ========================= */
 const sanitizeHomeContent = (loaded = {}) => {
   const prev = {
-    hero_section: { title: '', subtitle: '', image_url: '', video_url: '' },
+    hero_section: { 
+      title: '', 
+      subtitle: '', 
+      image_url: '', 
+      video_url: '',             // (optional) keep if you still embed YouTube in the right card
+      background_video_url: '',  // NEW: background mp4/webm (loops)
+      poster_url: ''             // NEW: poster/fallback image
+    },
     features_section: [],
     testimonials_section: [],
     stats_section: [],
@@ -146,23 +153,70 @@ const mapEventDoc = (snap) => {
 /* =========================
    Sections (UI)
 ========================= */
-const Hero = ({ content }) => (
-  <div className="relative text-white overflow-hidden">
-    <div className="absolute inset-0">
-      <img
-        src={content?.hero_section?.image_url || "https://images.unsplash.com/photo-1523240795612-9a054b0db644"}
-        alt="Study Abroad Students"
-        className="w-full h-full object-cover"
-      />
-      <div className="absolute inset-0 bg-black/60 bg-gradient-to-r from-black/70 to-transparent"></div>
-    </div>
+const DEFAULT_POSTER =
+  "https://images.unsplash.com/photo-1523240795612-9a0540bd8644";
 
-    <div className="relative z-10 max-w-7xl mx-auto py-24 sm:py-32 px-4 sm:px-6 lg:px-8">
-      <div className="grid lg:grid-cols-2 gap-16 items-center">
-        <div className="space-y-8">
+const Hero = ({ content }) => {
+  const hero = content?.hero_section || {};
+
+  // Prefer a dedicated background video; fall back to video_url if present
+  const bgVideo = hero.background_video_url || hero.video_url || "";
+  const poster = hero.poster_url || hero.image_url || DEFAULT_POSTER;
+
+  const [useImage, setUseImage] = React.useState(!bgVideo);
+  const videoRef = React.useRef(null);
+
+  // Encourage autoplay on iOS/Safari
+  React.useEffect(() => {
+    if (!bgVideo || !videoRef.current) return;
+    const el = videoRef.current;
+    const tryPlay = () => el.play().catch(() => {});
+    if (el.readyState >= 2) tryPlay();
+    else el.addEventListener("canplay", tryPlay, { once: true });
+    return () => el.removeEventListener("canplay", tryPlay);
+  }, [bgVideo]);
+
+  return (
+    <div className="relative text-white overflow-hidden">
+      {/* Background media */}
+      {!useImage && bgVideo ? (
+        <video
+          key={bgVideo}
+          ref={videoRef}
+          className="absolute inset-0 w-full h-full object-cover"
+          src={bgVideo}
+          poster={poster}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          onError={() => setUseImage(true)}
+        />
+      ) : (
+        <img
+          src={poster}
+          alt="Study Abroad Students"
+          className="absolute inset-0 w-full h-full object-cover"
+          loading="eager"
+        />
+      )}
+
+      {/* Overlays (MSM Unify vibe) */}
+      <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-black/55" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-transparent" />
+      </div>
+
+      {/* Content */}
+      <div className="relative z-10 max-w-7xl mx-auto py-24 sm:py-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl space-y-8">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight" style={{textShadow:'2px 2px 4px rgba(0,0,0,0.5)'}}>
-              {content?.hero_section?.title || <>Want to study abroad? Keep calm, let <span className="text-green-400">GreenPass</span> handle it</>}
+            <h1
+              className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight"
+              style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}
+            >
+              {hero.title || <>Want to study abroad? Keep calm, let <span className="text-green-400">GreenPass</span> handle it</>}
             </h1>
           </motion.div>
 
@@ -170,10 +224,10 @@ const Hero = ({ content }) => (
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-xl text-gray-200 leading-relaxed max-w-xl"
-            style={{textShadow:'1px 1px 2px rgba(0,0,0,0.7)'}}
+            className="text-xl text-gray-200 leading-relaxed"
+            style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
           >
-            {content?.hero_section?.subtitle || "Connect with verified schools, agents, and tutors. From visa applications to arrival support - everything you need in one platform."}
+            {hero.subtitle || "Connect with verified schools, agents, and tutors. From visa applications to arrival support - everything you need in one platform."}
           </motion.p>
 
           <motion.div
@@ -194,20 +248,10 @@ const Hero = ({ content }) => (
             </Link>
           </motion.div>
         </div>
-
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.6 }} className="relative">
-          <div className="relative bg-white/10 backdrop-blur-sm p-2 rounded-2xl shadow-2xl">
-            {content?.hero_section?.video_url ? (
-              <YouTubeEmbed url={content.hero_section.video_url} className="w-full h-64 md:h-80 rounded-xl" />
-            ) : (
-              <img src="https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=600&h=400&fit=crop" alt="Students studying abroad" className="w-full h-auto rounded-xl" />
-            )}
-          </div>
-        </motion.div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* =========================
    NEW: News & Highlights Carousel
