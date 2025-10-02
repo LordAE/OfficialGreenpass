@@ -76,7 +76,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       title: '', 
       subtitle: '', 
       image_url: '', 
-      video_url: '',             // (optional) keep if you still embed YouTube in the right card
+      video_url: '',
       background_video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/GreenPass%20Intro.mp4?alt=media&token=b772f97d-eb1a-467d-b2a8-4726026326be',
       poster_url: ''
     },
@@ -343,7 +343,7 @@ function NewsHighlights() {
                 </div>
 
                 {/* Content overlay */}
-                <div className="relative z-10 h-full flex items-end">
+                <div className="relative z-10 h-full flex items=end">
                   <div className="p-6 sm:p-10 text-white w-full">
                     <div className="flex items-center gap-2 mb-3">
                       <Badge className="bg-white/20 text-white border-white/30">{active.tag}</Badge>
@@ -471,14 +471,14 @@ function PartnersStrip() {
         </h2>
 
         <div
-          className="relative mt-10 overflow-hidden" // overflow-hidden removes the visible scrollbar
+          className="relative mt-10 overflow-hidden"
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
           {/* Sliding track */}
           <motion.div
             animate={controls}
-            className="flex gap-6 sm:gap-8 md:gap-10 w-[200%]" // 2x width because we doubled the items
+            className="flex gap-6 sm:gap-8 md:gap-10 w-[200%]"
           >
             {marquee.map((p, i) => (
               <motion.div
@@ -505,7 +505,7 @@ function PartnersStrip() {
             ))}
           </motion.div>
 
-          {/* Subtle progress dots (static) */}
+          {/* Subtle progress dots (decorative) */}
           <div className="mt-6 flex justify-center gap-2">
             {[...Array(9)].map((_, i) => (
               <span
@@ -515,7 +515,6 @@ function PartnersStrip() {
             ))}
           </div>
 
-          {/* Optional paused hint */}
           {paused && (
             <div className="pointer-events-none absolute inset-x-0 -top-6 text-center text-xs text-slate-500">
               (Paused)
@@ -527,7 +526,7 @@ function PartnersStrip() {
   );
 }
 
-// Helper to avoid importing useAnimation directly at top
+// Helper to avoid adding a new import line
 function animationControls() {
   const { useAnimation } = require("framer-motion");
   return useAnimation();
