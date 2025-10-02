@@ -203,9 +203,9 @@ const Hero = ({ content }) => {
       )}
       
        {/* Overlays (MSM Unify vibe) */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-black/55" />
-        <div className="absolute inset-0 bg-gradient-to-r from-g/7 to-transparent" />
+      <div className=''>
+        <div className='' />
+        <div className='' />
       </div>
 
       {/* Content */}
