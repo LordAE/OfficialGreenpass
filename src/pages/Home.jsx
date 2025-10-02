@@ -392,28 +392,28 @@ function NewsHighlights() {
 ========================= */
 function PartnersStrip() {
   const partners = [
-    { name: "UWE Bristol", logo: "https://upload.wikimedia.org/wikipedia/commons/8/8c/UWE_Bristol_logo.svg" },
-    { name: "Cape Breton University", logo: "https://upload.wikimedia.org/wikipedia/en/b/b5/Cape_Breton_University_logo.svg" },
-    { name: "Canterbury Christ Church University", logo: "https://upload.wikimedia.org/wikipedia/en/f/fc/Canterbury_Christ_Church_University_logo.svg" },
-    { name: "University of West Alabama", logo: "https://upload.wikimedia.org/wikipedia/en/7/7f/University_of_West_Alabama_logo.svg" },
-    { name: "Capilano University", logo: "https://upload.wikimedia.org/wikipedia/en/1/11/CapilanoUniversityLogo.svg" },
+    { name: "UWE Bristol", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUWEBristol.jpg?alt=media&token=0d3c6c10-d925-47d5-bdf7-14a38bcb67dd" },
+    { name: "Cape Breton University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FCapeBretonUniveristy.jpg?alt=media&token=f8695d0d-0e13-44be-a319-5b7c262f1d05" },
+    { name: "Canterbury Christ Church University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FCanterbury-Christ-Church-University.png?alt=media&token=2235d037-6d1d-43c3-9959-3e6f913ee09f" },
+    { name: "University of West Alabama", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofWestAlabama.png?alt=media&token=9fc57006-3137-44c5-b888-6c1fcca756b0" },
+    { name: "Capilano University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FCapilanoUniversity.jpg?alt=media&token=535e4daa-5673-4ea9-ad2c-7ac4f33d1979" },
 
-    { name: "University of Toronto", logo: "https://upload.wikimedia.org/wikipedia/en/0/06/University_of_Toronto_coat_of_arms.svg" },
-    { name: "McGill University", logo: "https://upload.wikimedia.org/wikipedia/en/0/0e/McGill_University_CoA.svg" },
-    { name: "University of British Columbia", logo: "https://upload.wikimedia.org/wikipedia/en/0/0a/UBC_Coat_of_Arms.svg" },
-    { name: "University of Alberta", logo: "https://upload.wikimedia.org/wikipedia/en/6/66/UA_Coat_of_Arms.svg" },
-    { name: "University of Waterloo", logo: "https://upload.wikimedia.org/wikipedia/commons/5/5b/University_of_Waterloo_seal.svg" },
+    { name: "University of Toronto", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofToronto.avif?alt=media&token=687579c2-f19f-483c-a0d6-e8c3ff20b995" },
+    { name: "McGill University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FmcgillUniversity.png?alt=media&token=7f0fcfbd-e7cd-4555-af62-978c308d6dd8" },
+    { name: "University of British Columbia", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofBristishColumbia.jpg?alt=media&token=6ee96860-9835-4996-9a30-15cbf8442c16" },
+    { name: "University of Alberta", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofAlberta.jpg?alt=media&token=51d0f6c9-c50f-4edb-87a5-5cfa27381f08" },
+    { name: "University of Waterloo", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2Funiversityofwaterloo.avif?alt=media&token=ace9a9ce-b679-4eae-b517-e5f511da629e" },
 
-    { name: "Western University", logo: "https://upload.wikimedia.org/wikipedia/en/d/d4/Western_University_crest.svg" },
-    { name: "Queen’s University", logo: "https://upload.wikimedia.org/wikipedia/en/7/79/Queen%27s_University_arms.svg" },
-    { name: "University of Manitoba", logo: "https://upload.wikimedia.org/wikipedia/en/4/4f/University_of_Manitoba_coat_of_arms.svg" },
-    { name: "University of Saskatchewan", logo: "https://upload.wikimedia.org/wikipedia/en/6/6b/University_of_Saskatchewan_coat_of_arms.svg" },
-    { name: "Concordia University", logo: "https://upload.wikimedia.org/wikipedia/en/7/7b/Concordia_University_seal.svg" },
+    { name: "Western University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FWesternUniversity.png?alt=media&token=2cd1a3af-2307-417b-b5c9-36e2e55b9cf0" },
+    { name: "Queen’s University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FQueensUniversity.png?alt=media&token=2187b37a-199d-4770-b489-68970f88e666" },
+    { name: "University of Manitoba", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofManitoba.png?alt=media&token=7e36dd5b-6f69-49fe-aa7a-d31e51974690" },
+    { name: "University of Saskatchewan", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2Funiversity-of-saskatchewan.png?alt=media&token=c0046b80-793e-4cc0-aeb3-e3f4035ec567" },
+    { name: "Concordia University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2Fconcordia-university.svg?alt=media&token=4224a6c8-e362-457c-83a2-9565d7322e4a" },
 
-    { name: "Dalhousie University", logo: "https://upload.wikimedia.org/wikipedia/en/d/d8/Dalhousie_University_arms.svg" },
-    { name: "York University", logo: "https://upload.wikimedia.org/wikipedia/en/3/3a/York_University_coat_of_arms.svg" },
-    { name: "Carleton University", logo: "https://upload.wikimedia.org/wikipedia/en/3/35/Carleton_University_coat_of_arms.svg" },
-    { name: "Memorial University", logo: "https://upload.wikimedia.org/wikipedia/en/3/36/Memorial_University_of_Newfoundland_coat_of_arms.svg" },
+    { name: "Dalhousie University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FdalhousieUniversity.png?alt=media&token=2010cc34-971f-42b0-b1a1-10e79bdd5cb9" },
+    { name: "York University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FyorkUniversity.png?alt=media&token=c0f6b3b6-cc52-4f95-9a7d-c1b12005268a" },
+    { name: "Carleton University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FcarletonUniversity.jpg?alt=media&token=673a958c-69f4-41df-94b0-981243bbd6d7" },
+    { name: "Memorial University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FMemorialUniversity.png?alt=media&token=6989515c-debd-47e2-b02e-600b55da58a0" },
   ];
 
   const marquee = [...partners, ...partners];
