@@ -3,37 +3,60 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, MapPin, CheckSquare, ArrowLeft, Users, Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import {
+  Calendar,
+  MapPin,
+  CheckSquare,
+  ArrowLeft,
+  Users,
+  Loader2,
+  ChevronLeft,
+  Info,
+} from "lucide-react";
 import { format } from "date-fns";
 import YouTubeEmbed from "../components/YouTubeEmbed";
 import Countdown from "../components/events/Countdown";
+import DynamicRegistrationForm from "@/components/events/DynamicRegistrationForm";
+import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway"; // <-- your PayPal-only component
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createPageUrl } from "@/utils";
+
+/* ---------- Entities / Emails ---------- */
+import { User, BankSettings, EventRegistration, Payment } from "@/api/entities";
+import { sendEventRegistrationInvoice } from "@/components/utils/invoiceSender";
 
 /* ---------- Firebase ---------- */
 import { db } from "@/firebase";
-import {
-  collection,
-  query,
-  where,
-  limit,
-  getDocs,
-} from "firebase/firestore";
+import { collection, query, where, limit, getDocs } from "firebase/firestore";
 
 /* ---------- Helpers ---------- */
 const toJsDate = (v) =>
   v && typeof v?.toDate === "function" ? v.toDate() : new Date(v || Date.now());
+const toDate = (v) => (v instanceof Date ? v : new Date(v || 0));
 
-/**
- * Fetch a single event by its `event_id` (string).
- * Returns: { id, ...data } or null when not found.
- */
+/** Remove undefined/null, empty objects/arrays, and strip File/Blob anywhere */
+const prune = (val) => {
+  if (val === undefined || val === null) return undefined;
+  if (typeof File !== "undefined" && (val instanceof File || val instanceof Blob)) return undefined;
+
+  if (Array.isArray(val)) {
+    const arr = val.map(prune).filter((v) => v !== undefined);
+    return arr.length ? arr : undefined;
+  }
+  if (typeof val === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(val)) {
+      const c = prune(v);
+      if (c !== undefined) out[k] = c;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return val;
+};
+
+/** Fetch a single event by its event_id (string). */
 const fetchEventByEventId = async (eventId) => {
-  const q = query(
-    collection(db, "events"),
-    where("event_id", "==", eventId),
-    limit(1)
-  );
+  const q = query(collection(db, "events"), where("event_id", "==", eventId), limit(1));
   const snap = await getDocs(q);
   if (snap.empty) return null;
   const d = snap.docs[0];
@@ -43,14 +66,26 @@ const fetchEventByEventId = async (eventId) => {
 export default function EventDetails() {
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Registration state
+  const [selectedTier, setSelectedTier] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [fxRate, setFxRate] = useState(1.35);
+
+  // Payment popup state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [createdRegistration, setCreatedRegistration] = useState(null);
+  const [pageBusy, setPageBusy] = useState(false);
+  const [registrationError, setRegistrationError] = useState(null);
+
   const navigate = useNavigate();
 
+  // Load event
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
         const url = new URL(window.location.href);
-        // accept ?id=, ?eventId= or ?eventid=
         const eventId =
           url.searchParams.get("id") ||
           url.searchParams.get("eventId") ||
@@ -72,8 +107,130 @@ export default function EventDetails() {
     load();
   }, []);
 
+  // Load current user + FX (same behavior as registration page)
+  useEffect(() => {
+    const loadUserAndFx = async () => {
+      try {
+        const u = await User.me();
+        setCurrentUser(u || null);
+      } catch {
+        setCurrentUser(null);
+      }
+      try {
+        const rows = await BankSettings.filter({ key: "CAD_USD_FX_RATE" });
+        if (Array.isArray(rows) && rows.length > 0) {
+          const v = parseFloat(rows[0].value);
+          if (!Number.isNaN(v)) setFxRate(v);
+        }
+      } catch (fxErr) {
+        console.warn("FX rate fetch failed, using default.", fxErr);
+      }
+    };
+    loadUserAndFx();
+  }, []);
+
   const handleBackClick = () => navigate(-1);
 
+  // Button path: select → scroll to the form
+  const handleSelectTierAndScroll = (tier) => {
+    setSelectedTier(tier);
+    const el = document.getElementById("registration-start");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // Lock body scroll while modal open; close on Esc
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    if (showPaymentModal) document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showPaymentModal]);
+
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && !pageBusy && setShowPaymentModal(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pageBusy]);
+
+  // ---------- Auto-select single tier (NO auto scroll; options panel still visible) ----------
+  useEffect(() => {
+    if (!event) return;
+    const tiers = Array.isArray(event.registration_tiers) ? event.registration_tiers : [];
+    if (tiers.length === 1 && !selectedTier) {
+      setSelectedTier(tiers[0]);
+      // no auto-scroll
+    }
+  }, [event, selectedTier]);
+
+  // ---------- Payment helpers (popup, PayPal-only) ----------
+  const createPaymentRecord = async (registration, method, status, transactionId, receiptUrl, paymentDetails) => {
+    const payload = prune({
+      related_entity_id: registration.id,
+      related_entity_type: "event_registration",
+      provider: method, // 'paypal'
+      amount_usd: registration.amount_usd,
+      amount_cad: registration.amount_cad,
+      fx_rate: registration.fx_rate,
+      status, // 'successful' | 'pending_verification' | 'failed'
+      transaction_id: transactionId || null,
+      receipt_url: receiptUrl || null,
+      payer_name: registration.contact_name,
+      payer_email: registration.contact_email,
+      ...(currentUser && { user_id: currentUser.id }),
+    });
+
+    const newPayment = await Payment.create(payload);
+    await EventRegistration.update(registration.id, { payment_id: newPayment.id });
+    return newPayment;
+  };
+
+  const handlePaymentSuccess = async (paymentMethod, transactionId, paymentDetails) => {
+    setPageBusy(true);
+    setRegistrationError(null);
+
+    try {
+      if (!createdRegistration) throw new Error("No registration found to update.");
+
+      const newPayment = await createPaymentRecord(
+        createdRegistration,
+        paymentMethod, // 'paypal'
+        "successful",
+        transactionId,
+        null,
+        prune(paymentDetails)
+      );
+
+      const finalReg = await EventRegistration.update(createdRegistration.id, {
+        status: "paid",
+        payment_method: paymentMethod,
+        payment_date: new Date().toISOString(),
+        transaction_id: transactionId,
+        payment_id: newPayment.id,
+      });
+
+      try {
+        const sent = await sendEventRegistrationInvoice(finalReg, event, newPayment);
+        if (sent?.success) {
+          await EventRegistration.update(finalReg.id, { invoice_sent: true, qr_email_sent: true });
+        }
+      } catch (e) {
+        console.warn("Invoice email failed:", e);
+      }
+
+      setShowPaymentModal(false);
+      navigate(createPageUrl(`EventRegistrationSuccess?registrationId=${createdRegistration.id}`));
+    } catch (err) {
+      console.error("Error processing payment success:", err);
+      setRegistrationError(
+        "Payment was successful but there was an error updating your registration. Please contact support."
+      );
+    } finally {
+      setPageBusy(false);
+    }
+  };
+
+  // ---------- Guards ----------
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -98,9 +255,9 @@ export default function EventDetails() {
   const startDate = toJsDate(event.start);
   const endDate = toJsDate(event.end);
   const isUpcomingEvent = startDate > new Date();
-  const registrationTiers = Array.isArray(event.registration_tiers)
-    ? event.registration_tiers
-    : [];
+  const registrationTiers = Array.isArray(event.registration_tiers) ? event.registration_tiers : [];
+  const now = new Date();
+  const isPastEvent = toDate(event.start) < now;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -121,9 +278,9 @@ export default function EventDetails() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Left Column - Event Details */}
+          {/* Left Column */}
           <div className="lg:col-span-2 space-y-8">
-            {/* Event Header */}
+            {/* Header */}
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
               {event.cover_image ? (
                 <div className="relative h-64 md:h-80">
@@ -134,53 +291,47 @@ export default function EventDetails() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                   <div className="absolute bottom-6 left-6 text-white">
-                    <h1 className="text-3xl md:text-4xl font-bold mb-2">
-                      {event.title}
-                    </h1>
+                    <h1 className="text-3xl md:text-4xl font-bold mb-2">{event.title}</h1>
                     <div className="flex items-center gap-4 text-lg">
-                      <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-2">
                         <Calendar className="w-5 h-5" />
-                        <span>{format(startDate, "MMMM dd, yyyy")}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
+                        {format(startDate, "MMMM dd, yyyy")}
+                      </span>
+                      <span className="inline-flex items-center gap-2">
                         <MapPin className="w-5 h-5" />
-                        <span>{event.location}</span>
-                      </div>
+                        {event.location}
+                      </span>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="p-8">
-                  <h1 className="text-3xl md:text-4xl font-bold mb-4">
-                    {event.title}
-                  </h1>
+                  <h1 className="text-3xl md:text-4xl font-bold mb-4">{event.title}</h1>
                   <div className="flex items-center gap-6 text-gray-600">
-                    <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-2">
                       <Calendar className="w-5 h-5" />
-                      <span>{format(startDate, "MMMM dd, yyyy")}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
+                      {format(startDate, "MMMM dd, yyyy")}
+                    </span>
+                    <span className="inline-flex items-center gap-2">
                       <MapPin className="w-5 h-5" />
-                      <span>{event.location}</span>
-                    </div>
+                      {event.location}
+                    </span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Countdown Timer for Upcoming Events */}
+            {/* Countdown */}
             {isUpcomingEvent && (
               <div className="bg-white rounded-xl shadow-lg p-6">
                 <div className="text-center">
-                  <h3 className="text-xl font-semibold mb-4 text-gray-900">
-                    Event Countdown
-                  </h3>
+                  <h3 className="text-xl font-semibold mb-4 text-gray-900">Event Countdown</h3>
                   <Countdown targetDate={startDate} />
                 </div>
               </div>
             )}
 
-            {/* Event Description */}
+            {/* About This Event */}
             <Card className="shadow-lg border-0">
               <CardHeader>
                 <CardTitle className="text-2xl">About This Event</CardTitle>
@@ -191,31 +342,75 @@ export default function EventDetails() {
                     {event.introduction}
                   </div>
                 ) : (
-                  <p className="text-gray-500 italic">
-                    No description provided for this event.
-                  </p>
+                  <p className="text-gray-500 italic">No description provided for this event.</p>
                 )}
               </CardContent>
             </Card>
 
-            {/* Quick Actions */}
-            <Card className="shadow-lg border-0">
-              <CardContent className="p-6">
-                <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-                  <div>
-                    <h3 className="text-xl font-semibold mb-2">Ready to Join?</h3>
-                    <p className="text-gray-600">
-                      Secure your spot at this exclusive event
-                    </p>
+            {/* Anchor: scroll here when a tier is selected */}
+            <div id="registration-start" />
+
+            {/* === Embedded Registration (form only; payment opens in modal) === */}
+            {!isUpcomingEvent || isPastEvent ? (
+              <Card className="shadow-lg border-0">
+                <CardHeader>
+                  <CardTitle className="text-2xl">Registration Closed</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600">Registration for this event has closed.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="shadow-lg border-0">
+                <div className="p-6 sm:p-8 border-b">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">{event.title}</h2>
+                  <div className="flex items-center gap-4 text-gray-600 mt-2 text-sm">
+                    <span className="inline-flex items-center gap-1">
+                      <Calendar className="w-4 h-4" />
+                      {format(toDate(event.start), "PPP")}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="w-4 h-4" />
+                      {event.location}
+                    </span>
                   </div>
-                  <Link to={createPageUrl(`EventRegistration?eventId=${event.event_id}`)}>
-                    <Button className="bg-green-600 hover:bg-green-700 shadow-lg min-w-[180px]">
-                      Register Now
-                    </Button>
-                  </Link>
                 </div>
-              </CardContent>
-            </Card>
+
+                <div className="p-6 sm:p-8">
+                  {(!selectedTier && registrationTiers.length > 1) && (
+                    <p className="text-gray-600 mb-2">
+                      Please select a registration option on the right to continue.
+                    </p>
+                  )}
+
+                  {selectedTier && (
+                    <>
+                      {registrationTiers.length > 1 && (
+                        <button
+                          onClick={() => setSelectedTier(null)}
+                          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
+                        >
+                          <ChevronLeft className="w-4 h-4" /> Back to options
+                        </button>
+                      )}
+
+                      <h3 className="text-xl font-semibold mb-4">Your Information</h3>
+
+                      <DynamicRegistrationForm
+                        event={event}
+                        selectedTier={selectedTier}
+                        currentUser={currentUser}
+                        fxRate={fxRate}
+                        onRegistrationComplete={(registration) => {
+                          setCreatedRegistration(registration);
+                          setShowPaymentModal(true); // open popup for PayPal
+                        }}
+                      />
+                    </>
+                  )}
+                </div>
+              </Card>
+            )}
 
             {/* Promo Video */}
             {event.promo_video_url && (
@@ -233,63 +428,59 @@ export default function EventDetails() {
             )}
 
             {/* Event Inclusions */}
-            {Array.isArray(event.fair_inclusions) &&
-              event.fair_inclusions.length > 0 && (
-                <Card className="shadow-lg border-0">
-                  <CardHeader>
-                    <CardTitle className="text-2xl">What's Included</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="grid md:grid-cols-2 gap-3">
-                      {event.fair_inclusions.map((inclusion, index) => (
-                        <li key={index} className="flex items-start gap-3">
-                          <CheckSquare className="w-5 h-5 text-green-600 mt-1 flex-shrink-0" />
-                          <span className="text-gray-700">{inclusion}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
+            {Array.isArray(event.fair_inclusions) && event.fair_inclusions.length > 0 && (
+              <Card className="shadow-lg border-0">
+                <CardHeader>
+                  <CardTitle className="text-2xl">What's Included</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="grid md:grid-cols-2 gap-3">
+                    {event.fair_inclusions.map((inclusion, index) => (
+                      <li key={index} className="flex items-start gap-3">
+                        <CheckSquare className="w-5 h-5 text-green-600 mt-1 flex-shrink-0" />
+                        <span className="text-gray-700">{inclusion}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Gallery */}
-            {Array.isArray(event.gallery_images) &&
-              event.gallery_images.length > 0 && (
-                <Card className="shadow-lg border-0">
-                  <CardHeader>
-                    <CardTitle className="text-2xl">Event Gallery</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {event.gallery_images.map((img, index) => (
-                        <a
-                          key={index}
-                          href={img}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group"
-                        >
-                          <img
-                            src={img}
-                            alt={`Gallery image ${index + 1}`}
-                            className="w-full h-32 object-cover rounded-lg shadow-md group-hover:scale-105 transition-transform duration-200"
-                          />
-                        </a>
-                      ))}
-                    </div>
-                    {event.media_attribution && (
-                      <p className="text-sm text-gray-500 mt-4 italic">
-                        {event.media_attribution}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
+            {Array.isArray(event.gallery_images) && event.gallery_images.length > 0 && (
+              <Card className="shadow-lg border-0">
+                <CardHeader>
+                  <CardTitle className="text-2xl">Event Gallery</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {event.gallery_images.map((img, index) => (
+                      <a
+                        key={index}
+                        href={img}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group"
+                      >
+                        <img
+                          src={img}
+                          alt={`Gallery image ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-lg shadow-md group-hover:scale-105 transition-transform duration-200"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                  {event.media_attribution && (
+                    <p className="text-sm text-gray-500 mt-4 italic">{event.media_attribution}</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
 
-          {/* Right Column - Registration Tiers & Info */}
+          {/* Right Column - Event Info + Registration Options (always visible) */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Event Info */}
+            {/* Event Information */}
             <Card className="shadow-lg border-0">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -301,9 +492,7 @@ export default function EventDetails() {
                 <div className="flex items-start gap-3">
                   <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
                   <div>
-                    <p className="font-medium">
-                      {format(startDate, "EEEE, MMMM dd, yyyy")}
-                    </p>
+                    <p className="font-medium">{format(startDate, "EEEE, MMMM dd, yyyy")}</p>
                     <p className="text-sm text-gray-600">
                       {format(startDate, "h:mm a")} - {format(endDate, "h:mm a")}
                     </p>
@@ -321,9 +510,7 @@ export default function EventDetails() {
                   <div className="flex items-start gap-3">
                     <Users className="w-5 h-5 text-gray-400 mt-0.5" />
                     <div>
-                      <p className="text-sm">
-                        Contact: {event.contact_details.email}
-                      </p>
+                      <p className="text-sm">Contact: {event.contact_details.email}</p>
                       {event.contact_details.phone && (
                         <p className="text-sm">{event.contact_details.phone}</p>
                       )}
@@ -333,7 +520,7 @@ export default function EventDetails() {
               </CardContent>
             </Card>
 
-            {/* Registration Tiers */}
+            {/* Registration Options (even if there’s only 1; it’ll already be selected) */}
             {registrationTiers.length > 0 && (
               <Card className="shadow-lg border-0">
                 <CardHeader>
@@ -343,26 +530,30 @@ export default function EventDetails() {
                   {registrationTiers.map((tier) => (
                     <div
                       key={tier.key}
-                      className="border border-gray-200 rounded-lg p-4 hover:border-green-300 transition-colors"
+                      className={`border rounded-lg p-4 transition-colors ${
+                        selectedTier?.key === tier.key
+                          ? "border-green-500 ring-1 ring-green-200"
+                          : "border-gray-200 hover:border-green-300"
+                      }`}
                     >
                       <div className="flex justify-between items-start mb-3">
                         <h4 className="font-semibold text-lg">{tier.name}</h4>
                         <div className="text-right">
                           <div className="text-2xl font-bold text-green-600">
-                            ${tier.price_usd}
+                            ${Number(tier.price_usd).toLocaleString()}
                           </div>
                           <div className="text-sm text-gray-500">USD</div>
                         </div>
                       </div>
 
                       {tier.description && (
-                        <p className="text-gray-600 text-sm mb-3">
+                        <p className="text-gray-600 text-sm mb-3 leading-relaxed">
                           {tier.description}
                         </p>
                       )}
 
                       {Array.isArray(tier.benefits) && tier.benefits.length > 0 && (
-                        <ul className="space-y-1">
+                        <ul className="space-y-1 mb-3">
                           {tier.benefits.map((benefit, i) => (
                             <li key={i} className="flex items-start gap-2 text-sm">
                               <CheckSquare className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
@@ -371,6 +562,10 @@ export default function EventDetails() {
                           ))}
                         </ul>
                       )}
+
+                      <Button className="w-full" onClick={() => handleSelectTierAndScroll(tier)}>
+                        {selectedTier?.key === tier.key ? "Selected" : "Select & Register"}
+                      </Button>
                     </div>
                   ))}
                 </CardContent>
@@ -379,6 +574,67 @@ export default function EventDetails() {
           </div>
         </div>
       </div>
+
+      {/* ===== Payment Popup Modal (contains PayPal component; PayPal opens its own popup) ===== */}
+      {showPaymentModal && createdRegistration && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" aria-modal="true" role="dialog">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => (!pageBusy ? setShowPaymentModal(false) : null)}
+          />
+          {/* Modal Card */}
+          <div className="relative bg-white w-full max-w-2xl mx-4 rounded-xl shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Complete Your Payment</h3>
+              <Button variant="ghost" onClick={() => setShowPaymentModal(false)} disabled={pageBusy}>
+                Close
+              </Button>
+            </div>
+
+            <div className="p-6">
+              <Card className="mb-6 border-blue-200 bg-blue-50">
+                <CardHeader className="py-3">
+                  <CardTitle className="flex items-center text-blue-800 text-base">
+                    <Info className="w-5 h-5 mr-2" />
+                    Payment Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="flex justify-between items-center text-lg font-semibold text-gray-800 mb-2">
+                    <span>Amount Due (USD):</span>
+                    <span>${Number(selectedTier?.price_usd || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>Amount Due (CAD Approx.):</span>
+                    <span>${(Number(selectedTier?.price_usd || 0) * Number(fxRate)).toFixed(2)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {registrationError && (
+                <Alert variant="destructive" className="mb-4">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>{registrationError}</AlertDescription>
+                </Alert>
+              )}
+
+              <SharedPaymentGateway
+                amountUSD={Number(selectedTier?.price_usd || 0)}
+                amountCAD={Number(selectedTier?.price_usd || 0) * Number(fxRate)}
+                itemDescription={`${event.title} - ${selectedTier?.name || "Registration"}`}
+                payerName={createdRegistration.contact_name}
+                payerEmail={createdRegistration.contact_email}
+                onCardPaymentSuccess={handlePaymentSuccess}
+                onProcessing={() => setPageBusy(true)}
+                onDoneProcessing={() => setPageBusy(false)}
+                onError={(e) => setRegistrationError(e?.message || "Payment error")}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ===== End Payment Popup Modal ===== */}
     </div>
   );
 }
