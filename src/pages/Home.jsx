@@ -1,6 +1,6 @@
 // src/pages/Home.jsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -439,7 +439,7 @@ function PartnersStrip() {
   // Duplicate list so the marquee can loop seamlessly.
   const marquee = [...partners, ...partners];
 
-  const controls = React.useMemo(() => animationControls(), []);
+  const controls = useAnimation();
   const [paused, setPaused] = React.useState(false);
 
   React.useEffect(() => {
@@ -527,10 +527,10 @@ function PartnersStrip() {
 }
 
 // Helper to avoid adding a new import line
-function animationControls() {
-  const { useAnimation } = require("framer-motion");
-  return useAnimation();
-}
+//function animationControls() {
+// const { useAnimation } = require("framer-motion");
+//  return useAnimation();
+//}
 
 /* =========================
    Features
