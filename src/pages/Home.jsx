@@ -77,7 +77,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       subtitle: '',
       image_url: '',
       video_url: '',
-      background_video_url: 'https://youtu.be/aC_9v2FArew',
+      background_video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
       poster_url: ''
     },
     features_section: [],
