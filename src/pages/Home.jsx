@@ -183,7 +183,7 @@ const Hero = ({ content }) => {
         <video
           key={bgVideo}
           ref={videoRef}
-          className="absolute left-1 top-1 -translate-x-1 -translate-y-1 h-[100%] w-auto"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[100%] w-auto"
           src={bgVideo}
           poster={poster}
           autoPlay
@@ -197,7 +197,7 @@ const Hero = ({ content }) => {
         <img
           src={poster}
           alt=''
-          className="absolute left-1 top-1 -translate-x-1 -translate-y-1 h-[100%] w-auto"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[100%] w-auto"
           loading="eager"
         />
       )}
