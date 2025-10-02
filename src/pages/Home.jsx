@@ -464,21 +464,21 @@ function PartnersStrip() {
   };
 
   return (
-    <section className="bg-[#f8efe8] py-14 sm:py-20">
+    <section className="bg-white py-14 sm:py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-center text-3xl sm:text-4xl font-bold text-slate-900">
           Top university partners
         </h2>
 
         <div
-          className="relative mt-10 overflow-hidden pb-8 sm:pb-10"
+          className="relative mt-10 overflow-hidden pb-10 sm:pb-12"
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
           {/* Sliding track */}
           <motion.div
             animate={controls}
-            className="flex gap-6 sm:gap-8 md:gap-10 w-[200%]"
+            className="flex gap-6 sm:gap-10 md:gap-12 w-[200%]"
           >
             {marquee.map((p, i) => (
               <motion.div
