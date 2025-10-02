@@ -249,7 +249,7 @@ const mockNews = [
     id: 'n3',
     title: 'Why London International Academy?',
     summary: 'New scholarships programs offers.',
-    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/825_585_london-international-academy-1.jpg?alt=media&token=56fd5481-3ad9-433c-8043-bea86c118c09',
+    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
     tag: 'Scholarships',
     date: '1 week ago',
     href: '#'
@@ -564,7 +564,7 @@ function Stats({ stats }) {
               <div key={i} className="flex items-start gap-4">
                 <Icon className="w-12 h-12 text-slate-400" />
                 <div>
-                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-lime-600">
+                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-blue green-600">
                     <CountUp valueString={it.value} start={start} duration={1.4} />
                   </div>
                   <div className="text-slate-700 text-base sm:text-lg">{it.label}</div>
