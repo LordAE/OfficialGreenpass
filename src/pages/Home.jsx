@@ -343,7 +343,7 @@ function NewsHighlights() {
                 </div>
 
                 {/* Content overlay */}
-                <div className="relative z-10 h-full flex items=end">
+                <div className="relative z-10 h-full flex items-end">
                   <div className="p-6 sm:p-10 text-white w-full">
                     <div className="flex items-center gap-2 mb-3">
                       <Badge className="bg-white/20 text-white border-white/30">{active.tag}</Badge>
@@ -526,11 +526,60 @@ function PartnersStrip() {
   );
 }
 
-// Helper to avoid adding a new import line
-//function animationControls() {
-// const { useAnimation } = require("framer-motion");
-//  return useAnimation();
-//}
+/* =========================
+   Stats (MSM look, keeps your stats data)
+========================= */
+const Stats = ({ stats }) => {
+  const items = Array.isArray(stats) && stats.length
+    ? stats
+    : [
+        { value: "96%", label: "Visa Success Rate" },
+        { value: "1,200+", label: "Partner Institutions" },
+        { value: "15K+", label: "Happy Students" },
+      ];
+
+  const iconFor = (label = "") => {
+    const s = label.toLowerCase();
+    if (s.includes("visa") || s.includes("%")) return TrendingUp;
+    if (s.includes("program")) return GraduationCap;
+    if (s.includes("campus") || s.includes("partner") || s.includes("institution")) return SchoolIcon;
+    if (s.includes("student")) return Users;
+    return Users;
+  };
+
+  return (
+    <section className="bg-[#f7efe8] py-10 sm:py-14">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div
+          className={`
+            grid gap-8 lg:gap-12
+            grid-cols-2 sm:grid-cols-3
+            ${items.length >= 4 ? "lg:grid-cols-4" : "lg:grid-cols-3"}
+          `}
+        >
+          {items.map((it, i) => {
+            const Icon = iconFor(it.label);
+            return (
+              <div key={i} className="flex items-start sm:items-center gap-4">
+                <div className="shrink-0">
+                  <Icon className="w-12 h-12 text-slate-400" />
+                </div>
+                <div>
+                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-rose-600">
+                    {it.value}
+                  </div>
+                  <div className="text-slate-600 text-base sm:text-lg">
+                    {it.label}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+};
 
 /* =========================
    Features
@@ -798,35 +847,8 @@ const SchoolProgramsSection = ({ content, schools }) => (
 );
 
 /* =========================
-   Other sections
+   Testimonials, Events, Final CTA
 ========================= */
-const Stats = ({ stats }) => (
-  <div className="bg-gradient-to-r from-green-600 via-green-700 to-green-800 py-16 relative overflow-hidden">
-    <div className="absolute inset-0 bg-black/10"></div>
-    <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
-        {(stats || [
-          { value: "96%", label: "Visa Success Rate" },
-          { value: "1,200+", label: "Partner Institutions" },
-          { value: "15K+", label: "Happy Students" },
-        ]).map((stat, index) => (
-          <motion.div
-            key={index}
-            initial={{ opacity: 0, scale: 0.5 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: index * 0.1 }}
-            viewport={{ once: true }}
-            className="text-white space-y-2"
-          >
-            <div className="text-3xl md:text-4xl font-bold">{stat.value}</div>
-            <div className="text-green-100 font-medium">{stat.label}</div>
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
 const Testimonials = ({ testimonials }) => (
   <div className="py-20 bg-white">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1087,13 +1109,12 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Hero content={content} />
-      {/* NEW SECTION: News & Highlights carousel */}
       <NewsHighlights />
-      {/* ADDED: Partners strip immediately after News & Highlights */}
       <PartnersStrip />
+      {/* <-- moved Stats right below PartnersStrip */}
+      <Stats stats={content?.stats_section} />
       <Features features={content?.features_section} />
       <SchoolProgramsSection content={content} schools={schools} />
-      <Stats stats={content?.stats_section} />
       <Testimonials testimonials={content?.testimonials_section} />
       <UpcomingEvents events={events} />
       <FinalCTA ctaContent={content?.final_cta_section} />
