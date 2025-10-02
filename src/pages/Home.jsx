@@ -257,7 +257,7 @@ const mockNews = [
     id: 'n1',
     title: 'IRCC announces streamlined visa process for students',
     summary: 'Canada introduces faster processing for eligible institutions and programs.',
-    image: 'https://images.unsplash.com/photo-1555949963-aa79dcee981d?w=1200&q=80',
+    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/ircc-announces-2-year-cap.jpg?alt=media&token=a05ff2c8-f090-4069-aad5-82a6bfbd0cd1',
     tag: 'Policy Update',
     date: '2 days ago',
     href: '#'
@@ -266,16 +266,16 @@ const mockNews = [
     id: 'n2',
     title: 'University of Toronto ranked top in Canada again',
     summary: 'UofT leads national rankings with strong research and student outcomes.',
-    image: 'https://images.unsplash.com/photo-1562774053-701939374585?w=1200&q=80',
+    image: 'https://www.utoronto.ca/sites/default/files/picpath/2014-08-15-rankings.jpg',
     tag: 'Rankings',
     date: '5 days ago',
     href: '#'
   },
   {
     id: 'n3',
-    title: 'Scholarships: $10M available for 2025 intakes',
-    summary: 'New merit-based scholarships across partner institutions.',
-    image: 'https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?w=1200&q=80',
+    title: 'Why London International Academy?',
+    summary: 'New scholarships programs offers.',
+    image: 'https://vietnam.canada-edu.org/london-international-academy/',
     tag: 'Scholarships',
     date: '1 week ago',
     href: '#'
