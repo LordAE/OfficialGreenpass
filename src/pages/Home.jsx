@@ -564,7 +564,7 @@ function Stats({ stats }) {
               <div key={i} className="flex items-start gap-4">
                 <Icon className="w-12 h-12 text-slate-400" />
                 <div>
-                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-rose-600">
+                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-lime-600">
                     <CountUp valueString={it.value} start={start} duration={1.4} />
                   </div>
                   <div className="text-slate-700 text-base sm:text-lg">{it.label}</div>
