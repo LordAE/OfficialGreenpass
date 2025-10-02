@@ -77,8 +77,8 @@ const sanitizeHomeContent = (loaded = {}) => {
       subtitle: '', 
       image_url: '', 
       video_url: '',             // (optional) keep if you still embed YouTube in the right card
-      background_video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/GreenPass%20Intro.mp4?alt=media&token=b772f97d-eb1a-467d-b2a8-4726026326be',  // NEW: background mp4/webm (loops)
-      poster_url: ''             // NEW: poster/fallback image
+      background_video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/GreenPass%20Intro.mp4?alt=media&token=b772f97d-eb1a-467d-b2a8-4726026326be',
+      poster_url: ''
     },
     features_section: [],
     testimonials_section: [],
@@ -115,7 +115,6 @@ const sanitizeHomeContent = (loaded = {}) => {
 
 const mapSchoolDoc = (snap) => {
   const d = { id: snap.id, ...snap.data() };
-  // Map a 'schools' document to the card fields
   return {
     id: snap.id,
     is_featured: !!pickFirst(d.is_featured, d.featured, d.recommended),
@@ -130,7 +129,7 @@ const mapSchoolDoc = (snap) => {
     institution_type: pickFirst(d.institution_type, d.type, 'University'),
     tuition_fee_cad: Number(pickFirst(d.avg_tuition_cad, 0)) || 0,
     intake_dates: ensureArray(pickFirst(d.intake_dates, [])),
-    institution_logo_url: pickFirst(d.institution_logo_url, ''), // will be enriched from institutions
+    institution_logo_url: pickFirst(d.institution_logo_url, ''),
   };
 };
 
@@ -153,20 +152,17 @@ const mapEventDoc = (snap) => {
 /* =========================
    Sections (UI)
 ========================= */
-const DEFAULT_POSTER =
-  '';
+const DEFAULT_POSTER = '';
 
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
 
-  // Prefer a dedicated background video; fall back to video_url if present
   const bgVideo = hero.background_video_url || hero.video_url || "";
   const poster = hero.poster_url || hero.image_url || DEFAULT_POSTER;
 
   const [useImage, setUseImage] = React.useState(!bgVideo);
   const videoRef = React.useRef(null);
 
-  // Encourage autoplay on iOS/Safari
   React.useEffect(() => {
     if (!bgVideo || !videoRef.current) return;
     const el = videoRef.current;
@@ -178,7 +174,6 @@ const Hero = ({ content }) => {
 
   return (
     <div className="relative text-white overflow-hidden min-h-[calc(100vh-80px)]">
-      {/* Background media */}
       {!useImage && bgVideo ? (
         <video
           key={bgVideo}
@@ -201,14 +196,12 @@ const Hero = ({ content }) => {
           loading="eager"
         />
       )}
-      
-       {/* Overlays (MSM Unify vibe) */}
+
       <div className=''>
         <div className='' />
         <div className='' />
       </div>
 
-      {/* Content */}
       <div className="relative z-10 max-w-7xl mx-auto py-24 sm:py-32 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl space-y-8">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
@@ -236,12 +229,8 @@ const Hero = ({ content }) => {
             transition={{ duration: 0.6, delay: 0.4 }}
             className="flex flex-col sm:flex-row gap-4"
           >
-            <Link to={createPageUrl("Welcome")}>
-              
-            </Link>
-            <Link to={createPageUrl("Programs")}>
-              
-            </Link>
+            <Link to={createPageUrl("Welcome")}></Link>
+            <Link to={createPageUrl("Programs")}></Link>
           </motion.div>
         </div>
       </div>
@@ -415,6 +404,53 @@ function NewsHighlights() {
         </Card>
       </div>
     </div>
+  );
+}
+
+/* =========================
+   Partners strip (added)
+========================= */
+function PartnersStrip() {
+  const partners = [
+    { name: "UWE Bristol", logo: "https://upload.wikimedia.org/wikipedia/commons/8/8c/UWE_Bristol_logo.svg" },
+    { name: "Cape Breton University", logo: "https://upload.wikimedia.org/wikipedia/en/b/b5/Cape_Breton_University_logo.svg" },
+    { name: "Canterbury Christ Church University", logo: "https://upload.wikimedia.org/wikipedia/en/f/fc/Canterbury_Christ_Church_University_logo.svg" },
+    { name: "University of West Alabama", logo: "https://upload.wikimedia.org/wikipedia/en/7/7f/University_of_West_Alabama_logo.svg" },
+    { name: "Capilano University", logo: "https://upload.wikimedia.org/wikipedia/en/1/11/CapilanoUniversityLogo.svg" },
+  ];
+
+  return (
+    <section className="bg-[#f8efe8] py-14 sm:py-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-center text-3xl sm:text-4xl font-bold text-slate-900">
+          Top university partners
+        </h2>
+
+        <div className="mt-10 overflow-x-auto no-scrollbar">
+          <ul className="flex gap-6 sm:gap-8 md:gap-10 items-stretch">
+            {partners.map((p, i) => (
+              <li key={i} className="shrink-0 w-[200px] sm:w-[220px] lg:w-[230px]">
+                <div className="rounded-3xl bg-white p-10 shadow-md hover:shadow-xl transition-shadow duration-200 h-full flex items-center justify-center">
+                  <img
+                    src={p.logo}
+                    alt={p.name}
+                    className="h-16 w-auto object-contain"
+                    loading="lazy"
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Decorative dots (static) */}
+        <div className="mt-6 flex justify-center gap-2">
+          {[...Array(8)].map((_, i) => (
+            <span key={i} className={`h-2 w-2 rounded-full ${i === 0 ? "bg-[#d33]" : "bg-slate-300"}`} />
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -884,12 +920,10 @@ export default function Home() {
     (async () => {
       setLoading(true);
       try {
-        // 1) Home content
         const homeSnap = await getDoc(doc(db, 'home_page_contents', 'SINGLETON'));
         const homeData = homeSnap.exists() ? sanitizeHomeContent(homeSnap.data()) : sanitizeHomeContent({});
         setContent(homeData);
 
-        // 2) Events (simple fetch, sort client-side)
         const evSnap = await getDocs(collection(db, 'events'));
         const evs = evSnap.docs.map(mapEventDoc);
 
@@ -910,7 +944,6 @@ export default function Home() {
         });
         setEvents(upcoming);
 
-        // 3) Recommended Schools = 'schools' where is_featured == true
         let sSnap = await getDocs(
           query(
             collection(db, 'schools'),
@@ -919,7 +952,6 @@ export default function Home() {
           )
         );
         if (sSnap.empty) {
-          // Optional fallback to capitalized collection name
           sSnap = await getDocs(
             query(
               collection(db, 'Schools'),
@@ -930,14 +962,12 @@ export default function Home() {
         }
         const featuredSchools = sSnap.docs.map(mapSchoolDoc);
 
-        // 4) Fetch institutions to enrich logos (logoUrl)
         let instSnap = await getDocs(collection(db, 'institutions'));
         if (instSnap.empty) {
           instSnap = await getDocs(collection(db, 'Institutions'));
         }
         const institutions = instSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Build a fast lookup: normalized name -> institution row
         const instMap = new Map(
           institutions.map((inst) => {
             const key = normalize(inst.name || inst.institution_name || inst.title || '');
@@ -945,7 +975,6 @@ export default function Home() {
           })
         );
 
-        // 5) Merge: prefer institution.logoUrl for images when names match
         const merged = featuredSchools.map((s) => {
           const key = normalize(s.school_name || s.institution_name || '');
           const inst = instMap.get(key);
@@ -954,7 +983,6 @@ export default function Home() {
 
           return {
             ...s,
-            // Use institution logo first, then existing fields, then placeholder
             school_image_url: pickFirst(logoFromInst, s.school_image_url, s.institution_logo_url),
             institution_logo_url: pickFirst(logoFromInst, s.institution_logo_url),
           };
@@ -963,7 +991,7 @@ export default function Home() {
         setSchools(merged);
       } catch (err) {
         console.error('Error loading home content:', err);
-        setSchools([]); // show "no schools" state if query fails
+        setSchools([]);
       } finally {
         setLoading(false);
       }
@@ -983,6 +1011,8 @@ export default function Home() {
       <Hero content={content} />
       {/* NEW SECTION: News & Highlights carousel */}
       <NewsHighlights />
+      {/* ADDED: Partners strip immediately after News & Highlights */}
+      <PartnersStrip />
       <Features features={content?.features_section} />
       <SchoolProgramsSection content={content} schools={schools} />
       <Stats stats={content?.stats_section} />
