@@ -471,7 +471,7 @@ function PartnersStrip() {
         </h2>
 
         <div
-          className="relative mt-10 overflow-hidden"
+          className="relative mt-10 overflow-hidden pb-8 sm:pb-10"
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
@@ -506,7 +506,7 @@ function PartnersStrip() {
           </motion.div>
 
           {/* Subtle progress dots (decorative) */}
-          <div className="mt-6 flex justify-center gap-2">
+          <div className="mt-8 sm:mt-10 flex justify-center gap-2 pointer-events-none select-none">
             {[...Array(9)].map((_, i) => (
               <span
                 key={i}
