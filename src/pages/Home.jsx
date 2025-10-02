@@ -408,7 +408,7 @@ function NewsHighlights() {
 }
 
 /* =========================
-   Partners strip (added)
+   Partners strip (no scrollbar + animations)
 ========================= */
 function PartnersStrip() {
   const partners = [
@@ -417,7 +417,51 @@ function PartnersStrip() {
     { name: "Canterbury Christ Church University", logo: "https://upload.wikimedia.org/wikipedia/en/f/fc/Canterbury_Christ_Church_University_logo.svg" },
     { name: "University of West Alabama", logo: "https://upload.wikimedia.org/wikipedia/en/7/7f/University_of_West_Alabama_logo.svg" },
     { name: "Capilano University", logo: "https://upload.wikimedia.org/wikipedia/en/1/11/CapilanoUniversityLogo.svg" },
+
+    { name: "University of Toronto", logo: "https://upload.wikimedia.org/wikipedia/en/0/06/University_of_Toronto_coat_of_arms.svg" },
+    { name: "McGill University", logo: "https://upload.wikimedia.org/wikipedia/en/0/0e/McGill_University_CoA.svg" },
+    { name: "University of British Columbia", logo: "https://upload.wikimedia.org/wikipedia/en/0/0a/UBC_Coat_of_Arms.svg" },
+    { name: "University of Alberta", logo: "https://upload.wikimedia.org/wikipedia/en/6/66/UA_Coat_of_Arms.svg" },
+    { name: "University of Waterloo", logo: "https://upload.wikimedia.org/wikipedia/commons/5/5b/University_of_Waterloo_seal.svg" },
+
+    { name: "Western University", logo: "https://upload.wikimedia.org/wikipedia/en/d/d4/Western_University_crest.svg" },
+    { name: "Queen’s University", logo: "https://upload.wikimedia.org/wikipedia/en/7/79/Queen%27s_University_arms.svg" },
+    { name: "University of Manitoba", logo: "https://upload.wikimedia.org/wikipedia/en/4/4f/University_of_Manitoba_coat_of_arms.svg" },
+    { name: "University of Saskatchewan", logo: "https://upload.wikimedia.org/wikipedia/en/6/6b/University_of_Saskatchewan_coat_of_arms.svg" },
+    { name: "Concordia University", logo: "https://upload.wikimedia.org/wikipedia/en/7/7b/Concordia_University_seal.svg" },
+
+    { name: "Dalhousie University", logo: "https://upload.wikimedia.org/wikipedia/en/d/d8/Dalhousie_University_arms.svg" },
+    { name: "York University", logo: "https://upload.wikimedia.org/wikipedia/en/3/3a/York_University_coat_of_arms.svg" },
+    { name: "Carleton University", logo: "https://upload.wikimedia.org/wikipedia/en/3/35/Carleton_University_coat_of_arms.svg" },
+    { name: "Memorial University", logo: "https://upload.wikimedia.org/wikipedia/en/3/36/Memorial_University_of_Newfoundland_coat_of_arms.svg" },
   ];
+
+  // Duplicate list so the marquee can loop seamlessly.
+  const marquee = [...partners, ...partners];
+
+  const controls = React.useMemo(() => animationControls(), []);
+  const [paused, setPaused] = React.useState(false);
+
+  React.useEffect(() => {
+    // Start the infinite linear slide
+    controls.start({
+      x: ["0%", "-50%"],
+      transition: { duration: 40, ease: "linear", repeat: Infinity },
+    });
+  }, [controls]);
+
+  const handleEnter = () => {
+    setPaused(true);
+    controls.stop();
+  };
+
+  const handleLeave = () => {
+    setPaused(false);
+    controls.start({
+      x: ["0%", "-50%"],
+      transition: { duration: 40, ease: "linear", repeat: Infinity },
+    });
+  };
 
   return (
     <section className="bg-[#f8efe8] py-14 sm:py-20">
@@ -426,10 +470,26 @@ function PartnersStrip() {
           Top university partners
         </h2>
 
-        <div className="mt-10 overflow-x-auto no-scrollbar">
-          <ul className="flex gap-6 sm:gap-8 md:gap-10 items-stretch">
-            {partners.map((p, i) => (
-              <li key={i} className="shrink-0 w-[200px] sm:w-[220px] lg:w-[230px]">
+        <div
+          className="relative mt-10 overflow-hidden" // overflow-hidden removes the visible scrollbar
+          onMouseEnter={handleEnter}
+          onMouseLeave={handleLeave}
+        >
+          {/* Sliding track */}
+          <motion.div
+            animate={controls}
+            className="flex gap-6 sm:gap-8 md:gap-10 w-[200%]" // 2x width because we doubled the items
+          >
+            {marquee.map((p, i) => (
+              <motion.div
+                key={`${p.name}-${i}`}
+                className="shrink-0 w-[200px] sm:w-[220px] lg:w-[230px]"
+                initial={{ opacity: 0, y: 12 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                whileHover={{ scale: 1.04, y: -2 }}
+                transition={{ type: "spring", stiffness: 320, damping: 20 }}
+              >
                 <div className="rounded-3xl bg-white p-10 shadow-md hover:shadow-xl transition-shadow duration-200 h-full flex items-center justify-center">
                   <img
                     src={p.logo}
@@ -438,20 +498,39 @@ function PartnersStrip() {
                     loading="lazy"
                   />
                 </div>
-              </li>
+                <p className="mt-3 text-center text-sm text-slate-600 line-clamp-1">
+                  {p.name}
+                </p>
+              </motion.div>
             ))}
-          </ul>
-        </div>
+          </motion.div>
 
-        {/* Decorative dots (static) */}
-        <div className="mt-6 flex justify-center gap-2">
-          {[...Array(8)].map((_, i) => (
-            <span key={i} className={`h-2 w-2 rounded-full ${i === 0 ? "bg-[#d33]" : "bg-slate-300"}`} />
-          ))}
+          {/* Subtle progress dots (static) */}
+          <div className="mt-6 flex justify-center gap-2">
+            {[...Array(9)].map((_, i) => (
+              <span
+                key={i}
+                className={`h-2 w-2 rounded-full ${i === 0 ? "bg-[#d33]" : "bg-slate-300"}`}
+              />
+            ))}
+          </div>
+
+          {/* Optional paused hint */}
+          {paused && (
+            <div className="pointer-events-none absolute inset-x-0 -top-6 text-center text-xs text-slate-500">
+              (Paused)
+            </div>
+          )}
         </div>
       </div>
     </section>
   );
+}
+
+// Helper to avoid importing useAnimation directly at top
+function animationControls() {
+  const { useAnimation } = require("framer-motion");
+  return useAnimation();
 }
 
 /* =========================
