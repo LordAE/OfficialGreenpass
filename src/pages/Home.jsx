@@ -77,8 +77,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       subtitle: '',
       image_url: '',
       video_url: '',
-      background_video_url:
-        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/GreenPass%20Intro.mp4?alt=media&token=b772f97d-eb1a-467d-b2a8-4726026326be',
+      background_video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
       poster_url: ''
     },
     features_section: [],
@@ -249,7 +248,7 @@ const mockNews = [
     id: 'n3',
     title: 'Why London International Academy?',
     summary: 'New scholarships programs offers.',
-    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/825_585_london-international-academy-1.jpg?alt=media&token=56fd5481-3ad9-433c-8043-bea86c118c09',
+    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
     tag: 'Scholarships',
     date: '1 week ago',
     href: '#'
@@ -564,7 +563,7 @@ function Stats({ stats }) {
               <div key={i} className="flex items-start gap-4">
                 <Icon className="w-12 h-12 text-slate-400" />
                 <div>
-                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-rose-600">
+                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-600">
                     <CountUp valueString={it.value} start={start} duration={1.4} />
                   </div>
                   <div className="text-slate-700 text-base sm:text-lg">{it.label}</div>
