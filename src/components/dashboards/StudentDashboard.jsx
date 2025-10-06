@@ -1,14 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Case } from '@/api/entities';
-import { TutoringSession } from '@/api/entities';
-import { Reservation } from '@/api/entities';
-import { User } from '@/api/entities';
-import { GraduationCap, BookOpen, FileText, Calendar, Users, ArrowRight, CheckCircle, Clock, AlertCircle, Loader2 } from 'lucide-react';
+import { Case, TutoringSession, Reservation, User } from '@/api/entities';
+import { GraduationCap, BookOpen, FileText, Calendar, Users, ArrowRight, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { format } from 'date-fns';
@@ -16,6 +12,52 @@ import { format } from 'date-fns';
 import ProfileCompletionBanner from '../profile/ProfileCompletionBanner';
 import ActionBlocker from '../profile/ActionBlocker';
 import { getProfileCompletionData } from '../profile/ProfileCompletionBanner';
+
+/* -------------------- SAFE HELPERS (date & arrays) -------------------- */
+const toValidDate = (v) => {
+  // Firestore Timestamp?
+  if (v && typeof v === 'object') {
+    if (typeof v.toDate === 'function') {
+      const d = v.toDate();
+      return isNaN(d?.getTime()) ? null : d;
+    }
+    if (typeof v.seconds === 'number') {
+      const d = new Date(v.seconds * 1000);
+      return isNaN(d?.getTime()) ? null : d;
+    }
+  }
+  // number (epoch ms or seconds)
+  if (typeof v === 'number') {
+    const d = new Date(v > 1e12 ? v : v * 1000);
+    return isNaN(d?.getTime()) ? null : d;
+  }
+  // string (ISO or epoch-in-string)
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!s) return null;
+    if (/^\d+$/.test(s)) {
+      const n = Number(s);
+      const d = new Date(n > 1e12 ? n : n * 1000);
+      return isNaN(d?.getTime()) ? null : d;
+    }
+    const d = new Date(s);
+    return isNaN(d?.getTime()) ? null : d;
+  }
+  return null;
+};
+
+const fmt = (v, fmtStr = 'MMM dd, h:mm a') => {
+  const d = toValidDate(v);
+  if (!d) return '—';
+  try {
+    return format(d, fmtStr);
+  } catch {
+    return d.toLocaleString();
+  }
+};
+
+const arr = (x) => (Array.isArray(x) ? x : x ? [x] : []);
+/* --------------------------------------------------------------------- */
 
 const StatCard = ({ title, value, icon, to, color = "text-blue-600", subtitle }) => (
   <Card className="hover:shadow-lg transition-shadow">
@@ -71,43 +113,55 @@ export default function StudentDashboard({ user }) {
   const [profileCompletion, setProfileCompletion] = useState({ isComplete: true });
 
   useEffect(() => {
+    let alive = true;
     const loadDashboardData = async () => {
       try {
+        if (!user?.id) {
+          setLoading(false);
+          return;
+        }
+
         const [sessions, cases, userReservations] = await Promise.all([
           TutoringSession.filter({ student_id: user.id }, '-scheduled_date'),
           Case.filter({ student_id: user.id }, '-created_date'),
           Reservation.filter({ student_id: user.id }, '-created_date')
         ]);
 
-        // Check profile completion
         const completion = getProfileCompletionData(user, null);
+        if (!alive) return;
         setProfileCompletion(completion);
 
-        const now = new Date();
-        const upcoming = sessions.filter(s => 
-          s.status === 'scheduled' && new Date(s.scheduled_date) > now
-        ).slice(0, 5);
+        const now = Date.now();
+        const upcoming = arr(sessions)
+          .filter(s => s?.status === 'scheduled')
+          .filter(s => {
+            const d = toValidDate(s?.scheduled_date);
+            return d ? d.getTime() > now : false;
+          })
+          .slice(0, 5);
 
+        if (!alive) return;
         setStats({
-          totalSessions: sessions.length,
-          upcomingSessions: upcoming.length,
-          visaApplications: cases.length,
-          schoolReservations: userReservations.length,
+          totalSessions: arr(sessions).length,
+          upcomingSessions: arr(upcoming).length,
+          visaApplications: arr(cases).length,
+          schoolReservations: arr(userReservations).length,
           sessionCredits: user.session_credits || 0
         });
 
         setUpcomingSessions(upcoming);
-        setVisaCases(cases.slice(0, 3));
-        setReservations(userReservations.slice(0, 3));
+        setVisaCases(arr(cases).slice(0, 3));
+        setReservations(arr(userReservations).slice(0, 3));
         setHasAgent(!!user.assigned_agent_id);
       } catch (error) {
         console.error("Error loading dashboard data:", error);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     };
     
     loadDashboardData();
+    return () => { alive = false; };
   }, [user]);
 
   if (loading) {
@@ -119,22 +173,21 @@ export default function StudentDashboard({ user }) {
   }
 
   const getVisaProgress = (caseData) => {
-    if (!caseData.checklist || caseData.checklist.length === 0) return 0;
-    const completed = caseData.checklist.filter(item => item.status === 'verified').length;
-    return (completed / caseData.checklist.length) * 100;
+    const list = arr(caseData?.checklist);
+    if (list.length === 0) return 0;
+    const completed = list.filter(item => item?.status === 'verified').length;
+    return (completed / list.length) * 100;
   };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Welcome, {user.full_name?.split(' ')[0] || 'Student'}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Welcome, {user?.full_name?.split(' ')[0] || 'Student'}</h1>
           <p className="text-gray-600 mt-1 text-sm sm:text-base">Your study abroad journey dashboard</p>
         </div>
-        <Badge variant={user.onboarding_completed ? 'default' : 'secondary'} className={
-          `self-start sm:self-center ${user.onboarding_completed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`
-        }>
-          {user.onboarding_completed ? 'Verified' : 'Pending Verification'}
+        <Badge variant={user?.onboarding_completed ? 'default' : 'secondary'} className={`self-start sm:self-center ${user?.onboarding_completed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+          {user?.onboarding_completed ? 'Verified' : 'Pending Verification'}
         </Badge>
       </div>
       
@@ -190,15 +243,15 @@ export default function StudentDashboard({ user }) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {upcomingSessions.length > 0 ? (
+              {arr(upcomingSessions).length > 0 ? (
                 <div className="space-y-3">
-                  {upcomingSessions.map(session => (
-                    <div key={session.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  {arr(upcomingSessions).map(session => (
+                    <div key={session?.id || Math.random()} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div>
-                        <p className="font-medium">{session.subject}</p>
-                        <p className="text-sm text-gray-600">{format(new Date(session.scheduled_date), 'MMM dd, h:mm a')}</p>
+                        <p className="font-medium">{session?.subject || 'Session'}</p>
+                        <p className="text-sm text-gray-600">{fmt(session?.scheduled_date)}</p>
                       </div>
-                      <Badge variant="outline">{session.duration} min</Badge>
+                      <Badge variant="outline">{session?.duration ?? '—'} min</Badge>
                     </div>
                   ))}
                   <Link to={createPageUrl('MySessions')}>
@@ -229,16 +282,16 @@ export default function StudentDashboard({ user }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {visaCases.length > 0 ? (
+            {arr(visaCases).length > 0 ? (
               <div className="space-y-4">
-                {visaCases.map(caseData => {
+                {arr(visaCases).map(caseData => {
                   const progress = getVisaProgress(caseData);
                   return (
-                    <div key={caseData.id} className="space-y-2">
+                    <div key={caseData?.id || Math.random()} className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium">{caseData.case_type}</p>
-                        <Badge variant={caseData.status === 'Approved' ? 'default' : 'secondary'} className="text-xs">
-                          {caseData.status}
+                        <p className="font-medium">{caseData?.case_type || 'Visa Case'}</p>
+                        <Badge variant={caseData?.status === 'Approved' ? 'default' : 'secondary'} className="text-xs">
+                          {caseData?.status || '—'}
                         </Badge>
                       </div>
                       <Progress value={progress} className="h-2" />
@@ -314,23 +367,25 @@ export default function StudentDashboard({ user }) {
       </div>
 
       {/* Recent School Reservations */}
-      {reservations.length > 0 && (
+      {arr(reservations).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Recent School Applications</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {reservations.map(reservation => (
-                <div key={reservation.id} className="p-4 border rounded-lg bg-white">
+              {arr(reservations).map(reservation => (
+                <div key={reservation?.id || Math.random()} className="p-4 border rounded-lg bg-white">
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium">{reservation.school_name}</h4>
-                    <Badge variant={reservation.status === 'confirmed' ? 'default' : 'secondary'}>
-                      {reservation.status}
+                    <h4 className="font-medium">{reservation?.school_name || 'School'}</h4>
+                    <Badge variant={reservation?.status === 'confirmed' ? 'default' : 'secondary'}>
+                      {reservation?.status || '—'}
                     </Badge>
                   </div>
-                  <p className="text-sm text-gray-600 mb-2">{reservation.program_name}</p>
-                  <p className="text-xs text-gray-500">{format(new Date(reservation.created_date), 'MMM dd, yyyy')}</p>
+                  <p className="text-sm text-gray-600 mb-2">{reservation?.program_name || '—'}</p>
+                  <p className="text-xs text-gray-500">
+                    {fmt(reservation?.created_date, 'MMM dd, yyyy')}
+                  </p>
                 </div>
               ))}
             </div>
@@ -339,7 +394,7 @@ export default function StudentDashboard({ user }) {
       )}
 
       {/* Next Steps Guidance */}
-      {user.purchased_packages && user.purchased_packages.length === 0 && (
+      {Array.isArray(user?.purchased_packages) && user.purchased_packages.length === 0 && (
         <Card className="border-l-4 border-l-blue-500">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">

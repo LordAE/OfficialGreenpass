@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, Building, DollarSign, Calendar, Info, MapPin } from 'lucide-react';
 import { createPageUrl } from '@/utils';
-import ReserveSeatModal from '../components/schools/ReserveSeatModal';
+import ReserveSeatModal from '@/components/schools/ReserveSeatModal';
 
 /* ---------- Firestore ---------- */
 import { db } from '@/firebase';
@@ -77,6 +77,7 @@ export default function ProgramDetails() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
       setLoading(true);
       setError(null);
@@ -90,49 +91,39 @@ export default function ProgramDetails() {
         searchParams.get('schoolId') ||
         searchParams.get('schoolid');
 
-      console.log('[ProgramDetails] raw params', Object.fromEntries(searchParams.entries()));
-      console.log('[ProgramDetails] resolved IDs ->', { programId, schoolIdFromQuery });
-
-      if (!programId) {
-        setError('No program ID provided.');
-        setLoading(false);
-        return;
-      }
-
       try {
         let pr = null;
 
-        // 1) Try your entity list (if it exists)
+        // 1) Try entity list
         try {
           const allPrograms = await Program.list();
           const hit = allPrograms.find(p => p.id === programId || p.programId === programId);
           if (hit) pr = normalizeProgram(hit.id ?? programId, hit);
-        } catch (e) {
-          // entity may not be wired yet — ignore
-        }
+        } catch {}
 
-        // 2) Try Firestore `programs` / `Programs`
+        // 2) Firestore programs
         if (!pr) {
           let snap = await getDoc(doc(db, 'programs', programId));
           if (!snap.exists()) snap = await getDoc(doc(db, 'Programs', programId));
           if (snap.exists()) pr = normalizeProgram(snap.id, snap.data());
         }
 
-        // 3) Try Firestore `schools` (many program rows live here)
+        // 3) Firestore schools (many rows are stored here)
         if (!pr) {
           let snap = await getDoc(doc(db, 'schools', programId));
           if (!snap.exists()) snap = await getDoc(doc(db, 'Schools', programId));
           if (snap.exists()) pr = normalizeProgram(snap.id, snap.data());
         }
 
-        if (!pr) throw new Error('Program not found.');
+        if (!pr) throw new Error('We couldn’t find this program.');
 
+        if (!alive) return;
         setProgram(pr);
 
-        // Fetch school header
+        // ----- load school header -----
         let sh = null;
 
-        // a) explicit schoolId from URL
+        // a) explicit school id from URL
         if (schoolIdFromQuery) {
           let s1 = await getDoc(doc(db, 'school_profiles', schoolIdFromQuery));
           if (!s1.exists()) s1 = await getDoc(doc(db, 'SchoolProfiles', schoolIdFromQuery));
@@ -145,7 +136,7 @@ export default function ProgramDetails() {
           }
         }
 
-        // b) program.schoolId
+        // b) from program.schoolId
         if (!sh && pr.schoolId) {
           let s1 = await getDoc(doc(db, 'school_profiles', pr.schoolId));
           if (!s1.exists()) s1 = await getDoc(doc(db, 'SchoolProfiles', pr.schoolId));
@@ -158,7 +149,7 @@ export default function ProgramDetails() {
           }
         }
 
-        // c) match by name from the program row (school_name / institution_name)
+        // c) match by name
         if (!sh && pr.schoolName) {
           const q1 = query(
             collection(db, 'school_profiles'),
@@ -184,7 +175,7 @@ export default function ProgramDetails() {
           }
         }
 
-        // d) final fallback: try your School entity
+        // d) final: School entity
         if (!sh) {
           try {
             const allSchools = await School.list();
@@ -206,24 +197,24 @@ export default function ProgramDetails() {
           } catch {}
         }
 
+        if (!alive) return;
         setSchool(sh || null);
       } catch (e) {
-        console.error('Failed to fetch program details:', e);
+        if (!alive) return;
         setError(e.message || 'An error occurred while fetching program details.');
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
-  }, [searchParams]);
 
-  const handleReserveProgram = () => {
-    if (program && school) setIsModalOpen(true);
-  };
+    return () => { alive = false; };
+  }, [searchParams]);
 
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-gray-400" />
+        <span className="sr-only">Loading program…</span>
       </div>
     );
   }

@@ -1,152 +1,189 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Reservation } from '@/api/entities';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { CheckCircle, Clock, XCircle, Award, ArrowRight, Home } from 'lucide-react';
-import { format } from 'date-fns';
-import { createPageUrl } from '@/utils';
-import { Link } from 'react-router-dom';
-
-function useQuery() {
-  return new URLSearchParams(useLocation().search);
-}
+import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, CheckCircle, XCircle, Clock, Info } from "lucide-react";
+import { Reservation } from "@/api/entities";
 
 export default function ReservationStatus() {
-  const query = useQuery();
-  const reservationCode = query.get('code');
+  const [query] = useSearchParams();
   const [reservation, setReservation] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (reservationCode) {
-      const fetchReservation = async () => {
-        try {
-          const results = await Reservation.filter({ reservation_code: reservationCode });
-          if (results.length > 0) {
-            setReservation(results[0]);
-          }
-        } catch (err) {
-          console.error("Failed to fetch reservation:", err);
-        }
-        setLoading(false);
-      };
-      fetchReservation();
-    } else {
-      setLoading(false);
-    }
-  }, [reservationCode]);
+  // Support both styles: ?code=... and/or ?reservationId=...
+  const reservationCode = query.get("code");
+  const reservationId = query.get("reservationId");
 
-  const StatusDisplay = ({ status }) => {
-    const statusMap = {
-      confirmed: {
-        icon: <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto" />,
-        title: "Reservation Confirmed",
-        description: "Your seat is held! You can now proceed to the full application.",
-        color: "emerald"
-      },
-      expired: {
-        icon: <Clock className="w-16 h-16 text-yellow-500 mx-auto" />,
-        title: "Reservation Expired",
-        description: "Your reservation hold has expired. You can create a new one if seats are available.",
-        color: "yellow"
-      },
-      cancelled: {
-        icon: <XCircle className="w-16 h-16 text-red-500 mx-auto" />,
-        title: "Reservation Cancelled",
-        description: "This reservation has been cancelled.",
-        color: "red"
-      },
-      credited: {
-        icon: <Award className="w-16 h-16 text-blue-500 mx-auto" />,
-        title: "Reservation Credited",
-        description: "Your deposit has been credited towards your application fee.",
-        color: "blue"
+  useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      setLoading(true);
+      try {
+        if (reservationId) {
+          const r = await Reservation.get(reservationId);
+          if (alive) setReservation(r || null);
+        } else if (reservationCode) {
+          const rows = await Reservation.filter({ reservation_code: reservationCode });
+          if (alive) setReservation(rows?.[0] || null);
+        } else {
+          if (alive) setReservation(null);
+        }
+      } catch (err) {
+        console.error("[ReservationStatus] fetch failed:", err);
+        if (alive) setReservation(null);
+      } finally {
+        if (alive) setLoading(false);
       }
     };
-    const currentStatus = statusMap[status] || statusMap.cancelled;
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [reservationCode, reservationId]);
 
-    return (
-      <div className="text-center py-6">
-        {currentStatus.icon}
-        <h2 className={`text-3xl font-bold text-${currentStatus.color}-600 mt-4`}>{currentStatus.title}</h2>
-        <p className="text-gray-600 mt-2">{currentStatus.description}</p>
-      </div>
-    );
-  };
+  const now = Date.now();
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
-      </div>
-    );
-  }
+  const current = useMemo(() => {
+    if (!reservation) {
+      return {
+        title: "Reservation Not Found",
+        badge: "Not Found",
+        color: "red",
+        icon: XCircle,
+        note: "We couldn’t find a reservation with the provided information.",
+      };
+    }
+    const status = (reservation.status || "").toLowerCase();
+    const holdExpiresAt = reservation.hold_expires_at
+      ? new Date(reservation.hold_expires_at).getTime()
+      : null;
+    const expired = holdExpiresAt ? now > holdExpiresAt && status !== "paid" : false;
 
-  if (!reservation) {
-    return (
-      <div className="flex flex-col justify-center items-center h-screen text-center">
-        <XCircle className="w-16 h-16 text-red-500 mx-auto" />
-        <h2 className="text-3xl font-bold text-red-600 mt-4">Invalid Reservation Code</h2>
-        <p className="text-gray-600 mt-2">We couldn't find a reservation with this code. Please check the link or code.</p>
-        <Link to={createPageUrl('Dashboard')}>
-          <Button className="mt-6"><Home className="mr-2 h-4 w-4"/> Back to Dashboard</Button>
-        </Link>
-      </div>
-    );
-  }
+    if (status === "paid") {
+      return {
+        title: "Payment Confirmed",
+        badge: "Confirmed",
+        color: "emerald",
+        icon: CheckCircle,
+        note: "Your seat has been confirmed. Check your email for the receipt and next steps.",
+      };
+    }
+    if (expired || status === "expired" || status === "cancelled") {
+      return {
+        title: "Reservation Expired",
+        badge: "Expired",
+        color: "red",
+        icon: XCircle,
+        note: "This reservation has expired. You can make a new reservation to secure a seat.",
+      };
+    }
+    if (status === "pending" || status === "pending_payment") {
+      return {
+        title: "Pending Payment",
+        badge: "Pending",
+        color: "yellow",
+        icon: Clock,
+        note: "We created your reservation. Please complete the payment before the hold expires.",
+      };
+    }
+    return {
+      title: "Reservation Status",
+      badge: "Info",
+      color: "blue",
+      icon: Info,
+      note: "Review the details below.",
+    };
+  }, [reservation, now]);
 
-  const qrCodeImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(reservation.qr_payload)}`;
+  // Avoid dynamic Tailwind class names
+  const colorClass =
+    {
+      emerald: "text-emerald-600",
+      yellow: "text-yellow-600",
+      red: "text-red-600",
+      blue: "text-blue-600",
+    }[current.color] || "text-gray-700";
+
+  const Icon = current.icon;
+  const fmtUSD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-6">
-      <div className="max-w-2xl mx-auto">
-        <Card className="shadow-2xl bg-white/80 backdrop-blur-sm">
-          <CardHeader>
-            <StatusDisplay status={reservation.status} />
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-500">Reservation Code</p>
-              <p className="text-2xl font-mono tracking-widest bg-gray-100 inline-block px-4 py-1 rounded-lg">
-                {reservation.reservation_code}
-              </p>
-            </div>
+    <div className="max-w-3xl mx-auto p-4 sm:p-6">
+      <Card>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Icon className={`${colorClass} h-6 w-6`} />
+            <CardTitle className="text-2xl">Reservation Status</CardTitle>
+          </div>
+          <Badge variant="outline">{current.badge}</Badge>
+        </CardHeader>
 
-            <div className="grid grid-cols-2 gap-4 border-t border-b py-4">
-              <div>
-                <p className="text-sm text-gray-500">School</p>
-                <p className="font-semibold">{reservation.school_name}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Program</p>
-                <p className="font-semibold">{reservation.program_name}</p>
-              </div>
-            </div>
+        <CardContent className="space-y-4">
+          <h2 className={`text-3xl font-bold ${colorClass} mt-2`}>{current.title}</h2>
+          <p className="text-sm text-muted-foreground">{current.note}</p>
 
-            <div className="flex items-center gap-6">
-                <img src={qrCodeImageUrl} alt="Reservation QR Code" className="rounded-lg shadow-md" />
-                <div>
-                  <p className="text-sm text-gray-500">Hold Expires On</p>
-                  <p className="font-semibold text-lg text-red-600">{format(new Date(reservation.hold_expires_at), "dd MMMM yyyy, hh:mm a")}</p>
-                   <p className="text-xs text-gray-500 mt-2">Agents can scan this QR at education fairs to quickly access your profile.</p>
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading reservation…
+            </div>
+          )}
+
+          {!loading && !reservation && (
+            <div className="text-sm text-muted-foreground">
+              Double-check the link you followed or your reservation code.
+            </div>
+          )}
+
+          {!loading && reservation && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Reservation Code</div>
+                <div className="font-medium">{reservation.reservation_code || "—"}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Amount</div>
+                <div className="font-medium">
+                  {typeof reservation.amount_usd === "number" ? fmtUSD.format(reservation.amount_usd) : "—"}
                 </div>
-            </div>
+              </div>
 
-            {reservation.status === 'confirmed' && (
-              <Button className="w-full text-lg py-6 bg-gradient-to-r from-emerald-600 to-blue-600">
-                Start Full Application
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            )}
-            {reservation.status === 'credited' && (
-              <Button className="w-full text-lg py-6" variant="outline">
-                View Application Case
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Program</div>
+                <div className="font-medium">{reservation.program_name || "—"}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">School</div>
+                <div className="font-medium">{reservation.school_name || "—"}</div>
+              </div>
+
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Status</div>
+                <div className="font-medium capitalize">{reservation.status || "—"}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">Hold Expires</div>
+                <div className="font-medium">
+                  {reservation.hold_expires_at
+                    ? new Date(reservation.hold_expires_at).toLocaleString()
+                    : "—"}
+                </div>
+              </div>
+
+              {reservation.qr_image_url && (
+                <div className="rounded-md border p-3 sm:col-span-2">
+                  <div className="text-xs text-muted-foreground mb-2">Reservation QR</div>
+                  <img
+                    src={reservation.qr_image_url}
+                    alt="Reservation QR Code"
+                    className="h-36 w-36 rounded-md border"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
