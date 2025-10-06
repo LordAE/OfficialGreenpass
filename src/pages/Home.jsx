@@ -76,7 +76,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       title: '',
       subtitle: '',
       image_url: '',
-      video_url: 'https://youtu.be/ZSDT_VgoeHc',
+      video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGlobal%20Study%20Abroad%20Platform%20-%20GAIN%20Fair%202025%20Where%20Central%20Vietnam%20Meets%20Global%20Opportunities%20(1).mp4?alt=media&token=e19b29e3-b091-42cd-84dc-5c2c4b45a814',
       background_video_url: '',
       poster_url: ''
     },
