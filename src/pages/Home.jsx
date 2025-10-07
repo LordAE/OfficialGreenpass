@@ -248,7 +248,7 @@ const mockNews = [
     id: 'n3',
     title: 'Why London International Academy?',
     summary: 'New scholarships programs offers.',
-    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
+    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/825_585_london-international-academy-1.jpg?alt=media&token=56fd5481-3ad9-433c-8043-bea86c118c09',
     tag: 'Scholarships',
     date: '1 week ago',
     href: '#'
