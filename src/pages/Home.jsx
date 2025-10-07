@@ -297,7 +297,7 @@ const fallbackSlides = [
     id: 'n3',
     title: 'Why London International Academy?',
     summary: 'New scholarships programs offers.',
-    image: 'https://images.unsplash.com/photo-1562774053-701939374585?w=1400&q=80',
+    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
     tag: 'Scholarships',
     date: '1 week ago',
     href: '#'
@@ -870,26 +870,26 @@ const Testimonials = ({ testimonials }) => (
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
         {(testimonials || [
           {
-            author_name: "Sarah Chen",
-            author_title: "University of Toronto Student",
+            author_name: "",
+            author_title: "",
             author_image_url:
-              "https://images.unsplash.com/photo-1494790108755-2616b612c108?w=150&h=150&fit=crop&crop=face",
-            quote: "GreenPass made my dream of studying at UofT a reality. The visa support was incredible!",
+              "",
+            quote: "",
           },
           {
-            author_name: "Michael Nguyen",
-            author_title: "McGill University Student",
+            author_name: "",
+            author_title: "",
             author_image_url:
-              "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+              "",
             quote:
-              "The agent matching service connected me with the perfect counselor. Highly recommended!",
+              "",
           },
           {
-            author_name: "Emily Rodriguez",
-            author_title: "UBC Graduate",
+            author_name: "",
+            author_title: "",
             author_image_url:
-              "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face",
-            quote: "From application to arrival, GreenPass supported me every step of the way.",
+              "",
+            quote: "",
           },
         ]).map((t, i) => (
           <motion.div
@@ -913,7 +913,7 @@ const Testimonials = ({ testimonials }) => (
 
                 <div className="flex items-center">
                   <img
-                    src={t.author_image_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=50&h=50&fit=crop&crop=face"}
+                    src={t.author_image_url || ""}
                     alt={t.author_name}
                     className="w-12 h-12 rounded-full mr-4 object-cover"
                   />
