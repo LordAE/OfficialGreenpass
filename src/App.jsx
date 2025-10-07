@@ -82,6 +82,7 @@ import Profile from "./pages/Profile";
 import AuthForm from "./pages/AuthForm";
 import EventRegistrationSuccess from "@/pages/EventRegistrationSuccess";
 import ResetPassword from "./pages/ResetPassword.jsx";
+import PostDetail from "./pages/PostDetail";
 
 export default function App() {
   return (
@@ -110,6 +111,7 @@ export default function App() {
         <Route path="/EventRegistrationSuccess" element={<EventRegistrationSuccess />} />
         <Route path="programdetail" element={<ProgramDetail />} />
         <Route path="resetpassword" element={<ResetPassword />} />
+        <Route path="postdetail" element={<PostDetail/>} />
         {/* Private routes */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="onboarding" element={<Onboarding />} />

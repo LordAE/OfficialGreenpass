@@ -32,9 +32,15 @@ const toDate = (v) => {
   return Number.isFinite(t) ? new Date(t) : null;
 };
 
-const ensureArray = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
+const toMillisMaybe = (v) => {
+  if (!v) return 0;
+  if (typeof v === 'object' && typeof v.toMillis === 'function') return v.toMillis();
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? t : 0;
+};
 
-/** Name normalizer */
+const ensureArray = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
 const normalize = (s = "") =>
   String(s)
     .toLowerCase()
@@ -43,6 +49,19 @@ const normalize = (s = "") =>
     .replace(/\b(university|college|institute|polytechnic|school|academy|centre|center)\b/g, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
+
+const relTime = (d) => {
+  if (!d) return '';
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const months = Math.floor(days / 30);
+  return `${months} mo ago`;
+};
 
 /* ---------- Labels ---------- */
 const getLevelLabel = (level) => {
@@ -77,14 +96,14 @@ const sanitizeHomeContent = (loaded = {}) => {
       subtitle: '',
       image_url: '',
       video_url: '',
-      background_video_url: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGlobal%20Study%20Abroad%20Platform%20-%20GAIN%20Fair%202025%20Where%20Central%20Vietnam%20Meets%20Global%20Opportunities%20(1).mp4?alt=media&token=e19b29e3-b091-42cd-84dc-5c2c4b45a814',
+      background_video_url:
+        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGlobal%20Study%20Abroad%20Platform%20-%20GAIN%20Fair%202025%20Where%20Central%20Vietnam%20Meets%20Global%20Opportunities%20(1).mp4?alt=media&token=e19b29e3-b091-42cd-84dc-5c2c4b45a814',
       poster_url: ''
     },
     features_section: [],
     testimonials_section: [],
     stats_section: [],
     schools_programs_section: { title: '', subtitle: '', show_featured_only: false, max_items: 6 },
-    final_cta_section: { title: '', subtitle: '', description: '', primary_button_text: '', primary_button_url: '', secondary_button_text: '', secondary_button_url: '' },
   };
 
   const sanitizedFeatures = (loaded.features_section || []).map((feature) => ({
@@ -109,7 +128,6 @@ const sanitizeHomeContent = (loaded = {}) => {
     testimonials_section: loaded.testimonials_section || [],
     stats_section: loaded.stats_section || [],
     schools_programs_section: { ...prev.schools_programs_section, ...(loaded.schools_programs_section || {}) },
-    final_cta_section: { ...prev.final_cta_section, ...(loaded.final_cta_section || {}) },
   };
 };
 
@@ -147,6 +165,36 @@ const mapEventDoc = (snap) => {
     sort_order: d.sort_order ?? d.sortOrder ?? 999,
     banner_url: pickFirst(d.banner_url, d.image_url, d.coverImageUrl, ''),
   };
+};
+
+/* ---------- Blog highlight helpers ---------- */
+const mapPostDoc = (snap) => {
+  const d = { id: snap.id, ...snap.data() };
+  return {
+    id: snap.id,
+    slug: pickFirst(d.slug, d.path, d.id),
+    title: pickFirst(d.title, d.name, 'Untitled'),
+    excerpt: pickFirst(d.excerpt, d.summary, ''),
+    coverImageUrl: pickFirst(d.coverImageUrl, d.cover_image_url, d.image, ''),
+    category: pickFirst(d.category, 'Highlight'),
+    readTime: pickFirst(d.readTime, ''),
+    created_at: pickFirst(d.created_at, d.created_date, d.createdAt),
+    updated_at: d.updated_at,
+    isHighlight: Boolean(d.isHighlight),
+    highlight_duration_days: typeof d.highlight_duration_days === 'number' ? d.highlight_duration_days : null,
+    highlight_until: pickFirst(d.highlight_until, d.highlightUntil),
+  };
+};
+const isHighlightedNow = (post) => {
+  if (!post?.isHighlight) return false;
+  const now = Date.now();
+  const untilMs = toMillisMaybe(post.highlight_until);
+  if (untilMs) return untilMs > now;
+  const createdMs = toMillisMaybe(post.created_at);
+  if (createdMs && post.highlight_duration_days) {
+    return createdMs + post.highlight_duration_days * 24 * 60 * 60 * 1000 > now;
+  }
+  return true;
 };
 
 /* =========================
@@ -224,8 +272,9 @@ const Hero = ({ content }) => {
 
 /* =========================
    News & Highlights Carousel
+   (reads highlighted blog posts)
 ========================= */
-const mockNews = [
+const fallbackSlides = [
   {
     id: 'n1',
     title: 'IRCC announces streamlined visa process for students',
@@ -248,15 +297,26 @@ const mockNews = [
     id: 'n3',
     title: 'Why London International Academy?',
     summary: 'New scholarships programs offers.',
-    image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
+    image: 'https://images.unsplash.com/photo-1562774053-701939374585?w=1400&q=80',
     tag: 'Scholarships',
     date: '1 week ago',
     href: '#'
   },
 ];
 
-function NewsHighlights() {
-  const items = mockNews;
+function NewsHighlights({ highlights = [] }) {
+  const highlightItems = highlights.map((p) => ({
+    id: `post-${p.id}`,
+    title: p.title,
+    summary: p.excerpt || '',
+    image: p.coverImageUrl,
+    tag: p.category || 'Highlight',
+    date: relTime(toDate(p.created_at) || toDate(p.updated_at)),
+    href: createPageUrl(`PostDetail?slug=${encodeURIComponent(p.slug)}`),
+  }));
+
+  const items = highlightItems.length ? highlightItems : fallbackSlides;
+
   const [index, setIndex] = useState(0);
   const timeoutRef = useRef(null);
 
@@ -266,7 +326,7 @@ function NewsHighlights() {
   useEffect(() => {
     timeoutRef.current = setInterval(next, 5500);
     return () => clearInterval(timeoutRef.current);
-  }, []);
+  }, [items.length]);
 
   const pause = () => clearInterval(timeoutRef.current);
   const resume = () => {
@@ -316,11 +376,7 @@ function NewsHighlights() {
                 transition={{ duration: 0.5, ease: 'easeOut' }}
               >
                 <div className="absolute inset-0">
-                  <img
-                    src={active.image}
-                    alt={active.title}
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={active.image} alt={active.title} className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
                 </div>
 
@@ -332,12 +388,8 @@ function NewsHighlights() {
                         <Clock className="w-4 h-4" /> {active.date}
                       </span>
                     </div>
-                    <h3 className="text-2xl sm:text-3xl font-bold leading-snug drop-shadow">
-                      {active.title}
-                    </h3>
-                    <p className="mt-2 text-white/90 max-w-2xl">
-                      {active.summary}
-                    </p>
+                    <h3 className="text-2xl sm:text-3xl font-bold leading-snug drop-shadow">{active.title}</h3>
+                    <p className="mt-2 text-white/90 max-w-2xl">{active.summary}</p>
                     <div className="mt-5">
                       <Link to={active.href}>
                         <Button className="bg-green-600 hover:bg-green-700">
@@ -351,18 +403,10 @@ function NewsHighlights() {
             </AnimatePresence>
 
             <div className="sm:hidden absolute inset-x-0 bottom-4 px-4 flex items-center justify-between">
-              <button
-                aria-label="Previous"
-                onClick={prev}
-                className="p-2 rounded-full bg-white/90 shadow hover:bg-white"
-              >
+              <button aria-label="Previous" onClick={prev} className="p-2 rounded-full bg-white/90 shadow hover:bg-white">
                 <ChevronLeft className="w-5 h-5 text-slate-800" />
               </button>
-              <button
-                aria-label="Next"
-                onClick={next}
-                className="p-2 rounded-full bg-white/90 shadow hover:bg-white"
-              >
+              <button aria-label="Next" onClick={next} className="p-2 rounded-full bg-white/90 shadow hover:bg-white">
                 <ChevronRight className="w-5 h-5 text-slate-800" />
               </button>
             </div>
@@ -372,9 +416,7 @@ function NewsHighlights() {
                 <button
                   key={it.id}
                   onClick={() => setIndex(i)}
-                  className={`h-2.5 rounded-full transition-all ${
-                    i === index ? 'w-6 bg-white' : 'w-2.5 bg-white/60'
-                  }`}
+                  className={`h-2.5 rounded-full transition-all ${i === index ? 'w-6 bg-white' : 'w-2.5 bg-white/60'}`}
                   aria-label={`Go to slide ${i + 1}`}
                 />
               ))}
@@ -396,19 +438,16 @@ function PartnersStrip() {
     { name: "Canterbury Christ Church University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FCanterbury-Christ-Church-University.png?alt=media&token=2235d037-6d1d-43c3-9959-3e6f913ee09f" },
     { name: "University of West Alabama", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofWestAlabama.png?alt=media&token=9fc57006-3137-44c5-b888-6c1fcca756b0" },
     { name: "Capilano University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FCapilanoUniversity.jpg?alt=media&token=535e4daa-5673-4ea9-ad2c-7ac4f33d1979" },
-
     { name: "University of Toronto", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofToronto.avif?alt=media&token=687579c2-f19f-483c-a0d6-e8c3ff20b995" },
     { name: "McGill University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FmcgillUniversity.png?alt=media&token=7f0fcfbd-e7cd-4555-af62-978c308d6dd8" },
     { name: "University of British Columbia", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofBristishColumbia.jpg?alt=media&token=6ee96860-9835-4996-9a30-15cbf8442c16" },
     { name: "University of Alberta", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofAlberta.jpg?alt=media&token=51d0f6c9-c50f-4edb-87a5-5cfa27381f08" },
     { name: "University of Waterloo", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2Funiversityofwaterloo.avif?alt=media&token=ace9a9ce-b679-4eae-b517-e5f511da629e" },
-
     { name: "Western University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FWesternUniversity.png?alt=media&token=2cd1a3af-2307-417b-b5c9-36e2e55b9cf0" },
     { name: "Queen’s University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FQueensUniversity.png?alt=media&token=2187b37a-199d-4770-b489-68970f88e666" },
     { name: "University of Manitoba", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofManitoba.png?alt=media&token=7e36dd5b-6f69-49fe-aa7a-d31e51974690" },
     { name: "University of Saskatchewan", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2Funiversity-of-saskatchewan.png?alt=media&token=c0046b80-793e-4cc0-aeb3-e3f4035ec567" },
     { name: "Concordia University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2Fconcordia-university.svg?alt=media&token=4224a6c8-e362-457c-83a2-9565d7322e4a" },
-
     { name: "Dalhousie University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FdalhousieUniversity.png?alt=media&token=2010cc34-971f-42b0-b1a1-10e79bdd5cb9" },
     { name: "York University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FyorkUniversity.png?alt=media&token=c0f6b3b6-cc52-4f95-9a7d-c1b12005268a" },
     { name: "Carleton University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FcarletonUniversity.jpg?alt=media&token=673a958c-69f4-41df-94b0-981243bbd6d7" },
@@ -439,11 +478,7 @@ function PartnersStrip() {
           Top university partners
         </h2>
 
-        <div
-          className="relative mt-10 overflow-hidden pb-10 sm:pb-12"
-          onMouseEnter={handleEnter}
-          onMouseLeave={handleLeave}
-        >
+        <div className="relative mt-10 overflow-hidden pb-10 sm:pb-12" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
           <motion.div animate={controls} className="flex gap-6 sm:gap-10 md:gap-12 w-[200%]">
             {marquee.map((p, i) => (
               <motion.div
@@ -462,18 +497,6 @@ function PartnersStrip() {
               </motion.div>
             ))}
           </motion.div>
-
-          <div className="mt-8 sm:mt-10 flex justify-center gap-2 pointer-events-none select-none">
-            {[...Array(9)].map((_, i) => (
-              <span key={i} className={`h-2 w-2 rounded-full ${i === 0 ? "bg-[#d33]" : "bg-slate-300"}`} />
-            ))}
-          </div>
-
-          {paused && (
-            <div className="pointer-events-none absolute inset-x-0 -top-6 text-center text-xs text-slate-500">
-              (Paused)
-            </div>
-          )}
         </div>
       </div>
     </section>
@@ -481,9 +504,8 @@ function PartnersStrip() {
 }
 
 /* =========================
-   CountUp (animated numbers)
+   CountUp (animated numbers) + Stats
 ========================= */
-// Animates 0 -> target and preserves %, +, and commas.
 function CountUp({ valueString = "0", start, duration = 1.2 }) {
   const [display, setDisplay] = React.useState("0");
 
@@ -533,11 +555,7 @@ function CountUp({ valueString = "0", start, duration = 1.2 }) {
   return <span>{display}</span>;
 }
 
-/* =========================
-   Stats (MSM style — white bg)
-========================= */
 function Stats({ stats }) {
-  // Use your own stats if provided; otherwise use these defaults
   const items = Array.isArray(stats) && stats.length
     ? stats
     : [
@@ -553,7 +571,7 @@ function Stats({ stats }) {
     <section className="bg-white py-12 sm:py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
-          className={`grid gap-10 sm:gap-12 grid-cols-2 sm:grid-cols-4`}
+          className="grid gap-10 sm:gap-12 grid-cols-2 sm:grid-cols-4"
           onViewportEnter={() => setStart(true)}
           viewport={{ once: true, amount: 0.4 }}
         >
@@ -696,6 +714,9 @@ const Features = ({ features }) => {
   );
 };
 
+/* =========================
+   Schools
+========================= */
 const SchoolProgramsSection = ({ content, schools }) => (
   <div className="py-20 bg-gradient-to-br from-slate-50 to-blue-50">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -836,7 +857,7 @@ const SchoolProgramsSection = ({ content, schools }) => (
 );
 
 /* =========================
-   Testimonials, Events, Final CTA
+   Testimonials, Events
 ========================= */
 const Testimonials = ({ testimonials }) => (
   <div className="py-20 bg-white">
@@ -948,51 +969,6 @@ const UpcomingEvents = ({ events }) => (
   </div>
 );
 
-const FinalCTA = ({ ctaContent }) => (
-  <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
-    <div className="absolute inset-0 bg-gradient-to-br from-green-600/20 to-blue-600/20"></div>
-    <div className="relative z-10 max-w-4xl mx-auto text-center py-20 px-4 sm:py-24 sm:px-6 lg:px-8">
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        viewport={{ once: true }}
-        className="space-y-8"
-      >
-        <h2 className="text-3xl font-extrabold text-white sm:text-4xl">
-          <span className="block">{ctaContent?.title || "Ready to start your journey?"}</span>
-          <span className="block bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent mt-2">
-            {ctaContent?.subtitle || "Join thousands of successful students"}
-          </span>
-        </h2>
-        <p className="text-xl text-slate-300 leading-relaxed">
-          {ctaContent?.description || "Get started today and take the first step towards your Canadian education dream."}
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link to={createPageUrl(ctaContent?.primary_button_url || "Welcome")}>
-            <Button
-              size="lg"
-              className="w-full sm:w-auto bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
-            >
-              {ctaContent?.primary_button_text || "Get Started Now"}
-            </Button>
-          </Link>
-          <Link to={createPageUrl(ctaContent?.secondary_button_url || "Programs")}>
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full sm:w-auto border-2 border-slate-400 text-slate-300 hover:border-green-400 hover:text-green-400 hover:bg-green-400/10 px-8 py-4 text-lg font-semibold transition-all duration-200"
-            >
-              {ctaContent?.secondary_button_text || "Browse Programs"}
-            </Button>
-          </Link>
-        </div>
-        <p className="text-sm text-slate-400">Free to join • No hidden fees • Trusted by thousands</p>
-      </motion.div>
-    </div>
-  </div>
-);
-
 /* =========================
    Page
 ========================= */
@@ -1000,19 +976,21 @@ export default function Home() {
   const [content, setContent] = useState(null);
   const [events, setEvents] = useState([]);
   const [schools, setSchools] = useState([]);
+  const [highlightedPosts, setHighlightedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
+        // Home content
         const homeSnap = await getDoc(doc(db, 'home_page_contents', 'SINGLETON'));
         const homeData = homeSnap.exists() ? sanitizeHomeContent(homeSnap.data()) : sanitizeHomeContent({});
         setContent(homeData);
 
+        // Events
         const evSnap = await getDocs(collection(db, 'events'));
         const evs = evSnap.docs.map(mapEventDoc);
-
         evs.sort((a, b) => {
           const orderA = a.sort_order ?? 999;
           const orderB = b.sort_order ?? 999;
@@ -1021,7 +999,6 @@ export default function Home() {
           const bStart = b.start ? b.start.getTime() : 0;
           return aStart - bStart;
         });
-
         const now = Date.now();
         const upcoming = evs.filter((e) => {
           const endMs = e.end ? e.end.getTime() : 0;
@@ -1030,6 +1007,7 @@ export default function Home() {
         });
         setEvents(upcoming);
 
+        // Featured schools
         let sSnap = await getDocs(
           query(collection(db, 'schools'), where('is_featured', '==', true), limit(60))
         );
@@ -1040,17 +1018,16 @@ export default function Home() {
         }
         const featuredSchools = sSnap.docs.map(mapSchoolDoc);
 
+        // Institutions (for logos merge)
         let instSnap = await getDocs(collection(db, 'institutions'));
         if (instSnap.empty) instSnap = await getDocs(collection(db, 'Institutions'));
         const institutions = instSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
         const instMap = new Map(
           institutions.map((inst) => {
             const key = normalize(inst.name || inst.institution_name || inst.title || '');
             return [key, inst];
           })
         );
-
         const merged = featuredSchools.map((s) => {
           const key = normalize(s.school_name || s.institution_name || '');
           const inst = instMap.get(key);
@@ -1061,11 +1038,18 @@ export default function Home() {
             institution_logo_url: pickFirst(logoFromInst, s.institution_logo_url),
           };
         });
-
         setSchools(merged);
+
+        // Highlighted blog posts for the carousel
+        const postsSnap = await getDocs(collection(db, 'posts'));
+        const posts = postsSnap.docs.map(mapPostDoc);
+        const highlights = posts
+          .filter(isHighlightedNow)
+          .sort((a, b) => toMillisMaybe(b.created_at || b.updated_at) - toMillisMaybe(a.created_at || a.updated_at))
+          .slice(0, 5);
+        setHighlightedPosts(highlights);
       } catch (err) {
         console.error('Error loading home content:', err);
-        setSchools([]);
       } finally {
         setLoading(false);
       }
@@ -1083,17 +1067,13 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Hero content={content} />
-      <NewsHighlights />
+      <NewsHighlights highlights={highlightedPosts} />
       <PartnersStrip />
-
-      {/* Stats directly under the partners strip */}
       <Stats stats={content?.stats_section} />
-
       <Features features={content?.features_section} />
       <SchoolProgramsSection content={content} schools={schools} />
       <Testimonials testimonials={content?.testimonials_section} />
       <UpcomingEvents events={events} />
-      <FinalCTA ctaContent={content?.final_cta_section} />
     </div>
   );
 }
