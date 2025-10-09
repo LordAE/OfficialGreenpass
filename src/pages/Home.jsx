@@ -297,7 +297,6 @@ const fallbackSlides = [
     id: 'n3',
     title: 'Why London International Academy?',
     summary: 'New scholarships programs offers.',
-    // NOTE: this is a VIDEO URL on purpose to test handling
     image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
     tag: 'Scholarships',
     date: '1 week ago',
