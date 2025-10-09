@@ -297,12 +297,16 @@ const fallbackSlides = [
     id: 'n3',
     title: 'Why London International Academy?',
     summary: 'New scholarships programs offers.',
+    // NOTE: this is a VIDEO URL on purpose to test handling
     image: 'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
     tag: 'Scholarships',
     date: '1 week ago',
     href: '#'
   },
 ];
+
+// helper: detect if “image” is actually a video file
+const isVideoUrl = (url = '') => /\.(mp4|webm|ogg)(\?|$)/i.test(url || '');
 
 function NewsHighlights({ highlights = [] }) {
   const highlightItems = highlights.map((p) => ({
@@ -335,6 +339,7 @@ function NewsHighlights({ highlights = [] }) {
   };
 
   const active = items[index];
+  const showVideo = isVideoUrl(active.image);
 
   return (
     <div className="bg-white py-14 sm:py-20">
@@ -375,33 +380,56 @@ function NewsHighlights({ highlights = [] }) {
                 exit={{ opacity: 0, x: -40 }}
                 transition={{ duration: 0.5, ease: 'easeOut' }}
               >
+                {/* Media */}
                 <div className="absolute inset-0">
-                  <img src={active.image} alt={active.title} className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+                  {showVideo ? (
+                    <video
+                      className="w-full h-full object-cover"
+                      src={active.image}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                    />
+                  ) : (
+                    <img src={active.image} alt={active.title} className="w-full h-full object-cover" />
+                  )}
+                  {/* soft top-to-bottom darken for legibility */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
                 </div>
 
+                {/* Text content */}
                 <div className="relative z-10 h-full flex items-end">
-                  <div className="p-6 sm:p-10 text-white w-full">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Badge className="bg-white/20 text-white border-white/30">{active.tag}</Badge>
-                      <span className="text-white/80 text-sm inline-flex items-center gap-1">
-                        <Clock className="w-4 h-4" /> {active.date}
-                      </span>
-                    </div>
-                    <h3 className="text-2xl sm:text-3xl font-bold leading-snug drop-shadow">{active.title}</h3>
-                    <p className="mt-2 text-white/90 max-w-2xl">{active.summary}</p>
-                    <div className="mt-5">
-                      <Link to={active.href}>
-                        <Button className="bg-green-600 hover:bg-green-700">
-                          Read more <ArrowRight className="ml-2 w-4 h-4" />
-                        </Button>
-                      </Link>
+                  <div className="p-4 sm:p-8 w-full">
+                    <div className="max-w-3xl bg-black/35 backdrop-blur-sm rounded-2xl px-4 sm:px-6 py-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className="bg-white/20 text-white border-white/30">{active.tag}</Badge>
+                        <span className="text-white/90 text-sm inline-flex items-center gap-1">
+                          <Clock className="w-4 h-4" /> {active.date}
+                        </span>
+                      </div>
+                      <h3 className="text-2xl sm:text-3xl font-bold leading-snug text-white drop-shadow line-clamp-2">
+                        {active.title}
+                      </h3>
+                      {active.summary ? (
+                        <p className="mt-2 text-white/90 line-clamp-3">
+                          {active.summary}
+                        </p>
+                      ) : null}
+                      <div className="mt-4">
+                        <Link to={active.href}>
+                          <Button className="bg-green-600 hover:bg-green-700">
+                            Read more <ArrowRight className="ml-2 w-4 h-4" />
+                          </Button>
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </div>
               </motion.div>
             </AnimatePresence>
 
+            {/* Mobile controls */}
             <div className="sm:hidden absolute inset-x-0 bottom-4 px-4 flex items-center justify-between">
               <button aria-label="Previous" onClick={prev} className="p-2 rounded-full bg-white/90 shadow hover:bg-white">
                 <ChevronLeft className="w-5 h-5 text-slate-800" />
@@ -411,6 +439,7 @@ function NewsHighlights({ highlights = [] }) {
               </button>
             </div>
 
+            {/* Dots */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
               {items.map((it, i) => (
                 <button
@@ -869,28 +898,9 @@ const Testimonials = ({ testimonials }) => (
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
         {(testimonials || [
-          {
-            author_name: "",
-            author_title: "",
-            author_image_url:
-              "",
-            quote: "",
-          },
-          {
-            author_name: "",
-            author_title: "",
-            author_image_url:
-              "",
-            quote:
-              "",
-          },
-          {
-            author_name: "",
-            author_title: "",
-            author_image_url:
-              "",
-            quote: "",
-          },
+          { author_name: "", author_title: "", author_image_url: "", quote: "" },
+          { author_name: "", author_title: "", author_image_url: "", quote: "" },
+          { author_name: "", author_title: "", author_image_url: "", quote: "" },
         ]).map((t, i) => (
           <motion.div
             key={i}

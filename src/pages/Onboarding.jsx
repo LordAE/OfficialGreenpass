@@ -7,13 +7,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, User as UserIcon, Briefcase, BookOpen, Building, Store, ArrowRight, Check, ArrowLeft } from 'lucide-react';
+import { Loader2, User as UserIcon, Briefcase, BookOpen, Building, Store, ArrowRight, Check, ArrowLeft, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
 // 🔥 Firebase
 import { auth, db } from '@/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 // 🔧 Firestore entities (for creating the first role record after onboarding)
@@ -111,6 +111,7 @@ export default function Onboarding() {
   const [authChecked, setAuthChecked] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
@@ -135,7 +136,6 @@ export default function Onboarding() {
       setSelectedRole(roleFromProfile);
       setCurrentStep(data.onboarding_completed ? STEPS.COMPLETE : (data.onboarding_step || STEPS.CHOOSE_ROLE));
 
-      // 👇 Keep UI the same, but ensure CSV string shows even if Firestore has an array
       setFormData({
         full_name: data.full_name || fbUser.displayName || '',
         phone: data.phone || '',
@@ -196,7 +196,6 @@ export default function Onboarding() {
   const validateRoleSpecificInfo = () => {
     if (selectedRole === 'user') return true;
     if (selectedRole === 'agent')  return formData.company_name && formData.business_license_mst && formData.paypal_email;
-    // ✅ Ensure tutor has at least one specialization (CSV→array), numbers, and PayPal
     if (selectedRole === 'tutor')  return csvToArray(formData.specializations).length > 0
       && !!formData.experience_years
       && !!formData.hourly_rate
@@ -265,11 +264,10 @@ export default function Onboarding() {
         };
       }
       if (selectedRole === 'tutor') {
-        // ✅ Save correct data types to Firestore
         updates.tutor_profile = {
-          specializations: csvToArray(formData.specializations),          // array
-          experience_years: Number(formData.experience_years) || 0,      // number
-          hourly_rate: Number(formData.hourly_rate) || 0,                // number
+          specializations: csvToArray(formData.specializations),
+          experience_years: Number(formData.experience_years) || 0,
+          hourly_rate: Number(formData.hourly_rate) || 0,
           bio: formData.bio || '',
           paypal_email: formData.paypal_email || '',
         };
@@ -293,7 +291,7 @@ export default function Onboarding() {
 
       await updateDoc(ref, updates);
 
-      // (Optional but recommended) create initial role record if not present
+      // optional seeding of role collections
       try {
         if (selectedRole === 'agent' && updates.agent_profile) {
           const existing = await Agent.filter({ user_id: uid }, { limit: 1 });
@@ -312,7 +310,6 @@ export default function Onboarding() {
           if (!existing.length) await Vendor.create({ user_id: uid, ...updates.vendor_profile });
         }
       } catch (e) {
-        // Non-fatal; UI still proceeds
         console.warn('Seeding role collection failed (non-fatal):', e);
       }
 
@@ -326,7 +323,21 @@ export default function Onboarding() {
     }
   };
 
-  // ————— renderers (UI unchanged) —————
+  // 🔓 Logout from onboarding
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await signOut(auth);
+    } catch (e) {
+      // ignore
+    } finally {
+      navigate(createPageUrl('Welcome'), { replace: true });
+      setLoggingOut(false);
+    }
+  };
+
+  // ————— renderers —————
   const renderChooseRole = () => (
     <div className="text-center max-w-4xl mx-auto">
       <div className="mb-8">
@@ -369,37 +380,37 @@ export default function Onboarding() {
           <div className={`${selectedRoleData?.color} text-white p-3 rounded-full mb-4 mx-auto w-fit`}>
             {selectedRoleData?.icon}
           </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Basic Information</h2>
-        <p className="text-gray-600">Setting up your {selectedRoleData?.title} profile</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Basic Information</h2>
+          <p className="text-gray-600">Setting up your {selectedRoleData?.title} profile</p>
+        </div>
+        <div className="space-y-6">
+          <div>
+            <Label htmlFor="full_name">Full Name *</Label>
+            <Input id="full_name" value={formData.full_name || ''} onChange={(e) => setFormData((p)=>({...p, full_name: e.target.value}))} placeholder="Enter your full name" className="mt-1" />
+          </div>
+          <div>
+            <Label htmlFor="email">Email Address</Label>
+            <Input id="email" value={formData.email || ''} disabled className="mt-1 bg-gray-100" />
+            <p className="text-xs text-gray-500 mt-1">This is your login email and cannot be changed</p>
+          </div>
+          <div>
+            <Label htmlFor="phone">Phone Number *</Label>
+            <Input id="phone" value={formData.phone || ''} onChange={(e) => setFormData((p)=>({...p, phone: e.target.value}))} placeholder="Enter your phone number" className="mt-1" />
+          </div>
+          <div>
+            <Label htmlFor="country">Country *</Label>
+            <Input id="country" value={formData.country || ''} onChange={(e) => setFormData((p)=>({...p, country: e.target.value}))} placeholder="Enter your country" className="mt-1" />
+          </div>
+          <div className="flex gap-3 pt-4">
+            <Button variant="outline" onClick={() => setCurrentStep(STEPS.CHOOSE_ROLE)} className="flex-1">
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            </Button>
+            <Button onClick={handleBasicInfoSubmit} className="flex-1" disabled={!validateBasicInfo()}>
+              Continue <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </div>
       </div>
-      <div className="space-y-6">
-        <div>
-          <Label htmlFor="full_name">Full Name *</Label>
-          <Input id="full_name" value={formData.full_name || ''} onChange={(e) => setFormData((p)=>({...p, full_name: e.target.value}))} placeholder="Enter your full name" className="mt-1" />
-        </div>
-        <div>
-          <Label htmlFor="email">Email Address</Label>
-          <Input id="email" value={formData.email || ''} disabled className="mt-1 bg-gray-100" />
-          <p className="text-xs text-gray-500 mt-1">This is your login email and cannot be changed</p>
-        </div>
-        <div>
-          <Label htmlFor="phone">Phone Number *</Label>
-          <Input id="phone" value={formData.phone || ''} onChange={(e) => setFormData((p)=>({...p, phone: e.target.value}))} placeholder="Enter your phone number" className="mt-1" />
-        </div>
-        <div>
-          <Label htmlFor="country">Country *</Label>
-          <Input id="country" value={formData.country || ''} onChange={(e) => setFormData((p)=>({...p, country: e.target.value}))} placeholder="Enter your country" className="mt-1" />
-        </div>
-        <div className="flex gap-3 pt-4">
-          <Button variant="outline" onClick={() => setCurrentStep(STEPS.CHOOSE_ROLE)} className="flex-1">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
-          </Button>
-          <Button onClick={handleBasicInfoSubmit} className="flex-1" disabled={!validateBasicInfo()}>
-            Continue <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-        </div>
-      </div>
-    </div>
     );
   };
 
@@ -550,6 +561,13 @@ export default function Onboarding() {
             )}
           </Button>
         </div>
+
+        {/* Soft escape for users who don't want to continue */}
+        <div className="text-center mt-4">
+          <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-600 inline-flex items-center gap-1">
+            <LogOut className="w-4 h-4" /> Log out instead
+          </button>
+        </div>
       </div>
     );
   };
@@ -581,14 +599,32 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4">
       <div className="w-full max-w-6xl mx-auto">
-        <div className="mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <div className="text-sm text-gray-600">
-              Step {STEP_ORDER.indexOf(currentStep) + 1} of {STEP_ORDER.length}
-            </div>
+        {/* Top bar with logout option */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-sm text-gray-600">
+            Step {STEP_ORDER.indexOf(currentStep) + 1} of {STEP_ORDER.length}
           </div>
-          <Progress value={getStepProgress()} className="h-2 w-full max-w-md mx-auto" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="text-red-600 hover:bg-red-50"
+            title="Log out and exit onboarding"
+          >
+            {loggingOut ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" /> Logging out
+              </>
+            ) : (
+              <>
+                <LogOut className="w-4 h-4 mr-1" /> Log out
+              </>
+            )}
+          </Button>
         </div>
+
+        <Progress value={getStepProgress()} className="h-2 w-full max-w-md mx-auto mb-8" />
 
         <Card className="p-6 sm:p-8 lg:p-12 shadow-xl bg-white/90 backdrop-blur-sm">
           <CardContent className="p-0">

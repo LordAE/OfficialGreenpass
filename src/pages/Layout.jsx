@@ -7,7 +7,7 @@ import {
   Store, Package, BarChart3, Building, LogOut, Globe, MoreHorizontal, X, DollarSign,
   Menu, Rocket, LifeBuoy, GraduationCap, Handshake, Search, ArrowRight, Compass, MessageSquare,
   Edit, Phone, Info, Palette, Landmark, Facebook, Instagram, Linkedin, Youtube,
-  ChevronDown, ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarHeader, SidebarFooter, SidebarProvider,
@@ -290,25 +290,11 @@ export const translations = {
   },
 };
 
-export const getLang = () => (typeof window !== "undefined" ? localStorage.getItem("greenpass-language") || "en" : "en");
-export const getText = (key) => translations[getLang()][key] || translations.en[key] || key;
+export const getLang = () =>
+  (typeof window !== "undefined" ? localStorage.getItem("greenpass-language") || "en" : "en");
 
-/* ---------- static link data ---------- */
-const exploreForStudents = [
-  { title: getText("findSchoolsPrograms"), href: createPageUrl("Schools"), icon: Search, description: getText("searchTopSchools") },
-  { title: getText("comparePrograms"), href: createPageUrl("ComparePrograms"), icon: Compass, description: getText("filterByLevel") },
-  { title: getText("studentLife"), href: createPageUrl("StudentLife"), icon: LifeBuoy, description: getText("visaHousingTips") },
-];
-const exploreForPartners = [
-  { title: getText("agentNetwork"), href: createPageUrl("Partnership"), icon: Handshake, description: getText("joinVerifiedAgent") },
-  { title: getText("tutorPrep"), href: createPageUrl("Partnership"), icon: GraduationCap, description: getText("connectStudentsPrep") },
-];
-const quickLinks = [
-  { title: getText("faqs"), href: createPageUrl("FAQ"), icon: MessageSquare, description: getText("findQuickAnswers") },
-  { title: getText("contact"), href: createPageUrl("Contact"), icon: Rocket, description: getText("messageSupportTeam") },
-  { title: getText("resources"), href: createPageUrl("Resources"), icon: BookOpen, description: getText("guidesForStudents") },
-  { title: getText("ourTeam"), href: createPageUrl("OurTeam"), icon: Users, description: getText("meetTheTeam") },
-];
+export const getText = (key) =>
+  translations[getLang()][key] || translations.en[key] || key;
 
 /* ---------- Social links (no DB needed) ---------- */
 const SOCIAL_LINKS = [
@@ -327,6 +313,7 @@ const TikTokIcon = ({ className = "h-5 w-5" }) => (
     />
   </svg>
 );
+
 const iconByPlatform = (platform = "") => {
   const p = platform.toLowerCase().trim();
   if (p === "facebook") return <Facebook className="h-5 w-5" />;
@@ -336,6 +323,25 @@ const iconByPlatform = (platform = "") => {
   if (p === "tiktok" || p === "tik tok") return <TikTokIcon className="h-5 w-5" />;
   return <Globe className="h-5 w-5" />;
 };
+
+/* ---------- Build “Explore” menus from current language (reactive) ---------- */
+const buildExploreForStudents = () => ([
+  { title: getText("findSchoolsPrograms"), href: createPageUrl("Schools"), icon: Search, description: getText("searchTopSchools") },
+  { title: getText("comparePrograms"), href: createPageUrl("ComparePrograms"), icon: Compass, description: getText("filterByLevel") },
+  { title: getText("studentLife"), href: createPageUrl("StudentLife"), icon: LifeBuoy, description: getText("visaHousingTips") },
+]);
+
+const buildExploreForPartners = () => ([
+  { title: getText("agentNetwork"), href: createPageUrl("Partnership"), icon: Handshake, description: getText("joinVerifiedAgent") },
+  { title: getText("tutorPrep"), href: createPageUrl("Partnership"), icon: GraduationCap, description: getText("connectStudentsPrep") },
+]);
+
+const buildQuickLinks = () => ([
+  { title: getText("faqs"), href: createPageUrl("FAQ"), icon: MessageSquare, description: getText("findQuickAnswers") },
+  { title: getText("contact"), href: createPageUrl("Contact"), icon: Rocket, description: getText("messageSupportTeam") },
+  { title: getText("resources"), href: createPageUrl("Resources"), icon: BookOpen, description: getText("guidesForStudents") },
+  { title: getText("ourTeam"), href: createPageUrl("OurTeam"), icon: Users, description: getText("meetTheTeam") },
+]);
 
 /* ---------- Desktop hover dropdown ---------- */
 function HoverDropdown({ label, color = "green", items = [] }) {
@@ -376,7 +382,7 @@ function HoverDropdown({ label, color = "green", items = [] }) {
                 <li key={item.title}>
                   <Link
                     to={item.href}
-                    className={`group flex items-start gap-3 rounded-lg px-4 py-3 transition-colors hover:bg-gray-50`}
+                    className="group flex items-start gap-3 rounded-lg px-4 py-3 transition-colors hover:bg-gray-50"
                   >
                     <item.icon className={`mt-0.5 h-5 w-5 ${palette.icon} ${palette.hover}`} />
                     <div>
@@ -398,14 +404,19 @@ function HoverDropdown({ label, color = "green", items = [] }) {
 
 /* ---------- Explore Bar: hover menus + right socials ---------- */
 const ExploreBar = ({ socialLinks = [] }) => {
+  // Build from current language every render so labels stay in sync
+  const students = React.useMemo(buildExploreForStudents, [getLang()]);
+  const partners = React.useMemo(buildExploreForPartners, [getLang()]);
+  const quick = React.useMemo(buildQuickLinks, [getLang()]);
+
   return (
     <div className="bg-white/95 border-b border-gray-200 hidden md:block relative z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <HoverDropdown label={getText("forStudents")} color="green" items={exploreForStudents} />
-            <HoverDropdown label={getText("forPartners")} color="purple" items={exploreForPartners} />
-            <HoverDropdown label={getText("quickLinks")} color="emerald" items={quickLinks} />
+            <HoverDropdown label={getText("forStudents")} color="green" items={students} />
+            <HoverDropdown label={getText("forPartners")} color="purple" items={partners} />
+            <HoverDropdown label={getText("quickLinks")} color="emerald" items={quick} />
           </div>
 
           {Array.isArray(socialLinks) && socialLinks.length > 0 && (
@@ -464,6 +475,11 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
     }
     window.location.reload();
   }, []);
+
+  // Build menus reactively for current language
+  const students = React.useMemo(buildExploreForStudents, [language]);
+  const partners = React.useMemo(buildExploreForPartners, [language]);
+  const quick = React.useMemo(buildQuickLinks, [language]);
 
   return (
     <div className="min-h-screen bg-white font-sans text-gray-800">
@@ -564,7 +580,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               <div className="px-4 pt-4 pb-6 space-y-4">
                 <div className="space-y-3">
                   <p className="text-xs uppercase font-bold text-blue-600 tracking-wider px-2">{getText("forStudents")}</p>
-                  {exploreForStudents.map((link) => (
+                  {students.map((link) => (
                     <Link key={link.title} to={link.href} className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-green-700 transition-all duration-200">
                       <link.icon className="h-5 w-5 text-green-600" />
                       <span>{link.title}</span>
@@ -574,7 +590,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
 
                 <div className="space-y-3 border-t border-gray-200 pt-4">
                   <p className="text-xs uppercase font-bold text-purple-600 tracking-wider px-2">{getText("forPartners")}</p>
-                  {exploreForPartners.map((link) => (
+                  {partners.map((link) => (
                     <Link key={link.title} to={link.href} className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-purple-700 transition-all duration-200">
                       <link.icon className="h-5 w-5 text-purple-600" />
                       <span>{link.title}</span>
@@ -584,7 +600,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
 
                 <div className="space-y-3 border-t border-gray-200 pt-4">
                   <p className="text-xs uppercase font-bold text-emerald-600 tracking-wider px-2">{getText("quickLinks")}</p>
-                  {quickLinks.map((link) => (
+                  {quick.map((link) => (
                     <Link key={link.title} to={link.href} className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-emerald-700 transition-all duration-200">
                       <link.icon className="h-5 w-5 text-emerald-600" />
                       <span>{link.title}</span>
@@ -961,55 +977,49 @@ export default function Layout() {
     };
   }, []);
 
+  // 🔐 Auth listener: mount once, not per-route
   React.useEffect(() => {
-    let unsub = () => {};
-    (async () => {
-      setLoading(true);
+    setLoading(true);
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (!fbUser) {
+        setCurrentUser(null);
+        setLoading(false);
+        return;
+      }
       try {
-        unsub = onAuthStateChanged(auth, async (fbUser) => {
-          if (!fbUser) {
-            setCurrentUser(null);
-            setLoading(false);
-            return;
+        const ref = doc(db, "users", fbUser.uid);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          const seed = {
+            uid: fbUser.uid,
+            full_name: fbUser.displayName || "",
+            email: fbUser.email || "",
+            user_type: "student", // keep consistent with your app (student/user)
+            onboarding_completed: false,
+            settings: { language: language || "en" },
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          await setDoc(ref, seed, { merge: true });
+          setCurrentUser(normalizeUser(fbUser.uid, seed, fbUser));
+        } else {
+          const profile = normalizeUser(fbUser.uid, snap.data(), fbUser);
+          setCurrentUser(profile);
+          const prefLang = profile.settings?.language || profile.language;
+          if (prefLang && prefLang !== language) {
+            setLanguage(prefLang);
+            if (typeof window !== "undefined") localStorage.setItem("greenpass-language", prefLang);
           }
-          try {
-            const ref = doc(db, "users", fbUser.uid);
-            const snap = await getDoc(ref);
-            if (!snap.exists()) {
-              const seed = {
-                uid: fbUser.uid,
-                full_name: fbUser.displayName || "",
-                email: fbUser.email || "",
-                user_type: "student",
-                onboarding_completed: false,
-                settings: { language: language || "en" },
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-              };
-              await setDoc(ref, seed, { merge: true });
-              setCurrentUser(normalizeUser(fbUser.uid, seed, fbUser));
-            } else {
-              const profile = normalizeUser(fbUser.uid, snap.data(), fbUser);
-              setCurrentUser(profile);
-              const prefLang = profile.settings?.language || profile.language;
-              if (prefLang && prefLang !== language) {
-                setLanguage(prefLang);
-                if (typeof window !== "undefined") localStorage.setItem("greenpass-language", prefLang);
-              }
-            }
-          } catch {
-            setCurrentUser({ id: fbUser.uid, user_type: "student", full_name: fbUser.displayName || "" });
-          } finally {
-            setLoading(false);
-          }
-        });
+        }
       } catch {
+        setCurrentUser({ id: fbUser.uid, user_type: "student", full_name: fbUser.displayName || "" });
+      } finally {
         setLoading(false);
       }
-    })();
-    return () => unsub && unsub();
+    });
+    return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
+  }, []); // mount once
 
   const normalizeUser = React.useCallback((uid, data = {}, fbUser = {}) => {
     const full_name = data.full_name || data.displayName || fbUser.displayName || data.name || "";
@@ -1024,7 +1034,7 @@ export default function Layout() {
       await signOut(auth);
       setCurrentUser(null);
       navigate(createPageUrl(""));
-    } catch (error) {}
+    } catch {}
   }, [navigate]);
 
   const handleLanguageChange = React.useCallback(async (newLang) => {
@@ -1051,8 +1061,9 @@ export default function Layout() {
   );
   const getCompanyName = React.useCallback(() => "GreenPass", []);
 
-  const navigationItems = React.useMemo(() => buildDesktopNav(currentUser), [currentUser]);
-  const mobileNavigationItems = React.useMemo(() => buildMobileNav(currentUser), [currentUser]);
+  // Include language as a dep so titles update on language change
+  const navigationItems = React.useMemo(() => buildDesktopNav(currentUser), [currentUser, language]);
+  const mobileNavigationItems = React.useMemo(() => buildMobileNav(currentUser), [currentUser, language]);
 
   if (loading) {
     return (
@@ -1065,6 +1076,20 @@ export default function Layout() {
   // Public site (not logged in)
   if (!currentUser) {
     return <PublicLayout getLogoUrl={getLogoUrl} getCompanyName={getCompanyName} />;
+  }
+
+  /** 🔒 Onboarding shell — show onboarding routes OR if onboarding not yet completed */
+  const isOnboardingRoute = location.pathname.toLowerCase().startsWith("/onboarding");
+  const notDoneOnboarding = currentUser?.onboarding_completed === false;
+
+  if (isOnboardingRoute || notDoneOnboarding) {
+    return (
+      <div className="min-h-screen w-full bg-gray-50">
+        <main className="max-w-7xl mx-auto p-4 md:p-8">
+          <Outlet />
+        </main>
+      </div>
+    );
   }
 
   // Authenticated shell with navigation

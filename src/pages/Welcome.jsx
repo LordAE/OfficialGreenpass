@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { auth, db } from '@/firebase';
 import {
   GoogleAuthProvider,
+  OAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -174,16 +175,22 @@ export default function Welcome() {
 
   const pwStatus = validatePassword(password);
 
+  // IMPORTANT: if already authenticated, route to Onboarding/Dashboard
   useEffect(() => {
     let unsub = () => {};
     (async () => {
       try { await setPersistence(auth, browserLocalPersistence); } catch {}
-      unsub = onAuthStateChanged(auth, () => setChecking(false));
+      unsub = onAuthStateChanged(auth, async (user) => {
+        setChecking(false);
+        if (user) {
+          await routeAfterSignIn(navigate, user);
+        }
+      });
     })();
     return () => unsub && unsub();
-  }, []);
+  }, [navigate]);
 
-  // helper to run email check safely
+  // helper to run email check safely (signup)
   async function runEmailCheck(em, versionAtCall) {
     try {
       const methods = await fetchSignInMethodsForEmail(auth, em);
@@ -225,6 +232,7 @@ export default function Welcome() {
     return () => clearTimeout(handle);
   }, [email, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ───────── Provider sign-ins ─────────
   const handleLoginGoogle = async () => {
     try {
       setBusy(true);
@@ -232,11 +240,57 @@ export default function Welcome() {
       const cred = await signInWithPopup(auth, provider);
       await routeAfterSignIn(navigate, cred.user);
     } catch (err) {
-      setDialog({
-        open: true,
-        title: 'Google sign-in failed',
-        message: err?.code ? `Firebase: ${err.code}` : (err?.message || 'Google sign-in failed'),
-      });
+      // Helpful guidance for "account-exists-with-different-credential"
+      if (err?.code === 'auth/account-exists-with-different-credential') {
+        setDialog({
+          open: true,
+          title: 'Use your original sign-in method',
+          message: 'This email is already linked to a different sign-in method. Try signing in with Email & Password or Apple.',
+        });
+      } else if (err?.code === 'auth/popup-closed-by-user') {
+        // ignore silently or show a soft message
+      } else {
+        setDialog({
+          open: true,
+          title: 'Google sign-in failed',
+          message: err?.code ? `Firebase: ${err.code}` : (err?.message || 'Google sign-in failed'),
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLoginApple = async () => {
+    try {
+      setBusy(true);
+      const appleProvider = new OAuthProvider('apple.com');
+      // You can customize scopes / params if needed:
+      // appleProvider.addScope('email'); appleProvider.addScope('name');
+      const cred = await signInWithPopup(auth, appleProvider);
+      await routeAfterSignIn(navigate, cred.user);
+    } catch (err) {
+      if (err?.code === 'auth/operation-not-supported-in-this-environment') {
+        setDialog({
+          open: true,
+          title: 'Apple sign-in unavailable',
+          message: 'Apple sign-in is not enabled for this project/environment.',
+        });
+      } else if (err?.code === 'auth/account-exists-with-different-credential') {
+        setDialog({
+          open: true,
+          title: 'Use your original sign-in method',
+          message: 'This email is already linked to a different sign-in method. Try signing in with Email & Password or Google.',
+        });
+      } else if (err?.code === 'auth/popup-closed-by-user') {
+        // ignore
+      } else {
+        setDialog({
+          open: true,
+          title: 'Apple sign-in failed',
+          message: err?.code ? `Firebase: ${err.code}` : (err?.message || 'Apple sign-in failed'),
+        });
+      }
     } finally {
       setBusy(false);
     }
@@ -248,7 +302,7 @@ export default function Welcome() {
     navigate(createPageUrl('ResetPassword'), { state: { email: em } });
   };
 
-  // ───────── Sign In (existence → password) ─────────
+  // ───────── Email/Password Sign In (TRY AUTH FIRST) ─────────
   const handleSignInEmail = async () => {
     const em = email.trim().toLowerCase();
     if (!em || !isValidEmail(em)) {
@@ -257,39 +311,36 @@ export default function Welcome() {
     }
     try {
       setBusy(true);
-      const methods = await fetchSignInMethodsForEmail(auth, em);
 
-      if (!methods || methods.length === 0) {
-        setMode('signup');
-        setDialog({ open: true, title: 'No account found', message: 'We couldn’t find an account for that email. Please create one.' });
-        return;
-      }
+      // 1) Try to sign in directly.
+      const cred = await signInWithEmailAndPassword(auth, em, password);
+      await routeAfterSignIn(navigate, cred.user);
 
-      const hasPassword = methods.includes('password');
-      const hasGoogle = methods.includes('google.com');
-      const hasApple = methods.includes('apple.com');
+    } catch (err) {
+      // 2) Handle common errors first.
+      if (err?.code === 'auth/wrong-password' || err?.code === 'auth/invalid-credential') {
+        setDialog({ open: true, title: 'Incorrect password', message: 'The password you entered is incorrect. Please try again.' });
+      } else if (err?.code === 'auth/user-not-found') {
+        // 3) Now check providers to give guidance (avoid false "no account" upfront).
+        try {
+          const methods = await fetchSignInMethodsForEmail(auth, em);
 
-      if (!hasPassword && hasGoogle && !hasApple) {
-        setDialog({ open: true, title: 'Use Google to sign in', message: 'This email is registered with Google. Please use “Continue with Google”.' });
-        return;
-      }
-      if (!hasPassword && hasApple && !hasGoogle) {
-        setDialog({ open: true, title: 'Use Apple to sign in', message: 'This email is registered with Apple. Please use “Continue with Apple”.' });
-        return;
-      }
-
-      try {
-        const cred = await signInWithEmailAndPassword(auth, em, password);
-        await routeAfterSignIn(navigate, cred.user);
-      } catch (err) {
-        if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password') {
-          setDialog({ open: true, title: 'Incorrect password', message: 'The password you entered is incorrect. Please try again.' });
-          return;
+          if (!methods || methods.length === 0) {
+            setMode('signup');
+            setDialog({ open: true, title: 'No account found', message: 'We couldn’t find an account for that email. Please create one.' });
+          } else if (methods.includes('google.com') && !methods.includes('password')) {
+            setDialog({ open: true, title: 'Use Google to sign in', message: 'This email is registered with Google. Please use “Continue with Google”.' });
+          } else if (methods.includes('apple.com') && !methods.includes('password')) {
+            setDialog({ open: true, title: 'Use Apple to sign in', message: 'This email is registered with Apple. Please use “Continue with Apple”.' });
+          } else {
+            setDialog({ open: true, title: 'Couldn’t sign in', message: 'Please try again, or reset your password.' });
+          }
+        } catch (lookupErr) {
+          setDialog({ open: true, title: 'Sign-in error', message: lookupErr?.message || 'Please try again.' });
         }
+      } else {
         setDialog({ open: true, title: 'Sign-in failed', message: err?.code ? `Firebase: ${err.code}` : (err?.message || 'Email sign-in failed.') });
       }
-    } catch (outerErr) {
-      setDialog({ open: true, title: 'Sign-in error', message: outerErr?.code ? `Firebase: ${outerErr.code}` : (outerErr?.message || 'Email sign-in failed.') });
     } finally {
       setBusy(false);
     }
@@ -433,7 +484,8 @@ export default function Welcome() {
                   size="lg"
                   variant="outline"
                   className="w-full h-12 text-base bg-black text-white hover:bg-gray-800 hover:text-white"
-                  onClick={() => setDialog({ open: true, title: 'Apple sign-in', message: 'Apple sign-in not available yet.' })}
+                  onClick={handleLoginApple}
+                  disabled={busy}
                 >
                   <span className="mr-3"></span>
                   Continue with Apple
