@@ -97,7 +97,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       image_url: '',
       video_url: '',
       background_video_url:
-        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGlobal%20Study%20Abroad%20Platform%20-%20GAIN%20Fair%202025%20Where%20Central%20Vietnam%20Meets%20Global%20Opportunities%20(1).mp4?alt=media&token=e19b29e3-b091-42cd-84dc-5c2c4b45a814',
+        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
       poster_url: ''
     },
     features_section: [],
@@ -632,7 +632,7 @@ const Features = ({ features }) => {
       icon: "School",
       title: "Discover Top Schools",
       description: "Explore thousands of programs from top institutions worldwide. Our smart filters help you find the perfect match for your academic and career goals.",
-      image_url: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&q=80",
+      image_url: "",
       link_url: createPageUrl('Schools'),
       link_text: "Explore Schools",
       media_position: 'right'
@@ -641,7 +641,7 @@ const Features = ({ features }) => {
       icon: "Users",
       title: "Expert Agent Guidance",
       description: "Connect with verified education agents who can guide you through every step, from school selection to visa paperwork.",
-      youtube_url: "https://www.youtube.com/watch?v=LXb3EKWsInQ",
+      youtube_url: "",
       link_url: createPageUrl('FindAgent'),
       link_text: "Find an Agent",
       media_position: 'left'
@@ -650,7 +650,7 @@ const Features = ({ features }) => {
       icon: "GraduationCap",
       title: "Recommended For You: University of Toronto",
       description: "A world-renowned university in a vibrant, multicultural city.",
-      image_url: "https://images.unsplash.com/photo-1562774053-701939374585?w=800&q=80",
+      image_url: "",
       link_url: createPageUrl('SchoolDetails?id=university-of-toronto'),
       link_text: "View University",
       media_position: 'right',
