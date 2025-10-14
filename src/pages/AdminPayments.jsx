@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
-/** Helper: supports Firestore Timestamp, ISO string, or number */
+/** Helper:this supports Firestore Timestamp, ISO string, or number */
 function toDate(val) {
   try {
     if (!val) return null;
