@@ -167,14 +167,16 @@ const mapEventDoc = (snap) => {
   };
 };
 
-/* ---------- Blog highlight helpers ---------- */
+/* ---------- Blog highlight helpers (EXCERPT + COVER IMAGE ONLY) ---------- */
 const mapPostDoc = (snap) => {
   const d = { id: snap.id, ...snap.data() };
   return {
     id: snap.id,
     slug: pickFirst(d.slug, d.path, d.id),
     title: pickFirst(d.title, d.name, 'Untitled'),
-    excerpt: pickFirst(d.excerpt, d.summary, ''),
+    // Only take explicit `excerpt` (no fallback to description/body)
+    excerpt: typeof d.excerpt === 'string' ? d.excerpt : '',
+    // Cover image only
     coverImageUrl: pickFirst(d.coverImageUrl, d.cover_image_url, d.image, ''),
     category: pickFirst(d.category, 'Highlight'),
     readTime: pickFirst(d.readTime, ''),
@@ -185,6 +187,7 @@ const mapPostDoc = (snap) => {
     highlight_until: pickFirst(d.highlight_until, d.highlightUntil),
   };
 };
+
 const isHighlightedNow = (post) => {
   if (!post?.isHighlight) return false;
   const now = Date.now();
@@ -272,7 +275,7 @@ const Hero = ({ content }) => {
 
 /* =========================
    News & Highlights Carousel
-   (reads highlighted blog posts)
+   (cover image only + excerpt only)
 ========================= */
 const fallbackSlides = [
   {
@@ -304,21 +307,33 @@ const fallbackSlides = [
   },
 ];
 
-// helper: detect if “image” is actually a video file
-const isVideoUrl = (url = '') => /\.(mp4|webm|ogg)(\?|$)/i.test(url || '');
+// helper: strip any HTML tags in excerpts (safety)
+const stripHtml = (s = '') => String(s).replace(/<[^>]*>/g, '').trim();
 
 function NewsHighlights({ highlights = [] }) {
+  // Normalize incoming posts -> cover image + excerpt only
   const highlightItems = highlights.map((p) => ({
     id: `post-${p.id}`,
     title: p.title,
-    summary: p.excerpt || '',
-    image: p.coverImageUrl,
+    excerpt: stripHtml(p.excerpt || ''),
+    cover: p.coverImageUrl || '',
     tag: p.category || 'Highlight',
     date: relTime(toDate(p.created_at) || toDate(p.updated_at)),
     href: createPageUrl(`PostDetail?slug=${encodeURIComponent(p.slug)}`),
   }));
 
-  const items = highlightItems.length ? highlightItems : fallbackSlides;
+  // Adapt fallback slides to same shape (use summary as excerpt)
+  const fallback = fallbackSlides.map((s) => ({
+    id: s.id,
+    title: s.title,
+    excerpt: stripHtml(s.summary || ''),
+    cover: s.image || '',
+    tag: s.tag || 'Highlight',
+    date: s.date || '',
+    href: s.href || '#',
+  }));
+
+  const items = highlightItems.length ? highlightItems : fallback;
 
   const [index, setIndex] = useState(0);
   const timeoutRef = useRef(null);
@@ -338,7 +353,6 @@ function NewsHighlights({ highlights = [] }) {
   };
 
   const active = items[index];
-  const showVideo = isVideoUrl(active.image);
 
   return (
     <div className="bg-white py-14 sm:py-20">
@@ -379,26 +393,20 @@ function NewsHighlights({ highlights = [] }) {
                 exit={{ opacity: 0, x: -40 }}
                 transition={{ duration: 0.5, ease: 'easeOut' }}
               >
-                {/* Media */}
+                {/* Media — ALWAYS cover image */}
                 <div className="absolute inset-0">
-                  {showVideo ? (
-                    <video
-                      className="w-full h-full object-cover"
-                      src={active.image}
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                    />
-                  ) : (
-                    <img src={active.image} alt={active.title} className="w-full h-full object-cover" />
-                  )}
+                  <img
+                    src={active.cover}
+                    alt={active.title}
+                    className="w-full h-full object-cover"
+                    loading="eager"
+                  />
                   {/* soft top-to-bottom darken for legibility */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
                 </div>
 
                 {/* Text content */}
-                <div className="relative z-10 h-full flex items-end">
+                <div className="relative z-10 h-full flex items=end sm:items-end">
                   <div className="p-4 sm:p-8 w-full">
                     <div className="max-w-3xl bg-black/35 backdrop-blur-sm rounded-2xl px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-2 mb-2">
@@ -410,9 +418,9 @@ function NewsHighlights({ highlights = [] }) {
                       <h3 className="text-2xl sm:text-3xl font-bold leading-snug text-white drop-shadow line-clamp-2">
                         {active.title}
                       </h3>
-                      {active.summary ? (
+                      {active.excerpt ? (
                         <p className="mt-2 text-white/90 line-clamp-3">
-                          {active.summary}
+                          {active.excerpt}
                         </p>
                       ) : null}
                       <div className="mt-4">
@@ -1049,7 +1057,7 @@ export default function Home() {
         });
         setSchools(merged);
 
-        // Highlighted blog posts for the carousel
+        // Highlighted blog posts for the carousel (EXCERPT + COVER IMAGE ONLY)
         const postsSnap = await getDocs(collection(db, 'posts'));
         const posts = postsSnap.docs.map(mapPostDoc);
         const highlights = posts
