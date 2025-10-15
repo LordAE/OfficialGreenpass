@@ -1,5 +1,5 @@
 // src/pages/EventDetails.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,6 +62,63 @@ const fetchEventByEventId = async (eventId) => {
   const d = snap.docs[0];
   return { id: d.id, ...d.data() };
 };
+
+/* ---- Timezone-aware parsing (same logic as in Countdown) ---- */
+function parseZonedLocalToDate(raw, timeZone) {
+  if (!raw || !timeZone) return null;
+  const norm = String(raw).trim().replace(" ", "T");
+  const [datePart, timePart = "00:00:00"] = norm.split("T");
+
+  const [y, m, d] = datePart.split("-").map((x) => parseInt(x, 10));
+  const [hh, mm = "00", ss = "00"] = timePart.split(":");
+
+  const asUTC = new Date(Date.UTC(y, (m || 1) - 1, d || 1, parseInt(hh ?? "0", 10), parseInt(mm ?? "0", 10), parseInt(ss ?? "0", 10)));
+
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(asUTC);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+
+  const tzAsUTC = Date.UTC(
+    parseInt(map.year, 10),
+    parseInt(map.month, 10) - 1,
+    parseInt(map.day, 10),
+    parseInt(map.hour, 10),
+    parseInt(map.minute, 10),
+    parseInt(map.second, 10)
+  );
+  const offsetMinutes = (tzAsUTC - asUTC.getTime()) / 60000;
+  return new Date(asUTC.getTime() - offsetMinutes * 60 * 1000);
+}
+function toTargetInstant(targetDate, timeZone) {
+  if (!targetDate) return null;
+  if (targetDate instanceof Date) return targetDate;
+  if (typeof targetDate === "number") return new Date(targetDate);
+  if (typeof targetDate === "string") {
+    const s = targetDate.trim().replace(/\s+/, "T");
+    const hasExplicitOffset = /Z|[+\-]\d{2}:\d{2}$/.test(s);
+    if (hasExplicitOffset) {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (timeZone) {
+      const d = parseZonedLocalToDate(s, timeZone);
+      return d && !isNaN(d.getTime()) ? d : null;
+    }
+    const d = new Date(s); // fallback: local
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+const normalizeTs = (v) => (v && typeof v.toDate === "function" ? v.toDate() : v);
 
 export default function EventDetails() {
   const [event, setEvent] = useState(null);
@@ -163,6 +220,24 @@ export default function EventDetails() {
     }
   }, [event, selectedTier]);
 
+  // === Timezone-aware instants ===
+  const startInstant = useMemo(
+    () => toTargetInstant(normalizeTs(event?.start), event?.timezone),
+    [event?.start, event?.timezone]
+  );
+  const endInstant = useMemo(
+    () => toTargetInstant(normalizeTs(event?.end), event?.timezone),
+    [event?.end, event?.timezone]
+  );
+
+  // For display fallbacks (date-fns formats in viewer's local TZ)
+  const startDate = startInstant || (event ? toJsDate(event.start) : null);
+  const endDate = endInstant || (event ? toJsDate(event.end) : null);
+
+  const isUpcomingEvent = !!startInstant && startInstant > new Date();
+  const now = new Date();
+  const isPastEvent = !!startInstant && startInstant < now;
+
   // ---------- Payment helpers (popup, PayPal-only) ----------
   const createPaymentRecord = async (registration, method, status, transactionId, receiptUrl, paymentDetails) => {
     const payload = prune({
@@ -252,12 +327,7 @@ export default function EventDetails() {
     );
   }
 
-  const startDate = toJsDate(event.start);
-  const endDate = toJsDate(event.end);
-  const isUpcomingEvent = startDate > new Date();
   const registrationTiers = Array.isArray(event.registration_tiers) ? event.registration_tiers : [];
-  const now = new Date();
-  const isPastEvent = toDate(event.start) < now;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -266,7 +336,7 @@ export default function EventDetails() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <Button
             variant="ghost"
-            onClick={handleBackClick}
+            onClick={() => navigate(-1)}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -292,7 +362,25 @@ export default function EventDetails() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                   <div className="absolute bottom-6 left-6 text-white">
                     <h1 className="text-3xl md:text-4xl font-bold mb-2">{event.title}</h1>
-                    <div className="flex items-center gap-4 text-lg">
+                    {startDate && (
+                      <div className="flex items-center gap-4 text-lg">
+                        <span className="inline-flex items-center gap-2">
+                          <Calendar className="w-5 h-5" />
+                          {format(startDate, "MMMM dd, yyyy")}
+                        </span>
+                        <span className="inline-flex items-center gap-2">
+                          <MapPin className="w-5 h-5" />
+                          {event.location}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-8">
+                  <h1 className="text-3xl md:text-4xl font-bold mb-4">{event.title}</h1>
+                  {startDate && (
+                    <div className="flex items-center gap-6 text-gray-600">
                       <span className="inline-flex items-center gap-2">
                         <Calendar className="w-5 h-5" />
                         {format(startDate, "MMMM dd, yyyy")}
@@ -302,31 +390,20 @@ export default function EventDetails() {
                         {event.location}
                       </span>
                     </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-8">
-                  <h1 className="text-3xl md:text-4xl font-bold mb-4">{event.title}</h1>
-                  <div className="flex items-center gap-6 text-gray-600">
-                    <span className="inline-flex items-center gap-2">
-                      <Calendar className="w-5 h-5" />
-                      {format(startDate, "MMMM dd, yyyy")}
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <MapPin className="w-5 h-5" />
-                      {event.location}
-                    </span>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Countdown */}
-            {isUpcomingEvent && (
+            {/* Countdown (timezone-aware) */}
+            {isUpcomingEvent && startInstant && (
               <div className="bg-white rounded-xl shadow-lg p-6">
                 <div className="text-center">
                   <h3 className="text-xl font-semibold mb-4 text-gray-900">Event Countdown</h3>
-                  <Countdown targetDate={startDate} />
+                  <Countdown
+                    targetDate={normalizeTs(event.start)}   // Date | string | timestamp
+                    timeZone={event.timezone}                // e.g., "Asia/Ho_Chi_Minh"
+                  />
                 </div>
               </div>
             )}
@@ -364,16 +441,18 @@ export default function EventDetails() {
               <Card className="shadow-lg border-0">
                 <div className="p-6 sm:p-8 border-b">
                   <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">{event.title}</h2>
-                  <div className="flex items-center gap-4 text-gray-600 mt-2 text-sm">
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      {format(toDate(event.start), "PPP")}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="w-4 h-4" />
-                      {event.location}
-                    </span>
-                  </div>
+                  {startDate && endDate && (
+                    <div className="flex items-center gap-4 text-gray-600 mt-2 text-sm">
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {format(startDate, "PPP")}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="w-4 h-4" />
+                        {event.location}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-6 sm:p-8">
@@ -489,15 +568,17 @@ export default function EventDetails() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="font-medium">{format(startDate, "EEEE, MMMM dd, yyyy")}</p>
-                    <p className="text-sm text-gray-600">
-                      {format(startDate, "h:mm a")} - {format(endDate, "h:mm a")}
-                    </p>
+                {startDate && endDate && (
+                  <div className="flex items-start gap-3">
+                    <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
+                    <div>
+                      <p className="font-medium">{format(startDate, "EEEE, MMMM dd, yyyy")}</p>
+                      <p className="text-sm text-gray-600">
+                        {format(startDate, "h:mm a")} - {format(endDate, "h:mm a")}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex items-start gap-3">
                   <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
@@ -520,7 +601,7 @@ export default function EventDetails() {
               </CardContent>
             </Card>
 
-            {/* Registration Options (even if there’s only 1; it’ll already be selected) */}
+            {/* Registration Options */}
             {registrationTiers.length > 0 && (
               <Card className="shadow-lg border-0">
                 <CardHeader>

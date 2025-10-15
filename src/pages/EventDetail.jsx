@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, MapPin, Clock, School as SchoolIcon, ArrowLeft } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 import { format, isSameDay } from 'date-fns';
+import Countdown from '@/components/events/Countdown';
 
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
@@ -27,16 +28,78 @@ const toDate = (v) => (v && typeof v?.toDate === 'function' ? v.toDate() : new D
 const fmtDate = (d) => format(d, 'EEEE, MMMM dd, yyyy');
 const fmtTime = (d) => format(d, 'p');
 
+// Parse a naive "local wall time" in a specific IANA timezone into a UTC instant
+function parseZonedLocalToDate(raw, timeZone) {
+  if (!raw || !timeZone) return null;
+  const norm = String(raw).trim().replace(' ', 'T');
+  const [datePart, timePart = '00:00:00'] = norm.split('T');
+
+  const [y, m, d] = datePart.split('-').map((x) => parseInt(x, 10));
+  const [hh, mm = '00', ss = '00'] = timePart.split(':');
+
+  const asUTC = new Date(Date.UTC(y, (m || 1) - 1, d || 1, parseInt(hh ?? '0', 10), parseInt(mm ?? '0', 10), parseInt(ss ?? '0', 10)));
+
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(asUTC);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+
+  const tzAsUTC = Date.UTC(
+    parseInt(map.year, 10),
+    parseInt(map.month, 10) - 1,
+    parseInt(map.day, 10),
+    parseInt(map.hour, 10),
+    parseInt(map.minute, 10),
+    parseInt(map.second, 10)
+  );
+  const offsetMinutes = (tzAsUTC - asUTC.getTime()) / 60000;
+  return new Date(asUTC.getTime() - offsetMinutes * 60 * 1000);
+}
+
+// Convert input into an absolute Date (UTC instant)
+function toTargetInstant(targetDate, timeZone) {
+  if (!targetDate) return null;
+  if (targetDate instanceof Date) return targetDate;
+  if (typeof targetDate === 'number') return new Date(targetDate);
+  if (typeof targetDate === 'string') {
+    const s = targetDate.trim().replace(/\s+/, 'T');
+    const hasExplicitOffset = /Z|[+\-]\d{2}:\d{2}$/.test(s);
+    if (hasExplicitOffset) {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (timeZone) {
+      const d = parseZonedLocalToDate(s, timeZone);
+      return d && !isNaN(d.getTime()) ? d : null;
+    }
+    const d = new Date(s); // fallback: interpret as local
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 const normalizeEvent = (raw = {}, id = '') => {
-  const start = toDate(raw.start || raw.startDate || Date.now());
-  const end = toDate(raw.end || raw.endDate || start);
+  // Keep original start/end (could be string/TS) and include timezone
+  const start = raw.start ?? raw.startDate ?? Date.now();
+  const end = raw.end ?? raw.endDate ?? start;
 
   return {
     id,
     event_id: raw.event_id || id,
     title: raw.title || 'Untitled Event',
     description: raw.description || '',
-    cover_image: raw.cover_image || raw.imageUrl || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&h=600&fit=crop',
+    cover_image:
+      raw.cover_image ||
+      raw.imageUrl ||
+      'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&h=600&fit=crop',
     venue: raw.venue || '',
     location:
       raw.location ||
@@ -47,6 +110,7 @@ const normalizeEvent = (raw = {}, id = '') => {
     is_free: raw.is_free ?? raw.isFree ?? true,
     highlight_tag: raw.highlight_tag || '',
     attendees: Array.isArray(raw.attendees) ? raw.attendees : [],
+    timezone: raw.timezone || raw.time_zone || raw.tz || null,
     start,
     end,
   };
@@ -97,6 +161,23 @@ export default function EventDetail() {
     })();
   }, [eventId]);
 
+  // Build absolute instants (correct across all viewers)
+  const startInstant = useMemo(
+    () => toTargetInstant(event?.start, event?.timezone),
+    [event?.start, event?.timezone]
+  );
+  const endInstant = useMemo(
+    () => toTargetInstant(event?.end, event?.timezone),
+    [event?.end, event?.timezone]
+  );
+
+  // Fallbacks if parsing failed
+  const startDate = startInstant || (event?.start ? toDate(event.start) : null);
+  const endDate = endInstant || (event?.end ? toDate(event.end) : null);
+
+  const sameDay = startDate && endDate ? isSameDay(startDate, endDate) : true;
+  const isUpcoming = startDate ? startDate > new Date() : false;
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -105,7 +186,7 @@ export default function EventDetail() {
     );
   }
 
-  if (notFound || !event) {
+  if (notFound || !event || !startDate || !endDate) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <Card className="max-w-lg w-full">
@@ -128,8 +209,6 @@ export default function EventDetail() {
     );
   }
 
-  const sameDay = isSameDay(event.start, event.end);
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header image / hero */}
@@ -150,7 +229,7 @@ export default function EventDetail() {
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-lg">
               <div className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
-                {fmtDate(event.start)}
+                {fmtDate(startDate)}
               </div>
               <div className="flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
@@ -166,6 +245,22 @@ export default function EventDetail() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Left column */}
           <div className="lg:col-span-2 space-y-8">
+            {/* Countdown (timezone-aware) */}
+            {isUpcoming && (
+              <Card className="border-green-200 bg-green-50">
+                <CardHeader>
+                  <CardTitle className="text-green-800">Event Countdown</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-2">
+                  <Countdown
+                    targetDate={event.start}       // string | Date | Timestamp
+                    timeZone={event.timezone}      // e.g., "Asia/Ho_Chi_Minh"
+                    className="py-2"
+                  />
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle>About this event</CardTitle>
@@ -204,8 +299,8 @@ export default function EventDetail() {
                 <div className="flex items-start gap-3">
                   <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-blue-800">{fmtDate(event.start)}</p>
-                    {!sameDay && <p className="font-semibold text-blue-800">{fmtDate(event.end)}</p>}
+                    <p className="font-semibold text-blue-800">{fmtDate(startDate)}</p>
+                    {!sameDay && <p className="font-semibold text-blue-800">{fmtDate(endDate)}</p>}
                   </div>
                 </div>
 
@@ -213,7 +308,7 @@ export default function EventDetail() {
                   <Clock className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div>
                     <p className="font-semibold text-blue-800">
-                      {fmtTime(event.start)} — {fmtTime(event.end)}
+                      {fmtTime(startDate)} — {fmtTime(endDate)}
                     </p>
                   </div>
                 </div>
