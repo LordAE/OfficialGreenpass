@@ -1,485 +1,440 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { School } from "@/api/entities";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Loader2,
-  DollarSign,
-  Calendar,
-  Info,
-  MapPin,
-  ArrowRight,
-  Zap,
-  Globe,
-  Clock,
-  CheckCircle,
-  FileText
-} from "lucide-react";
-import ReserveSeatModal from "../components/schools/ReserveSeatModal";
-import { Link } from "react-router-dom";
+// src/pages/PostDetail.jsx
+import React from "react";
+import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { getProvinceLabel } from "../components/utils/CanadianProvinces";
-import { getLevelLabel } from "../components/utils/EducationLevels";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Loader2, Calendar, User, Clock, ArrowLeft } from "lucide-react";
+import YouTubeEmbed from "@/components/YouTubeEmbed";
 
-/* ---------- helpers ---------- */
+/* ---------- Firebase ---------- */
+import { db } from "@/firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit as qLimit,
+  query,
+  where,
+} from "firebase/firestore";
 
-const InfoCard = ({ icon: Icon, title, value, subtitle, className = "" }) => (
-  <Card className={`h-full ${className}`}>
-    <CardContent className="p-4">
-      <div className="flex items-start gap-3">
-        <div className="p-2 bg-green-100 rounded-lg">
-          <Icon className="w-5 h-5 text-green-600" />
-        </div>
-        <div className="flex-1">
-          <p className="text-sm text-gray-500">{title}</p>
-          <p className="font-bold text-lg text-gray-900">{value}</p>
-          {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-);
+/* ---------- (Legacy) API entity fallback ---------- */
+import { Post as LegacyPost } from "@/api/entities";
 
-const safeGet = (obj, path, fallback = "Not specified") => {
-  const value = path.split(".").reduce((curr, k) => curr?.[k], obj);
-  return value ?? fallback;
+/* ========= Helpers ========= */
+const pickFirst = (...vals) =>
+  vals.find((v) => v !== undefined && v !== null && `${v}`.trim?.() !== "") ?? undefined;
+
+const displayDate = (when) => {
+  if (!when) return "";
+  try {
+    const dt =
+      typeof when === "object" && typeof when.toDate === "function"
+        ? when.toDate()
+        : new Date(when);
+    return dt.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return "";
+  }
 };
 
-const formatTuition = (fee) => {
-  if (!fee || fee === 0) return "Contact School";
-  return `$${Number(fee).toLocaleString()}`;
+const isHighlightActive = (post) => {
+  if (!post?.isHighlight) return false;
+  const until = post.highlight_until;
+  const ms =
+    until?.toMillis?.() ??
+    (typeof until === "number"
+      ? until
+      : Number.isFinite(Date.parse(until))
+      ? Date.parse(until)
+      : 0);
+  return ms > Date.now();
 };
 
-const getProvince = (code) => (code ? getProvinceLabel(code) : null);
-
-const formatLocation = (city, province, country) => {
-  const parts = [];
-  if (city && city.trim()) parts.push(city);
-  const prov = getProvince(province);
-  if (prov) parts.push(prov);
-  if (country && country.trim()) parts.push(country);
-  return parts.length > 0 ? parts.join(", ") : "Location not specified";
+// Coerce possible gallery fields to a clean string[] of URLs
+const toUrlArray = (val) => {
+  if (!val) return [];
+  if (Array.isArray(val)) return val.filter(Boolean).map(String);
+  if (typeof val === "string" && val.trim()) {
+    // allow comma-separated string just in case
+    return val.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
 };
 
-// clamp long text
-const clampWords = (text = "", maxWords = 140) => {
-  const words = String(text).trim().split(/\s+/);
-  if (words.length <= maxWords) return { short: text, truncated: false };
-  return { short: words.slice(0, maxWords).join(" ") + "…", truncated: true };
-};
+const mapDocToPost = (docSnap) => {
+  const d = { id: docSnap.id, ...docSnap.data() };
 
-/* ---------- page ---------- */
-
-export default function ProgramDetail() {
-  const [program, setProgram] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  // ✅ keep all hooks at the top level (fixes “Rendered more hooks than during the previous render”)
-  const [expanded, setExpanded] = useState(false);
-
-  const loadProgramDetails = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setProgram(null);
-
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const programId = urlParams.get("id");
-      if (!programId) {
-        setError("No program ID provided in URL.");
-        return;
-      }
-
-      // ✅ correct usage of list: second arg is options object
-      const allPrograms = await School.list(undefined, { limit: 1000 });
-
-      if (!Array.isArray(allPrograms) || allPrograms.length === 0) {
-        setError("No programs are currently available.");
-        return;
-      }
-
-      const foundProgram = allPrograms.find((p) => p.id === programId);
-      if (foundProgram) {
-        setProgram(foundProgram);
-      } else {
-        setError("Program not found. The program may have been removed or the link is invalid.");
-      }
-    } catch (err) {
-      console.error("Error loading program:", err);
-      setError("Failed to load program details. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  // Accept several possible field names for gallery images
+  const galleryCandidates = [
+    d.galleryImageUrls,
+    d.gallery,
+    d.images,
+    d.gallery_images,
+    d.media, // if someone stored it here
+  ];
+  const galleryImageUrls = galleryCandidates.reduce((acc, cur) => {
+    if (!acc?.length) return toUrlArray(cur);
+    return acc; // keep first non-empty match
   }, []);
 
-  useEffect(() => {
-    loadProgramDetails();
-  }, [loadProgramDetails]);
+  return {
+    id: docSnap.id,
+    slug: pickFirst(d.slug, d.path, d.id),
+    title: pickFirst(d.title, d.name, "Untitled"),
+    category: pickFirst(d.category, d.tag, "General"),
+    coverImageUrl: pickFirst(d.coverImageUrl, d.cover_image_url, d.image, ""),
+    excerpt: pickFirst(d.excerpt, d.summary, ""),
+    author: pickFirst(d.author, d.author_name, "—"),
+    readTime: pickFirst(d.readTime, d.read_time, ""),
+    videoUrl: pickFirst(d.videoUrl, d.youtube, ""),
+    content: pickFirst(d.content, d.body, d.html, ""),
+    created_at: d.created_at,
+    created_date: pickFirst(d.created_date, d.createdAt, d.created_at),
+    updated_at: d.updated_at,
+    published: d.published,
 
+    // NEW: gallery
+    galleryImageUrls,
+
+    // NEW highlight fields
+    isHighlight: Boolean(d.isHighlight),
+    highlight_duration_days: d.highlight_duration_days ?? null,
+    highlight_until: d.highlight_until ?? null,
+  };
+};
+
+export default function PostDetail() {
+  // ---------- hooks ----------
+  const loc = useLocation();
+  const [post, setPost] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  const slug = React.useMemo(() => {
+    const sp = new URLSearchParams(loc.search);
+    return sp.get("slug") || sp.get("path") || sp.get("id") || "";
+  }, [loc.search]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    // Include your Blog.jsx collection first
+    const tryCollections = ["posts", "blog", "blogs"];
+
+    (async () => {
+      setLoading(true);
+      setError(null);
+
+      if (!slug) {
+        if (!cancelled) {
+          setError("No post specified.");
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        let found = null;
+
+        // 0) Try doc by id across known collections
+        for (const collName of tryCollections) {
+          try {
+            const byIdRef = doc(db, collName, slug);
+            const byIdSnap = await getDoc(byIdRef);
+            if (byIdSnap.exists()) {
+              found = mapDocToPost(byIdSnap);
+              break;
+            }
+          } catch {
+            // continue
+          }
+        }
+
+        // 1) Field equality queries (slug / path / title)
+        if (!found) {
+          for (const collName of tryCollections) {
+            const coll = collection(db, collName);
+            const attempts = [
+              query(coll, where("slug", "==", slug), qLimit(1)),
+              query(coll, where("path", "==", slug), qLimit(1)),
+              query(coll, where("title", "==", slug), qLimit(1)),
+            ];
+            for (const qref of attempts) {
+              const snap = await getDocs(qref);
+              if (!snap.empty) {
+                found = mapDocToPost(snap.docs[0]);
+                break;
+              }
+            }
+            if (found) break;
+          }
+        }
+
+        // 2) Legacy "posts" entity (if your app had one)
+        if (!found) {
+          try {
+            const rows = await LegacyPost.filter({ slug });
+            if (rows && rows.length > 0) {
+              const p = rows[0];
+              const legacyGallery =
+                p.galleryImageUrls || p.gallery || p.images || [];
+
+              found = {
+                id: p.id,
+                slug: pickFirst(p.slug, p.path, p.id),
+                title: pickFirst(p.title, p.name, "Untitled"),
+                category: pickFirst(p.category, p.tag, "General"),
+                coverImageUrl: pickFirst(p.coverImageUrl, p.image, ""),
+                excerpt: pickFirst(p.excerpt, p.summary, ""),
+                author: pickFirst(p.author, "—"),
+                readTime: pickFirst(p.readTime, ""),
+                videoUrl: pickFirst(p.videoUrl, ""),
+                content: pickFirst(p.content, p.body, p.html, ""),
+                created_at: p.created_at,
+                created_date: pickFirst(p.created_date, p.createdAt, p.created_at),
+                updated_at: p.updated_at,
+                published: p.published,
+
+                // NEW: gallery
+                galleryImageUrls: toUrlArray(legacyGallery),
+
+                // highlight fields if present in legacy
+                isHighlight: Boolean(p.isHighlight),
+                highlight_duration_days: p.highlight_duration_days ?? null,
+                highlight_until: p.highlight_until ?? null,
+              };
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        // 3) Last-resort: small scan (first 100 docs) to catch odd field cases
+        if (!found) {
+          for (const collName of tryCollections) {
+            try {
+              const coll = collection(db, collName);
+              const snap = await getDocs(query(coll, qLimit(100)));
+              const lcSlug = slug.toLowerCase();
+              const candidate = snap.docs
+                .map((d) => ({ id: d.id, data: d.data(), snap: d }))
+                .find(({ id, data }) => {
+                  const cands = [id, data.slug, data.path, data.title]
+                    .filter(Boolean)
+                    .map((x) => String(x).toLowerCase().trim());
+                  return cands.includes(lcSlug);
+                });
+              if (candidate) {
+                found = mapDocToPost(candidate.snap);
+                break;
+              }
+            } catch {
+              // continue
+            }
+          }
+        }
+
+        if (!cancelled) {
+          if (found) {
+            if (typeof found.published === "boolean" && !found.published) {
+              setError("This post is not published.");
+            } else {
+              setPost(found);
+            }
+          } else {
+            setError("Post not found.");
+          }
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Failed to fetch post:", err);
+        if (!cancelled) {
+          setError("An error occurred while fetching the post.");
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  // ---------- UI ----------
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-green-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading program details...</p>
-        </div>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-gray-400" />
       </div>
     );
   }
 
-  if (error) {
+  if (error || !post) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6">
-          <Info className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Program Not Available</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <Link to={createPageUrl("Programs")}>
-            <Button>Browse All Programs</Button>
-          </Link>
-        </div>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center text-center p-8">
+        <h2 className="text-2xl font-bold mb-2">Could Not Load Post</h2>
+        <p className="text-gray-600 mb-6">
+          {error || "The requested blog post could not be found."}
+        </p>
+        <Link to={createPageUrl("Blog")}>
+          <Button variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Blog
+          </Button>
+        </Link>
       </div>
     );
   }
 
-  if (!program) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-600">Program data not available.</p>
-      </div>
-    );
-  }
-
-  // ---------- derived fields ----------
-  const programTitle = safeGet(program, "program_title", "Program Title Not Available");
-  const schoolName = safeGet(program, "school_name", "School Name Not Available");
-  const institutionName = safeGet(program, "institution_name", schoolName);
-  const programLevel = safeGet(program, "program_level", "");
-  const tuitionFee = program.tuition_fee_cad || program.tuition_fee || 0;
-  const applicationFee = program.application_fee || 0;
-  const duration = safeGet(program, "duration_display", safeGet(program, "duration", "Contact School"));
-  const deliveryMode = safeGet(program, "delivery_mode", "In-person");
-  const location = formatLocation(program.school_city, program.school_province, program.school_country);
-  const fieldOfStudy = safeGet(program, "field_of_study", "");
-  const programOverview = safeGet(program, "program_overview", "");
-  const institutionType = safeGet(program, "institution_type", "University");
-  const schoolType = safeGet(program, "school_type", "Public");
-  const intakes = Array.isArray(program.intake_dates) ? program.intake_dates : [];
-
-  const { short: overviewShort, truncated } = clampWords(programOverview, 140);
-
-  // data for modal
-  const modalProgramData = {
-    id: program.id,
-    program_title: programTitle,
-    institution_name: institutionName,
-    school_id: program.school_id || program.institution_id || program.id,
-    institution_logo_url: program.institution_logo_url,
-    school_city: program.school_city,
-    school_province: program.school_province,
-    school_country: program.school_country
-  };
+  const formattedDate =
+    displayDate(pickFirst(post.created_date, post.created_at, post.updated_at)) || "";
+  const activeHighlight = isHighlightActive(post);
+  const hasGallery = Array.isArray(post.galleryImageUrls) && post.galleryImageUrls.length > 0;
 
   return (
-    <>
-      <ReserveSeatModal program={modalProgramData} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="mb-8">
+          <Link
+            to={createPageUrl("Blog")}
+            className="text-sm font-medium text-green-600 hover:text-green-800 flex items-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to all posts
+          </Link>
+        </div>
 
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 p-4 sm:p-8">
-        <div className="max-w-7xl mx-auto">
-          {/* header */}
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
+        <div className="lg:grid lg:grid-cols-12 lg:gap-12">
+          <main className="lg:col-span-8">
+            {post.coverImageUrl ? (
+              <div className="mb-8 rounded-2xl overflow-hidden shadow-lg">
                 <img
-                  src={
-                    program.institution_logo_url ||
-                    "https://images.unsplash.com/photo-1562774053-701939374585?w=100&h=100&fit=crop"
-                  }
-                  alt={`${institutionName} logo`}
-                  className="w-20 h-20 object-contain bg-white border rounded-lg p-2"
+                  src={post.coverImageUrl}
+                  alt={post.title}
+                  className="w-full h-auto object-cover"
                 />
-                <div className="flex-1">
-                  <h1 className="text-3xl font-bold text-gray-900 mb-1">{programTitle}</h1>
-                  <p className="text-lg text-green-600 font-semibold">{institutionName}</p>
-                  <p className="text-gray-600 flex items-center gap-2 mt-2">
-                    <MapPin className="w-4 h-4" />
-                    {location}
-                  </p>
+              </div>
+            ) : null}
+
+            {post.videoUrl ? (
+              <div className="mb-8 rounded-2xl overflow-hidden shadow-lg">
+                <YouTubeEmbed url={post.videoUrl} className="w-full aspect-video" />
+              </div>
+            ) : null}
+
+            {/* ===== NEW: Gallery Section ===== */}
+            {hasGallery && (
+              <section className="mb-10">
+                <h2 className="text-xl font-semibold mb-3">Gallery</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {post.galleryImageUrls.map((url, idx) => (
+                    <a
+                      key={`${url}-${idx}`}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block rounded-lg overflow-hidden border bg-white hover:shadow"
+                      title="Open image in new tab"
+                    >
+                      <img
+                        src={url}
+                        alt={`${post.title} – image ${idx + 1}`}
+                        className="w-full h-40 object-cover"
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </section>
+            )}
 
-          <Button onClick={() => setIsModalOpen(true)} className="mt-6 bg-green-600 hover:bg-green-700">
-            Reserve Your Seat
-          </Button>
-
-          <div className="grid lg:grid-cols-3 gap-8 mt-8">
-            {/* main */}
-            <div className="lg:col-span-2 space-y-8">
-              {/* quick facts */}
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <InfoCard icon={DollarSign} title="Annual Tuition" value={formatTuition(tuitionFee)} subtitle={tuitionFee > 0 ? "CAD per year" : ""} />
-                <InfoCard icon={Clock} title="Duration" value={duration} />
-                <InfoCard icon={Globe} title="Delivery Mode" value={deliveryMode} />
-                <InfoCard
-                  icon={FileText}
-                  title="Application Fee"
-                  value={applicationFee > 0 ? `$${applicationFee}` : "Contact School"}
-                  subtitle={applicationFee > 0 ? "CAD" : ""}
-                />
-              </div>
-
-              {/* overview / details */}
-              <Card>
-                <Tabs defaultValue="overview" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="details">Details</TabsTrigger>
-                  </TabsList>
-
-                  {/* OVERVIEW */}
-                  <TabsContent value="overview" className="p-6">
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-xl font-semibold mb-4">Program Description</h3>
-
-                        {programOverview && programOverview !== "Not specified" ? (
-                          <div className="prose max-w-none prose-p:leading-relaxed text-[15px] text-gray-700">
-                            <p>{expanded ? programOverview : overviewShort}</p>
-                            {truncated && (
-                              <Button
-                                variant="ghost"
-                                className="mt-2 px-0 text-green-700 hover:text-green-800"
-                                onClick={() => setExpanded((s) => !s)}
-                              >
-                                {expanded ? "Show less" : "Read more"}
-                              </Button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 bg-gray-50 rounded-lg">
-                            <Info className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                            <p className="text-gray-600">Detailed program description not available.</p>
-                            <p className="text-gray-500 text-sm mt-2">Contact the school for more information about this program.</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {fieldOfStudy && fieldOfStudy !== "Not specified" && (
-                        <div>
-                          <h4 className="font-semibold text-lg mb-2">Field of Study</h4>
-                          <Badge variant="outline" className="text-sm px-3 py-1">
-                            {fieldOfStudy}
-                          </Badge>
-                        </div>
-                      )}
-
-                      <div className="grid sm:grid-cols-2 gap-6">
-                        {/* features */}
-                        <section>
-                          <h4 className="font-semibold mb-3">Program Features</h4>
-                          <ul className="space-y-2">
-                            <li className="flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                              <span className="text-sm">
-                                {safeGet(program, "language_of_instruction", "English")} instruction
-                              </span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                              <span className="text-sm">{schoolType} institution</span>
-                            </li>
-                            {program.housing_available && (
-                              <li className="flex items-center gap-2">
-                                <CheckCircle className="w-4 h-4 text-green-500" />
-                                <span className="text-sm">Housing available</span>
-                              </li>
-                            )}
-                            {program.is_dli && (
-                              <li className="flex items-center gap-2">
-                                <CheckCircle className="w-4 h-4 text-green-500" />
-                                <span className="text-sm">DLI certified</span>
-                              </li>
-                            )}
-                          </ul>
-                        </section>
-
-                        {/* dates */}
-                        <section className="rounded-lg border bg-white p-4">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Calendar className="w-5 h-5 text-blue-600" />
-                            <h4 className="text-sm font-semibold text-gray-900">Important Dates</h4>
-                          </div>
-                          <div className="space-y-2 text-sm text-gray-700">
-                            {program.application_deadline && (
-                              <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-red-500" />
-                                <span>Application deadline: {program.application_deadline}</span>
-                              </div>
-                            )}
-                            {intakes.map((i) => (
-                              <div key={i} className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-green-600" />
-                                <span>Intake: {i}</span>
-                              </div>
-                            ))}
-                            {!program.application_deadline && intakes.length === 0 && (
-                              <p className="text-gray-500 italic">Contact school for admission dates and deadlines.</p>
-                            )}
-                          </div>
-                        </section>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  {/* DETAILS */}
-                  <TabsContent value="details" className="p-6">
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-lg">Program Information</h4>
-                        <div className="space-y-3">
-                          {programLevel && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Level:</span>
-                              <span className="font-medium">{getLevelLabel(programLevel)}</span>
-                            </div>
-                          )}
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Duration:</span>
-                            <span className="font-medium">{duration}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Delivery:</span>
-                            <span className="font-medium">{deliveryMode}</span>
-                          </div>
-                          {program.curriculum && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Curriculum:</span>
-                              <span className="font-medium">{program.curriculum}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-lg">Institution Information</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Type:</span>
-                            <span className="font-medium">{institutionType}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">School Type:</span>
-                            <span className="font-medium">{schoolType}</span>
-                          </div>
-                          {program.is_dli && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">DLI Number:</span>
-                              <span className="font-medium">{safeGet(program, "dli_number", "Certified")}</span>
-                            </div>
-                          )}
-                          {program.institution_website && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Website:</span>
-                              <a
-                                href={program.institution_website}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-medium text-green-600 hover:underline"
-                              >
-                                Visit Website
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </Card>
-            </div>
-
-            {/* sidebar */}
-            <div className="space-y-6">
-              <Card className="shadow-lg">
-                <CardHeader className="p-0">
-                  <img
-                    src={
-                      program.school_image_url ||
-                      program.institution_logo_url ||
-                      "https://images.unsplash.com/photo-1562774053-701939374585?w=400&h=250&fit=crop"
-                    }
-                    alt={schoolName}
-                    className="w-full h-40 object-cover rounded-t-lg"
-                  />
-                </CardHeader>
-                <CardContent className="p-4">
-                  <h3 className="font-bold text-lg mb-2">{schoolName}</h3>
-                  <div className="flex items-center text-sm text-gray-500 mb-3">
-                    <MapPin className="w-4 h-4 mr-1" />
-                    {location}
-                  </div>
-                  {program.institution_about && (
-                    <p className="text-sm text-gray-600 mb-4 line-clamp-3">{program.institution_about}</p>
-                  )}
-
-                  <div className="space-y-2 text-sm border-t border-gray-100 pt-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Institution Type:</span>
-                      <span className="font-medium">{institutionType}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">School Type:</span>
-                      <span className="font-medium">{schoolType}</span>
-                    </div>
-                    {program.housing_available && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Housing:</span>
-                        <span className="font-medium text-green-600">Available</span>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-                <CardFooter className="flex flex-col gap-3 p-4">
-                  <Button className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white hover:opacity-90" onClick={() => setIsModalOpen(true)}>
-                    <Zap className="w-4 h-4 mr-2" />
-                    Reserve Your Seat
-                  </Button>
-                  <Link to={createPageUrl(`Programs?school=${encodeURIComponent(schoolName)}`)} className="w-full">
-                    <Button variant="outline" className="w-full">
-                      More from this School <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                </CardFooter>
-              </Card>
-
-              {intakes.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Calendar className="w-5 h-5 text-green-600" />
-                      Upcoming Intakes
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {intakes.map((i) => (
-                        <Badge key={i} variant="outline" className="px-3 py-1">
-                          {i}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+            <div className="flex items-center gap-2 mb-3">
+              {post.category ? <Badge>{post.category}</Badge> : null}
+              {activeHighlight && (
+                <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
+                  Highlighted
+                </Badge>
               )}
             </div>
-          </div>
+
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 leading-tight mb-4">
+              {post.title}
+            </h1>
+
+            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-8">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4" />
+                <span>{post.author || "GreenPass Team"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                <time dateTime={post.created_date || ""}>{formattedDate}</time>
+              </div>
+              {post.readTime ? (
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  <span>{post.readTime}</span>
+                </div>
+              ) : null}
+            </div>
+
+            {post.content ? (
+              <div
+                className="prose prose-lg max-w-none prose-headings:font-bold prose-a:text-green-600 hover:prose-a:text-green-700"
+                dangerouslySetInnerHTML={{ __html: post.content }}
+              />
+            ) : post.excerpt ? (
+              <p className="text-lg text-gray-700">{post.excerpt}</p>
+            ) : null}
+          </main>
+
+          <aside className="lg:col-span-4 mt-12 lg:mt-0">
+            <div className="sticky top-24 space-y-8">
+              <Card className="shadow-md">
+                <CardHeader>
+                  <CardTitle>About this post</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm">
+                  <div className="flex items-center gap-3">
+                    <User className="w-5 h-5 text-gray-500" />
+                    <div>
+                      <p className="text-gray-500">Author</p>
+                      <p className="font-semibold text-gray-800">
+                        {post.author || "GreenPass Team"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-gray-500" />
+                    <div>
+                      <p className="text-gray-500">Published</p>
+                      <p className="font-semibold text-gray-800">{formattedDate}</p>
+                    </div>
+                  </div>
+
+                  {post.readTime ? (
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-5 h-5 text-gray-500" />
+                      <div>
+                        <p className="text-gray-500">Read time</p>
+                        <p className="font-semibold text-gray-800">{post.readTime}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </div>
+          </aside>
         </div>
       </div>
-    </>
+    </div>
   );
 }
