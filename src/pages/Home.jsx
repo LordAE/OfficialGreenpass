@@ -14,7 +14,7 @@ import { createPageUrl } from '@/utils';
 import IconResolver from '../components/IconResolver';
 import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
-import PromotionsSection from "../components/promotions/PromotionsSection";
+import PromotionsSection from "@/components/promotions/PromotionsSection.jsx";
 
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
@@ -407,7 +407,7 @@ function NewsHighlights({ highlights = [] }) {
                 </div>
 
                 {/* Text content */}
-                <div className="relative z-10 h-full flex items=end sm:items-end">
+                <div className="relative z-10 h-full flex items-end sm:items-end">
                   <div className="p-4 sm:p-8 w-full">
                     <div className="max-w-3xl bg-black/35 backdrop-blur-sm rounded-2xl px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-2 mb-2">
@@ -631,7 +631,6 @@ function Stats({ stats }) {
     </section>
   );
 }
-
 
 /* =========================
    Features
@@ -1086,8 +1085,9 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Hero content={content} />
-      <NewsHighlights highlights={highlightedPosts} />
+      {/* Promotions grid (from Firestore) */}
       <PromotionsSection lang="vi" />
+      <NewsHighlights highlights={highlightedPosts} />
       <PartnersStrip />
       <Stats stats={content?.stats_section} />
       <Features features={content?.features_section} />
