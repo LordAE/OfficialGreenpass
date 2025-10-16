@@ -14,7 +14,7 @@ import { createPageUrl } from '@/utils';
 import IconResolver from '../components/IconResolver';
 import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
-import PromotionsSection from "@/components/promotions/PromotionsSection";
+import PromotionsSection from "../components/promotions/PromotionsSection";
 
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
@@ -633,7 +633,6 @@ function Stats({ stats }) {
 }
 
 
-<PromotionsSection lang="vi" />
 /* =========================
    Features
 ========================= */
@@ -1088,6 +1087,7 @@ export default function Home() {
     <div className="min-h-screen">
       <Hero content={content} />
       <NewsHighlights highlights={highlightedPosts} />
+      <PromotionsSection lang="vi" />
       <PartnersStrip />
       <Stats stats={content?.stats_section} />
       <Features features={content?.features_section} />
