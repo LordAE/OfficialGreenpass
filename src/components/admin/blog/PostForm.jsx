@@ -41,19 +41,16 @@ export default function PostForm({ post, onSave, onCancel }) {
       readTime: '',
       isFeatured: false,
 
-      // NEW highlight fields (defaults)
+      // highlight defaults
       isHighlight: false,
       highlight_duration_days: 7,
       highlight_until: null,
     };
 
-    // hydrate editor + form
     setFormData(initialData);
     setContent(initialData.content || '');
 
-    // Accept a few possible existing field names for gallery
-    const incomingGallery =
-      post?.galleryImageUrls || post?.gallery || post?.images || [];
+    const incomingGallery = post?.galleryImageUrls || post?.gallery || post?.images || [];
     setGalleryImages(Array.isArray(incomingGallery) ? incomingGallery.slice(0, MAX_GALLERY) : []);
   }, [post]);
 
@@ -88,24 +85,24 @@ export default function PostForm({ post, onSave, onCancel }) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    const remainingSlots = MAX_GALLERY - galleryImages.length;
-    if (remainingSlots <= 0) {
+    const remaining = MAX_GALLERY - galleryImages.length;
+    if (remaining <= 0) {
       alert(`You already have the maximum of ${MAX_GALLERY} images.`);
       e.target.value = null;
       return;
     }
 
-    const toUpload = files.slice(0, remainingSlots);
+    const toUpload = files.slice(0, remaining);
 
     setIsGalleryUploading(true);
     try {
-      const uploadedUrls = await Promise.all(
+      const uploaded = await Promise.all(
         toUpload.map(async (file) => {
           const { file_url } = await UploadFile({ file });
           return file_url;
         })
       );
-      setGalleryImages((prev) => [...prev, ...uploadedUrls]);
+      setGalleryImages((prev) => [...prev, ...uploaded]);
     } catch (err) {
       console.error('Error uploading gallery images:', err);
       alert('One or more gallery images failed to upload.');
@@ -115,14 +112,14 @@ export default function PostForm({ post, onSave, onCancel }) {
     }
   };
 
-  const removeGalleryImage = (index) => {
-    setGalleryImages((prev) => prev.filter((_, i) => i !== index));
+  const removeGalleryImage = (idx) => {
+    setGalleryImages((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Compute highlight_until if needed (store ISO string for portability)
+    // Compute highlight_until (ISO string)
     let highlight_until = null;
     const days = Number(formData.highlight_duration_days || 0);
     if (formData.isHighlight && days > 0) {
@@ -133,12 +130,9 @@ export default function PostForm({ post, onSave, onCancel }) {
     onSave({
       ...formData,
       content,
-      // normalized highlight fields in payload
       isHighlight: Boolean(formData.isHighlight),
       highlight_duration_days: formData.isHighlight ? Math.max(1, Number(days)) : null,
       highlight_until: formData.isHighlight ? highlight_until : null,
-
-      // NEW: gallery images array
       galleryImageUrls: galleryImages.slice(0, MAX_GALLERY),
     });
   };
@@ -223,7 +217,47 @@ export default function PostForm({ post, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* ===== NEW: Gallery Images ===== */}
+      {/* ===== Category / Author / Read Time (RESTORED) ===== */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div>
+          <Label htmlFor="category">Category</Label>
+          <Select
+            name="category"
+            value={formData.category || 'Immigration'}
+            onValueChange={(v) => handleSelectChange('category', v)}
+          >
+            <SelectTrigger id="category">
+              <SelectValue placeholder="Select a category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Programs">Programs</SelectItem>
+              <SelectItem value="Agents">Agents</SelectItem>
+              <SelectItem value="Schools">Schools</SelectItem>
+              <SelectItem value="Immigration">Immigration</SelectItem>
+              <SelectItem value="Events">Events</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="author">Author</Label>
+            <Input id="author" name="author" value={formData.author || ''} onChange={handleChange} required />
+        </div>
+
+        <div>
+          <Label htmlFor="readTime">Read Time</Label>
+          <Input
+            id="readTime"
+            name="readTime"
+            value={formData.readTime || ''}
+            onChange={handleChange}
+            placeholder="e.g., 5 min read"
+            required
+          />
+        </div>
+      </div>
+
+      {/* ===== Gallery Images ===== */}
       <div className="pt-6">
         <div className="flex items-center justify-between">
           <Label htmlFor="galleryImages">Gallery Images (up to {MAX_GALLERY})</Label>
@@ -273,7 +307,7 @@ export default function PostForm({ post, onSave, onCancel }) {
         )}
       </div>
 
-      {/* NEW: Highlight controls */}
+      {/* ===== Highlight controls ===== */}
       <div className="border-t pt-4">
         <label className="flex items-center gap-2">
           <input
