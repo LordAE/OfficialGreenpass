@@ -15,7 +15,6 @@ import IconResolver from '../components/IconResolver';
 import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
 
-
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
 import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
@@ -116,6 +115,7 @@ const sanitizeHomeContent = (loaded = {}) => {
     school_rating: 4.5,
     image_url: '',
     youtube_url: '',
+    video_url: '', // <— allow mp4/direct video
     link_url: '',
     link_text: '',
     ...feature,
@@ -175,7 +175,7 @@ const mapPostDoc = (snap) => {
     id: snap.id,
     slug: pickFirst(d.slug, d.path, d.id),
     title: pickFirst(d.title, d.name, 'Untitled'),
-    // Only take explicit `excerpt` (no fallback to description/body)
+    // Only take explicit `excerpt`
     excerpt: typeof d.excerpt === 'string' ? d.excerpt : '',
     // Cover image only
     coverImageUrl: pickFirst(d.coverImageUrl, d.cover_image_url, d.image, ''),
@@ -381,7 +381,7 @@ function NewsHighlights({ highlights = [] }) {
 
         <Card className="overflow-hidden border-0 shadow-md">
           <div
-            className="relative w-full h-[22rem] sm:h-[26rem] lg:h-[28rem]"
+            className="relative w-full h-[26rem] sm:h-[34rem] lg:h-[40rem]"  // << taller carousel
             onMouseEnter={pause}
             onMouseLeave={resume}
           >
@@ -642,6 +642,8 @@ const Features = ({ features }) => {
       title: "Discover Top Schools",
       description: "Explore thousands of programs from top institutions worldwide. Our smart filters help you find the perfect match for your academic and career goals.",
       image_url: "",
+      video_url: "", // optional mp4
+      youtube_url: "", // optional YouTube
       link_url: createPageUrl('Schools'),
       link_text: "Explore Schools",
       media_position: 'right'
@@ -651,6 +653,7 @@ const Features = ({ features }) => {
       title: "Expert Agent Guidance",
       description: "Connect with verified education agents who can guide you through every step, from school selection to visa paperwork.",
       youtube_url: "",
+      video_url: "",
       link_url: createPageUrl('FindAgent'),
       link_text: "Find an Agent",
       media_position: 'left'
@@ -660,6 +663,7 @@ const Features = ({ features }) => {
       title: "Recommended For You: University of Toronto",
       description: "A world-renowned university in a vibrant, multicultural city.",
       image_url: "",
+      video_url: "",
       link_url: createPageUrl('SchoolDetails?id=university-of-toronto'),
       link_text: "View University",
       media_position: 'right',
@@ -734,6 +738,14 @@ const Features = ({ features }) => {
                 <div className="bg-white p-2 rounded-2xl shadow-2xl border border-gray-100">
                   {feature.youtube_url ? (
                     <YouTubeEmbed url={feature.youtube_url} className="w-full h-56 sm:h-80 rounded-xl overflow-hidden" />
+                  ) : feature.video_url ? (
+                    <video
+                      className="w-full h-56 sm:h-80 rounded-xl"
+                      src={feature.video_url}
+                      controls
+                      playsInline
+                      preload="metadata"
+                    />
                   ) : feature.image_url ? (
                     <img src={feature.image_url} alt={feature.title} className="w-full h-auto object-cover rounded-xl" />
                   ) : (
