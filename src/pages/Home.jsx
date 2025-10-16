@@ -14,7 +14,7 @@ import { createPageUrl } from '@/utils';
 import IconResolver from '../components/IconResolver';
 import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
-import PromotionsSection from "@/components/promotions/PromotionsSection.jsx";
+
 
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
@@ -1085,8 +1085,6 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Hero content={content} />
-      {/* Promotions grid (from Firestore) */}
-      <PromotionsSection lang="vi" />
       <NewsHighlights highlights={highlightedPosts} />
       <PartnersStrip />
       <Stats stats={content?.stats_section} />
