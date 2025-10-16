@@ -197,6 +197,9 @@ export default function App() {
         {/* User utilities */}
         <Route path="userdetails" element={<UserDetails />} />
 
+        {// inside <Routes> ...
+        <Route path="/promotions" element={<Promotions />} />}
+
       </Route>
     </Routes>
   );

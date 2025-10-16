@@ -14,6 +14,7 @@ import { createPageUrl } from '@/utils';
 import IconResolver from '../components/IconResolver';
 import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
+import PromotionsSection from "@/components/promotions/PromotionsSection";
 
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
@@ -631,6 +632,8 @@ function Stats({ stats }) {
   );
 }
 
+
+<PromotionsSection lang="vi" />
 /* =========================
    Features
 ========================= */
