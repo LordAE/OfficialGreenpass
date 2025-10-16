@@ -7,7 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UploadFile } from '@/api/integrations';
-import { Loader2, Image as ImageIcon } from 'lucide-react';
+import { Loader2, Image as ImageIcon, X as XIcon } from 'lucide-react';
+
+const MAX_GALLERY = 20;
 
 const quillModules = {
   toolbar: [
@@ -22,7 +24,9 @@ const quillModules = {
 export default function PostForm({ post, onSave, onCancel }) {
   const [formData, setFormData] = useState({});
   const [isUploading, setIsUploading] = useState(false);
+  const [isGalleryUploading, setIsGalleryUploading] = useState(false);
   const [content, setContent] = useState('');
+  const [galleryImages, setGalleryImages] = useState([]);
 
   useEffect(() => {
     const initialData = post || {
@@ -42,8 +46,15 @@ export default function PostForm({ post, onSave, onCancel }) {
       highlight_duration_days: 7,
       highlight_until: null,
     };
+
+    // hydrate editor + form
     setFormData(initialData);
     setContent(initialData.content || '');
+
+    // Accept a few possible existing field names for gallery
+    const incomingGallery =
+      post?.galleryImageUrls || post?.gallery || post?.images || [];
+    setGalleryImages(Array.isArray(incomingGallery) ? incomingGallery.slice(0, MAX_GALLERY) : []);
   }, [post]);
 
   const handleChange = (e) => {
@@ -72,6 +83,42 @@ export default function PostForm({ post, onSave, onCancel }) {
     }
   };
 
+  // ===== Gallery handlers =====
+  const handleGalleryFilesChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const remainingSlots = MAX_GALLERY - galleryImages.length;
+    if (remainingSlots <= 0) {
+      alert(`You already have the maximum of ${MAX_GALLERY} images.`);
+      e.target.value = null;
+      return;
+    }
+
+    const toUpload = files.slice(0, remainingSlots);
+
+    setIsGalleryUploading(true);
+    try {
+      const uploadedUrls = await Promise.all(
+        toUpload.map(async (file) => {
+          const { file_url } = await UploadFile({ file });
+          return file_url;
+        })
+      );
+      setGalleryImages((prev) => [...prev, ...uploadedUrls]);
+    } catch (err) {
+      console.error('Error uploading gallery images:', err);
+      alert('One or more gallery images failed to upload.');
+    } finally {
+      setIsGalleryUploading(false);
+      e.target.value = null;
+    }
+  };
+
+  const removeGalleryImage = (index) => {
+    setGalleryImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -90,6 +137,9 @@ export default function PostForm({ post, onSave, onCancel }) {
       isHighlight: Boolean(formData.isHighlight),
       highlight_duration_days: formData.isHighlight ? Math.max(1, Number(days)) : null,
       highlight_until: formData.isHighlight ? highlight_until : null,
+
+      // NEW: gallery images array
+      galleryImageUrls: galleryImages.slice(0, MAX_GALLERY),
     });
   };
 
@@ -173,43 +223,54 @@ export default function PostForm({ post, onSave, onCancel }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div>
-          <Label htmlFor="category">Category</Label>
-          <Select
-            name="category"
-            value={formData.category || 'Immigration'}
-            onValueChange={(v) => handleSelectChange('category', v)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Programs">Programs</SelectItem>
-              <SelectItem value="Agents">Agents</SelectItem>
-              <SelectItem value="Schools">Schools</SelectItem>
-              <SelectItem value="Immigration">Immigration</SelectItem>
-              <SelectItem value="Events">Events</SelectItem>
-            </SelectContent>
-          </Select>
+      {/* ===== NEW: Gallery Images ===== */}
+      <div className="pt-6">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="galleryImages">Gallery Images (up to {MAX_GALLERY})</Label>
+          <span className="text-sm text-gray-500">
+            {galleryImages.length}/{MAX_GALLERY}
+          </span>
         </div>
 
-        <div>
-          <Label htmlFor="author">Author</Label>
-          <Input id="author" name="author" value={formData.author || ''} onChange={handleChange} required />
-        </div>
-
-        <div>
-          <Label htmlFor="readTime">Read Time</Label>
+        <div className="mt-2 flex items-center gap-4">
           <Input
-            id="readTime"
-            name="readTime"
-            value={formData.readTime || ''}
-            onChange={handleChange}
-            placeholder="e.g., 5 min read"
-            required
+            id="galleryImages"
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleGalleryFilesChange}
+            disabled={isGalleryUploading || galleryImages.length >= MAX_GALLERY}
           />
+          {isGalleryUploading && <Loader2 className="w-5 h-5 animate-spin" />}
         </div>
+
+        {galleryImages.length > 0 ? (
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {galleryImages.map((url, idx) => (
+              <div key={`${url}-${idx}`} className="relative group">
+                <img
+                  src={url}
+                  alt={`Gallery ${idx + 1}`}
+                  className="w-full h-28 object-cover rounded-md border"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeGalleryImage(idx)}
+                  className="absolute top-1 right-1 bg-white/90 hover:bg-white text-red-600 rounded-full p-1 shadow transition"
+                  aria-label="Remove image"
+                  title="Remove image"
+                >
+                  <XIcon className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 mt-2">
+            No gallery images yet. You can select multiple files at once. Remaining slots:{' '}
+            {MAX_GALLERY - galleryImages.length}.
+          </p>
+        )}
       </div>
 
       {/* NEW: Highlight controls */}
@@ -248,7 +309,16 @@ export default function PostForm({ post, onSave, onCancel }) {
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">Save Post</Button>
+        <Button type="submit" disabled={isUploading || isGalleryUploading}>
+          {isUploading || isGalleryUploading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            'Save Post'
+          )}
+        </Button>
       </div>
     </form>
   );
