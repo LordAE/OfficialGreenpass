@@ -203,6 +203,19 @@
       ]
     },
     {
+      "indexes": [
+        {
+          "collectionGroup": "promotions",
+          "queryScope": "COLLECTION",
+          "fields": [
+            { "fieldPath": "is_active", "order": "ASCENDING" },
+            { "fieldPath": "priority", "order": "DESCENDING" }
+          ]
+        }
+      ],
+      "fieldOverrides": []
+    }
+    {
       "collectionGroup": "WalletTransaction",
       "queryScope": "COLLECTION",
       "fields": [

@@ -359,6 +359,29 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
+    // ========= promotions =========
+    match /promotions/{id} {
+      allow read: if true;
+
+      function validPromotion() {
+        return request.resource.data.keys().hasOnly([
+          "title_en","title_vi","subtitle_en","subtitle_vi",
+          "description_en","description_vi","image_url",
+          "price_label_en","price_label_vi",
+          "registration_fee_label_en","registration_fee_label_vi",
+          "location_en","location_vi","tags_en","tags_vi",
+          "cta_label_en","cta_label_vi","cta_link",
+          "start_date","end_date","is_active","priority"
+      ])
+      && request.resource.data.image_url is string
+      && request.resource.data.cta_link is string
+      && request.resource.data.is_active is bool
+      && request.resource.data.priority is number;
+    }
+
+    allow create, update, delete: if isAdmin() && validPromotion();
+  }
+
     // Final deny-all
     match /{document=**} {
       allow read, write: if false;
