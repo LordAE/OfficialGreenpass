@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "@/firebase";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
-import PromotionCard from "./PromotionCard";
+import PromotionCard from "@/components/promotions/PromotionCard";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 
