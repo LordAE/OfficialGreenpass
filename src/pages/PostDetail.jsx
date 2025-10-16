@@ -5,20 +5,12 @@ import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, User, Clock, ArrowLeft } from "lucide-react";
+import { Loader2, Calendar, User, Clock, ArrowLeft, X, ChevronLeft, ChevronRight } from "lucide-react";
 import YouTubeEmbed from "@/components/YouTubeEmbed";
 
 /* ---------- Firebase ---------- */
 import { db } from "@/firebase";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit as qLimit,
-  query,
-  where,
-} from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit as qLimit, query, where } from "firebase/firestore";
 
 /* ---------- (Legacy) API entity fallback ---------- */
 import { Post as LegacyPost } from "@/api/entities";
@@ -31,9 +23,7 @@ const displayDate = (when) => {
   if (!when) return "";
   try {
     const dt =
-      typeof when === "object" && typeof when.toDate === "function"
-        ? when.toDate()
-        : new Date(when);
+      typeof when === "object" && typeof when.toDate === "function" ? when.toDate() : new Date(when);
     return dt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   } catch {
     return "";
@@ -45,39 +35,24 @@ const isHighlightActive = (post) => {
   const until = post.highlight_until;
   const ms =
     until?.toMillis?.() ??
-    (typeof until === "number"
-      ? until
-      : Number.isFinite(Date.parse(until))
-      ? Date.parse(until)
-      : 0);
+    (typeof until === "number" ? until : Number.isFinite(Date.parse(until)) ? Date.parse(until) : 0);
   return ms > Date.now();
 };
 
-/* ---------- Gallery extraction (very tolerant) ---------- */
-// Normalize any value into array<string> of URLs
+/* ---------- Gallery extraction (tolerant) ---------- */
 const toUrlArray = (val) => {
   if (!val) return [];
-  // Array of strings or objects
   if (Array.isArray(val)) {
     return val
-      .map((x) => {
-        if (typeof x === "string") return x.trim();
-        if (x && typeof x === "object") return x.url || x.src || x.href || x.file_url || "";
-        return "";
-      })
+      .map((x) => (typeof x === "string" ? x : x?.url || x?.src || x?.href || x?.file_url || ""))
       .filter(Boolean);
   }
-  // Comma or newline separated string
   if (typeof val === "string") {
-    return val
-      .split(/[\n,]+/g)
-      .map((s) => s.trim())
-      .filter(Boolean);
+    return val.split(/[\n,]+/g).map((s) => s.trim()).filter(Boolean);
   }
   return [];
 };
 
-// Pull gallery URLs from many possible fields + numbered fields
 const extractGalleryUrls = (d = {}) => {
   const candidates = [
     d.galleryImageUrls,
@@ -93,31 +68,23 @@ const extractGalleryUrls = (d = {}) => {
     d.imageUrls,
     d.image_urls,
   ];
-
-  // Start with direct candidates
   let urls = candidates.map(toUrlArray).flat();
 
-  // Scan numbered fields like image1, image_1, gallery_2, photo03, etc.
+  // also accept numbered fields like image1, gallery_2, photo03...
   for (const [k, v] of Object.entries(d)) {
-    if (typeof v === "string") {
-      if (/^(image|photo|picture|gallery)[_\-]?\d+/i.test(k)) {
-        urls.push(v.trim());
-      }
-    } else if (v && typeof v === "object") {
-      // if object with url/src on numbered key
-      if (/^(image|photo|picture|gallery)[_\-]?\d+/i.test(k)) {
+    if (/^(image|photo|picture|gallery)[_\-]?\d+/i.test(k)) {
+      if (typeof v === "string") urls.push(v.trim());
+      else if (v && typeof v === "object") {
         const u = v.url || v.src || v.href || v.file_url;
         if (u) urls.push(`${u}`);
       }
     }
   }
 
-  // Deduplicate while preserving order
   const seen = new Set();
   const unique = [];
   for (const u of urls) {
-    if (!u) continue;
-    if (!seen.has(u)) {
+    if (u && !seen.has(u)) {
       seen.add(u);
       unique.push(u);
     }
@@ -127,7 +94,6 @@ const extractGalleryUrls = (d = {}) => {
 
 const mapDocToPost = (docSnap) => {
   const d = { id: docSnap.id, ...docSnap.data() };
-
   const galleryImageUrls = extractGalleryUrls(d);
 
   return {
@@ -146,10 +112,8 @@ const mapDocToPost = (docSnap) => {
     updated_at: d.updated_at,
     published: d.published,
 
-    // gallery
     galleryImageUrls,
 
-    // highlight
     isHighlight: Boolean(d.isHighlight),
     highlight_duration_days: d.highlight_duration_days ?? null,
     highlight_until: d.highlight_until ?? null,
@@ -161,6 +125,28 @@ export default function PostDetail() {
   const [post, setPost] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
+
+  // Lightbox
+  const [lightboxIdx, setLightboxIdx] = React.useState(null);
+  const hasLightbox = lightboxIdx !== null;
+
+  const openLightbox = (i) => setLightboxIdx(i);
+  const closeLightbox = () => setLightboxIdx(null);
+  const goPrev = () =>
+    setLightboxIdx((i) => (i === null ? null : (i - 1 + post.galleryImageUrls.length) % post.galleryImageUrls.length));
+  const goNext = () =>
+    setLightboxIdx((i) => (i === null ? null : (i + 1) % post.galleryImageUrls.length));
+
+  React.useEffect(() => {
+    if (!hasLightbox) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowLeft") goPrev();
+      if (e.key === "ArrowRight") goNext();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasLightbox, post?.galleryImageUrls?.length]);
 
   const slug = React.useMemo(() => {
     const sp = new URLSearchParams(loc.search);
@@ -186,7 +172,6 @@ export default function PostDetail() {
       try {
         let found = null;
 
-        // 0) direct id
         for (const collName of tryCollections) {
           try {
             const byIdRef = doc(db, collName, slug);
@@ -198,7 +183,6 @@ export default function PostDetail() {
           } catch {}
         }
 
-        // 1) queries
         if (!found) {
           for (const collName of tryCollections) {
             const coll = collection(db, collName);
@@ -218,13 +202,11 @@ export default function PostDetail() {
           }
         }
 
-        // 2) legacy entity
         if (!found) {
           try {
             const rows = await LegacyPost.filter({ slug });
             if (rows && rows.length > 0) {
               const p = rows[0];
-              const legacyGallery = extractGalleryUrls(p);
               found = {
                 id: p.id,
                 slug: pickFirst(p.slug, p.path, p.id),
@@ -240,7 +222,7 @@ export default function PostDetail() {
                 created_date: pickFirst(p.created_date, p.createdAt, p.created_at),
                 updated_at: p.updated_at,
                 published: p.published,
-                galleryImageUrls: legacyGallery,
+                galleryImageUrls: extractGalleryUrls(p),
                 isHighlight: Boolean(p.isHighlight),
                 highlight_duration_days: p.highlight_duration_days ?? null,
                 highlight_until: p.highlight_until ?? null,
@@ -249,7 +231,6 @@ export default function PostDetail() {
           } catch {}
         }
 
-        // 3) small scan
         if (!found) {
           for (const collName of tryCollections) {
             try {
@@ -298,7 +279,6 @@ export default function PostDetail() {
     };
   }, [slug]);
 
-  // ---------- UI ----------
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -311,9 +291,7 @@ export default function PostDetail() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center text-center p-8">
         <h2 className="text-2xl font-bold mb-2">Could Not Load Post</h2>
-        <p className="text-gray-600 mb-6">
-          {error || "The requested blog post could not be found."}
-        </p>
+        <p className="text-gray-600 mb-6">{error || "The requested blog post could not be found."}</p>
         <Link to={createPageUrl("Blog")}>
           <Button variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -356,32 +334,6 @@ export default function PostDetail() {
               </div>
             ) : null}
 
-            {/* Gallery */}
-            {hasGallery && (
-              <section className="mb-10">
-                <h2 className="text-xl font-semibold mb-3">Gallery</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {post.galleryImageUrls.map((url, idx) => (
-                    <a
-                      key={`${url}-${idx}`}
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block rounded-lg overflow-hidden border bg-white hover:shadow"
-                      title="Open image in new tab"
-                    >
-                      <img
-                        src={url}
-                        alt={`${post.title} – image ${idx + 1}`}
-                        className="w-full h-40 object-cover"
-                        loading="lazy"
-                      />
-                    </a>
-                  ))}
-                </div>
-              </section>
-            )}
-
             <div className="flex items-center gap-2 mb-3">
               {post.category ? <Badge>{post.category}</Badge> : null}
               {activeHighlight && (
@@ -420,6 +372,31 @@ export default function PostDetail() {
             ) : post.excerpt ? (
               <p className="text-lg text-gray-700">{post.excerpt}</p>
             ) : null}
+
+            {/* ===== Gallery BELOW the description ===== */}
+            {hasGallery && (
+              <section className="mt-10">
+                <h2 className="text-xl font-semibold mb-3">Gallery</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {post.galleryImageUrls.map((url, idx) => (
+                    <button
+                      key={`${url}-${idx}`}
+                      type="button"
+                      onClick={() => openLightbox(idx)}
+                      className="block rounded-lg overflow-hidden border bg-white hover:shadow focus:outline-none focus:ring-2 focus:ring-green-500"
+                      title="View image"
+                    >
+                      <img
+                        src={url}
+                        alt={`${post.title} – image ${idx + 1}`}
+                        className="w-full h-40 object-cover"
+                        loading="lazy"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
           </main>
 
           <aside className="lg:col-span-4 mt-12 lg:mt-0">
@@ -433,9 +410,7 @@ export default function PostDetail() {
                     <User className="w-5 h-5 text-gray-500" />
                     <div>
                       <p className="text-gray-500">Author</p>
-                      <p className="font-semibold text-gray-800">
-                        {post.author || "GreenPass Team"}
-                      </p>
+                      <p className="font-semibold text-gray-800">{post.author || "GreenPass Team"}</p>
                     </div>
                   </div>
 
@@ -462,6 +437,59 @@ export default function PostDetail() {
           </aside>
         </div>
       </div>
+
+      {/* ===== Lightbox (no new tab) ===== */}
+      {hasGallery && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={closeLightbox}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            className="absolute top-4 right-4 text-white/90 hover:text-white p-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeLightbox();
+            }}
+            aria-label="Close"
+            title="Close"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          <button
+            className="absolute left-4 md:left-8 text-white/90 hover:text-white p-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              goPrev();
+            }}
+            aria-label="Previous image"
+            title="Previous"
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </button>
+
+          <img
+            src={post.galleryImageUrls[lightboxIdx]}
+            alt=""
+            className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+
+          <button
+            className="absolute right-4 md:right-8 text-white/90 hover:text-white p-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              goNext();
+            }}
+            aria-label="Next image"
+            title="Next"
+          >
+            <ChevronRight className="w-8 h-8" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
