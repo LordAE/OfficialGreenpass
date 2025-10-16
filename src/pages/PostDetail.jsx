@@ -25,8 +25,7 @@ import { Post as LegacyPost } from "@/api/entities";
 
 /* ========= Helpers ========= */
 const pickFirst = (...vals) =>
-  vals.find((v) => v !== undefined && v !== null && `${v}`.trim?.() !== "") ??
-  undefined;
+  vals.find((v) => v !== undefined && v !== null && `${v}`.trim?.() !== "") ?? undefined;
 
 const displayDate = (when) => {
   if (!when) return "";
@@ -35,11 +34,7 @@ const displayDate = (when) => {
       typeof when === "object" && typeof when.toDate === "function"
         ? when.toDate()
         : new Date(when);
-    return dt.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    return dt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   } catch {
     return "";
   }
@@ -58,8 +53,83 @@ const isHighlightActive = (post) => {
   return ms > Date.now();
 };
 
+/* ---------- Gallery extraction (very tolerant) ---------- */
+// Normalize any value into array<string> of URLs
+const toUrlArray = (val) => {
+  if (!val) return [];
+  // Array of strings or objects
+  if (Array.isArray(val)) {
+    return val
+      .map((x) => {
+        if (typeof x === "string") return x.trim();
+        if (x && typeof x === "object") return x.url || x.src || x.href || x.file_url || "";
+        return "";
+      })
+      .filter(Boolean);
+  }
+  // Comma or newline separated string
+  if (typeof val === "string") {
+    return val
+      .split(/[\n,]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+// Pull gallery URLs from many possible fields + numbered fields
+const extractGalleryUrls = (d = {}) => {
+  const candidates = [
+    d.galleryImageUrls,
+    d.gallery_images,
+    d.galleryImages,
+    d.gallery,
+    d.images,
+    d.media,
+    d.photos,
+    d.pictures,
+    d.attachments?.images,
+    d.content_images,
+    d.imageUrls,
+    d.image_urls,
+  ];
+
+  // Start with direct candidates
+  let urls = candidates.map(toUrlArray).flat();
+
+  // Scan numbered fields like image1, image_1, gallery_2, photo03, etc.
+  for (const [k, v] of Object.entries(d)) {
+    if (typeof v === "string") {
+      if (/^(image|photo|picture|gallery)[_\-]?\d+/i.test(k)) {
+        urls.push(v.trim());
+      }
+    } else if (v && typeof v === "object") {
+      // if object with url/src on numbered key
+      if (/^(image|photo|picture|gallery)[_\-]?\d+/i.test(k)) {
+        const u = v.url || v.src || v.href || v.file_url;
+        if (u) urls.push(`${u}`);
+      }
+    }
+  }
+
+  // Deduplicate while preserving order
+  const seen = new Set();
+  const unique = [];
+  for (const u of urls) {
+    if (!u) continue;
+    if (!seen.has(u)) {
+      seen.add(u);
+      unique.push(u);
+    }
+  }
+  return unique;
+};
+
 const mapDocToPost = (docSnap) => {
   const d = { id: docSnap.id, ...docSnap.data() };
+
+  const galleryImageUrls = extractGalleryUrls(d);
+
   return {
     id: docSnap.id,
     slug: pickFirst(d.slug, d.path, d.id),
@@ -76,7 +146,10 @@ const mapDocToPost = (docSnap) => {
     updated_at: d.updated_at,
     published: d.published,
 
-    // NEW highlight fields
+    // gallery
+    galleryImageUrls,
+
+    // highlight
     isHighlight: Boolean(d.isHighlight),
     highlight_duration_days: d.highlight_duration_days ?? null,
     highlight_until: d.highlight_until ?? null,
@@ -84,7 +157,6 @@ const mapDocToPost = (docSnap) => {
 };
 
 export default function PostDetail() {
-  // ---------- hooks ----------
   const loc = useLocation();
   const [post, setPost] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -97,8 +169,6 @@ export default function PostDetail() {
 
   React.useEffect(() => {
     let cancelled = false;
-
-    // Include your Blog.jsx collection first
     const tryCollections = ["posts", "blog", "blogs"];
 
     (async () => {
@@ -116,7 +186,7 @@ export default function PostDetail() {
       try {
         let found = null;
 
-        // 0) Try doc by id across known collections
+        // 0) direct id
         for (const collName of tryCollections) {
           try {
             const byIdRef = doc(db, collName, slug);
@@ -125,12 +195,10 @@ export default function PostDetail() {
               found = mapDocToPost(byIdSnap);
               break;
             }
-          } catch {
-            // continue
-          }
+          } catch {}
         }
 
-        // 1) Field equality queries (slug / path / title)
+        // 1) queries
         if (!found) {
           for (const collName of tryCollections) {
             const coll = collection(db, collName);
@@ -150,12 +218,13 @@ export default function PostDetail() {
           }
         }
 
-        // 2) Legacy "posts" entity (if your app had one)
+        // 2) legacy entity
         if (!found) {
           try {
             const rows = await LegacyPost.filter({ slug });
             if (rows && rows.length > 0) {
               const p = rows[0];
+              const legacyGallery = extractGalleryUrls(p);
               found = {
                 id: p.id,
                 slug: pickFirst(p.slug, p.path, p.id),
@@ -171,19 +240,16 @@ export default function PostDetail() {
                 created_date: pickFirst(p.created_date, p.createdAt, p.created_at),
                 updated_at: p.updated_at,
                 published: p.published,
-
-                // highlight fields if present in legacy
+                galleryImageUrls: legacyGallery,
                 isHighlight: Boolean(p.isHighlight),
                 highlight_duration_days: p.highlight_duration_days ?? null,
                 highlight_until: p.highlight_until ?? null,
               };
             }
-          } catch {
-            // ignore
-          }
+          } catch {}
         }
 
-        // 3) Last-resort: small scan (first 100 docs) to catch odd field cases
+        // 3) small scan
         if (!found) {
           for (const collName of tryCollections) {
             try {
@@ -202,9 +268,7 @@ export default function PostDetail() {
                 found = mapDocToPost(candidate.snap);
                 break;
               }
-            } catch {
-              // continue
-            }
+            } catch {}
           }
         }
 
@@ -263,6 +327,7 @@ export default function PostDetail() {
   const formattedDate =
     displayDate(pickFirst(post.created_date, post.created_at, post.updated_at)) || "";
   const activeHighlight = isHighlightActive(post);
+  const hasGallery = Array.isArray(post.galleryImageUrls) && post.galleryImageUrls.length > 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -281,11 +346,7 @@ export default function PostDetail() {
           <main className="lg:col-span-8">
             {post.coverImageUrl ? (
               <div className="mb-8 rounded-2xl overflow-hidden shadow-lg">
-                <img
-                  src={post.coverImageUrl}
-                  alt={post.title}
-                  className="w-full h-auto object-cover"
-                />
+                <img src={post.coverImageUrl} alt={post.title} className="w-full h-auto object-cover" />
               </div>
             ) : null}
 
@@ -294,6 +355,32 @@ export default function PostDetail() {
                 <YouTubeEmbed url={post.videoUrl} className="w-full aspect-video" />
               </div>
             ) : null}
+
+            {/* Gallery */}
+            {hasGallery && (
+              <section className="mb-10">
+                <h2 className="text-xl font-semibold mb-3">Gallery</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {post.galleryImageUrls.map((url, idx) => (
+                    <a
+                      key={`${url}-${idx}`}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block rounded-lg overflow-hidden border bg-white hover:shadow"
+                      title="Open image in new tab"
+                    >
+                      <img
+                        src={url}
+                        alt={`${post.title} – image ${idx + 1}`}
+                        className="w-full h-40 object-cover"
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <div className="flex items-center gap-2 mb-3">
               {post.category ? <Badge>{post.category}</Badge> : null}
