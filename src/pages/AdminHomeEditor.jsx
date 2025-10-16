@@ -48,6 +48,7 @@ const DEFAULT_FEATURE = {
   description: "",
   image_url: "",
   youtube_url: "",
+  video_url: "", // NEW: mp4 (or any direct video URL)
   link_url: "",
   link_text: "",
   media_position: "left",
@@ -105,7 +106,6 @@ export default function AdminHomeEditor() {
         if (snap.exists()) {
           setContent(sanitizeLoaded(snap.data()));
         } else {
-          // initialize doc if you want (optional)
           setContent(DEFAULTS);
         }
       } catch (e) {
@@ -143,14 +143,15 @@ export default function AdminHomeEditor() {
     }
   };
 
-  // Upload to Firebase Storage and set the field
-  const handleImageUpload = async (file, section, field, index = null) => {
+  // Upload to Firebase Storage and set the field (works for images or videos)
+  const handleUploadToField = async (file, section, field, index = null) => {
     if (!file) return;
     setUploading(true);
     try {
       const cleanName = file.name.replace(/\s+/g, "-").toLowerCase();
       let path = `home/${section}/${Date.now()}-${cleanName}`;
       if ((section === "feature" || section === "testimonial") && index !== null) {
+        // upload under /home/features/{i}/... or /home/testimonials/{i}/...
         path = `home/${section}s/${index}/${Date.now()}-${cleanName}`;
       }
       const storageRef = ref(storage, path);
@@ -175,8 +176,8 @@ export default function AdminHomeEditor() {
         }));
       }
     } catch (error) {
-      console.error("Error uploading image:", error);
-      alert("Failed to upload image.");
+      console.error("Error uploading file:", error);
+      alert("Failed to upload file.");
     } finally {
       setUploading(false);
     }
@@ -307,7 +308,7 @@ export default function AdminHomeEditor() {
                   id="hero_image"
                   type="file"
                   accept="image/*"
-                  onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], "hero", "image_url")}
+                  onChange={(e) => e.target.files?.[0] && handleUploadToField(e.target.files[0], "hero", "image_url")}
                   disabled={uploading}
                 />
                 {content.hero_section?.image_url && (
@@ -420,6 +421,7 @@ export default function AdminHomeEditor() {
                   />
                 </div>
 
+                {/* Media inputs */}
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label>Image</Label>
@@ -428,8 +430,7 @@ export default function AdminHomeEditor() {
                         type="file"
                         accept="image/*"
                         onChange={(e) =>
-                          e.target.files?.[0] &&
-                          handleImageUpload(e.target.files[0], "feature", "image_url", index)
+                          e.target.files?.[0] && handleUploadToField(e.target.files[0], "feature", "image_url", index)
                         }
                         disabled={uploading}
                         className="flex-grow"
@@ -440,13 +441,71 @@ export default function AdminHomeEditor() {
                       <img src={feature.image_url} alt="" className="mt-2 w-24 h-16 object-cover rounded" />
                     )}
                   </div>
+
                   <div>
-                    <Label>YouTube URL</Label>
+                    <Label>YouTube URL (optional)</Label>
                     <Input
                       value={feature.youtube_url || ""}
                       onChange={(e) => updateFeature(index, "youtube_url", e.target.value)}
                       placeholder="https://youtube.com/watch?v=..."
                     />
+                    {feature.youtube_url && (
+                      <div className="mt-2">
+                        <YouTubeEmbed url={feature.youtube_url} className="w-full h-32 rounded" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>MP4 Video (optional)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) =>
+                          e.target.files?.[0] && handleUploadToField(e.target.files[0], "feature", "video_url", index)
+                        }
+                        disabled={uploading}
+                        className="flex-grow"
+                      />
+                      {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    </div>
+                    <Input
+                      className="mt-2"
+                      value={feature.video_url || ""}
+                      onChange={(e) => updateFeature(index, "video_url", e.target.value)}
+                      placeholder="https://.../your-video.mp4"
+                    />
+                    {feature.video_url && (
+                      <video
+                        className="mt-2 w-full h-32 rounded"
+                        src={feature.video_url}
+                        controls
+                        playsInline
+                        preload="metadata"
+                      />
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      If both YouTube and MP4 are set, the homepage uses <b>YouTube</b> first.
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label>Media Position</Label>
+                    <Select
+                      value={feature.media_position || "left"}
+                      onValueChange={(value) => updateFeature(index, "media_position", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="left">Left</SelectItem>
+                        <SelectItem value="right">Right</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -468,22 +527,6 @@ export default function AdminHomeEditor() {
                     />
                   </div>
                 </div>
-
-                <div>
-                  <Label>Media Position</Label>
-                  <Select
-                    value={feature.media_position || "left"}
-                    onValueChange={(value) => updateFeature(index, "media_position", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="left">Left</SelectItem>
-                      <SelectItem value="right">Right</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             ))}
           </CardContent>
@@ -500,7 +543,7 @@ export default function AdminHomeEditor() {
               </Button>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+        <CardContent className="space-y-4">
             {content.testimonials_section?.map((testimonial, index) => (
               <div key={index} className="border rounded-lg p-4 space-y-3">
                 <div className="flex justify-between items-center">
@@ -537,7 +580,7 @@ export default function AdminHomeEditor() {
                       accept="image/*"
                       onChange={(e) =>
                         e.target.files?.[0] &&
-                        handleImageUpload(e.target.files[0], "testimonial", "author_image_url", index)
+                        handleUploadToField(e.target.files[0], "testimonial", "author_image_url", index)
                       }
                       disabled={uploading}
                       className="flex-grow"
