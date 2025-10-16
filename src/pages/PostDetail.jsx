@@ -5,26 +5,50 @@ import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, User, Clock, ArrowLeft, X, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Loader2,
+  Calendar,
+  User,
+  Clock,
+  ArrowLeft,
+  X,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import YouTubeEmbed from "@/components/YouTubeEmbed";
 
 /* ---------- Firebase ---------- */
 import { db } from "@/firebase";
-import { collection, doc, getDoc, getDocs, limit as qLimit, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit as qLimit,
+  query,
+  where,
+} from "firebase/firestore";
 
 /* ---------- (Legacy) API entity fallback ---------- */
 import { Post as LegacyPost } from "@/api/entities";
 
 /* ========= Helpers ========= */
 const pickFirst = (...vals) =>
-  vals.find((v) => v !== undefined && v !== null && `${v}`.trim?.() !== "") ?? undefined;
+  vals.find((v) => v !== undefined && v !== null && `${v}`.trim?.() !== "") ??
+  undefined;
 
 const displayDate = (when) => {
   if (!when) return "";
   try {
     const dt =
-      typeof when === "object" && typeof when.toDate === "function" ? when.toDate() : new Date(when);
-    return dt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      typeof when === "object" && typeof when.toDate === "function"
+        ? when.toDate()
+        : new Date(when);
+    return dt.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
   } catch {
     return "";
   }
@@ -35,7 +59,11 @@ const isHighlightActive = (post) => {
   const until = post.highlight_until;
   const ms =
     until?.toMillis?.() ??
-    (typeof until === "number" ? until : Number.isFinite(Date.parse(until)) ? Date.parse(until) : 0);
+    (typeof until === "number"
+      ? until
+      : Number.isFinite(Date.parse(until))
+      ? Date.parse(until)
+      : 0);
   return ms > Date.now();
 };
 
@@ -44,11 +72,16 @@ const toUrlArray = (val) => {
   if (!val) return [];
   if (Array.isArray(val)) {
     return val
-      .map((x) => (typeof x === "string" ? x : x?.url || x?.src || x?.href || x?.file_url || ""))
+      .map((x) =>
+        typeof x === "string" ? x : x?.url || x?.src || x?.href || x?.file_url || ""
+      )
       .filter(Boolean);
   }
   if (typeof val === "string") {
-    return val.split(/[\n,]+/g).map((s) => s.trim()).filter(Boolean);
+    return val
+      .split(/[\n,]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   return [];
 };
@@ -81,6 +114,7 @@ const extractGalleryUrls = (d = {}) => {
     }
   }
 
+  // de-duplicate
   const seen = new Set();
   const unique = [];
   for (const u of urls) {
@@ -112,8 +146,10 @@ const mapDocToPost = (docSnap) => {
     updated_at: d.updated_at,
     published: d.published,
 
+    // gallery
     galleryImageUrls,
 
+    // highlight
     isHighlight: Boolean(d.isHighlight),
     highlight_duration_days: d.highlight_duration_days ?? null,
     highlight_until: d.highlight_until ?? null,
@@ -126,17 +162,26 @@ export default function PostDetail() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
 
-  // Lightbox
+  // Lightbox state
   const [lightboxIdx, setLightboxIdx] = React.useState(null);
   const hasLightbox = lightboxIdx !== null;
 
   const openLightbox = (i) => setLightboxIdx(i);
   const closeLightbox = () => setLightboxIdx(null);
   const goPrev = () =>
-    setLightboxIdx((i) => (i === null ? null : (i - 1 + post.galleryImageUrls.length) % post.galleryImageUrls.length));
+    setLightboxIdx((i) =>
+      i === null || !post?.galleryImageUrls?.length
+        ? null
+        : (i - 1 + post.galleryImageUrls.length) % post.galleryImageUrls.length
+    );
   const goNext = () =>
-    setLightboxIdx((i) => (i === null ? null : (i + 1) % post.galleryImageUrls.length));
+    setLightboxIdx((i) =>
+      i === null || !post?.galleryImageUrls?.length
+        ? null
+        : (i + 1) % post.galleryImageUrls.length
+    );
 
+  // Keyboard navigation + close
   React.useEffect(() => {
     if (!hasLightbox) return;
     const onKey = (e) => {
@@ -147,6 +192,16 @@ export default function PostDetail() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [hasLightbox, post?.galleryImageUrls?.length]);
+
+  // Lock body scroll when lightbox open
+  React.useEffect(() => {
+    if (!hasLightbox) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [hasLightbox]);
 
   const slug = React.useMemo(() => {
     const sp = new URLSearchParams(loc.search);
@@ -172,6 +227,7 @@ export default function PostDetail() {
       try {
         let found = null;
 
+        // 0) Try doc by id across known collections
         for (const collName of tryCollections) {
           try {
             const byIdRef = doc(db, collName, slug);
@@ -183,6 +239,7 @@ export default function PostDetail() {
           } catch {}
         }
 
+        // 1) Field equality queries (slug / path / title)
         if (!found) {
           for (const collName of tryCollections) {
             const coll = collection(db, collName);
@@ -202,6 +259,7 @@ export default function PostDetail() {
           }
         }
 
+        // 2) Legacy "posts" entity (if your app had one)
         if (!found) {
           try {
             const rows = await LegacyPost.filter({ slug });
@@ -231,6 +289,7 @@ export default function PostDetail() {
           } catch {}
         }
 
+        // 3) Last-resort: small scan (first 100 docs) to catch odd field cases
         if (!found) {
           for (const collName of tryCollections) {
             try {
@@ -279,6 +338,7 @@ export default function PostDetail() {
     };
   }, [slug]);
 
+  // ---------- UI ----------
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -291,7 +351,9 @@ export default function PostDetail() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center text-center p-8">
         <h2 className="text-2xl font-bold mb-2">Could Not Load Post</h2>
-        <p className="text-gray-600 mb-6">{error || "The requested blog post could not be found."}</p>
+        <p className="text-gray-600 mb-6">
+          {error || "The requested blog post could not be found."}
+        </p>
         <Link to={createPageUrl("Blog")}>
           <Button variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -305,7 +367,8 @@ export default function PostDetail() {
   const formattedDate =
     displayDate(pickFirst(post.created_date, post.created_at, post.updated_at)) || "";
   const activeHighlight = isHighlightActive(post);
-  const hasGallery = Array.isArray(post.galleryImageUrls) && post.galleryImageUrls.length > 0;
+  const hasGallery =
+    Array.isArray(post.galleryImageUrls) && post.galleryImageUrls.length > 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -324,7 +387,11 @@ export default function PostDetail() {
           <main className="lg:col-span-8">
             {post.coverImageUrl ? (
               <div className="mb-8 rounded-2xl overflow-hidden shadow-lg">
-                <img src={post.coverImageUrl} alt={post.title} className="w-full h-auto object-cover" />
+                <img
+                  src={post.coverImageUrl}
+                  alt={post.title}
+                  className="w-full h-auto object-cover"
+                />
               </div>
             ) : null}
 
@@ -337,7 +404,10 @@ export default function PostDetail() {
             <div className="flex items-center gap-2 mb-3">
               {post.category ? <Badge>{post.category}</Badge> : null}
               {activeHighlight && (
-                <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
+                <Badge
+                  variant="secondary"
+                  className="bg-amber-100 text-amber-800 border-amber-200"
+                >
                   Highlighted
                 </Badge>
               )}
@@ -410,7 +480,9 @@ export default function PostDetail() {
                     <User className="w-5 h-5 text-gray-500" />
                     <div>
                       <p className="text-gray-500">Author</p>
-                      <p className="font-semibold text-gray-800">{post.author || "GreenPass Team"}</p>
+                      <p className="font-semibold text-gray-800">
+                        {post.author || "GreenPass Team"}
+                      </p>
                     </div>
                   </div>
 
@@ -438,8 +510,8 @@ export default function PostDetail() {
         </div>
       </div>
 
-      {/* ===== Lightbox (no new tab) ===== */}
-      {hasGallery && (
+      {/* ===== Lightbox (only when opened) ===== */}
+      {hasLightbox && (
         <div
           className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
           onClick={closeLightbox}
@@ -470,12 +542,14 @@ export default function PostDetail() {
             <ChevronLeft className="w-8 h-8" />
           </button>
 
-          <img
-            src={post.galleryImageUrls[lightboxIdx]}
-            alt=""
-            className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {post.galleryImageUrls[lightboxIdx] && (
+            <img
+              src={post.galleryImageUrls[lightboxIdx]}
+              alt=""
+              className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
 
           <button
             className="absolute right-4 md:right-8 text-white/90 hover:text-white p-2"
