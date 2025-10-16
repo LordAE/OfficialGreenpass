@@ -11,10 +11,40 @@ export async function InvokeLLM({ messages, model }) {
 }
 
 // ---- Email (kept as stub; hook your provider later)
-export async function SendEmail({ to, subject, text, html }) {
-  console.warn('SendEmail called – email service is not configured.');
-  return { messageId: 'stub-email-123' };
+// src/api/integrations.js
+
+// ---- Email (now wired to Firestore 'mail' for the Trigger Email extension)
+// ---- Email (enqueue to Firestore 'mail' for Trigger Email extension)
+export async function SendEmail({ to, subject, text, html, from, replyTo, headers }) {
+  if (!to || !subject || (!text && !html)) {
+    throw new Error('SendEmail: "to", "subject", and one of "text" or "html" are required.');
+  }
+
+  const { db } = await import('@/firebase');
+  const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+
+  const payload = {
+    to: Array.isArray(to) ? to : [to],
+    message: {
+      subject,
+      ...(text ? { text } : {}),
+      ...(html ? { html } : {}),
+    },
+    createdAt: serverTimestamp(),
+  };
+
+  // Prefer env-configured FROM; otherwise use provided "from" if valid; else omit (extension default FROM applies)
+  const ENV_FROM = import.meta.env.VITE_EMAIL_FROM && String(import.meta.env.VITE_EMAIL_FROM).trim();
+  if (ENV_FROM) payload.from = ENV_FROM;
+  else if (from && typeof from === 'string' && from.includes('@')) payload.from = from;
+
+  if (replyTo) payload.replyTo = replyTo;
+  if (headers && typeof headers === 'object') payload.headers = headers;
+
+  const ref = await addDoc(collection(db, 'mail'), payload);
+  return { id: ref.id };
 }
+
 
 /**
  * Upload a file to Firebase Storage and return a downloadable URL.

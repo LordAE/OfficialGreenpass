@@ -145,20 +145,18 @@ export const sendEventRegistrationInvoice = async (registration, event, payment)
   const text = stripHtml(html);
 
   // 🔴 IMPORTANT: use a verified sender on your provider
-  const FROM_EMAIL = 'no-reply@your-verified-domain.com'; // <— change to your verified domain
-  const FROM_NAME = 'GreenPass Events';
+  const FROM_NAME  = 'GreenPass Events';
+const FROM_EMAIL = import.meta.env.VITE_EMAIL_FROM || null; // optional
+// later in payload:
+const payload = {
+  to,
+  subject,
+  html,
+  text,
+  ...(FROM_EMAIL ? { from: `${FROM_NAME} <${FROM_EMAIL}>` } : {}),
+  headers: { 'X-GreenPass-Reason': 'EventRegistrationInvoice' },
+};
 
-  const payload = {
-    to: toEmail,
-    subject: `✅ Payment Confirmed for ${event?.title || 'Your Event'}`,
-    html,
-    text,
-    body: html, // some wrappers expect `body` for HTML
-    from: `${FROM_NAME} <${FROM_EMAIL}>`,
-    from_name: FROM_NAME,
-    reply_to: 'support@your-verified-domain.com',
-    headers: { 'X-GreenPass-Reason': 'EventRegistrationInvoice' },
-  };
 
   // retry transient issues; exit early on provider restrictions
   let attempt = 0;
