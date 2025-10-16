@@ -1,6 +1,7 @@
 // src/components/utils/invoiceSender.js
 import { SendEmail } from '@/api/integrations';
 import { format } from 'date-fns';
+import { sendEventRegistrationConfirmation } from './eventEmailSender';
 
 /* ---------- helpers ---------- */
 
@@ -27,7 +28,12 @@ const stripHtml = (html) =>
 const firstNonEmpty = (...vals) =>
   vals.find((v) => typeof v === 'string' && v.trim().length > 0) || '';
 
-/* ---------- template ---------- */
+const extractEmailAddress = (fromHeader) => {
+  const m = /<([^>]+)>/.exec(fromHeader || '');
+  return m?.[1] || (fromHeader?.includes('@') ? fromHeader.trim() : null);
+};
+
+/* ---------- template (UI maintained) ---------- */
 
 const generateInvoiceHtml = (registration, event, payment) => {
   const paidAt =
@@ -125,7 +131,7 @@ const generateInvoiceHtml = (registration, event, payment) => {
 /* ---------- main export ---------- */
 
 export const sendEventRegistrationInvoice = async (registration, event, payment) => {
-  // choose best recipient (works for non-auth/guests too)
+  // Choose best recipient (works for non-auth/guests too)
   const toEmail = firstNonEmpty(
     registration?.contact_email,
     registration?.email,
@@ -143,31 +149,58 @@ export const sendEventRegistrationInvoice = async (registration, event, payment)
 
   const html = generateInvoiceHtml(registration || {}, event || {}, payment || {});
   const text = stripHtml(html);
+  const subject = `Receipt — ${event?.title || 'Your Event'}`;
 
-  // 🔴 IMPORTANT: use a verified sender on your provider
-  const FROM_NAME  = 'GreenPass Events';
-const FROM_EMAIL = import.meta.env.VITE_EMAIL_FROM || null; // optional
-// later in payload:
-const payload = {
-  to,
-  subject,
-  html,
-  text,
-  ...(FROM_EMAIL ? { from: `${FROM_NAME} <${FROM_EMAIL}>` } : {}),
-  headers: { 'X-GreenPass-Reason': 'EventRegistrationInvoice' },
-};
+  // Safe ENV access (no optional chaining on import.meta)
+  const ENV_FROM =
+    (typeof import.meta !== 'undefined' &&
+      import.meta &&
+      import.meta.env &&
+      import.meta.env.VITE_EMAIL_FROM &&
+      String(import.meta.env.VITE_EMAIL_FROM).trim()) ||
+    '';
 
+  const FROM_NAME = 'GreenPass Events';
+  const fromHeader = ENV_FROM
+    ? ENV_FROM
+    : `${FROM_NAME} <no-reply@greenpassgroup.com>`; // ensure this domain is verified on your provider
 
-  // retry transient issues; exit early on provider restrictions
+  const payload = {
+    to: toEmail,
+    subject,
+    html,
+    text,
+    body: html, // for helpers that alias html->body
+    from: fromHeader,
+    replyTo: 'support@your-verified-domain.com',
+    headers: { 'X-GreenPass-Reason': 'EventRegistrationInvoice' },
+  };
+
+  // Optional: BCC the sender so admin gets a copy
+  const senderEmail = extractEmailAddress(fromHeader);
+  if (senderEmail) payload.bcc = [senderEmail];
+
+  // Retry transient issues; exit early on provider restrictions
   let attempt = 0;
   while (attempt < 3) {
     try {
       const res = await SendEmail(payload);
       const messageId = res?.id || res?.messageId || res?.data?.id || 'unknown';
+
+      // Chain the confirmation email after a successful invoice send (keeps UI unchanged)
+      try {
+        await sendEventRegistrationConfirmation(registration, event, {
+          payment_id: payment?.id,
+          transaction_id: payment?.transaction_id,
+          amount_usd: payment?.amount_usd ?? payment?.amount ?? 0,
+        });
+      } catch (confErr) {
+        console.warn('Confirmation email failed (invoice already sent):', confErr);
+      }
+
       return { success: true, id: messageId };
     } catch (err) {
       const msg = err?.message || String(err);
-      // don’t retry when the provider blocks (unverified domain, sandbox, etc.)
       if (/unauthorized|sandbox|domain|verify|not\s+allowed|suppressed/i.test(msg)) {
         return { success: false, error: msg };
       }

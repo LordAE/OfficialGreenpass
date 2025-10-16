@@ -115,7 +115,7 @@ const sanitizeHomeContent = (loaded = {}) => {
     school_rating: 4.5,
     image_url: '',
     youtube_url: '',
-    video_url: '', // <— allow mp4/direct video
+    video_url: '',
     link_url: '',
     link_text: '',
     ...feature,
@@ -175,9 +175,7 @@ const mapPostDoc = (snap) => {
     id: snap.id,
     slug: pickFirst(d.slug, d.path, d.id),
     title: pickFirst(d.title, d.name, 'Untitled'),
-    // Only take explicit `excerpt`
     excerpt: typeof d.excerpt === 'string' ? d.excerpt : '',
-    // Cover image only
     coverImageUrl: pickFirst(d.coverImageUrl, d.cover_image_url, d.image, ''),
     category: pickFirst(d.category, 'Highlight'),
     readTime: pickFirst(d.readTime, ''),
@@ -308,11 +306,9 @@ const fallbackSlides = [
   },
 ];
 
-// helper: strip any HTML tags in excerpts (safety)
 const stripHtml = (s = '') => String(s).replace(/<[^>]*>/g, '').trim();
 
 function NewsHighlights({ highlights = [] }) {
-  // Normalize incoming posts -> cover image + excerpt only
   const highlightItems = highlights.map((p) => ({
     id: `post-${p.id}`,
     title: p.title,
@@ -323,7 +319,6 @@ function NewsHighlights({ highlights = [] }) {
     href: createPageUrl(`PostDetail?slug=${encodeURIComponent(p.slug)}`),
   }));
 
-  // Adapt fallback slides to same shape (use summary as excerpt)
   const fallback = fallbackSlides.map((s) => ({
     id: s.id,
     title: s.title,
@@ -381,7 +376,7 @@ function NewsHighlights({ highlights = [] }) {
 
         <Card className="overflow-hidden border-0 shadow-md">
           <div
-            className="relative w-full h-[26rem] sm:h-[34rem] lg:h-[40rem]"  // << taller carousel
+            className="relative w-full h-[26rem] sm:h-[34rem] lg:h-[40rem]"
             onMouseEnter={pause}
             onMouseLeave={resume}
           >
@@ -394,7 +389,6 @@ function NewsHighlights({ highlights = [] }) {
                 exit={{ opacity: 0, x: -40 }}
                 transition={{ duration: 0.5, ease: 'easeOut' }}
               >
-                {/* Media — ALWAYS cover image */}
                 <div className="absolute inset-0">
                   <img
                     src={active.cover}
@@ -402,12 +396,10 @@ function NewsHighlights({ highlights = [] }) {
                     className="w-full h-full object-cover"
                     loading="eager"
                   />
-                  {/* soft top-to-bottom darken for legibility */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
                 </div>
 
-                {/* Text content */}
-                <div className="relative z-10 h-full flex items-end sm:items-end">
+                <div className="relative z-10 h-full flex items=end sm:items-end">
                   <div className="p-4 sm:p-8 w-full">
                     <div className="max-w-3xl bg-black/35 backdrop-blur-sm rounded-2xl px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-2 mb-2">
@@ -437,7 +429,6 @@ function NewsHighlights({ highlights = [] }) {
               </motion.div>
             </AnimatePresence>
 
-            {/* Mobile controls */}
             <div className="sm:hidden absolute inset-x-0 bottom-4 px-4 flex items-center justify-between">
               <button aria-label="Previous" onClick={prev} className="p-2 rounded-full bg-white/90 shadow hover:bg-white">
                 <ChevronLeft className="w-5 h-5 text-slate-800" />
@@ -447,7 +438,6 @@ function NewsHighlights({ highlights = [] }) {
               </button>
             </div>
 
-            {/* Dots */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
               {items.map((it, i) => (
                 <button
@@ -541,7 +531,7 @@ function PartnersStrip() {
 }
 
 /* =========================
-   CountUp (animated numbers) + Stats
+   CountUp + Stats
 ========================= */
 function CountUp({ valueString = "0", start, duration = 1.2 }) {
   const [display, setDisplay] = React.useState("0");
@@ -642,8 +632,8 @@ const Features = ({ features }) => {
       title: "Discover Top Schools",
       description: "Explore thousands of programs from top institutions worldwide. Our smart filters help you find the perfect match for your academic and career goals.",
       image_url: "",
-      video_url: "", // optional mp4
-      youtube_url: "", // optional YouTube
+      video_url: "",
+      youtube_url: "",
       link_url: createPageUrl('Schools'),
       link_text: "Explore Schools",
       media_position: 'right'
@@ -1070,14 +1060,14 @@ export default function Home() {
         });
         setSchools(merged);
 
-        // Highlighted blog posts for the carousel (EXCERPT + COVER IMAGE ONLY)
-        const postsSnap = await getDocs(collection(db, 'posts'));
-        const posts = postsSnap.docs.map(mapPostDoc);
-        const highlights = posts
-          .filter(isHighlightedNow)
-          .sort((a, b) => toMillisMaybe(b.created_at || b.updated_at) - toMillisMaybe(a.created_at || a.updated_at))
-          .slice(0, 5);
-        setHighlightedPosts(highlights);
+        // Highlighted blog posts — ONLY check isHighlight == true
+        const postsRef = collection(db, 'posts');
+        const postsSnap = await getDocs(
+          query(postsRef, where('isHighlight', '==', true), limit(5))
+        );
+        const posts = postsSnap.docs.map(mapPostDoc).filter(isHighlightedNow);
+        posts.sort((a, b) => toMillisMaybe(b.created_at || b.updated_at) - toMillisMaybe(a.created_at || a.updated_at));
+        setHighlightedPosts(posts);
       } catch (err) {
         console.error('Error loading home content:', err);
       } finally {

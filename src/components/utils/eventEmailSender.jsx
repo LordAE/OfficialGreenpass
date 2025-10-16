@@ -1,6 +1,9 @@
 // src/components/utils/eventEmailSender.js
 import { SendEmail } from '@/api/integrations';
 
+/* =========================
+   Small helpers (unchanged look/feel)
+========================= */
 const toDate = (v) => {
   try {
     if (!v) return null;
@@ -22,12 +25,37 @@ const stripHtml = (html) =>
 const firstNonEmpty = (...vals) =>
   vals.find((v) => typeof v === 'string' && v.trim().length > 0) || '';
 
+const extractEmailAddress = (fromHeader) => {
+  const m = /<([^>]+)>/.exec(fromHeader || '');
+  return m?.[1] || (fromHeader?.includes('@') ? fromHeader.trim() : null);
+};
+
+const getBaseUrl = (explicit) => {
+  const env = (import.meta?.env?.VITE_PUBLIC_BASE_URL || '').trim();
+  if (explicit && explicit.trim()) return explicit.trim();
+  if (env) return env;
+  if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin;
+  return 'https://app.greenpass.example';
+};
+
+const buildFromHeader = (opts) => {
+  // Prefer env-configured FROM like: "GreenPass Events <itmanager@greenpassgroup.com>"
+  const envFrom = (import.meta?.env?.VITE_EMAIL_FROM || '').trim();
+  if (envFrom) return envFrom;
+
+  const fromEmail = opts.fromEmail || 'no-reply@greenpassgroup.com'; // must be a verified sender domain
+  const fromName  = opts.fromName  || 'GreenPass Events';
+  return `${fromName} <${fromEmail}>`;
+};
+
+/* =========================
+   Confirmation email (after payment “paid”)
+========================= */
 /**
- * Confirmation email (after payment “paid”).
  * @param {object} registration
  * @param {object} event
  * @param {object} payment  (optional; used for amount_usd fallback)
- * @param {object} opts     { appBaseUrl?: string, fromEmail?: string, fromName?: string }
+ * @param {object} opts     { appBaseUrl?: string, fromEmail?: string, fromName?: string, cc?, bcc? }
  */
 export const sendEventRegistrationConfirmation = async (
   registration,
@@ -42,13 +70,14 @@ export const sendEventRegistrationConfirmation = async (
   );
   if (!to) return { success: false, skipped: true, error: 'No recipient email.' };
 
-  const fromEmail = opts.fromEmail || 'no-reply@greenpassgroup.com'; // <- change to verified domain
-  const fromName  = opts.fromName  || 'GreenPass Events';
-  const appBase   = opts.appBaseUrl || 'https://app.greenpass.example';    // <- set your real base URL
+  const fromHeader = buildFromHeader(opts);
+  const appBase    = getBaseUrl(opts.appBaseUrl);
 
   const amountUsd = Number(registration?.amount_usd ?? payment?.amount_usd ?? 0).toFixed(2);
-  const startDate = toDate(event?.start);
-  const dateStr   = startDate ? startDate.toLocaleString() : '';
+
+  // Be flexible with date fields (supports event.start or event.start_date)
+  const start = toDate(event?.start) || toDate(event?.start_date);
+  const dateStr = start ? start.toLocaleString() : '';
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -87,7 +116,7 @@ export const sendEventRegistrationConfirmation = async (
         <h3 style="margin-top:0;color:#059669">📱 Your Event QR Code</h3>
         <p>Your unique QR code for event check-in will be available in your GreenPass dashboard.
            You can also use your confirmation code <strong>${firstNonEmpty(registration?.reservation_code, '—')}</strong> for check-in.</p>
-        <a href="${appBase}/dashboard" class="button">View in Dashboard</a>
+        <a href="${appBase.replace(/\/$/,'')}/dashboard" class="button">View in Dashboard</a>
       </div>
       <div class="important">
         <h4 style="margin-top:0;color:#92400e">📋 Important Information:</h4>
@@ -118,33 +147,42 @@ export const sendEventRegistrationConfirmation = async (
     subject: `✅ Event Registration Confirmed - ${event?.title || 'Event'}`,
     html,
     text,
-    body: html, // in case your SendEmail expects `body` for HTML
-    from: `${fromName} <${fromEmail}>`,
-    from_name: fromName,
-    reply_to: 'support@your-verified-domain.com',
+    body: html, // also send as `body` to support callers that alias html->body
+    from: fromHeader,
+    replyTo: 'support@your-verified-domain.com', // <-- adjust to a verified inbox if you want replies
     headers: { 'X-GreenPass-Reason': 'EventRegistrationConfirmation' },
+    ...(opts.cc  ? { cc: opts.cc }   : {}),
+    ...(opts.bcc ? { bcc: opts.bcc } : {}),
   };
+
+  // Optional: BCC the sender so admin gets a copy
+  const senderEmail = extractEmailAddress(fromHeader);
+  if (senderEmail) {
+    payload.bcc = Array.isArray(payload.bcc) ? [...payload.bcc, senderEmail] : [senderEmail];
+  }
 
   try {
     const res = await SendEmail(payload);
-    return { success: true, id: res?.id || res?.messageId || res?.data?.id || 'unknown' };
+    return { success: !!res?.success || !!res?.id, id: res?.id || 'unknown' };
   } catch (err) {
     return { success: false, error: err?.message || String(err) };
   }
 };
 
+/* =========================
+   QR-only follow-up email (optional)
+========================= */
 /**
- * QR-only follow-up email (optional).
  * @param {object} registration
  * @param {object} event
- * @param {object} opts  { fromEmail?, fromName? }
+ * @param {object} opts  { fromEmail?, fromName?, appBaseUrl?, cc?, bcc? }
  */
 export const sendEventQRCode = async (registration, event, opts = {}) => {
   const to = firstNonEmpty(registration?.contact_email, registration?.email);
   if (!to) return { success: false, skipped: true, error: 'No recipient email.' };
 
-  const fromEmail = opts.fromEmail || 'no-reply@your-verified-domain.com';
-  const fromName  = opts.fromName  || 'GreenPass Events';
+  const fromHeader = buildFromHeader(opts);
+  const appBase    = getBaseUrl(opts.appBaseUrl);
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -172,10 +210,12 @@ export const sendEventQRCode = async (registration, event, opts = {}) => {
       </div>
       <p><strong>Event Details:</strong></p>
       <ul>
-        <li><strong>Date:</strong> ${toDate(event?.start)?.toLocaleDateString?.() || ''}</li>
-        <li><strong>Time:</strong> ${toDate(event?.start)?.toLocaleTimeString?.() || ''}</li>
+        <li><strong>Date:</strong> ${toDate(event?.start || event?.start_date)?.toLocaleDateString?.() || ''}</li>
+        <li><strong>Time:</strong> ${toDate(event?.start || event?.start_date)?.toLocaleTimeString?.() || ''}</li>
         <li><strong>Location:</strong> ${event?.location || ''}</li>
       </ul>
+      <p>You can also access your QR in your dashboard:</p>
+      <p><a href="${appBase.replace(/\/$/,'')}/dashboard">${appBase.replace(/\/$/,'')}/dashboard</a></p>
       <p>Save this email or take a screenshot for easy access.</p>
       <p>See you there!</p>
     </div>
@@ -191,15 +231,22 @@ export const sendEventQRCode = async (registration, event, opts = {}) => {
     html,
     text,
     body: html,
-    from: `${fromName} <${fromEmail}>`,
-    from_name: fromName,
-    reply_to: 'support@your-verified-domain.com',
+    from: fromHeader,
+    replyTo: 'support@your-verified-domain.com',
     headers: { 'X-GreenPass-Reason': 'EventRegistrationQRCode' },
+    ...(opts.cc  ? { cc: opts.cc }   : {}),
+    ...(opts.bcc ? { bcc: opts.bcc } : {}),
   };
+
+  // Optional: BCC the sender so admin gets a copy
+  const senderEmail = extractEmailAddress(fromHeader);
+  if (senderEmail) {
+    payload.bcc = Array.isArray(payload.bcc) ? [...payload.bcc, senderEmail] : [senderEmail];
+  }
 
   try {
     const res = await SendEmail(payload);
-    return { success: true, id: res?.id || res?.messageId || res?.data?.id || 'unknown' };
+    return { success: !!res?.success || !!res?.id, id: res?.id || 'unknown' };
   } catch (err) {
     return { success: false, error: err?.message || String(err) };
   }

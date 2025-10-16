@@ -1,232 +1,123 @@
 {
   "indexes": [
     {
-      "collectionGroup": "Case",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "date",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "Conversation",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "Event",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "start",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "EventAssignment",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "EventAssignment",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "event_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "event_id", "order": "ASCENDING" },
+        { "fieldPath": "user_id", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "EventRegistration",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "EventRegistration",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "event_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "event_id", "order": "ASCENDING" },
+        { "fieldPath": "user_id", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "ExhibitorRegistration",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "ExhibitorRegistration",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "event_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "event_id", "order": "ASCENDING" },
+        { "fieldPath": "user_id", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "Payment",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "Payment",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "verified_at",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "verified_at", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "StudentRSVP",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "StudentRSVP",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "event_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "event_id", "order": "ASCENDING" },
+        { "fieldPath": "user_id", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "SupportTicket",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "VisaDocument",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
     {
-      "indexes": [
-        {
-          "collectionGroup": "promotions",
-          "queryScope": "COLLECTION",
-          "fields": [
-            { "fieldPath": "is_active", "order": "ASCENDING" },
-            { "fieldPath": "priority", "order": "DESCENDING" }
-          ]
-        }
-      ],
-      "fieldOverrides": []
-    }
+      "collectionGroup": "promotions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_active", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "DESCENDING" }
+      ]
+    },
     {
       "collectionGroup": "WalletTransaction",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
       ]
     }
   ],

@@ -10,41 +10,50 @@ export async function InvokeLLM({ messages, model }) {
   };
 }
 
-// ---- Email (kept as stub; hook your provider later)
-// src/api/integrations.js
-
-// ---- Email (now wired to Firestore 'mail' for the Trigger Email extension)
 // ---- Email (enqueue to Firestore 'mail' for Trigger Email extension)
-export async function SendEmail({ to, subject, text, html, from, replyTo, headers }) {
-  if (!to || !subject || (!text && !html)) {
-    throw new Error('SendEmail: "to", "subject", and one of "text" or "html" are required.');
+// Backward-compatible with callers that send { body, text } or { html, text }
+export async function SendEmail({ to, subject, text, html, body, from, replyTo, headers, cc, bcc }) {
+  if (!to || !subject || (!text && !html && !body)) {
+    throw new Error('SendEmail: "to", "subject", and one of "text" | "html" | "body" are required.');
   }
 
   const { db } = await import('@/firebase');
   const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
 
+  // Normalize recipients
+  const toList  = Array.isArray(to)  ? to.filter(Boolean)  : [to].filter(Boolean);
+  const ccList  = cc  ? (Array.isArray(cc)  ? cc.filter(Boolean)  : [cc])  : undefined;
+  const bccList = bcc ? (Array.isArray(bcc) ? bcc.filter(Boolean) : [bcc]) : undefined;
+
+  // Prefer env-configured FROM; otherwise use provided `from` if valid; else omit (extension default applies)
+  const ENV_FROM = import.meta.env.VITE_EMAIL_FROM && String(import.meta.env.VITE_EMAIL_FROM).trim();
+  const fromHeader =
+    ENV_FROM ? ENV_FROM :
+    (from && typeof from === 'string' && from.includes('@') ? from : undefined);
+
+  // Accept `body` as alias for `html`
+  const effectiveHtml = html ?? body ?? undefined;
+
   const payload = {
-    to: Array.isArray(to) ? to : [to],
+    to: toList,
+    ...(ccList  ? { cc: ccList }   : {}),
+    ...(bccList ? { bcc: bccList } : {}),
+    ...(fromHeader ? { from: fromHeader } : {}),
+    ...(replyTo ? { replyTo } : {}),
+    ...(headers && typeof headers === 'object' ? { headers } : {}),
+    createdAt: serverTimestamp(),
     message: {
       subject,
       ...(text ? { text } : {}),
-      ...(html ? { html } : {}),
+      ...(effectiveHtml ? { html: effectiveHtml } : {}),
     },
-    createdAt: serverTimestamp(),
+    _meta: { app: 'GreenPass', reason: headers?.['X-GreenPass-Reason'] || 'General' },
   };
 
-  // Prefer env-configured FROM; otherwise use provided "from" if valid; else omit (extension default FROM applies)
-  const ENV_FROM = import.meta.env.VITE_EMAIL_FROM && String(import.meta.env.VITE_EMAIL_FROM).trim();
-  if (ENV_FROM) payload.from = ENV_FROM;
-  else if (from && typeof from === 'string' && from.includes('@')) payload.from = from;
-
-  if (replyTo) payload.replyTo = replyTo;
-  if (headers && typeof headers === 'object') payload.headers = headers;
-
   const ref = await addDoc(collection(db, 'mail'), payload);
-  return { id: ref.id };
+  // Return a success flag so callers can chain (invoice -> confirmation, mark qr_email_sent, etc.)
+  return { success: true, id: ref.id };
 }
-
 
 /**
  * Upload a file to Firebase Storage and return a downloadable URL.
