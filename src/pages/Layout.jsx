@@ -22,6 +22,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import ChatWidget from "@/components/chat/ChatWidget";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import IdleLogout from "@/components/IdleLogout";
+
 
 /* ---------- Firebase auth/profile ---------- */
 import { auth, db } from "@/firebase";
@@ -502,37 +504,47 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
             <div className="hidden md:flex items-center">
               <NavigationMenu>
                 <NavigationMenuList>
+                  {/* ✅ FIX: use asChild to avoid <a> inside <a> */}
                   <NavigationMenuItem>
-                    <Link to={createPageUrl("About")}>
-                      <NavigationMenuLink className={cn(
-                        navigationMenuTriggerStyle(),
-                        "bg-transparent text-gray-700 hover:bg-gray-200 hover:text-green-600 focus:bg-gray-200 transition-all duration-200 font-medium"
-                      )}>
+                    <NavigationMenuLink asChild>
+                      <Link
+                        to={createPageUrl("About")}
+                        className={cn(
+                          navigationMenuTriggerStyle(),
+                          "bg-transparent text-gray-700 hover:bg-gray-200 hover:text-green-600 focus:bg-gray-200 transition-all duration-200 font-medium"
+                        )}
+                      >
                         {getText("about")}
-                      </NavigationMenuLink>
-                    </Link>
+                      </Link>
+                    </NavigationMenuLink>
                   </NavigationMenuItem>
 
                   <NavigationMenuItem>
-                    <Link to={createPageUrl("Events")}>
-                      <NavigationMenuLink className={cn(
-                        navigationMenuTriggerStyle(),
-                        "bg-transparent text-gray-700 hover:bg-gray-200 hover:text-green-600 focus:bg-gray-200 transition-all duration-200 font-medium"
-                      )}>
+                    <NavigationMenuLink asChild>
+                      <Link
+                        to={createPageUrl("Events")}
+                        className={cn(
+                          navigationMenuTriggerStyle(),
+                          "bg-transparent text-gray-700 hover:bg-gray-200 hover:text-green-600 focus:bg-gray-200 transition-all duration-200 font-medium"
+                        )}
+                      >
                         {getText("events")}
-                      </NavigationMenuLink>
-                    </Link>
+                      </Link>
+                    </NavigationMenuLink>
                   </NavigationMenuItem>
 
                   <NavigationMenuItem>
-                    <Link to={createPageUrl("Blog")}>
-                      <NavigationMenuLink className={cn(
-                        navigationMenuTriggerStyle(),
-                        "bg-transparent text-gray-700 hover:bg-gray-200 hover:text-green-600 focus:bg-gray-200 transition-all duration-200 font-medium"
-                      )}>
+                    <NavigationMenuLink asChild>
+                      <Link
+                        to={createPageUrl("Blog")}
+                        className={cn(
+                          navigationMenuTriggerStyle(),
+                          "bg-transparent text-gray-700 hover:bg-gray-200 hover:text-green-600 focus:bg-gray-200 transition-all duration-200 font-medium"
+                        )}
+                      >
                         {getText("blog")}
-                      </NavigationMenuLink>
-                    </Link>
+                      </Link>
+                    </NavigationMenuLink>
                   </NavigationMenuItem>
                 </NavigationMenuList>
               </NavigationMenu>
@@ -1293,7 +1305,7 @@ export default function Layout() {
           </AnimatePresence>
         </main>
       </div>
-
+      <IdleLogout idleMs={60 * 60 * 1000} onLogout={handleLogout} />
       {/* In-app chat for logged-in users */}
       <ChatWidget />
     </SidebarProvider>

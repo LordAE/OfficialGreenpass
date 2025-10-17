@@ -6,11 +6,13 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "@/firebase";
 
-// ---------- helpers ----------
+/* =========================
+   helpers
+========================= */
 const withId = (snap) => ({ id: snap.id, ...snap.data() });
 
 // Firestore 'in' has max 10 items -> chunk and merge results
-async function runInChunks(baseColl, field, values, buildQuery, mergeFn = (acc, x) => acc.concat(x)) {
+async function runInChunks(baseColl, _field, values, buildQuery, mergeFn = (acc, x) => acc.concat(x)) {
   const chunks = [];
   for (let i = 0; i < values.length; i += 10) chunks.push(values.slice(i, i + 10));
   let out = [];
@@ -29,15 +31,15 @@ async function getById(coll, id) {
 
 async function listEq(coll, filters = {}, { limit } = {}) {
   // Special-case sole filter by doc id
-  if (filters && typeof filters === 'object' && Object.keys(filters).length === 1 && 'id' in filters) {
+  if (filters && typeof filters === "object" && Object.keys(filters).length === 1 && "id" in filters) {
     const row = await getById(coll, filters.id);
     return row ? [row] : [];
   }
 
   // Handle $in cases and simple equality
   const entries = Object.entries(filters || {});
-  const inFilters = entries.filter(([_, v]) => v && typeof v === 'object' && '$in' in v && Array.isArray(v.$in) && v.$in.length > 0);
-  const eqFilters  = entries.filter(([_, v]) => !(v && typeof v === 'object' && '$in' in v));
+  const inFilters = entries.filter(([_, v]) => v && typeof v === "object" && "$in" in v && Array.isArray(v.$in) && v.$in.length > 0);
+  const eqFilters = entries.filter(([_, v]) => !(v && typeof v === "object" && "$in" in v));
 
   // If there is at least one $in filter, we must fan out the queries
   if (inFilters.length > 0) {
@@ -49,9 +51,9 @@ async function listEq(coll, filters = {}, { limit } = {}) {
       inField,
       inSpec.$in,
       (base, chunk) => {
-        let qRef = query(base, where(inField, 'in', chunk));
+        let qRef = query(base, where(inField, "in", chunk));
         for (const [k, v] of eqFilters) {
-          if (v !== undefined && v !== null) qRef = query(qRef, where(k, '==', v));
+          if (v !== undefined && v !== null) qRef = query(qRef, where(k, "==", v));
         }
         if (limit) qRef = query(qRef, qLimit(limit));
         return qRef;
@@ -59,7 +61,7 @@ async function listEq(coll, filters = {}, { limit } = {}) {
     );
 
     if (otherIn.length > 0) {
-      return results.filter(r => otherIn.every(([k, spec]) => spec.$in.includes(r[k])));
+      return results.filter((r) => otherIn.every(([k, spec]) => spec.$in.includes(r[k])));
     }
     return results;
   }
@@ -106,14 +108,14 @@ function makeEntity(collectionName, opts = {}) {
         return fallback ? [fallback] : [];
       }
       // Support { id: ... } as well
-      if (Object.keys(filters).length === 1 && 'id' in filters) {
+      if (Object.keys(filters).length === 1 && "id" in filters) {
         const row = await this.get(filters.id);
         return row ? [row] : [];
       }
       return await listEq(collectionName, filters, options);
     },
 
-    async list(sortField, options = {}) {
+    async list(_sortField, options = {}) {
       // Sorting omitted for simplicity
       return await listEq(collectionName, {}, options);
     },
@@ -125,7 +127,9 @@ function makeEntity(collectionName, opts = {}) {
   };
 }
 
-// ---------- collection name mapping ----------
+/* =========================
+   collection name mapping
+========================= */
 const C = {
   Agent: "agents",
   Tutor: "tutors",
@@ -151,9 +155,12 @@ const C = {
   Wallet: "wallets",
   WalletTransaction: "wallet_transactions",
   VisaDocument: "visa_documents",
-  VisaPackage: "visa_packages",
-  AgentPackage: "agent_packages",
-  TutorPackage: "tutor_packages",
+
+  // ✅ these match your Firestore collection names
+  VisaPackage: "visaPackages",
+  AgentPackage: "agentPackages",
+  TutorPackage: "tutorPackages",
+
   StudentTutorPackage: "student_tutor_packages",
   StudentRSVP: "student_rsvps",
   Event: "events",
@@ -161,10 +168,12 @@ const C = {
   EventRegistration: "event_registrations",
   ExhibitorRegistration: "exhibitor_registrations",
   Organization: "organizations",
-  BankSettings: "bank_settings",          // legacy/single-key style storage
-  BankAccount: "bank_accounts",           // admin-managed bank accounts
-  PaymentSetting: "payment_settings",     // admin-managed e-transfer / paypal settings
-  BrandSettings: "brandSettings",
+
+  BankSettings: "bank_settings",      // legacy single-key style
+  BankAccount: "bank_accounts",
+  PaymentSetting: "payment_settings",
+
+  BrandSettings: "brandSettings",      // camelCase in your DB
   AboutPageContent: "about_page_contents",
   ContactPageContent: "contact_page_contents",
   HomePageContent: "home_page_contents",
@@ -183,7 +192,106 @@ const C = {
   Package: "packages",
 };
 
-// ---------- generic exports ----------
+/* =========================
+   specialized entities
+========================= */
+
+// Events: lookup by natural key `event_id` first, then by doc id
+const EventEntity = makeEntity(C.Event, { idField: "event_id" });
+
+// EventRegistration: add default timestamps/status
+const EventRegistrationEntity = {
+  ...makeEntity(C.EventRegistration),
+  async create(payload) {
+    const now = new Date().toISOString();
+    return await createIn(C.EventRegistration, {
+      status: "unpaid",
+      created_at: now,          // NOTE: if your rules require request.time, adjust rules or set serverTimestamp in a CF.
+      updated_at: now,
+      ...payload,
+    });
+  },
+  async update(id, patch) {
+    return await updateIn(C.EventRegistration, id, {
+      ...patch,
+      updated_at: new Date().toISOString(),
+    });
+  },
+};
+
+// Payment: timestamp defaults
+const PaymentEntity = {
+  ...makeEntity(C.Payment),
+  async create(payload) {
+    const now = new Date().toISOString();
+    return await createIn(C.Payment, {
+      created_date: now,
+      updated_date: now,
+      ...payload,
+    });
+  },
+};
+
+/* =========================
+   users (auth + profile)
+========================= */
+const UsersCollection = makeEntity(C.Users);
+
+async function getAuthedFirebaseUser() {
+  return await new Promise((resolve, reject) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      unsub();
+      user ? resolve(user) : reject(new Error("Not signed in"));
+    });
+  });
+}
+
+export const User = {
+  // Auth + profile merge
+  async me() {
+    const u = await getAuthedFirebaseUser();
+    const profile = await getById(C.Users, u.uid);
+    return {
+      id: u.uid,
+      email: u.email || "",
+      display_name: u.displayName || "",
+      ...(profile || {}),
+    };
+  },
+
+  // CRUD on users collection (by id == uid)
+  async get(id)       { return await UsersCollection.get(id); },
+  async filter(f, o)  { return await UsersCollection.filter(f, o); },
+  async list(s, o)    { return await UsersCollection.list(s, o); },
+  async create(data)  { return await UsersCollection.create(data); },
+  async update(id, p) { return await UsersCollection.update(id, p); },
+  async remove(id)    { return await UsersCollection.remove(id); },
+  async delete(id)    { return await UsersCollection.delete(id); },
+
+  // Convenience: update current user's profile doc
+  async updateMyUserData(patch) {
+    const u = await getAuthedFirebaseUser();
+    const existing = await getById(C.Users, u.uid);
+    if (existing) {
+      return await updateIn(C.Users, u.uid, patch);
+    } else {
+      return await createIn(C.Users, { ...patch, id: u.uid });
+    }
+  },
+};
+
+export const BankSettings = {
+  ...makeEntity("bank_settings"),
+  async getValue(key) {
+    if (!key) return null;
+    const rows = await listEq("bank_settings", { key }, { limit: 1 });
+    return rows.length ? (rows[0].value ?? rows[0]) : null;
+  },
+};
+
+/* =========================
+   generic entity exports
+========================= */
 export const Agent               = makeEntity(C.Agent);
 export const Tutor               = makeEntity(C.Tutor);
 export const VisaRequest         = makeEntity(C.VisaRequest);
@@ -232,104 +340,11 @@ export const SchoolProfile       = makeEntity(C.SchoolProfile);
 export const OurTeamPageContent  = makeEntity(C.OurTeamPageContent);
 export const PackageEntity       = makeEntity(C.Package);
 
-// NEW: admin-managed collections
+// Admin-managed
 export const BankAccount         = makeEntity(C.BankAccount);
 export const PaymentSetting      = makeEntity(C.PaymentSetting);
 
-// ---------- specialized entities ----------
-export const BankSettings = {
-  // GENERAL filter so you can still query older rows however you like.
-  async filter(filters = {}, options = {}) {
-    return await listEq(C.BankSettings, filters, options);
-  },
-  // Convenience for the legacy “single keyed value” pattern.
-  async getValue(key) {
-    if (!key) return null;
-    const rows = await listEq(C.BankSettings, { key }, { limit: 1 });
-    return rows.length ? (rows[0].value ?? rows[0]) : null;
-  },
-};
-
-// Events: lookup by event_id first, then by doc id
-export const Event = {
-  ...makeEntity(C.Event, { idField: 'event_id' }),
-};
-
-// EventRegistration: add default timestamps/status
-export const EventRegistration = {
-  ...makeEntity(C.EventRegistration),
-  async create(payload) {
-    const now = new Date().toISOString();
-    return await createIn(C.EventRegistration, {
-      status: "unpaid",
-      created_at: now,
-      updated_at: now,
-      ...payload,
-    });
-  },
-  async update(id, patch) {
-    return await updateIn(C.EventRegistration, id, {
-      ...patch,
-      updated_at: new Date().toISOString(),
-    });
-  },
-};
-
-// Payment: timestamp defaults
-export const Payment = {
-  ...makeEntity(C.Payment),
-  async create(payload) {
-    const now = new Date().toISOString();
-    return await createIn(C.Payment, {
-      created_date: now,
-      updated_date: now,
-      ...payload,
-    });
-  },
-};
-
-// ---------- Users (auth + profile collection) ----------
-const UsersCollection = makeEntity(C.Users);
-
-async function getAuthedFirebaseUser() {
-  return await new Promise((resolve, reject) => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      unsub();
-      user ? resolve(user) : reject(new Error("Not signed in"));
-    });
-  });
-}
-
-export const User = {
-  // Auth + profile merge
-  async me() {
-    const u = await getAuthedFirebaseUser();
-    const profile = await getById(C.Users, u.uid);
-    return {
-      id: u.uid,
-      email: u.email || "",
-      display_name: u.displayName || "",
-      ...(profile || {}),
-    };
-  },
-
-  // CRUD on users collection (by id == uid)
-  async get(id)       { return await UsersCollection.get(id); },
-  async filter(f,o)   { return await UsersCollection.filter(f,o); },
-  async list(s,o)     { return await UsersCollection.list(s,o); },
-  async create(data)  { return await UsersCollection.create(data); },
-  async update(id,p)  { return await UsersCollection.update(id,p); },
-  async remove(id)    { return await UsersCollection.remove(id); },
-  async delete(id)    { return await UsersCollection.delete(id); },
-
-  // Convenience: update current user's profile doc
-  async updateMyUserData(patch) {
-    const u = await getAuthedFirebaseUser();
-    const existing = await getById(C.Users, u.uid);
-    if (existing) {
-      return await updateIn(C.Users, u.uid, patch);
-    } else {
-      return await createIn(C.Users, { ...patch, id: u.uid });
-    }
-  },
-};
+// Specialized exports (avoid name duplication)
+export const Event               = EventEntity;
+export const EventRegistration   = EventRegistrationEntity;
+export const Payment             = PaymentEntity;

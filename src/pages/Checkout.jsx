@@ -1,8 +1,14 @@
 // src/pages/Checkout.jsx
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertTriangle, Package as PackageIcon, CheckCircle, CreditCard } from "lucide-react";
+import {
+  Loader2,
+  AlertTriangle,
+  Package as PackageIcon,
+  CheckCircle,
+  CreditCard,
+} from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -20,7 +26,6 @@ import {
   addDoc,
   serverTimestamp,
   updateDoc,
-  increment,
 } from "firebase/firestore";
 
 import SharedPaymentGateway from "../components/payments/SharedPaymentGateway";
@@ -47,18 +52,31 @@ export default function Checkout() {
 
   const safePrice = (v) => Number(v || 0);
 
-  const findByIdOrName = async (colName, idOrName) => {
-    // First try getDoc by id
-    const byIdRef = doc(db, colName, idOrName);
-    const byIdSnap = await getDoc(byIdRef);
-    if (byIdSnap.exists()) return { id: byIdSnap.id, ...byIdSnap.data() };
+  // Try multiple collection names to be resilient to snake/camel case
+  const findByIdOrNameFromCollections = async (colNames, idOrName) => {
+    for (const colName of colNames) {
+      // 1) try by id
+      try {
+        const byIdRef = doc(db, colName, idOrName);
+        const byIdSnap = await getDoc(byIdRef);
+        if (byIdSnap.exists()) {
+          return { id: byIdSnap.id, ...byIdSnap.data(), __collection: colName };
+        }
+      } catch (_) {
+        // ignore and try next
+      }
 
-    // fallback: query by name
-    const q = query(collection(db, colName), where("name", "==", idOrName), limit(1));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const d = snap.docs[0];
-      return { id: d.id, ...d.data() };
+      // 2) fallback: query by name
+      try {
+        const q = query(collection(db, colName), where("name", "==", idOrName), limit(1));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const d = snap.docs[0];
+          return { id: d.id, ...d.data(), __collection: colName };
+        }
+      } catch (_) {
+        // ignore and try next
+      }
     }
     return null;
   };
@@ -66,7 +84,11 @@ export default function Checkout() {
   const loadPackage = async (type, id) => {
     switch (type) {
       case "visa": {
-        const p = await findByIdOrName("visa_packages", id);
+        // support: visa_packages, visaPackages, VisaPackages
+        const p = await findByIdOrNameFromCollections(
+          ["visa_packages", "visaPackages", "VisaPackages"],
+          id
+        );
         return p
           ? {
               ...p,
@@ -79,7 +101,11 @@ export default function Checkout() {
           : null;
       }
       case "tutor": {
-        const p = await findByIdOrName("tutor_packages", id);
+        // support: tutor_packages, tutorPackages, TutorPackages
+        const p = await findByIdOrNameFromCollections(
+          ["tutor_packages", "tutorPackages", "TutorPackages"],
+          id
+        );
         return p
           ? {
               ...p,
@@ -92,7 +118,11 @@ export default function Checkout() {
           : null;
       }
       case "student_tutor": {
-        const p = await findByIdOrName("student_tutor_packages", id);
+        // support: student_tutor_packages, studentTutorPackages, StudentTutorPackages
+        const p = await findByIdOrNameFromCollections(
+          ["student_tutor_packages", "studentTutorPackages", "StudentTutorPackages"],
+          id
+        );
         return p
           ? {
               ...p,
@@ -144,9 +174,10 @@ export default function Checkout() {
           name: serviceName,
           description: serviceDesc,
           price_usd: order.amount_usd ?? order.amount ?? 0,
-          features: [serviceName, order.category ? `Category: ${order.category}` : null].filter(
-            Boolean
-          ),
+          features: [
+            serviceName,
+            order.category ? `Category: ${order.category}` : null,
+          ].filter(Boolean),
         };
       }
       default:
@@ -205,7 +236,7 @@ export default function Checkout() {
       const userRef = getUserDocRef();
       if (!userRef) throw new Error("No authenticated user.");
 
-      // Record the payment (optional but recommended)
+      // Record the payment
       await addDoc(collection(db, "payments"), {
         user_id: userRef.id,
         related_entity_type: `${pkg.type}_package_purchase`,
@@ -228,10 +259,8 @@ export default function Checkout() {
         case "visa": {
           const purchased = Array.isArray(u.purchased_packages) ? u.purchased_packages : [];
           updates.purchased_packages = [...purchased, pkg.name];
-          // Upgrade type if needed
           if (u.user_type !== "student") updates.user_type = "student";
 
-          // Create a case
           await addDoc(collection(db, "cases"), {
             student_id: userRef.id,
             case_type: pkg.name,
@@ -260,24 +289,20 @@ export default function Checkout() {
             ? u.purchased_tutor_packages
             : [];
           updates.purchased_tutor_packages = [...tPurchased, pkg.name];
-          // Set user as tutor if that’s your intended flow
           if (u.user_type !== "tutor") updates.user_type = "tutor";
           break;
         }
 
         case "student_tutor": {
-          // add session credits
           const credits = Number(u.session_credits || 0);
           updates.session_credits = credits + Number(pkg.num_sessions || 1);
           break;
         }
 
         case "tutoring_session":
-          // You could add a “history” entry here if desired
           break;
 
         case "marketplace_order":
-          // No user field changes by default
           break;
 
         default:
@@ -431,11 +456,13 @@ export default function Checkout() {
             </CardHeader>
             <CardContent>
               <SharedPaymentGateway
-                entityType={`${pkg.type}_package_purchase`}
-                entityId={pkg.id}
-                amount={safePrice(pkg.price_usd)}
-                description={`${pkg.name} - ${pkg.type} package`}
-                onSuccess={handlePaymentSuccess}
+                amountUSD={safePrice(pkg.price_usd)}
+                itemDescription={`${pkg.name} - ${pkg.type} package`}
+                payerName={userDoc?.full_name || userDoc?.name || ""}
+                payerEmail={userDoc?.email || ""}
+                onCardPaymentSuccess={(provider, transactionId, meta) =>
+                handlePaymentSuccess({ provider, transactionId, ...meta })
+                }
                 onError={handlePaymentError}
               />
             </CardContent>

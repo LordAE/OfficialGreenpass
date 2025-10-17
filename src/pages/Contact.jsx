@@ -19,7 +19,14 @@ import {
 } from 'firebase/firestore';
 
 const CONTACTS_COLLECTION = 'contacts';
-const CONTENT_COLLECTION = 'contact_page_content';
+
+// Try all likely collection names for the singleton content doc
+const CONTENT_COLLECTION_CANDIDATES = [
+  'contact_page_content',    // snake_case (v1)
+  'contact_page_contents',   // plural snake_case
+  'contactPage',             // camelCase (what you currently have)
+  'contactPages',            // plural camelCase (just in case)
+];
 const CONTENT_DOC_ID = 'SINGLETON';
 
 export default function ContactPage() {
@@ -30,45 +37,42 @@ export default function ContactPage() {
 
   const lang = getLang();
 
+  const defaultContent = {
+    hero_title: getText('contactUs'),
+    hero_subtitle: getText('getInTouch'),
+    form_title: 'Send a Message',
+    info_title: 'Contact Information',
+    office_hours_title: 'Office Hours',
+    email: 'info@greenpassgroup.com',
+    phone: '(+84) 123 456 789',
+    address: 'Ho Chi Minh City, Vietnam\nToronto, Canada',
+    office_hours_vietnam: '<strong>Vietnam Office:</strong> Mon - Fri, 9:00 AM - 6:00 PM (GMT+7)',
+    office_hours_canada: '<strong>Canada Office:</strong> Mon - Fri, 9:00 AM - 5:00 PM (EST)',
+  };
+
   useEffect(() => {
     const fetchContent = async () => {
-      try {
-        // Try to read the singleton content doc
-        const ref = doc(db, CONTENT_COLLECTION, CONTENT_DOC_ID);
-        const snap = await getDoc(ref);
+      let found = null;
 
-        if (snap.exists()) {
-          setContent({ id: snap.id, ...snap.data() });
-        } else {
-          // Fallback defaults (matches your current UI copy)
-          setContent({
-            hero_title: getText('contactUs'),
-            hero_subtitle: getText('getInTouch'),
-            form_title: 'Send a Message',
-            info_title: 'Contact Information',
-            office_hours_title: 'Office Hours',
-            email: 'info@greenpassgroup.com',
-            phone: '(+84) 123 456 789',
-            address: 'Ho Chi Minh City, Vietnam\nToronto, Canada',
-            office_hours_vietnam: '<strong>Vietnam Office:</strong> Mon - Fri, 9:00 AM - 6:00 PM (GMT+7)',
-            office_hours_canada: '<strong>Canada Office:</strong> Mon - Fri, 9:00 AM - 5:00 PM (EST)',
-          });
+      // Try each candidate collection until one works & exists
+      for (const coll of CONTENT_COLLECTION_CANDIDATES) {
+        try {
+          const ref = doc(db, coll, CONTENT_DOC_ID);
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            found = { id: snap.id, ...snap.data(), _source: coll };
+            break;
+          }
+        } catch (e) {
+          // Ignore permission errors on non-existent/locked candidates
         }
-      } catch (e) {
-        console.error('Failed to load contact page content:', e);
-        // still provide safe defaults so the page renders
-        setContent({
-          hero_title: getText('contactUs'),
-          hero_subtitle: getText('getInTouch'),
-          form_title: 'Send a Message',
-          info_title: 'Contact Information',
-          office_hours_title: 'Office Hours',
-        });
       }
+
+      setContent(found ?? defaultContent);
     };
 
     fetchContent();
-  }, [lang]);
+  }, [lang]); // re-run if language changes
 
   const handleChange = (e) => {
     const { name, value } = e.target || {};
@@ -83,8 +87,8 @@ export default function ContactPage() {
     try {
       await addDoc(collection(db, CONTACTS_COLLECTION), {
         ...formData,
-        status: 'new',                  // optional: for triage
-        created_at: serverTimestamp(),  // Firestore server time
+        status: 'new',
+        created_at: serverTimestamp(),
         meta: {
           lang,
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
