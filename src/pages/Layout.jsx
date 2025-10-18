@@ -22,7 +22,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import ChatWidget from "@/components/chat/ChatWidget";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import IdleLogout from "@/components/IdleLogout";
+
 
 
 /* ---------- Firebase auth/profile ---------- */
@@ -1305,7 +1305,7 @@ export default function Layout() {
           </AnimatePresence>
         </main>
       </div>
-      <IdleLogout idleMs={60 * 60 * 1000} onLogout={handleLogout} />
+      
       {/* In-app chat for logged-in users */}
       <ChatWidget />
     </SidebarProvider>
