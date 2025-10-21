@@ -14,6 +14,7 @@ import { createPageUrl } from '@/utils';
 import IconResolver from '../components/IconResolver';
 import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
+import MultilineText from '@/components/MultilineText'; // <-- NEW
 
 /* ---------- Firebase ---------- */
 import { db } from '@/firebase';
@@ -264,7 +265,8 @@ const Hero = ({ content }) => {
             className="text-xl text-gray-200 leading-relaxed"
             style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
           >
-            {hero.subtitle || ''}
+            {/* Preserve line breaks & bullets */}
+            {hero.subtitle ? <MultilineText text={hero.subtitle} /> : ''}
           </motion.p>
         </div>
       </div>
@@ -713,7 +715,12 @@ const Features = ({ features }) => {
                     {feature.title}
                   </Link>
                 </h3>
-                <p className="text-lg text-slate-600 leading-relaxed">{feature.description}</p>
+
+                {/* Preserve line breaks in feature description */}
+                <p className="text-lg text-slate-600 leading-relaxed">
+                  <MultilineText text={feature.description} />
+                </p>
+
                 {feature.link_url && feature.link_text && (
                   <Link to={feature.link_url}>
                     <Button size="lg" className="mt-4 bg-green-600 hover:bg-green-700 text-white shadow-md">
@@ -764,8 +771,13 @@ const SchoolProgramsSection = ({ content, schools }) => (
           {content?.schools_programs_section?.title || "Recommended Schools"}
         </h2>
         <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
-          {content?.schools_programs_section?.subtitle ||
-            "Discover our personally recommended educational institutions selected for their excellence and student success rates"}
+          {/* Preserve line breaks in subtitle */}
+          <MultilineText
+            text={
+              content?.schools_programs_section?.subtitle ||
+              "Discover our personally recommended educational institutions selected for their excellence and student success rates"
+            }
+          />
         </p>
       </div>
 
@@ -928,7 +940,8 @@ const Testimonials = ({ testimonials }) => (
                 )}
 
                 <blockquote className="text-slate-700 mb-6 italic text-lg leading-relaxed">
-                  "{t.quote}"
+                  {/* Preserve line breaks in quotes */}
+                  <MultilineText text={`"${t.quote || ""}"`} />
                 </blockquote>
 
                 <div className="flex items-center">

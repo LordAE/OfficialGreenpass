@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import YouTubeEmbed from "@/components/YouTubeEmbed";
+import MultilineText from "@/components/MultilineText"; // ⬅️ NEW
 
 /* ---------- Firebase ---------- */
 import { db } from "@/firebase";
@@ -66,6 +67,9 @@ const isHighlightActive = (post) => {
       : 0);
   return ms > Date.now();
 };
+
+/* Heuristic: does a string look like HTML? */
+const looksLikeHtml = (s = "") => /<\/?[a-z][\s\S]*>/i.test(String(s));
 
 /* ---------- Gallery extraction (tolerant) ---------- */
 const toUrlArray = (val) => {
@@ -434,13 +438,22 @@ export default function PostDetail() {
               ) : null}
             </div>
 
+            {/* CONTENT */}
             {post.content ? (
-              <div
-                className="prose prose-lg max-w-none prose-headings:font-bold prose-a:text-green-600 hover:prose-a:text-green-700"
-                dangerouslySetInnerHTML={{ __html: post.content }}
-              />
+              looksLikeHtml(post.content) ? (
+                <div
+                  className="prose prose-lg max-w-none prose-headings:font-bold prose-a:text-green-600 hover:prose-a:text-green-700"
+                  dangerouslySetInnerHTML={{ __html: post.content }}
+                />
+              ) : (
+                <div className="prose prose-lg max-w-none prose-headings:font-bold">
+                  <MultilineText text={post.content} />
+                </div>
+              )
             ) : post.excerpt ? (
-              <p className="text-lg text-gray-700">{post.excerpt}</p>
+              <p className="text-lg text-gray-700">
+                <MultilineText text={post.excerpt} />
+              </p>
             ) : null}
 
             {/* ===== Gallery BELOW the description ===== */}
