@@ -214,7 +214,7 @@ export default function Profile() {
     const full_name = pickFirst(data.full_name, data.displayName, fbUser.displayName, data.name) || "";
     const user_type = (pickFirst(data.user_type, data.role, "student") || "student").toLowerCase();
     return { id: uid, ...data, full_name, user_type };
-    };
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
@@ -323,7 +323,8 @@ export default function Profile() {
       setUserFormData(updated);
 
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      // Force a full refresh shortly after success so the UI reflects all changes
+      setTimeout(() => window.location.reload(), 300);
     } catch (err) {
       console.error("Error saving user profile:", err);
       setError("Failed to save profile. Please try again.");
@@ -427,7 +428,8 @@ export default function Profile() {
       setRoleSpecificData(normalizedSaved);
       setRoleFormData(normalizedSaved);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      // Force a full refresh shortly after success so the UI reflects all changes
+      setTimeout(() => window.location.reload(), 300);
     } catch (err) {
       console.error("Error saving professional profile:", err);
       setError("Failed to save professional profile. Please try again.");

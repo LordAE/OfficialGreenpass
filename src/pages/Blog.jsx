@@ -145,7 +145,7 @@ export default function Blog() {
             {/* BIG emphasized heading */}
             <h1 className="mt-4 text-4xl font-extrabold sm:text-5xl lg:text-6xl leading-tight">
               <span className="bg-gradient-to-r from-green-600 via-emerald-500 to-green-600 bg-clip-text text-transparent">
-                GreenPass Blog
+                GreenPass News and Highlights
               </span>
             </h1>
 

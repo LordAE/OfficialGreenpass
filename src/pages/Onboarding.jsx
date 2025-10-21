@@ -232,6 +232,13 @@ export default function Onboarding() {
     }
   };
 
+  /**
+   * ✅ CRITICAL FIX:
+   * After updating /users/{uid}, we seed the corresponding role collection
+   * with verification_status: "pending" so the Admin → Verifications page
+   * can pick it up, and later public pages (Tutors/Agents) will show items
+   * only after verification_status is "verified".
+   */
   const handleCompleteOnboarding = async () => {
     if (!auth.currentUser || !selectedRole || !validateRoleSpecificInfo()) return;
     setSaving(true);
@@ -289,25 +296,68 @@ export default function Onboarding() {
         };
       }
 
+      // 1) Upsert the user profile
       await updateDoc(ref, updates);
 
-      // optional seeding of role collections
+      // 2) Seed the role collection with PENDING verification (→ appears in Admin Verifications)
+      const now = serverTimestamp();
+
       try {
         if (selectedRole === 'agent' && updates.agent_profile) {
           const existing = await Agent.filter({ user_id: uid }, { limit: 1 });
-          if (!existing.length) await Agent.create({ user_id: uid, ...updates.agent_profile, referral_code: `AG${Date.now().toString().slice(-6)}` });
+          if (!existing.length) {
+            await Agent.create({
+              user_id: uid,
+              verification_status: 'pending',
+              is_visible: false,
+              referral_code: `AG${Date.now().toString().slice(-6)}`,
+              created_at: now,
+              updated_at: now,
+              ...updates.agent_profile,
+            });
+          }
         }
+
         if (selectedRole === 'tutor' && updates.tutor_profile) {
           const existing = await Tutor.filter({ user_id: uid }, { limit: 1 });
-          if (!existing.length) await Tutor.create({ user_id: uid, ...updates.tutor_profile });
+          if (!existing.length) {
+            await Tutor.create({
+              user_id: uid,
+              verification_status: 'pending',
+              is_visible: false,
+              rating: 0,
+              total_students: 0,
+              created_at: now,
+              updated_at: now,
+              ...updates.tutor_profile,
+            });
+          }
         }
+
         if (selectedRole === 'school' && updates.school_profile) {
           const existing = await SchoolProfile.filter({ user_id: uid }, { limit: 1 });
-          if (!existing.length) await SchoolProfile.create({ user_id: uid, ...updates.school_profile });
+          if (!existing.length) {
+            await SchoolProfile.create({
+              user_id: uid,
+              verification_status: 'pending',
+              created_at: now,
+              updated_at: now,
+              ...updates.school_profile,
+            });
+          }
         }
+
         if (selectedRole === 'vendor' && updates.vendor_profile) {
           const existing = await Vendor.filter({ user_id: uid }, { limit: 1 });
-          if (!existing.length) await Vendor.create({ user_id: uid, ...updates.vendor_profile });
+          if (!existing.length) {
+            await Vendor.create({
+              user_id: uid,
+              verification_status: 'pending',
+              created_at: now,
+              updated_at: now,
+              ...updates.vendor_profile,
+            });
+          }
         }
       } catch (e) {
         console.warn('Seeding role collection failed (non-fatal):', e);

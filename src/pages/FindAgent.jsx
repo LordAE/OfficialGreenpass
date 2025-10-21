@@ -107,11 +107,10 @@ export default function FindAgent() {
 
   const [currentUser, setCurrentUser] = useState(null);
   const [assignedAgent, setAssignedAgent] = useState(null);
-  const [agentUsers, setAgentUsers] = useState({}); // map user_id -> user doc
+  const [agentUsers, setAgentUsers] = useState({});
   const [selectingAgent, setSelectingAgent] = useState(null);
   const [error, setError] = useState(null);
 
-  /* -------- Helpers to read Firestore -------- */
   const getUserDoc = async (uid) => {
     const uref = doc(db, "users", uid);
     const usnap = await getDoc(uref);
@@ -119,13 +118,12 @@ export default function FindAgent() {
   };
 
   const fetchAgents = async () => {
-    // agents where verification_status == 'verified'
-    const q = query(collection(db, "agents"), where("verification_status", "==", "verified"));
+    // agents where verification_status == 'verified' AND visible
+    const q = query(collection(db, "agents"), where("verification_status", "==", "verified"), where("is_visible", "==", true));
     const qs = await getDocs(q);
 
     const rawAgents = qs.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-    // gather user_ids for batch lookup
     const userIds = Array.from(
       new Set(
         rawAgents
@@ -134,7 +132,6 @@ export default function FindAgent() {
       )
     );
 
-    // fetch user docs (simple parallel fetch; OK for reasonable counts)
     const pairs = await Promise.all(
       userIds.map(async (uid) => {
         try {
@@ -151,7 +148,6 @@ export default function FindAgent() {
       if (u) usersMap[uid] = u;
     }
 
-    // combine display fields
     const combined = rawAgents.map((a) => {
       const u = usersMap[a.user_id] || {};
       return {
@@ -181,7 +177,6 @@ export default function FindAgent() {
       }
       const agentDoc = { id: asnap.id, ...asnap.data() };
 
-      // make sure agent user info is present
       if (agentDoc.user_id && !agentUsers[agentDoc.user_id]) {
         const u = await getUserDoc(agentDoc.user_id);
         if (u) {
@@ -195,7 +190,6 @@ export default function FindAgent() {
     }
   };
 
-  /* -------- Load user + data -------- */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       setLoading(true);
@@ -203,11 +197,9 @@ export default function FindAgent() {
       try {
         if (!fbUser) {
           setCurrentUser(null);
-          // We still show the public list of verified agents even if not logged in
           await fetchAgents();
           return;
         }
-        // load current user doc
         const u = await getUserDoc(fbUser.uid);
         setCurrentUser(u ? u : { id: fbUser.uid });
 
@@ -223,11 +215,9 @@ export default function FindAgent() {
     return () => unsub && unsub();
   }, []);
 
-  /* -------- Filtering -------- */
   useEffect(() => {
     let list = agents;
 
-    // If user has an assigned agent, hide that agent from the selectable list
     if (currentUser?.assigned_agent_id) {
       list = list.filter((a) => a.id !== currentUser.assigned_agent_id);
     }
@@ -250,7 +240,6 @@ export default function FindAgent() {
     setFilteredAgents(list);
   }, [agents, searchTerm, filters, currentUser]);
 
-  /* -------- Select agent (assign) -------- */
   const handleSelectAgent = async (agent) => {
     if (!currentUser) {
       window.location.href = createPageUrl("Welcome");
@@ -266,7 +255,6 @@ export default function FindAgent() {
       const uref = doc(db, "users", currentUser.id);
       await updateDoc(uref, { assigned_agent_id: agent.id });
 
-      // refresh current user + assigned agent banner
       const updatedUser = await getUserDoc(currentUser.id);
       setCurrentUser(updatedUser || currentUser);
       setAssignedAgent(agent);
@@ -286,16 +274,13 @@ export default function FindAgent() {
       alert("Agent reassignment request cancelled.");
       return;
     }
-    // In a real app, you'd write a 'reassign_requests' doc here.
     console.log("Reassignment request reason:", reason);
     alert("Your reassignment request has been submitted to admin for review. You will be contacted shortly.");
   };
 
-  /* -------- Filter options -------- */
   const uniqueCountries = [...new Set(agents.flatMap((a) => a.target_countries || []))];
   const uniqueLanguages = [...new Set(agents.flatMap((a) => a.team_details?.languages_spoken || []))];
 
-  /* -------- UI -------- */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -333,7 +318,6 @@ export default function FindAgent() {
           </p>
         </div>
 
-        {/* Assigned agent banner */}
         {assignedAgent && currentUser?.assigned_agent_id && (
           <Card className="mb-8 border-green-200 bg-green-50">
             <CardHeader>
@@ -381,7 +365,6 @@ export default function FindAgent() {
           </Card>
         )}
 
-        {/* List of agents for selection (only if none assigned) */}
         {!currentUser?.assigned_agent_id && (
           <>
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 mb-8 grid lg:grid-cols-4 gap-6 items-center">

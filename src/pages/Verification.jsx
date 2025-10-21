@@ -1,10 +1,14 @@
+// src/pages/Verification.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, CheckCircle, XCircle, Clock, Building, Users as UsersIcon, BookOpen, Store, UserCheck, Briefcase, Loader2 } from 'lucide-react';
+import {
+  Eye, CheckCircle, XCircle, Clock, Building,
+  Users as UsersIcon, BookOpen, Store, UserCheck, Briefcase, Loader2
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -16,18 +20,30 @@ import { User } from '@/api/entities';
 import { Agent } from '@/api/entities';
 import { Tutor } from '@/api/entities';
 import { Vendor } from '@/api/entities';
-import { School } from '@/api/entities';
+import { SchoolProfile as School } from '@/api/entities';
 
-const safeFormatDate = (d, fmt = 'MMM dd, yyyy') => {
-  if (!d) return 'N/A';
-  const date = new Date(d);
-  if (isNaN(date.getTime())) return 'N/A';
-  try {
-    return format(date, fmt);
-  } catch {
-    return 'N/A';
-  }
+// ---------- helpers ----------
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const toDate = (d) => {
+  if (!d) return null;
+  if (typeof d?.toDate === 'function') return d.toDate();       // Firestore Timestamp
+  if (typeof d === 'object' && typeof d.seconds === 'number')   // {seconds, nanoseconds}
+    return new Date(d.seconds * 1000);
+  const dt = new Date(d);                                       // ISO/date string/epoch ms
+  return isNaN(dt.getTime()) ? null : dt;
 };
+const safeFormatDate = (d, fmt = 'MMM dd, yyyy') => {
+  const date = toDate(d);
+  return date ? format(date, fmt) : 'N/A';
+};
+
+const dedupeById = (arr) => {
+  const map = {};
+  (arr || []).forEach((x) => { if (x && x.id) map[x.id] = x; });
+  return Object.values(map);
+};
+// ---------- end helpers ----------
 
 const StatusBadge = ({ status }) => {
   const colors = {
@@ -66,60 +82,80 @@ export default function Verification() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
     const loadData = async () => {
       setLoading(true);
       setError(null);
       try {
+        // ---------- Users ----------
         let userData = [];
         try {
           userData = await User.list();
-          await sleep(200);
+          await sleep(150);
         } catch (err) {
           console.error('Error loading users:', err);
         }
 
+        // ---------- Agents ----------
         let agentData = [];
         if (Agent && typeof Agent.filter === 'function') {
           try {
-            agentData = await Agent.filter({ verification_status: 'pending' });
-            await sleep(200);
+            const [q1, q2] = await Promise.all([
+              Agent.filter({ verification_status: 'pending' }).catch(() => []),
+              Agent.filter({ is_verified: false }).catch(() => []),
+            ]);
+            agentData = dedupeById([...(q1 || []), ...(q2 || [])]);
+            await sleep(150);
           } catch (err) {
             console.error('Error loading agents:', err);
           }
         }
 
+        // ---------- Tutors ----------
         let tutorData = [];
         if (Tutor && typeof Tutor.filter === 'function') {
           try {
-            tutorData = await Tutor.filter({ verification_status: 'pending' });
-            await sleep(200);
+            const [q1, q2] = await Promise.all([
+              Tutor.filter({ verification_status: 'pending' }).catch(() => []),
+              Tutor.filter({ is_verified: false }).catch(() => []),
+            ]);
+            tutorData = dedupeById([...(q1 || []), ...(q2 || [])]);
+            await sleep(150);
           } catch (err) {
             console.error('Error loading tutors:', err);
           }
         }
 
+        // ---------- Schools ----------
         let schoolData = [];
         if (School && typeof School.filter === 'function') {
           try {
-            schoolData = await School.filter({ verification_status: 'pending' });
-            await sleep(200);
+            const [q1, q2] = await Promise.all([
+              School.filter({ verification_status: 'pending' }).catch(() => []),
+              School.filter({ is_verified: false }).catch(() => []),
+            ]);
+            schoolData = dedupeById([...(q1 || []), ...(q2 || [])]);
+            await sleep(150);
           } catch (err) {
             console.error('Error loading schools:', err);
           }
         }
 
+        // ---------- Vendors ----------
         let vendorData = [];
         if (Vendor && typeof Vendor.filter === 'function') {
           try {
-            vendorData = await Vendor.filter({ verification_status: 'pending' });
-            await sleep(200);
+            const [q1, q2] = await Promise.all([
+              Vendor.filter({ verification_status: 'pending' }).catch(() => []),
+              Vendor.filter({ is_verified: false }).catch(() => []),
+            ]);
+            vendorData = dedupeById([...(q1 || []), ...(q2 || [])]);
+            await sleep(150);
           } catch (err) {
             console.error('Error loading vendors:', err);
           }
         }
 
+        // ---------- Build user map & pending lists ----------
         const userMapping = (Array.isArray(userData) ? userData : []).reduce((acc, u) => {
           if (u && u.id) acc[u.id] = u;
           return acc;
@@ -127,8 +163,12 @@ export default function Verification() {
         setUserMap(userMapping);
 
         const allUsers = Array.isArray(userData) ? userData : [];
-        const pendingUsers = allUsers.filter(u => u.user_type === 'user' && !u.onboarding_completed);
-        const pendingStudents = allUsers.filter(u => u.user_type === 'student' && !u.onboarding_completed);
+        const pendingUsers = allUsers.filter(
+          (u) => u.user_type === 'user' && (u.is_verified === false || !u.onboarding_completed)
+        );
+        const pendingStudents = allUsers.filter(
+          (u) => u.user_type === 'student' && (u.is_verified === false || !u.onboarding_completed)
+        );
 
         setAgents(Array.isArray(agentData) ? agentData : []);
         setTutors(Array.isArray(tutorData) ? tutorData : []);
@@ -149,13 +189,14 @@ export default function Verification() {
 
   const handleApprove = async (item, entityType) => {
     try {
-      const updateData = { verification_status: 'verified' };
+      // write both forms for compatibility with different docs
+      const updateData = { verification_status: 'verified', is_visible: true, is_verified: true };
 
       switch (entityType) {
         case 'agent':
           if (Agent?.update) {
             await Agent.update(item.id, updateData);
-            setAgents(prev => prev.filter(a => a.id !== item.id));
+            setAgents((prev) => prev.filter((a) => a.id !== item.id));
           } else {
             alert('Agent verification not available.');
           }
@@ -163,7 +204,7 @@ export default function Verification() {
         case 'tutor':
           if (Tutor?.update) {
             await Tutor.update(item.id, updateData);
-            setTutors(prev => prev.filter(t => t.id !== item.id));
+            setTutors((prev) => prev.filter((t) => t.id !== item.id));
           } else {
             alert('Tutor verification not available.');
           }
@@ -171,7 +212,7 @@ export default function Verification() {
         case 'school':
           if (School?.update) {
             await School.update(item.id, updateData);
-            setSchools(prev => prev.filter(s => s.id !== item.id));
+            setSchools((prev) => prev.filter((s) => s.id !== item.id));
           } else {
             alert('School verification not available.');
           }
@@ -179,18 +220,18 @@ export default function Verification() {
         case 'vendor':
           if (Vendor?.update) {
             await Vendor.update(item.id, updateData);
-            setVendors(prev => prev.filter(v => v.id !== item.id));
+            setVendors((prev) => prev.filter((v) => v.id !== item.id));
           } else {
             alert('Vendor verification not available.');
           }
           break;
         case 'user':
         case 'student':
-          await User.update(item.id, { onboarding_completed: true });
+          await User.update(item.id, { onboarding_completed: true, is_verified: true });
           if (entityType === 'user') {
-            setUsers(prev => prev.filter(u => u.id !== item.id));
+            setUsers((prev) => prev.filter((u) => u.id !== item.id));
           } else {
-            setStudents(prev => prev.filter(s => s.id !== item.id));
+            setStudents((prev) => prev.filter((s) => s.id !== item.id));
           }
           break;
         default:
@@ -204,13 +245,13 @@ export default function Verification() {
 
   const handleReject = async (item, entityType) => {
     try {
-      const updateData = { verification_status: 'rejected' };
+      const updateData = { verification_status: 'rejected', is_visible: false, is_verified: false };
 
       switch (entityType) {
         case 'agent':
           if (Agent?.update) {
             await Agent.update(item.id, updateData);
-            setAgents(prev => prev.filter(a => a.id !== item.id));
+            setAgents((prev) => prev.filter((a) => a.id !== item.id));
           } else {
             alert('Agent verification not available.');
           }
@@ -218,7 +259,7 @@ export default function Verification() {
         case 'tutor':
           if (Tutor?.update) {
             await Tutor.update(item.id, updateData);
-            setTutors(prev => prev.filter(t => t.id !== item.id));
+            setTutors((prev) => prev.filter((t) => t.id !== item.id));
           } else {
             alert('Tutor verification not available.');
           }
@@ -226,7 +267,7 @@ export default function Verification() {
         case 'school':
           if (School?.update) {
             await School.update(item.id, updateData);
-            setSchools(prev => prev.filter(s => s.id !== item.id));
+            setSchools((prev) => prev.filter((s) => s.id !== item.id));
           } else {
             alert('School verification not available.');
           }
@@ -234,18 +275,18 @@ export default function Verification() {
         case 'vendor':
           if (Vendor?.update) {
             await Vendor.update(item.id, updateData);
-            setVendors(prev => prev.filter(v => v.id !== item.id));
+            setVendors((prev) => prev.filter((v) => v.id !== item.id));
           } else {
             alert('Vendor verification not available.');
           }
           break;
         case 'user':
         case 'student':
-          await User.update(item.id, { onboarding_completed: false });
+          await User.update(item.id, { onboarding_completed: false, is_verified: false });
           if (entityType === 'user') {
-            setUsers(prev => prev.filter(u => u.id !== item.id));
+            setUsers((prev) => prev.filter((u) => u.id !== item.id));
           } else {
-            setStudents(prev => prev.filter(s => s.id !== item.id));
+            setStudents((prev) => prev.filter((s) => s.id !== item.id));
           }
           break;
         default:
@@ -257,14 +298,14 @@ export default function Verification() {
     }
   };
 
-  const totalPending = (agents?.length || 0)
-    + (tutors?.length || 0)
-    + (schools?.length || 0)
-    + (vendors?.length || 0)
-    + (users?.length || 0)
-    + (students?.length || 0);
+  const totalPending =
+    (agents?.length || 0) +
+    (tutors?.length || 0) +
+    (schools?.length || 0) +
+    (vendors?.length || 0) +
+    (users?.length || 0) +
+    (students?.length || 0);
 
-  // Compute a safe initial tab based on available entities
   const initialTab = useMemo(() => {
     const order = [
       { key: 'agents', available: !!Agent },
@@ -274,7 +315,7 @@ export default function Verification() {
       { key: 'users', available: true },
       { key: 'students', available: true },
     ];
-    const first = order.find(o => o.available);
+    const first = order.find((o) => o.available);
     return first ? first.key : 'users';
   }, []);
 
@@ -311,7 +352,7 @@ export default function Verification() {
         <Card className="mb-8 shadow-lg">
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 bg-emerald-100 rounded-lg">
-              <Clock className="w-8 h-8 text-emerald-600"/>
+              <Clock className="w-8 h-8 text-emerald-600" />
             </div>
             <div>
               <div className="text-3xl font-bold text-emerald-700">{totalPending}</div>
@@ -322,12 +363,12 @@ export default function Verification() {
 
         <Tabs defaultValue={initialTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-6 bg-white/80 backdrop-blur-sm">
-            {Agent && <TabsTrigger value="agents"><Briefcase className="w-4 h-4 mr-2"/>Agents ({agents.length})</TabsTrigger>}
-            {Tutor && <TabsTrigger value="tutors"><BookOpen className="w-4 h-4 mr-2"/>Tutors ({tutors.length})</TabsTrigger>}
-            {School && <TabsTrigger value="schools"><Building className="w-4 h-4 mr-2"/>Schools ({schools.length})</TabsTrigger>}
-            {Vendor && <TabsTrigger value="vendors"><Store className="w-4 h-4 mr-2"/>Vendors ({vendors.length})</TabsTrigger>}
-            <TabsTrigger value="users"><UsersIcon className="w-4 h-4 mr-2"/>Users ({users.length})</TabsTrigger>
-            <TabsTrigger value="students"><UsersIcon className="w-4 h-4 mr-2"/>Students ({students.length})</TabsTrigger>
+            {Agent && <TabsTrigger value="agents"><Briefcase className="w-4 h-4 mr-2" />Agents ({agents.length})</TabsTrigger>}
+            {Tutor && <TabsTrigger value="tutors"><BookOpen className="w-4 h-4 mr-2" />Tutors ({tutors.length})</TabsTrigger>}
+            {School && <TabsTrigger value="schools"><Building className="w-4 h-4 mr-2" />Schools ({schools.length})</TabsTrigger>}
+            {Vendor && <TabsTrigger value="vendors"><Store className="w-4 h-4 mr-2" />Vendors ({vendors.length})</TabsTrigger>}
+            <TabsTrigger value="users"><UsersIcon className="w-4 h-4 mr-2" />Users ({users.length})</TabsTrigger>
+            <TabsTrigger value="students"><UsersIcon className="w-4 h-4 mr-2" />Students ({students.length})</TabsTrigger>
           </TabsList>
 
           {/* Users */}
@@ -352,12 +393,12 @@ export default function Verification() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map(u => (
+                      {users.map((u) => (
                         <TableRow key={u.id}>
                           <TableCell className="font-medium">{u.full_name || 'N/A'}</TableCell>
                           <TableCell>{u.email}</TableCell>
                           <TableCell>{u.country || 'N/A'}</TableCell>
-                          <TableCell>{safeFormatDate(u.created_date)}</TableCell>
+                          <TableCell>{safeFormatDate(u.created_at || u.created_date)}</TableCell>
                           <TableCell>
                             <VerificationActions
                               item={u}
@@ -404,13 +445,13 @@ export default function Verification() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {students.map(s => (
+                      {students.map((s) => (
                         <TableRow key={s.id}>
                           <TableCell className="font-medium">{s.full_name || 'N/A'}</TableCell>
                           <TableCell>{s.email}</TableCell>
                           <TableCell>{s.programId || 'N/A'}</TableCell>
                           <TableCell>{s.schoolId || 'N/A'}</TableCell>
-                          <TableCell>{safeFormatDate(s.created_date)}</TableCell>
+                          <TableCell>{safeFormatDate(s.created_at || s.created_date)}</TableCell>
                           <TableCell>
                             <VerificationActions
                               item={s}
@@ -458,7 +499,7 @@ export default function Verification() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {agents.map(agent => {
+                        {agents.map((agent) => {
                           const u = userMap[agent.user_id];
                           return (
                             <TableRow key={agent.id}>
@@ -466,7 +507,7 @@ export default function Verification() {
                               <TableCell>{agent.contact_person?.name || u?.full_name || 'N/A'}</TableCell>
                               <TableCell>{agent.contact_person?.email || u?.email || 'N/A'}</TableCell>
                               <TableCell>{agent.business_license_mst || 'N/A'}</TableCell>
-                              <TableCell>{safeFormatDate(agent.created_date)}</TableCell>
+                              <TableCell>{safeFormatDate(agent.created_at || agent.created_date)}</TableCell>
                               <TableCell>
                                 <VerificationActions
                                   item={agent}
@@ -517,7 +558,7 @@ export default function Verification() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {tutors.map(tutor => {
+                        {tutors.map((tutor) => {
                           const u = userMap[tutor.user_id];
                           return (
                             <TableRow key={tutor.id}>
@@ -526,7 +567,7 @@ export default function Verification() {
                               <TableCell>{(tutor.specializations || []).join(', ')}</TableCell>
                               <TableCell>{tutor.experience_years || 0} years</TableCell>
                               <TableCell>${tutor.hourly_rate || 0}/hr</TableCell>
-                              <TableCell>{safeFormatDate(tutor.created_date)}</TableCell>
+                              <TableCell>{safeFormatDate(tutor.created_at || tutor.created_date)}</TableCell>
                               <TableCell>
                                 <VerificationActions
                                   item={tutor}
@@ -570,25 +611,25 @@ export default function Verification() {
                           <TableHead>School Name</TableHead>
                           <TableHead>Location</TableHead>
                           <TableHead>Contact</TableHead>
-                          <TableHead>Account Type</TableHead>
+                          <TableHead>Type</TableHead>
                           <TableHead>Submitted</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {schools.map(school => {
+                        {schools.map((school) => {
                           const u = userMap[school.user_id];
                           return (
                             <TableRow key={school.id}>
-                              <TableCell className="font-medium">{school.name || 'N/A'}</TableCell>
+                              <TableCell className="font-medium">{school.school_name || 'N/A'}</TableCell>
                               <TableCell>{[school.location, school.country].filter(Boolean).join(', ') || 'N/A'}</TableCell>
                               <TableCell>{u?.email || 'N/A'}</TableCell>
                               <TableCell>
-                                <Badge className={school.account_type === 'real' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                  {school.account_type || 'real'}
+                                <Badge className="bg-gray-100 text-gray-800">
+                                  {school.type || 'N/A'}
                                 </Badge>
                               </TableCell>
-                              <TableCell>{safeFormatDate(school.created_date)}</TableCell>
+                              <TableCell>{safeFormatDate(school.created_at || school.created_date)}</TableCell>
                               <TableCell>
                                 <VerificationActions
                                   item={school}
@@ -637,14 +678,14 @@ export default function Verification() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {vendors.map(vendor => {
+                        {vendors.map((vendor) => {
                           const u = userMap[vendor.user_id];
                           return (
                             <TableRow key={vendor.id}>
                               <TableCell className="font-medium">{vendor.business_name || 'N/A'}</TableCell>
                               <TableCell>{u?.email || 'N/A'}</TableCell>
                               <TableCell>{(vendor.service_categories || []).join(', ')}</TableCell>
-                              <TableCell>{safeFormatDate(vendor.created_date)}</TableCell>
+                              <TableCell>{safeFormatDate(vendor.created_at || vendor.created_date)}</TableCell>
                               <TableCell>
                                 <VerificationActions
                                   item={vendor}

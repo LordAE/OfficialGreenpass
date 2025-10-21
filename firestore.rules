@@ -5,7 +5,6 @@ service cloud.firestore {
     // ---------- HELPERS ----------
     function signedIn() { return request.auth != null; }
 
-    // Look up /users/{auth.uid} and test for a role/type.
     function userHasType(t) {
       return signedIn() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
@@ -24,11 +23,26 @@ service cloud.firestore {
              );
     }
 
-    // Admin if custom claim is set OR the /users/{uid} profile has admin
     function isAdmin() {
       return signedIn() && (
         request.auth.token.admin == true ||
         userHasType("admin")
+      );
+    }
+
+    function isOwner(resource) {
+      return signedIn() && resource.data.user_id == request.auth.uid;
+    }
+    function ownerCreating() {
+      return signedIn() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    // ✅ Allow public read when visible OR verified (and guard non-existent docs)
+    function publiclyListable(resource) {
+      return resource != null && (
+        resource.data.is_visible == true ||
+        resource.data.verification_status == "verified" ||
+        resource.data.is_verified == true
       );
     }
 
@@ -79,26 +93,22 @@ service cloud.firestore {
         request.resource.data.created_at == request.time;
     }
 
-    // ✅ NEW: allow public read of active PayPal client-id rows for checkout
     function isPublicPaypalSetting() {
       return resource.data.provider == "paypal" &&
              (resource.data.active == true ||
               resource.data.enabled == true ||
               resource.data.is_active == true);
     }
-    // ---------- END HELPERS ----------
 
-    // ── Collections (originals retained) ─────────────────────────────────
+    // ── Collections ─────────────────────────────────
 
     match /AboutPageContent/{docId} { allow read, write: if isAdmin(); }
 
-    // LEGACY PascalCase Agent path — owners/admins manage; public can read verified
+    // LEGACY PascalCase Agent path
     match /Agent/{docId} {
-      allow read: if
-        (resource.data.verification_status == "verified") ||
-        (signedIn() && (resource.data.user_id == request.auth.uid || isAdmin()));
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update, delete: if isAdmin() || (signedIn() && resource.data.user_id == request.auth.uid);
+      allow read: if publiclyListable(resource) || isOwner(resource) || isAdmin();
+      allow create: if ownerCreating();
+      allow update, delete: if isAdmin() || isOwner(resource);
     }
 
     match /AgentPackage/{docId} {
@@ -144,7 +154,6 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // EventRegistration  ✅ allow guests
     match /EventRegistration/{docId} {
       allow create: if isAdmin() ||
                     (signedIn() && hasAuthedEventRegistrationFields()) ||
@@ -152,7 +161,6 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid || isAdmin();
     }
 
-    // ExhibitorRegistration  ✅ allow guests
     match /ExhibitorRegistration/{docId} {
       allow create: if isAdmin() ||
                     (signedIn() && hasAuthedEventRegistrationFields()) ||
@@ -173,7 +181,7 @@ service cloud.firestore {
     match /Institution/{docId} {
       allow create: if signedIn();
       allow read: if signedIn();
-      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow update, delete: if signedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
     }
 
     match /KnowledgeBase/{docId} { allow read: if true; allow write: if false; }
@@ -209,13 +217,17 @@ service cloud.firestore {
 
     match /Payment/{docId} {
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
     match /Post/{docId} {
       allow create: if signedIn();
-      allow read: if signedIn();
-      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow read: if
+        (resource.data.keys().hasAny(['status']) && resource.data.status == "published") ||
+        (!resource.data.keys().hasAny(['status'])) ||
+        (signedIn() && resource.data.user_id == request.auth.uid) ||
+        isAdmin();
+      allow update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
     match /Program/{docId} { allow read: if true; allow write: if false; }
@@ -231,11 +243,14 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
     }
 
-    match /School/{docId} { allow read: if true; allow write: if false; }
+    match /School/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
 
     match /SchoolProfile/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating() || isAdmin();
+      allow read, update, delete: if isOwner(resource) || isAdmin();
     }
 
     match /Service/{docId} {
@@ -244,7 +259,6 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // StudentRSVP  ✅ allow guests
     match /StudentRSVP/{docId} {
       allow create: if isAdmin() ||
                     (signedIn() && hasAuthedEventRegistrationFields()) ||
@@ -259,22 +273,22 @@ service cloud.firestore {
     }
 
     match /SupportAgent/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
 
     match /SupportTicket/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
 
-    // LEGACY PascalCase Tutor path — public read for verified; owner/admin manage
+    // LEGACY PascalCase Tutor path
     match /Tutor/{docId} {
-      allow read: if
-        (resource.data.verification_status == "verified") ||
-        (signedIn() && (resource.data.user_id == request.auth.uid || isAdmin()));
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update, delete: if isAdmin() || (signedIn() && resource.data.user_id == request.auth.uid);
+      allow get: if !exists(/databases/$(database)/documents/Tutor/$(docId)) ||
+                 publiclyListable(resource) || isOwner(resource) || isAdmin();
+      allow read: if publiclyListable(resource) || isOwner(resource) || isAdmin();
+      allow create: if ownerCreating();
+      allow update, delete: if isAdmin() || isOwner(resource);
     }
 
     match /TutorPackages/{docId} {
@@ -284,11 +298,13 @@ service cloud.firestore {
     }
 
     match /TutoringSession/{docId} {
-      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      allow create: if isAdmin() || (signedIn() && request.resource.data.student_id == request.auth.uid);
+      allow read, update, delete: if isAdmin() || (signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.tutor_id   == request.auth.uid
+      ));
     }
 
-    // LEGACY PascalCase User path — let users/admins update their own doc
     match /User/{docId} {
       allow create: if signedIn();
       allow read: if signedIn();
@@ -300,19 +316,18 @@ service cloud.firestore {
     }
 
     match /Vendor/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow read: if publiclyListable(resource) || isOwner(resource) || isAdmin();
+      allow create: if ownerCreating();
+      allow update, delete: if isAdmin() || isOwner(resource);
     }
 
     match /VisaDocument/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
 
-    // ✅ visa packages — public read, admin manages writes
     match /visaPackages/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /VisaPackages/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
-    // ✅ snake_case mirrors used by Checkout.jsx
     match /visa_packages/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /tutor_packages/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /student_tutor_packages/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
@@ -323,22 +338,20 @@ service cloud.firestore {
     }
 
     match /Wallet/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
 
     match /WalletTransaction/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
 
-    // Email queue for Firebase "Trigger Email" extension
     match /mail/{docId} {
       allow create: if isAdmin();
       allow read, update, delete: if false;
     }
 
-    // ========= promotions =========
     match /promotions/{id} {
       allow read: if true;
 
@@ -361,24 +374,19 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin() && validPromotion();
     }
 
-    // ===== ALIASES used by the app (added) =====
+    // ===== ALIASES used by the app =====
 
-    // homepage content (public read; admin manages)
     match /home_page_content/{docId} { allow read: if true; allow write: if isAdmin(); }
     match /home_page_contents/{docId} { allow read: if true; allow write: if isAdmin(); }
 
-    // ✅ OurTeam singleton used by OurTeam.jsx
     match /ourTeam/{docId} { allow read: if true; allow write: if isAdmin(); }
 
-    // Contact page content (support common names)
     match /contactPage/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /contact_page_content/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /contact_page_contents/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
 
-    // Contact form submissions (public can submit)
     match /contacts/{docId} { allow create: if true; allow read, update, delete: if isAdmin(); }
 
-    // blog posts (public read if published; authors/admin manage)
     match /posts/{docId} {
       allow create: if signedIn();
       allow read: if
@@ -389,13 +397,17 @@ service cloud.firestore {
       allow update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
-    // common public-read mirrors
     match /events/{docId}   { allow read: if true; allow write: if false; }
     match /faqs/{docId}     { allow read: if true; allow write: if false; }
     match /programs/{docId} { allow read: if true; allow write: if false; }
-    match /schools/{docId}  { allow read: if true; allow write: if false; }
 
-    // user/profile mirror (same as /User)
+    // Schools mirror
+    match /schools/{docId}  {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // users mirror
     match /users/{docId} {
       allow create: if signedIn();
       allow read: if signedIn();
@@ -408,8 +420,8 @@ service cloud.firestore {
 
     // school profile mirror
     match /school_profiles/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating() || isAdmin();
+      allow read, update, delete: if isOwner(resource) || isAdmin();
     }
 
     // services mirror
@@ -426,19 +438,19 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // institutions (public read for homepage merges; writes restricted)
+    // institutions
     match /institutions/{docId} {
       allow read: if true;
       allow create: if signedIn();
-      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow update, delete: if signedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
     }
-    match /Institutions/{docId} { allow read: if true; allow write: if false; }
-    match /Schools/{docId}      { allow read: if true; allow write: if false; }
+    match /Institutions/{docId} { allow read: if true; allow write: if isAdmin(); }
+    match /Schools/{docId}      { allow read: if true; allow write: if isAdmin(); }
 
-    // payments & reservations mirrors
+    // payments & reservations mirrors (admin read enabled)
     match /payments/{docId} {
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
     match /reservations/{docId} {
       allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
@@ -455,39 +467,63 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
     }
 
-    // vendor/tutor/tutoring mirrors
+    // vendors/tutors mirrors (snake_case)
     match /vendors/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow read: if publiclyListable(resource) || isOwner(resource) || isAdmin();
+      allow create: if ownerCreating();
+      allow update, delete: if isAdmin() || isOwner(resource);
     }
     match /tutors/{docId} {
-      allow read: if
-        (resource.data.verification_status == "verified") ||
-        (signedIn() && (resource.data.user_id == request.auth.uid || isAdmin()));
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update, delete: if isAdmin() || (signedIn() && resource.data.user_id == request.auth.uid);
+      // Clean "not found" for missing docs, allow public for visible/verified
+      allow get: if !exists(/databases/$(database)/documents/tutors/$(docId)) ||
+                 publiclyListable(resource) || isOwner(resource) || isAdmin();
+      allow read: if publiclyListable(resource) || isOwner(resource) || isAdmin();
+      allow create: if ownerCreating();
+      allow update, delete: if isAdmin() || isOwner(resource);
     }
+
+    // tutor sessions (snake_case & camelCase + collection-group)
     match /tutoring_sessions/{docId} {
-      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      allow create: if isAdmin() || (signedIn() && request.resource.data.student_id == request.auth.uid);
+      allow read, update, delete: if isAdmin() || (signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.tutor_id   == request.auth.uid
+      ));
     }
     match /tutoringSessions/{docId} {
-      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      allow create: if isAdmin() || (signedIn() && request.resource.data.student_id == request.auth.uid);
+      allow read, update, delete: if isAdmin() || (signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.tutor_id   == request.auth.uid
+      ));
+    }
+    match /{path=**}/tutoring_sessions/{docId} {
+      allow create: if isAdmin() || (signedIn() && request.resource.data.student_id == request.auth.uid);
+      allow read, update, delete: if isAdmin() || (signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.tutor_id   == request.auth.uid
+      ));
+    }
+    match /{path=**}/tutoringSessions/{docId} {
+      allow create: if isAdmin() || (signedIn() && request.resource.data.student_id == request.auth.uid);
+      allow read, update, delete: if isAdmin() || (signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.tutor_id   == request.auth.uid
+      ));
     }
 
     // wallets & transactions mirrors
     match /wallets/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
     match /walletTransactions/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
     match /wallet_transactions/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
 
     // cases mirror
@@ -498,11 +534,9 @@ service cloud.firestore {
 
     // agents & agent messages mirrors
     match /agents/{docId} {
-      allow read: if
-        (resource.data.verification_status == "verified") ||
-        (signedIn() && (resource.data.user_id == request.auth.uid || isAdmin()));
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update, delete: if isAdmin() || (signedIn() && resource.data.user_id == request.auth.uid);
+      allow read: if publiclyListable(resource) || isOwner(resource) || isAdmin();
+      allow create: if ownerCreating();
+      allow update, delete: if isAdmin() || isOwner(resource);
     }
 
     match /agent_messages/{docId} {
@@ -519,12 +553,13 @@ service cloud.firestore {
     }
     match /bank_settings/{docId} { allow read, create, update, delete: if isAdmin(); }
 
-    // ✅ Admin Payments / Payment Settings (public read of active PayPal rows)
-    match /payment_settings/{docId} { allow read: if isPublicPaypalSetting(); allow create, update, delete: if isAdmin(); }
-    match /paymentSettings/{docId}  { allow read: if isPublicPaypalSetting(); allow create, update, delete: if isAdmin(); }
-    match /PaymentSettings/{docId}  { allow read: if isPublicPaypalSetting(); allow create, update, delete: if isAdmin(); }
+    // Payment Settings mirrors
+    match /payment_settings/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
+    match /paymentSettings/{docId}  { allow read: if true; allow create, update, delete: if isAdmin(); }
+    match /PaymentSettings/{docId}  { allow read: if true; allow create, update, delete: if isAdmin(); }
+    match /paymentSetting/{docId}   { allow read: if true; allow create, update, delete: if isAdmin(); }
+    match /PaymentSetting/{docId}   { allow read: if true; allow create, update, delete: if isAdmin(); }
 
-    // additional mirrors (case-sensitive)
     match /brandSettings/{docId} { allow read, write: if isAdmin(); }
     match /chat_settings/{docId} { allow read, write: if isAdmin(); }
     match /conversations/{docId} {
@@ -553,8 +588,8 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
     }
     match /visa_documents/{docId} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource);
     }
     match /event_registrations/{docId} {
       allow create: if isAdmin() ||
@@ -594,7 +629,6 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // Final deny-all
     match /{document=**} {
       allow read, write: if false;
     }

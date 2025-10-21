@@ -35,6 +35,7 @@ export default function Checkout() {
   const [error, setError] = useState(null);
   const [pkg, setPkg] = useState(null);
   const [userDoc, setUserDoc] = useState(null);
+  const [paypalClientId, setPaypalClientId] = useState(null); // resolved client id
 
   const navigate = useNavigate();
 
@@ -52,6 +53,21 @@ export default function Checkout() {
 
   const safePrice = (v) => Number(v || 0);
 
+  // Pull a string-like "client id" from many possible shapes
+  const extractClientId = (obj) => {
+    const raw =
+      obj?.client_id ??
+      obj?.paypal_client_id ??
+      obj?.public_key ??
+      obj?.merchant_id ??
+      obj?.value ??
+      obj?.config?.client_id ??
+      obj?.settings?.client_id ??
+      obj?.credentials?.client_id ??
+      null;
+    return typeof raw === "string" ? raw.trim() : raw ? String(raw).trim() : null;
+  };
+
   // Try multiple collection names to be resilient to snake/camel case
   const findByIdOrNameFromCollections = async (colNames, idOrName) => {
     for (const colName of colNames) {
@@ -62,21 +78,17 @@ export default function Checkout() {
         if (byIdSnap.exists()) {
           return { id: byIdSnap.id, ...byIdSnap.data(), __collection: colName };
         }
-      } catch (_) {
-        // ignore and try next
-      }
+      } catch (_) {}
 
       // 2) fallback: query by name
       try {
-        const q = query(collection(db, colName), where("name", "==", idOrName), limit(1));
-        const snap = await getDocs(q);
+        const qy = query(collection(db, colName), where("name", "==", idOrName), limit(1));
+        const snap = await getDocs(qy);
         if (!snap.empty) {
           const d = snap.docs[0];
           return { id: d.id, ...d.data(), __collection: colName };
         }
-      } catch (_) {
-        // ignore and try next
-      }
+      } catch (_) {}
     }
     return null;
   };
@@ -84,7 +96,6 @@ export default function Checkout() {
   const loadPackage = async (type, id) => {
     switch (type) {
       case "visa": {
-        // support: visa_packages, visaPackages, VisaPackages
         const p = await findByIdOrNameFromCollections(
           ["visa_packages", "visaPackages", "VisaPackages"],
           id
@@ -101,7 +112,6 @@ export default function Checkout() {
           : null;
       }
       case "tutor": {
-        // support: tutor_packages, tutorPackages, TutorPackages
         const p = await findByIdOrNameFromCollections(
           ["tutor_packages", "tutorPackages", "TutorPackages"],
           id
@@ -118,7 +128,6 @@ export default function Checkout() {
           : null;
       }
       case "student_tutor": {
-        // support: student_tutor_packages, studentTutorPackages, StudentTutorPackages
         const p = await findByIdOrNameFromCollections(
           ["student_tutor_packages", "studentTutorPackages", "StudentTutorPackages"],
           id
@@ -136,7 +145,6 @@ export default function Checkout() {
           : null;
       }
       case "tutoring_session": {
-        // direct by id
         const sRef = doc(db, "tutoring_sessions", id);
         const sSnap = await getDoc(sRef);
         if (!sSnap.exists()) return null;
@@ -174,10 +182,9 @@ export default function Checkout() {
           name: serviceName,
           description: serviceDesc,
           price_usd: order.amount_usd ?? order.amount ?? 0,
-          features: [
-            serviceName,
-            order.category ? `Category: ${order.category}` : null,
-          ].filter(Boolean),
+          features: [serviceName, order.category ? `Category: ${order.category}` : null].filter(
+            Boolean
+          ),
         };
       }
       default:
@@ -186,6 +193,96 @@ export default function Checkout() {
         );
     }
   };
+
+  // ---------- PayPal client ID resolver (ENV -> doc "paypal" -> query by provider/type/payment_type) ----------
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // 1) Vite env or window global
+        const envId =
+          (typeof import.meta !== "undefined" &&
+            import.meta?.env?.VITE_PAYPAL_CLIENT_ID) ||
+          (typeof window !== "undefined" && window.__PAYPAL_CLIENT_ID__);
+        if (envId && !cancelled) {
+          setPaypalClientId(String(envId).trim());
+          return;
+        }
+
+        // 2) Well-known doc id "paypal" in common collections
+        const docPaths = [
+          ["payment_settings", "paypal"],
+          ["paymentSettings", "paypal"],
+          ["PaymentSettings", "paypal"],
+        ];
+        for (const [colName, docId] of docPaths) {
+          try {
+            const ref = doc(db, colName, docId);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+              const cid = extractClientId(snap.data());
+              if (cid && !cancelled) {
+                setPaypalClientId(cid);
+                return;
+              }
+            }
+          } catch (_) {}
+        }
+
+        // 3) Fallback: query by provider/type/payment_type === "paypal"
+        const colCandidates = ["payment_settings", "paymentSettings", "PaymentSettings"];
+        for (const colName of colCandidates) {
+          // provider
+          try {
+            const q1 = query(collection(db, colName), where("provider", "==", "paypal"), limit(1));
+            const r1 = await getDocs(q1);
+            if (!r1.empty) {
+              const cid = extractClientId(r1.docs[0].data());
+              if (cid && !cancelled) {
+                setPaypalClientId(cid);
+                return;
+              }
+            }
+          } catch (_) {}
+
+          // type
+          try {
+            const q2 = query(collection(db, colName), where("type", "==", "paypal"), limit(1));
+            const r2 = await getDocs(q2);
+            if (!r2.empty) {
+              const cid = extractClientId(r2.docs[0].data());
+              if (cid && !cancelled) {
+                setPaypalClientId(cid);
+                return;
+              }
+            }
+          } catch (_) {}
+
+          // payment_type
+          try {
+            const q3 = query(
+              collection(db, colName),
+              where("payment_type", "==", "paypal"),
+              limit(1)
+            );
+            const r3 = await getDocs(q3);
+            if (!r3.empty) {
+              const cid = extractClientId(r3.docs[0].data());
+              if (cid && !cancelled) {
+                setPaypalClientId(cid);
+                return;
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ---------- load ----------
   useEffect(() => {
@@ -460,8 +557,9 @@ export default function Checkout() {
                 itemDescription={`${pkg.name} - ${pkg.type} package`}
                 payerName={userDoc?.full_name || userDoc?.name || ""}
                 payerEmail={userDoc?.email || ""}
+                paypalClientId={paypalClientId || undefined}
                 onCardPaymentSuccess={(provider, transactionId, meta) =>
-                handlePaymentSuccess({ provider, transactionId, ...meta })
+                  handlePaymentSuccess({ provider, transactionId, ...meta })
                 }
                 onError={handlePaymentError}
               />

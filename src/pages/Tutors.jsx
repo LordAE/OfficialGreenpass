@@ -7,12 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Star, BookOpen, DollarSign, Users } from "lucide-react";
 import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 
 /* ---------- Firebase ---------- */
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, where } from "firebase/firestore";
 
 const TutorCard = ({ tutor, user }) => (
   <Card className="bg-white/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300 group overflow-hidden flex flex-col">
@@ -61,7 +60,14 @@ const TutorCard = ({ tutor, user }) => (
           <span className="text-gray-600">Hourly Rate</span>
           <span className="text-xl font-bold text-emerald-600">${tutor.hourly_rate ?? 25}/hr</span>
         </div>
-        <Link to={createPageUrl(`TutorDetails?id=${tutor.id}`)}>
+
+        {/* Absolute path object -> always goes to http://localhost:5173/tutordetails?id=... */}
+        <Link
+          to={{
+            pathname: "/tutordetails",
+            search: `?id=${encodeURIComponent(tutor.docId)}`,
+          }}
+        >
           <Button className="w-full bg-gradient-to-r from-emerald-600 to-blue-600 text-white">
             View Profile & Book
           </Button>
@@ -87,7 +93,6 @@ export default function Tutors() {
     price: "all",
   });
 
-  // Load current user (optional) and tutors+users from Firestore
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       setLoading(true);
@@ -110,11 +115,17 @@ export default function Tutors() {
   };
 
   const fetchTutorsAndUsers = async () => {
-    // Load all tutors (adjust query if you want only approved/visible tutors)
-    const qs = await getDocs(collection(db, "tutors"));
-    const tutorRows = qs.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // Only verified & visible tutors (publicly readable per rules)
+    const qRef = query(
+      collection(db, "tutors"),
+      where("verification_status", "==", "verified"),
+      where("is_visible", "==", true)
+    );
+    const qs = await getDocs(qRef);
 
-    // Collect unique user_ids to fetch corresponding user docs
+    // Spread FIRST, then attach the canonical Firestore doc id so it can't be overwritten
+    const tutorRows = qs.docs.map((d) => ({ ...d.data(), docId: d.id }));
+
     const userIds = Array.from(
       new Set(
         tutorRows
@@ -139,13 +150,11 @@ export default function Tutors() {
 
     setUsersMap(map);
     setTutors(tutorRows);
-    setFilteredTutors(tutorRows); // initial display
+    setFilteredTutors(tutorRows);
   };
 
-  // Derived: unique specializations for filter dropdown
   const specializations = [...new Set(tutors.flatMap((t) => t.specializations || []))];
 
-  // Apply search + filters
   useEffect(() => {
     let list = tutors;
 
@@ -160,7 +169,9 @@ export default function Tutors() {
     }
 
     if (filters.specialization !== "all") {
-      list = list.filter((t) => Array.isArray(t.specializations) && t.specializations.includes(filters.specialization));
+      list = list.filter(
+        (t) => Array.isArray(t.specializations) && t.specializations.includes(filters.specialization)
+      );
     }
 
     if (filters.rating !== "all") {
@@ -279,7 +290,7 @@ export default function Tutors() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredTutors.map((tutor) => (
-              <TutorCard key={tutor.id} tutor={tutor} user={usersMap[tutor.user_id]} />
+              <TutorCard key={tutor.docId} tutor={tutor} user={usersMap[tutor.user_id]} />
             ))}
           </div>
         )}
