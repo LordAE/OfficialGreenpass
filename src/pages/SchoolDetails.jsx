@@ -48,6 +48,21 @@ const money = (amount) => {
   }
 };
 
+/* ---------- safe Firestore get (swallow permission-denied) ---------- */
+async function safeGetDoc(path, id) {
+  try {
+    return await getDoc(doc(db, path, id));
+  } catch (e) {
+    const msg = (e?.code || e?.message || "").toString().toLowerCase();
+    if (msg.includes("permission") || msg.includes("insufficient")) {
+      // Treat like a non-existent doc so we can fall back gracefully
+      return { exists: () => false };
+    }
+    // Fail soft on any other error too
+    return { exists: () => false };
+  }
+}
+
 export default function SchoolDetails() {
   const [searchParams] = useSearchParams();
   const schoolId = searchParams.get("id");
@@ -83,7 +98,13 @@ export default function SchoolDetails() {
   // ❗Annual Tuition comes **strictly** from school_profiles.tuition_fees
   const buildHeaderFromProfile = (p) => ({
     id: p.id,
-    name: pickFirst(p.name, p.title, "Institution"),
+    name: pickFirst(
+      p.institution_name,
+      p.school_name,
+      p.name,
+      p.title,
+      "Institution"
+    ),
     image_url: pickFirst(p.logoUrl, p.logo_url, p.institution_logo_url, p.image_url),
     verification_status: pickFirst(p.verification_status, p.verified && "verified"),
     account_type: pickFirst(p.account_type, "real"),
@@ -132,11 +153,11 @@ export default function SchoolDetails() {
 
       setLoading(true);
       try {
-        /* 1) Try to load a school profile by id */
-        let profileSnap = await getDoc(doc(db, "school_profiles", schoolId));
+        /* 1) Try to load a school profile by id (may be permission-restricted) */
+        let profileSnap = await safeGetDoc("school_profiles", schoolId);
         if (!profileSnap.exists()) {
           // optional casing fallback
-          profileSnap = await getDoc(doc(db, "SchoolProfiles", schoolId));
+          profileSnap = await safeGetDoc("SchoolProfiles", schoolId);
         }
 
         let header = null;
@@ -148,9 +169,9 @@ export default function SchoolDetails() {
           nameForMatch = header.name;
         } else {
           /* 2) If not a profile id, try a school doc by id */
-          let sSnap = await getDoc(doc(db, "schools", schoolId));
+          let sSnap = await safeGetDoc("schools", schoolId);
           if (!sSnap.exists()) {
-            sSnap = await getDoc(doc(db, "Schools", schoolId));
+            sSnap = await safeGetDoc("Schools", schoolId);
           }
 
           if (sSnap.exists()) {
@@ -171,32 +192,65 @@ export default function SchoolDetails() {
 
         if (!cancelled) setSchool(header);
 
-        /* 3) Programs: query `schools` where institution_name == name(profile)
-              and also where school_name == name(profile). */
+        /* 3) Programs:
+              - Query by school_id == {id} (in case programs link to a profile id)
+              - Then by institution_name == name(profile)
+              - Then by school_name == name(profile)
+        */
         const programsFound = [];
 
-        const q1 = query(
-          collection(db, "schools"),
-          where("institution_name", "==", nameForMatch),
-          limit(500)
-        );
-        const res1 = await getDocs(q1);
-        res1.forEach((snap) => programsFound.push(mapProgramFromSchoolDoc(snap)));
+        // Try school_id link first
+        try {
+          const qId = query(
+            collection(db, "schools"),
+            where("school_id", "==", schoolId),
+            limit(500)
+          );
+          const resId = await getDocs(qId);
+          resId.forEach((snap) => {
+            const id = snap.id;
+            if (!programsFound.find((p) => p.id === id)) {
+              programsFound.push(mapProgramFromSchoolDoc(snap));
+            }
+          });
+        } catch (_) {
+          // ignore (index not required for simple equality, but fail-soft anyway)
+        }
 
-        const q2 = query(
-          collection(db, "schools"),
-          where("school_name", "==", nameForMatch),
-          limit(500)
-        );
-        const res2 = await getDocs(q2);
-        res2.forEach((snap) => {
-          const id = snap.id;
-          if (!programsFound.find((p) => p.id === id)) {
-            programsFound.push(mapProgramFromSchoolDoc(snap));
-          }
-        });
+        // Name-based queries
+        if (nameForMatch) {
+          const q1 = query(
+            collection(db, "schools"),
+            where("institution_name", "==", nameForMatch),
+            limit(500)
+          );
+          const res1 = await getDocs(q1);
+          res1.forEach((snap) => {
+            const id = snap.id;
+            if (!programsFound.find((p) => p.id === id)) {
+              programsFound.push(mapProgramFromSchoolDoc(snap));
+            }
+          });
 
-        if (!cancelled) setPrograms(programsFound);
+          const q2 = query(
+            collection(db, "schools"),
+            where("school_name", "==", nameForMatch),
+            limit(500)
+          );
+          const res2 = await getDocs(q2);
+          res2.forEach((snap) => {
+            const id = snap.id;
+            if (!programsFound.find((p) => p.id === id)) {
+              programsFound.push(mapProgramFromSchoolDoc(snap));
+            }
+          });
+        }
+
+        if (!cancelled) {
+          setPrograms(programsFound);
+          // Reset to first page when list changes
+          setProgramsPage(1);
+        }
       } catch (err) {
         console.error("Error fetching SchoolDetails:", err);
         if (!cancelled) {
@@ -223,7 +277,7 @@ export default function SchoolDetails() {
     return Math.round(sum / vals.length);
   }, [programs]);
 
-  /* ---------- UI ---------- */
+  /* ---------- UI (unchanged) ---------- */
 
   if (loading) {
     return (
@@ -344,7 +398,6 @@ export default function SchoolDetails() {
                   </div>
 
                   <div className="space-y-3">
-                    {/* Show Annual Tuition from school_profiles; else show Average Tuition from programs */}
                     {(school.tuition_fees !== undefined && school.tuition_fees !== null) ? (
                       <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
                         <span className="text-gray-700">Annual Tuition</span>
