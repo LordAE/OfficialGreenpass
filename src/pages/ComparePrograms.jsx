@@ -11,26 +11,36 @@ import { toast } from '@/components/ui/use-toast';
 import { getLevelLabel } from '../components/utils/EducationLevels';
 import { getProvinceLabel } from '../components/utils/CanadianProvinces';
 
-// --- Firebase ---
+// Firestore
 import { db } from '@/firebase';
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  documentId,
-} from 'firebase/firestore';
+import { collection, getDocs, query, where, documentId } from 'firebase/firestore';
 
-const PROGRAMS_COLLECTION = 'school_programs'; // <-- change if needed
+// ✅ your data is in this collection
+const PROGRAMS_COLLECTION = 'schools';
+
+// Support both the compare hook cache and localStorage (in case user opens a new tab)
+const LOCAL_KEYS = ['gp_compare_programs_v1', 'gp_compare', 'compare_items', 'gpa:compare'];
+
+const REQUIRED_FIELDS = [
+  'program_level',
+  'field_of_study',
+  'tuition_fee_cad',
+  'duration_display',
+  'delivery_mode',
+  'language_of_instruction',
+  'school_city',
+  'school_province',
+  'intake_dates',
+  'application_fee',
+  'scholarships_available',
+];
 
 const formatCurrency = (amount) => {
-  if (typeof amount !== 'number' || amount === 0) return 'Contact School';
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return 'Contact School';
   return new Intl.NumberFormat('en-CA', {
-    style: 'currency',
-    currency: 'CAD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
+    style: 'currency', currency: 'CAD', minimumFractionDigits: 0, maximumFractionDigits: 0
+  }).format(n);
 };
 
 const ProgramColumn = ({ program, onRemove }) => {
@@ -45,7 +55,6 @@ const ProgramColumn = ({ program, onRemove }) => {
       </div>
     );
   }
-
   return (
     <div className="flex flex-col h-full min-h-[200px]">
       <div className="relative p-4 rounded-t-lg bg-white border-b">
@@ -54,9 +63,7 @@ const ProgramColumn = ({ program, onRemove }) => {
             src={program.institution_logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop'}
             alt={`${program.institution_name || 'School'} logo`}
             className="h-12 w-12 object-contain bg-gray-100 border p-1 rounded-md flex-shrink-0"
-            onError={(e) => {
-              e.currentTarget.src = 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop';
-            }}
+            onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1562774053-701939374585?w=64&h=64&fit=crop'; }}
           />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-gray-800 leading-tight truncate">
@@ -101,86 +108,139 @@ const CompareRow = ({ label, values, programData, formatter = (v, p) => v || 'N/
   </TableRow>
 );
 
+// Normalize shapes from list/hook/Firestore
+const normalizeProgram = (p) => {
+  if (!p) return null;
+  return {
+    id: p.id || p.docId || p.program_id || p.uid,
+    program_title: p.program_title ?? p.title ?? '',
+    institution_name: p.institution_name ?? p.school_name ?? '',
+    institution_logo_url: p.institution_logo_url ?? p.logo_url ?? '',
+    school_city: p.school_city ?? p.city ?? '',
+    school_province: p.school_province ?? p.province ?? '',
+    program_level: p.program_level ?? p.level ?? '',
+    field_of_study: p.field_of_study ?? p.discipline ?? '',
+    tuition_fee_cad: p.tuition_fee_cad ?? p.tuition ?? p.tuition_cad ?? 0,
+    duration_display: p.duration_display ?? p.duration ?? '',
+    delivery_mode: p.delivery_mode ?? '',
+    language_of_instruction: p.language_of_instruction ?? p.language ?? '',
+    intake_dates: p.intake_dates ?? p.intakes ?? [],
+    application_fee: p.application_fee ?? 0,
+    scholarships_available: p.scholarships_available ?? p.scholarships ?? null,
+  };
+};
+
+const hasMissingCoreFields = (p) =>
+  REQUIRED_FIELDS.some((k) => p[k] === undefined || p[k] === null || (k === 'tuition_fee_cad' && !(Number(p[k]) > 0)));
+
 export default function ComparePrograms() {
   const [searchParams] = useSearchParams();
   const { items, remove, clear, shareUrl, isReady } = useCompare();
+
   const [comparedPrograms, setComparedPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Firestore: fetch programs by ids (keeps order the user selected)
-  const fetchProgramsByIds = async (ids) => {
-    if (!ids?.length) return [];
-
-    // Firestore 'in' supports up to 10; we only need up to 4, but chunk to be safe
-    const chunked = [];
-    for (let i = 0; i < ids.length; i += 10) {
-      chunked.push(ids.slice(i, i + 10));
-    }
-
-    const allDocs = [];
-    for (const chunk of chunked) {
-      const qRef = query(
-        collection(db, PROGRAMS_COLLECTION),
-        where(documentId(), 'in', chunk)
-      );
-      const snap = await getDocs(qRef);
-      snap.forEach((d) => allDocs.push({ id: d.id, ...d.data() }));
-    }
-
-    // return in the same order as ids
-    const byId = Object.fromEntries(allDocs.map((d) => [d.id, d]));
-    return ids.map((id) => byId[id]).filter(Boolean);
+  const getStorePrograms = () => {
+    if (!isReady || !Array.isArray(items) || items.length === 0) return [];
+    return items.map(normalizeProgram).filter((x) => x?.id);
   };
 
-  // Load programs when component mounts or items change
-  useEffect(() => {
-    if (!isReady) return;
+  const getLocalProgramsOrIds = () => {
+    for (const key of LOCAL_KEYS) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) continue;
 
-    const loadPrograms = async () => {
+        const rich = arr.some((x) => x && typeof x === 'object' && Object.keys(x).length > 1);
+        if (rich) return { programs: arr.map(normalizeProgram).filter(Boolean) };
+
+        const ids = arr.map((x) => (typeof x === 'string' ? x : x?.id)).filter(Boolean);
+        if (ids.length) return { ids };
+      } catch {}
+    }
+    return {};
+  };
+
+  const fetchProgramsByIds = async (ids) => {
+    if (!ids?.length) return [];
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+
+    const docs = [];
+    for (const c of chunks) {
+      const qRef = query(collection(db, PROGRAMS_COLLECTION), where(documentId(), 'in', c));
+      const snap = await getDocs(qRef);
+      snap.forEach((d) => docs.push({ id: d.id, ...d.data() }));
+    }
+    return docs.map(normalizeProgram).filter(Boolean);
+  };
+
+  useEffect(() => {
+    const load = async () => {
       setLoading(true);
       try {
-        const urlIds = searchParams.get('ids');
-        let programIds = [];
+        // Priority: hook → URL (?ids=) → localStorage
+        let programs = getStorePrograms();
 
-        if (urlIds) {
-          programIds = urlIds.split(',').map((s) => s.trim()).filter(Boolean);
-        } else {
-          programIds = items.map((item) => item.id);
+        if (!programs.length) {
+          const urlIds = searchParams.get('ids');
+          if (urlIds) {
+            const ids = urlIds.split(',').map((s) => s.trim()).filter(Boolean);
+            programs = await fetchProgramsByIds(ids);
+          }
+        }
+        if (!programs.length) {
+          const { programs: localPrograms, ids } = getLocalProgramsOrIds();
+          if (localPrograms?.length) programs = localPrograms;
+          else if (ids?.length) programs = await fetchProgramsByIds(ids);
         }
 
-        if (programIds.length > 0) {
-          const programs = await fetchProgramsByIds(programIds);
-          setComparedPrograms(programs);
-        } else {
-          setComparedPrograms([]);
+        // Hydrate any half-filled objects with full docs from Firestore
+        const toHydrate = programs.filter(hasMissingCoreFields).map((p) => p.id);
+        if (toHydrate.length) {
+          const fetched = await fetchProgramsByIds([...new Set(toHydrate)]);
+          const map = Object.fromEntries(fetched.map((p) => [p.id, p]));
+          programs = programs.map((p) => (map[p.id] ? { ...p, ...map[p.id] } : p));
         }
-      } catch (error) {
-        console.error('Error loading compared programs:', error);
-        toast({
-          title: 'Error',
-          description: 'Could not load comparison data.',
-          variant: 'destructive',
-        });
+
+        setComparedPrograms(programs || []);
+      } catch (err) {
+        console.error('Compare load error:', err);
         setComparedPrograms([]);
+        toast({ title: 'Error', description: 'Could not load comparison data.', variant: 'destructive' });
       } finally {
         setLoading(false);
       }
     };
 
-    loadPrograms();
-  }, [items, isReady, searchParams]);
+    load();
+  }, [isReady, items, searchParams]);
+
+  // Build a share link locally if hook doesn’t supply one
+  const computedShareUrl = useMemo(() => {
+    const ids = comparedPrograms.map((p) => p.id);
+    const base = createPageUrl('ComparePrograms');
+    return ids.length ? `${base}?ids=${encodeURIComponent(ids.join(','))}` : base;
+  }, [comparedPrograms]);
 
   const handleShare = () => {
-    if (shareUrl) {
-      navigator.clipboard.writeText(shareUrl);
-      toast({
-        title: 'Link Copied!',
-        description: 'The comparison link has been copied to your clipboard.',
-      });
-    }
+    const url = shareUrl || computedShareUrl;
+    navigator.clipboard.writeText(url).then(
+      () => toast({ title: 'Link Copied!', description: 'The comparison link has been copied to your clipboard.' }),
+      () => toast({ title: 'Copy failed', description: url, variant: 'destructive' })
+    );
   };
 
-  // Pad to 4 columns
+  // Fallback: if getLevelLabel doesn't know the value, show the raw string from Firestore
+  const levelFormatter = (v) => {
+    if (!v) return 'N/A';
+    const label = getLevelLabel(v);
+    return label || (typeof v === 'string' ? v : 'N/A');
+    // e.g. Firestore might store "2-Year Undergraduate Diploma"
+  };
+
   const paddedPrograms = useMemo(() => {
     const arr = [...comparedPrograms];
     while (arr.length < 4) arr.push(null);
@@ -188,17 +248,9 @@ export default function ComparePrograms() {
   }, [comparedPrograms]);
 
   const fields = [
-    {
-      label: 'Program Level',
-      key: 'program_level',
-      formatter: (v) => (v ? getLevelLabel(v) : 'N/A'),
-    },
+    { label: 'Program Level', key: 'program_level', formatter: levelFormatter },
     { label: 'Discipline', key: 'field_of_study' },
-    {
-      label: 'Tuition/Year',
-      key: 'tuition_fee_cad',
-      formatter: formatCurrency,
-    },
+    { label: 'Tuition/Year', key: 'tuition_fee_cad', formatter: formatCurrency },
     { label: 'Duration', key: 'duration_display' },
     { label: 'Delivery', key: 'delivery_mode' },
     { label: 'Language', key: 'language_of_instruction' },
@@ -214,17 +266,17 @@ export default function ComparePrograms() {
     {
       label: 'Next Intake',
       key: 'intake_dates',
-      formatter: (v) => (Array.isArray(v) && v.length > 0 ? v[0] : 'N/A'),
+      formatter: (v) => {
+        if (Array.isArray(v)) return v.length ? v[0] : 'N/A';
+        if (typeof v === 'string') return v || 'N/A';
+        return 'N/A';
+      },
     },
     { label: 'Application Fee', key: 'application_fee', formatter: formatCurrency },
-    {
-      label: 'Scholarships',
-      key: 'scholarships_available',
-      formatter: (v) => (v === true ? 'Yes' : v === false ? 'No' : 'N/A'),
-    },
+    { label: 'Scholarships', key: 'scholarships_available', formatter: (v) => (v === true ? 'Yes' : v === false ? 'No' : 'N/A') },
   ];
 
-  if (loading || !isReady) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="w-12 h-12 animate-spin text-green-600" />

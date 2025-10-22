@@ -1,12 +1,12 @@
+// src/pages/Programs.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { School } from '@/api/entities';
 import ProgramFilters from '../components/programs/ProgramFilters';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, GraduationCap, MapPin, DollarSign, Search, ArrowRight, Plus, Check } from 'lucide-react';
 import { getLevelLabel } from '../components/utils/EducationLevels';
 import { getProvinceLabel } from '../components/utils/CanadianProvinces';
@@ -121,11 +121,12 @@ function ProgramsPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const { add, remove, contains, isFull, isReady } = useCompare();
+  // pull items for floating button
+  const { add, remove, contains, isFull, isReady, items } = useCompare();
 
   const activeTab = useMemo(() => searchParams.get('view') || 'browse', [searchParams]);
 
-  // Pagination constants/state derived from URL
+  // pagination
   const PAGE_SIZE = 15;
   const rawPage = useMemo(() => parseInt(searchParams.get('page') || '1', 10), [searchParams]);
   const page = Number.isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
@@ -133,9 +134,7 @@ function ProgramsPageContent() {
   const filters = useMemo(() => {
     const params = {};
     for (const [key, value] of searchParams.entries()) {
-      if (key !== 'view' && key !== 'page') {
-        params[key] = value;
-      }
+      if (key !== 'view' && key !== 'page') params[key] = value;
     }
     return params;
   }, [searchParams]);
@@ -160,24 +159,21 @@ function ProgramsPageContent() {
     }
   }, []);
 
-  useEffect(() => {
-    loadPrograms();
-  }, [loadPrograms]);
+  useEffect(() => { loadPrograms(); }, [loadPrograms]);
 
-  // Apply filters
+  // filtering
   useEffect(() => {
     let results = allProgramsData;
     if (Object.keys(filters).length > 0) {
-      results = allProgramsData.filter(p => {
-        return Object.entries(filters).every(([key, value]) => {
+      results = allProgramsData.filter(p =>
+        Object.entries(filters).every(([key, value]) => {
           if (!value || value === 'all') return true;
-
           switch (key) {
             case 'search': {
-              const searchLower = value.toLowerCase();
-              return (p.program_title || '').toLowerCase().includes(searchLower) ||
-                     (p.institution_name || '').toLowerCase().includes(searchLower) ||
-                     (p.school_name || '').toLowerCase().includes(searchLower);
+              const q = value.toLowerCase();
+              return (p.program_title || '').toLowerCase().includes(q) ||
+                     (p.institution_name || '').toLowerCase().includes(q) ||
+                     (p.school_name || '').toLowerCase().includes(q);
             }
             case 'country': return p.school_country === value;
             case 'province': return p.school_province === value;
@@ -188,23 +184,21 @@ function ProgramsPageContent() {
             case 'scholarships': return value === 'true' ? p.scholarships_available === true : true;
             default: return true;
           }
-        });
-      });
+        })
+      );
     }
     setPrograms(results);
   }, [allProgramsData, filters]);
 
-  // Ensure page stays within bounds when results change
   const totalPages = Math.max(1, Math.ceil(programs.length / PAGE_SIZE));
   useEffect(() => {
     if (page > totalPages) {
-      const currentParams = new URLSearchParams(searchParams);
-      currentParams.set('page', String(totalPages));
-      setSearchParams(currentParams, { replace: true });
+      const p = new URLSearchParams(searchParams);
+      p.set('page', String(totalPages));
+      setSearchParams(p, { replace: true });
     }
   }, [page, totalPages, searchParams, setSearchParams]);
 
-  // Slice for current page
   const startIndex = (Math.min(page, totalPages) - 1) * PAGE_SIZE;
   const endIndex = Math.min(startIndex + PAGE_SIZE, programs.length);
   const paginatedPrograms = useMemo(
@@ -213,25 +207,14 @@ function ProgramsPageContent() {
   );
 
   const handleFilterChange = (newFilters) => {
-    const currentParams = new URLSearchParams(searchParams);
-
-    if (!currentParams.has('view')) {
-      currentParams.set('view', 'browse');
-    }
-
-    // Apply incoming filters
-    Object.entries(newFilters).forEach(([key, value]) => {
-      if (value && value !== 'all') {
-        currentParams.set(key, value);
-      } else {
-        currentParams.delete(key);
-      }
+    const p = new URLSearchParams(searchParams);
+    if (!p.has('view')) p.set('view', 'browse');
+    Object.entries(newFilters).forEach(([k, v]) => {
+      if (v && v !== 'all') p.set(k, v);
+      else p.delete(k);
     });
-
-    // Reset to first page whenever filters change
-    currentParams.set('page', '1');
-
-    setSearchParams(currentParams);
+    p.set('page', '1');
+    setSearchParams(p);
   };
 
   const handleCompareClick = useCallback((program, action) => {
@@ -244,23 +227,20 @@ function ProgramsPageContent() {
   }, [add, remove]);
 
   const onTabChange = (value) => {
-    if (value === 'compare') {
-      navigate(createPageUrl('ComparePrograms'));
-    } else {
-      const currentParams = new URLSearchParams(searchParams);
-      currentParams.set('view', 'browse');
-      // keep filters, reset to page 1
-      currentParams.set('page', '1');
-      setSearchParams(currentParams);
+    if (value === 'compare') navigate(createPageUrl('ComparePrograms'));
+    else {
+      const p = new URLSearchParams(searchParams);
+      p.set('view', 'browse');
+      p.set('page', '1');
+      setSearchParams(p);
     }
   };
 
   const goToPage = (nextPage) => {
     const clamped = Math.min(Math.max(nextPage, 1), totalPages);
-    const currentParams = new URLSearchParams(searchParams);
-    currentParams.set('page', String(clamped));
-    // preserve current filters & view
-    setSearchParams(currentParams);
+    const p = new URLSearchParams(searchParams);
+    p.set('page', String(clamped));
+    setSearchParams(p);
   };
 
   if (loading || !isReady) {
@@ -335,45 +315,46 @@ function ProgramsPageContent() {
               ))}
             </div>
 
-            {/* Pagination controls */}
+            {/* Pagination */}
             <div className="mt-8 flex items-center justify-between gap-4">
               <div className="text-sm text-gray-600">
                 Page <span className="font-medium">{Math.min(page, totalPages)}</span> of <span className="font-medium">{totalPages}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => goToPage(1)}
-                  disabled={page <= 1}
-                >
-                  First
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => goToPage(page - 1)}
-                  disabled={page <= 1}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => goToPage(page + 1)}
-                  disabled={page >= totalPages}
-                >
-                  Next
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => goToPage(totalPages)}
-                  disabled={page >= totalPages}
-                >
-                  Last
-                </Button>
+                <Button variant="outline" onClick={() => goToPage(1)} disabled={page <= 1}>First</Button>
+                <Button variant="outline" onClick={() => goToPage(page - 1)} disabled={page <= 1}>Previous</Button>
+                <Button variant="outline" onClick={() => goToPage(page + 1)} disabled={page >= totalPages}>Next</Button>
+                <Button variant="outline" onClick={() => goToPage(totalPages)} disabled={page >= totalPages}>Last</Button>
               </div>
             </div>
           </>
         )}
       </div>
+
+      {/* Floating Compare actions — moved away from chat bubble */}
+      {items?.length > 0 && (
+        <>
+          {/* Desktop/tablet: bottom-left so it won't clash with chat (bottom-right) */}
+          <div className="hidden md:block fixed bottom-6 left-6 z-40">
+            <Button
+              className="shadow-lg bg-green-600 hover:bg-green-700"
+              onClick={() => navigate(createPageUrl('ComparePrograms'))}
+            >
+              Compare ({items.length})
+            </Button>
+          </div>
+
+          {/* Mobile: centered bar above chat bubble */}
+          <div className="md:hidden fixed bottom-24 inset-x-0 z-40 flex justify-center px-4">
+            <Button
+              className="w-full max-w-sm shadow-lg bg-green-600 hover:bg-green-700"
+              onClick={() => navigate(createPageUrl('ComparePrograms'))}
+            >
+              Compare ({items.length})
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -55,7 +55,7 @@ export const translations = {
     profile: "Profile",
     programs: "Programs",
     userManagement: "User Management",
-    schoolManagement: "School Management",
+    schoolManagement: "Program Management",
     verifications: "Verifications",
     adminVisaRequests: "Admin Visa Requests",
     marketplaceAdmin: "Marketplace Admin",
