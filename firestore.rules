@@ -132,7 +132,12 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
     }
 
-    match /ChatSettings/{docId} { allow read, write: if isAdmin(); }
+    match /chatSettings/{docId} {
+   // public read so WhatsApp/Zalo are visible on public pages
+   allow read: if true;
+  // only admins can change the numbers/text
+   allow create, update, delete: if isAdmin();
+ }
 
     match /Contact/{docId} {
       allow create: if signedIn();
@@ -561,7 +566,7 @@ service cloud.firestore {
     match /PaymentSetting/{docId}   { allow read: if true; allow create, update, delete: if isAdmin(); }
 
     match /brandSettings/{docId} { allow read, write: if isAdmin(); }
-    match /chat_settings/{docId} { allow read, write: if isAdmin(); }
+    match /chat_settings/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /conversations/{docId} {
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
       allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;

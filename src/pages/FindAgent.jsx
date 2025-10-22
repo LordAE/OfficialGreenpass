@@ -5,12 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Globe, Languages, MessageCircle, UserCheck, AlertCircle } from "lucide-react";
+import { Search, Globe, Languages, MessageCircle, UserCheck, AlertCircle, Clock } from "lucide-react";
 
 /* ---------- Firebase ---------- */
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 /* ---------- Simple route helper ---------- */
 const createPageUrl = (pageName) => {
@@ -24,7 +33,11 @@ const createPageUrl = (pageName) => {
 
 /* ---------- Agent Card ---------- */
 const AgentCard = ({ agent, onSelectAgent, isSelecting, currentUser }) => {
-  const showSelectAgentButton = !currentUser?.assigned_agent_id;
+  const hasPending =
+    currentUser?.agent_reassignment_request?.status === "pending" &&
+    !!currentUser?.agent_reassignment_request?.new_agent_id;
+
+  const showSelectAgentButton = !currentUser?.assigned_agent_id && !hasPending;
   const isCurrentlySelecting = isSelecting === agent.id;
 
   return (
@@ -83,7 +96,12 @@ const AgentCard = ({ agent, onSelectAgent, isSelecting, currentUser }) => {
               onClick={() => onSelectAgent(agent)}
               disabled={isCurrentlySelecting}
             >
-              {isCurrentlySelecting ? "Selecting..." : "Select This Agent"}
+              {isCurrentlySelecting ? "Submitting..." : "Select This Agent"}
+            </Button>
+          ) : hasPending ? (
+            <Button className="w-full" variant="outline" disabled>
+              <Clock className="w-4 h-4 mr-2" />
+              Request Pending Admin Approval
             </Button>
           ) : (
             <Button className="w-full bg-gradient-to-r from-emerald-600 to-blue-600 text-white" disabled>
@@ -107,6 +125,7 @@ export default function FindAgent() {
 
   const [currentUser, setCurrentUser] = useState(null);
   const [assignedAgent, setAssignedAgent] = useState(null);
+  const [pendingAgent, setPendingAgent] = useState(null);
   const [agentUsers, setAgentUsers] = useState({});
   const [selectingAgent, setSelectingAgent] = useState(null);
   const [error, setError] = useState(null);
@@ -119,7 +138,11 @@ export default function FindAgent() {
 
   const fetchAgents = async () => {
     // agents where verification_status == 'verified' AND visible
-    const q = query(collection(db, "agents"), where("verification_status", "==", "verified"), where("is_visible", "==", true));
+    const q = query(
+      collection(db, "agents"),
+      where("verification_status", "==", "verified"),
+      where("is_visible", "==", true)
+    );
     const qs = await getDocs(q);
 
     const rawAgents = qs.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -190,6 +213,32 @@ export default function FindAgent() {
     }
   };
 
+  const fetchPendingAgent = async (user) => {
+    const req = user?.agent_reassignment_request;
+    if (!req || req?.status !== "pending" || !req?.new_agent_id) {
+      setPendingAgent(null);
+      return;
+    }
+    try {
+      const aref = doc(db, "agents", req.new_agent_id);
+      const asnap = await getDoc(aref);
+      if (!asnap.exists()) {
+        setPendingAgent(null);
+        return;
+      }
+      const agentDoc = { id: asnap.id, ...asnap.data() };
+      // ensure we have the agent's linked user fields for display
+      if (agentDoc.user_id && !agentUsers[agentDoc.user_id]) {
+        const u = await getUserDoc(agentDoc.user_id);
+        if (u) setAgentUsers((prev) => ({ ...prev, [agentDoc.user_id]: u }));
+      }
+      setPendingAgent(agentDoc);
+    } catch (e) {
+      console.warn("Could not load pending agent:", e);
+      setPendingAgent(null);
+    }
+  };
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       setLoading(true);
@@ -197,6 +246,8 @@ export default function FindAgent() {
       try {
         if (!fbUser) {
           setCurrentUser(null);
+          setAssignedAgent(null);
+          setPendingAgent(null);
           await fetchAgents();
           return;
         }
@@ -205,6 +256,7 @@ export default function FindAgent() {
 
         await fetchAgents();
         await fetchAssignedAgent(u);
+        await fetchPendingAgent(u);
       } catch (err) {
         console.error("Error loading agents:", err);
         setError("Failed to load agents. Please try again later.");
@@ -213,11 +265,12 @@ export default function FindAgent() {
       }
     });
     return () => unsub && unsub();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let list = agents;
 
+    // hide currently assigned agent from the selection list
     if (currentUser?.assigned_agent_id) {
       list = list.filter((a) => a.id !== currentUser.assigned_agent_id);
     }
@@ -245,24 +298,42 @@ export default function FindAgent() {
       window.location.href = createPageUrl("Welcome");
       return;
     }
+
+    // if already assigned, enforce admin flow (no direct changes here)
     if (currentUser?.assigned_agent_id) {
       alert("You already have an assigned agent. Please contact support if you need to change your agent.");
+      return;
+    }
+
+    // avoid duplicates when a request is already pending
+    if (currentUser?.agent_reassignment_request?.status === "pending") {
+      alert("You already have a pending agent request. Please wait for admin approval.");
       return;
     }
 
     setSelectingAgent(agent.id);
     try {
       const uref = doc(db, "users", currentUser.id);
-      await updateDoc(uref, { assigned_agent_id: agent.id });
 
+      // Create the *pending* request that Admin Agent Assignments page expects
+      await updateDoc(uref, {
+        agent_reassignment_request: {
+          status: "pending",
+          new_agent_id: agent.id,
+          requested_at: serverTimestamp(),
+          requested_by: currentUser.id,
+        },
+      });
+
+      // Refresh local user + pending agent
       const updatedUser = await getUserDoc(currentUser.id);
       setCurrentUser(updatedUser || currentUser);
-      setAssignedAgent(agent);
+      await fetchPendingAgent(updatedUser || currentUser);
 
-      alert("Agent assigned successfully! They will be notified and will contact you soon.");
+      alert("Request submitted. An admin will verify and assign your selected agent.");
     } catch (e) {
-      console.error("Error assigning agent:", e);
-      alert("Failed to assign agent. Please try again.");
+      console.error("Error creating agent request:", e);
+      alert("Failed to submit request. Please try again.");
     } finally {
       setSelectingAgent(null);
     }
@@ -274,12 +345,26 @@ export default function FindAgent() {
       alert("Agent reassignment request cancelled.");
       return;
     }
+    // Optional: You can also write a pending request with just a reason (no new_agent_id yet)
+    // await updateDoc(doc(db, "users", currentUser.id), {
+    //   agent_reassignment_request: {
+    //     status: "pending",
+    //     new_agent_id: null,
+    //     reason,
+    //     requested_at: serverTimestamp(),
+    //     requested_by: currentUser.id,
+    //   },
+    // });
     console.log("Reassignment request reason:", reason);
-    alert("Your reassignment request has been submitted to admin for review. You will be contacted shortly.");
+    alert("Your reassignment request has been noted. Please select a new agent to submit for admin approval.");
   };
 
   const uniqueCountries = [...new Set(agents.flatMap((a) => a.target_countries || []))];
   const uniqueLanguages = [...new Set(agents.flatMap((a) => a.team_details?.languages_spoken || []))];
+
+  const hasPending =
+    currentUser?.agent_reassignment_request?.status === "pending" &&
+    !!currentUser?.agent_reassignment_request?.new_agent_id;
 
   if (loading) {
     return (
@@ -309,15 +394,22 @@ export default function FindAgent() {
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-emerald-600 bg-clip-text text-transparent mb-2">
-            {currentUser?.assigned_agent_id ? "Your Assigned Agent" : "Find Your Agent"}
+            {currentUser?.assigned_agent_id
+              ? "Your Assigned Agent"
+              : hasPending
+              ? "Agent Request Pending"
+              : "Find Your Agent"}
           </h1>
           <p className="text-gray-600 text-lg">
             {currentUser?.assigned_agent_id
               ? "Your dedicated agent will guide you through your immigration journey."
+              : hasPending
+              ? "Your selected agent is pending admin approval. You’ll be notified once approved."
               : "Choose a trusted agent to guide your immigration journey"}
           </p>
         </div>
 
+        {/* Assigned Agent Card */}
         {assignedAgent && currentUser?.assigned_agent_id && (
           <Card className="mb-8 border-green-200 bg-green-50">
             <CardHeader>
@@ -365,6 +457,51 @@ export default function FindAgent() {
           </Card>
         )}
 
+        {/* Pending Agent Request Card (when user has no assigned agent yet) */}
+        {!currentUser?.assigned_agent_id && hasPending && pendingAgent && (
+          <Card className="mb-8 border-yellow-200 bg-yellow-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-yellow-800">
+                <Clock className="w-5 h-5" />
+                Pending Admin Approval
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-4">
+                <img
+                  src={
+                    (agentUsers[pendingAgent.user_id]?.profile_picture ||
+                      agentUsers[pendingAgent.user_id]?.photo_url) ??
+                    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                      agentUsers[pendingAgent.user_id]?.full_name || pendingAgent.company_name || "A"
+                    )}`
+                  }
+                  alt={agentUsers[pendingAgent.user_id]?.full_name || "Requested Agent"}
+                  className="w-16 h-16 rounded-full border-4 border-white shadow-md object-cover"
+                />
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-gray-900">
+                    {pendingAgent.company_name || "Education Agency"}
+                  </h3>
+                  <p className="text-gray-600">
+                    {agentUsers[pendingAgent.user_id]?.full_name || "Agent Representative"}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {agentUsers[pendingAgent.user_id]?.email || "contact@agency.com"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <Button variant="outline" disabled>
+                    Awaiting Approval
+                  </Button>
+                  <p className="text-xs text-gray-500 mt-1">You’ll be notified once approved</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Discovery + Filters + Grid (hidden only if assigned; visible if not assigned — even with pending, list stays visible but buttons are disabled) */}
         {!currentUser?.assigned_agent_id && (
           <>
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 mb-8 grid lg:grid-cols-4 gap-6 items-center">

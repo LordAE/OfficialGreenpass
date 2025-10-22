@@ -1,14 +1,20 @@
 // src/api/integrations.js
 // Real Firebase-backed integrations (safe, tree-shakeable)
 
-// ---- LLM (kept as stub so nothing else breaks)
-export async function InvokeLLM({ messages, model }) {
-  console.warn('InvokeLLM called – no LLM is configured.');
-  return {
-    id: 'stub-llm-response',
-    choices: [{ message: { role: 'assistant', content: 'LLM is not configured.' } }]
-  };
+// ---- LLM (real call via Vercel function)
+export async function InvokeLLM(args = {}) {
+  const res = await fetch('/api/ai-chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(`LLM error: ${msg || res.status}`);
+  }
+  return res.json();
 }
+
 
 // ---- Email (enqueue to Firestore 'mail' for Trigger Email extension)
 // Backward-compatible with callers that send { body, text } or { html, text }

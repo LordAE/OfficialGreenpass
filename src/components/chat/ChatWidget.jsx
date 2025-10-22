@@ -1,285 +1,348 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Send, Phone, MessageCircle, Bot } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { User as UserEntity, ChatSettings, Conversation, Message } from '@/api/entities';
+// src/components/chat/ChatWidget.jsx
+import React from "react";
+import { auth, db } from "@/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
-const ChatWidget = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
-  const [chatSettings, setChatSettings] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [conversation, setConversation] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(false);
+import { InvokeLLM } from "@/api/integrations";
+// If you use entity helpers for logged-in persistence:
+import { Message, Conversation, User as UserEntity } from "@/api/entities";
 
-  const listRef = useRef(null);
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { X, MessageSquare, Send, Phone } from "lucide-react";
 
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const [user, settingsList] = await Promise.all([UserEntity.me(), ChatSettings.list()]);
-        setCurrentUser(user);
-        if (Array.isArray(settingsList) && settingsList.length > 0) {
-          setChatSettings(settingsList[0]);
-        }
-      } catch {
-        // user not logged in or settings missing — ignore for widget
-      }
-    };
-    fetchInitialData();
-  }, []);
+/* ---------- helpers ---------- */
+const digitsOnly = (val) => String(val || "").replace(/[^\d]/g, "");
 
+function WhatsAppIcon({ className = "h-4 w-4" }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true" fill="currentColor">
+      <path d="M19.1 17.1c-.3-.1-1-.5-1.2-.6-.2-.1-.4-.1-.6.1-.2.3-.7.9-.8 1-.1.1-.3.1-.6 0-1.8-.7-3-2.5-3.1-2.6-.1-.2-.1-.4 0-.5.1-.1.3-.3.4-.5.2-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.6-1.5-.8-2 0-.5-.3-.4-.5-.4h-.4c-.1 0-.5.1-.7.3-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5 4.4.7.3 1.2.5 1.6.6.7.2 1.3.2 1.8.1.6-.1 1.9-.8 2.1-1.6.2-.8.2-1.4.1-1.6-.1-.2-.3-.2-.6-.3z"/>
+      <path d="M26.6 5.4A13.1 13.1 0 0 0 5.4 26.6L4 28a.8.8 0 0 0 .6 1.4H6a13.1 13.1 0 1 0 20.6-24zM16 27.4a11.3 11.3 0 1 1 0-22.6 11.3 11.3 0 0 1 0 22.6z"/>
+    </svg>
+  );
+}
+
+function SupportOptions({ whatsappLink, zaloLink, className = "" }) {
+  if (!whatsappLink && !zaloLink) return null;
+  return (
+    <div className={`mt-2 border-t border-gray-200 pt-2 ${className}`}>
+      <p className="text-xs text-gray-500 mb-2">Prefer another support channel?</p>
+      <div className="grid grid-cols-2 gap-2">
+        {whatsappLink && (
+          <a href={whatsappLink} target="_blank" rel="noreferrer" className="block">
+            <Button variant="secondary" className="w-full justify-center gap-2">
+              <WhatsAppIcon className="h-4 w-4" />
+              WhatsApp
+            </Button>
+          </a>
+        )}
+        {zaloLink && (
+          <a href={zaloLink} target="_blank" rel="noreferrer" className="block">
+            <Button variant="secondary" className="w-full justify-center gap-2">
+              <Phone className="h-4 w-4" />
+              Zalo
+            </Button>
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- main widget ---------- */
+export default function ChatWidget() {
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [newMessage, setNewMessage] = React.useState("");
+  const [messages, setMessages] = React.useState([]);
+  const [conversation, setConversation] = React.useState(null);
+  const [currentUser, setCurrentUser] = React.useState(null);
+
+  // Settings
+  const [chatSettings, setChatSettings] = React.useState(null);
+
+  const listRef = React.useRef(null);
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
-      if (listRef.current) {
-        listRef.current.scrollTo({
-          top: listRef.current.scrollHeight,
-          behavior: 'smooth',
-        });
-      }
+      const el = listRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
     });
   };
 
-  const loadConversation = async () => {
-    if (!currentUser) return;
-    setLoading(true);
-    try {
-      const convs = await Conversation.filter(
-        { user_id: currentUser.id, status: 'open' },
-        '-created_date',
-        1
-      );
-      let currentConv = convs && convs[0];
-      if (!currentConv) {
-        currentConv = await Conversation.create({
-          user_id: currentUser.id,
-          role: currentUser.user_type,
-          lang: (currentUser.settings && currentUser.settings.language) || 'en',
-          status: 'open',
-          channel: 'in_app',
-          last_activity: new Date().toISOString(),
-        });
+  // auth listener
+  React.useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (!fbUser) {
+        setCurrentUser(null);
+      } else {
+        try {
+          const me = await UserEntity.me?.();
+          setCurrentUser(me || { id: fbUser.uid });
+        } catch {
+          setCurrentUser({ id: fbUser.uid });
+        }
       }
-      setConversation(currentConv);
+    });
+    return () => unsub();
+  }, []);
 
-      const msgs = await Message.filter(
-        { conversation_id: currentConv.id },
-        'created_date'
-      );
-      setMessages(msgs || []);
+  // load chat settings from Firestore
+  React.useEffect(() => {
+    (async () => {
+      try {
+        // Try direct doc first (works regardless of entities mapping)
+        const snap = await getDoc(doc(db, "chatSettings", "SINGLETON"));
+        if (snap.exists()) {
+          setChatSettings(snap.data());
+          return;
+        }
+      } catch {}
+      // fallback via entity list (if configured)
+      try {
+        const list = await (await import("@/api/entities")).ChatSettings?.list?.();
+        if (Array.isArray(list) && list.length) setChatSettings(list[0]);
+      } catch {}
+      if (!chatSettings) setChatSettings({ whatsapp_number: "", zalo_number: "" });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // create or load conversation (guest if not logged in)
+  React.useEffect(() => {
+    (async () => {
+      if (!currentUser) {
+        // guest mode: keep local
+        let gid = localStorage.getItem("gp_guest_conv");
+        if (!gid) {
+          gid = String(Date.now());
+          localStorage.setItem("gp_guest_conv", gid);
+        }
+        setConversation({ id: `guest-${gid}`, guest: true });
+        try {
+          const saved = JSON.parse(localStorage.getItem("gp_guest_msgs") || "[]");
+          if (Array.isArray(saved)) setMessages(saved);
+        } catch {}
+        return;
+      }
+
+      // logged-in: try to find the latest conversation or create one
+      try {
+        let conv = await Conversation.mostRecent?.();
+        if (!conv) {
+          conv = await Conversation.create?.({ user_id: currentUser.id, source: "widget" });
+        }
+        setConversation(conv || null);
+
+        if (conv) {
+          const history = (await Message.filter({ conversation_id: conv.id }, "created_date")) || [];
+          setMessages(history);
+          scrollToBottom();
+        }
+      } catch {
+        // fallback to guest if entities API fails for some reason
+        let gid = localStorage.getItem("gp_guest_conv");
+        if (!gid) {
+          gid = String(Date.now());
+          localStorage.setItem("gp_guest_conv", gid);
+        }
+        setConversation({ id: `guest-${gid}`, guest: true });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  const whatsappDigits = digitsOnly(chatSettings?.whatsapp_number);
+  const zaloDigits = digitsOnly(chatSettings?.zalo_number);
+  const whatsappDefault = chatSettings?.whatsapp_default_message || "";
+
+  const whatsappLink = whatsappDigits
+    ? `https://wa.me/${whatsappDigits}${whatsappDefault ? `?text=${encodeURIComponent(whatsappDefault)}` : ""}`
+    : null;
+  const zaloLink = zaloDigits ? `https://zalo.me/${zaloDigits}` : null;
+
+  const handleSendMessage = async () => {
+    if (loading) return;
+    const text = newMessage.trim();
+    if (!text || !conversation) return;
+
+    setNewMessage("");
+
+    const provisionalId = "local-" + Date.now();
+    const optimisticUserMsg = {
+      id: provisionalId,
+      sender: "user",
+      text,
+      created_date: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticUserMsg]);
+    scrollToBottom();
+    setLoading(true);
+
+    try {
+      // ----- Guest mode: no Firestore -----
+      if (conversation?.guest) {
+        const history = [...messages, optimisticUserMsg];
+        const chatMessages = history.map((m) => ({
+          role: m.sender === "user" ? "user" : "assistant",
+          content: m.text,
+        }));
+
+        const system =
+          "You are GreenPass AI support. Be concise, helpful, and friendly. If asked about personal data or sensitive issues, advise to contact support.";
+
+        const ai = await InvokeLLM({ messages: chatMessages, system });
+        const aiText = ai?.choices?.[0]?.message?.content?.trim() || "Thanks for your message!";
+        const aiMsg = {
+          id: "local-ai-" + Date.now(),
+          sender: "ai",
+          text: aiText,
+          created_date: new Date().toISOString(),
+        };
+
+        setMessages((prev) => {
+          const next = [
+            ...prev.filter((m) => m.id !== provisionalId),
+            optimisticUserMsg,
+            aiMsg,
+          ];
+          try {
+            localStorage.setItem("gp_guest_msgs", JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+        scrollToBottom();
+        return;
+      }
+
+      // ----- Logged-in: persist to backend collections -----
+      const createdUser = await Message.create({
+        conversation_id: conversation.id,
+        sender: "user",
+        text,
+      });
+
+      const history =
+        (await Message.filter(
+          { conversation_id: conversation.id },
+          "created_date"
+        )) || [];
+
+      const chatMessages = history.map((m) => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.text,
+      }));
+
+      const system =
+        "You are GreenPass AI support. Be concise, helpful, and friendly. If asked about personal data or sensitive issues, advise to contact support.";
+
+      const ai = await InvokeLLM({ messages: chatMessages, system });
+      const aiText =
+        ai?.choices?.[0]?.message?.content?.trim() ||
+        "Thanks for your message! Our team will get back to you shortly.";
+
+      const createdAI = await Message.create({
+        conversation_id: conversation.id,
+        sender: "ai",
+        text: aiText,
+      });
+
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== provisionalId),
+        createdUser || optimisticUserMsg,
+        createdAI,
+      ]);
       scrollToBottom();
     } catch (err) {
-      console.error('Failed to load conversation:', err);
+      console.error("Failed to send message:", err);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === provisionalId ? { ...m, error: true } : m))
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendMessage = async () => {
-    const text = newMessage.trim();
-    if (!text || !conversation || loading) return;
-
-    setNewMessage('');
-    const localUserMsg = {
-      id: 'local-' + Date.now(),
-      sender: 'user',
-      text,
-      created_date: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, localUserMsg]);
-    scrollToBottom();
-
-    try {
-      const created = await Message.create({
-        conversation_id: conversation.id,
-        sender: 'user',
-        text,
-      });
-
-      // Simulated AI reply (replace with your AI integration)
-      const aiText = 'Thanks for your message! An agent will get back to you shortly.';
-      const createdAI = await Message.create({
-        conversation_id: conversation.id,
-        sender: 'ai',
-        text: aiText,
-      });
-
-      setMessages((prev) => [
-        ...prev.filter((m) => m.id !== localUserMsg.id),
-        created || localUserMsg,
-        createdAI,
-      ]);
-      scrollToBottom();
-    } catch (err) {
-      console.error('Failed to send message:', err);
-    }
-  };
-
-  const toggleMenu = () => {
-    setIsOpen((v) => !v);
-    if (isAiChatOpen) setIsAiChatOpen(false);
-  };
-
-  const toggleAiChat = async () => {
-    setIsOpen(false);
-    if (!isAiChatOpen) {
-      await loadConversation();
-    }
-    setIsAiChatOpen((v) => !v);
-  };
-
-  if (!currentUser) return null; // hide when not logged in
-
-  const whatsappLink = chatSettings && chatSettings.whatsapp_number
-    ? `https://wa.me/${String(chatSettings.whatsapp_number).replace(/\D/g, '')}`
-    : null;
-
-  const zaloLink = chatSettings && chatSettings.zalo_number
-    ? `https://zalo.me/${String(chatSettings.zalo_number).replace(/\D/g, '')}`
-    : null;
-
   return (
     <>
-      <div className="fixed bottom-24 md:bottom-8 right-4 sm:right-6 z-50">
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="flex flex-col items-end space-y-3 mb-4"
-            >
-              {whatsappLink && (
-                <a
-                  href={whatsappLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 transition-all transform hover:scale-105"
-                >
-                  <span className="font-semibold text-gray-700 text-sm">Chat on WhatsApp</span>
-                  <Phone className="w-8 h-8 text-green-600" />
-                </a>
-              )}
-              {zaloLink && (
-                <a
-                  href={zaloLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 transition-all transform hover:scale-105"
-                >
-                  <span className="font-semibold text-gray-700 text-sm">Chat on Zalo</span>
-                  <MessageCircle className="w-8 h-8 text-blue-600" />
-                </a>
-              )}
-              <button
-                onClick={toggleAiChat}
-                className="flex items-center gap-3 bg-white p-3 rounded-full shadow-lg hover:bg-gray-100 transition-all transform hover:scale-105"
-              >
-                <span className="font-semibold text-gray-700 text-sm">AI Support Chat</span>
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center">
-                  <MessageSquare className="w-5 h-5 text-white" />
-                </div>
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={toggleMenu}
-          className="bg-green-600 text-white p-4 rounded-full shadow-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-          aria-label="Open chat menu"
+      {/* floating launcher */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full px-4 py-3 bg-green-600 text-white shadow-lg hover:bg-green-700 transition"
+          aria-label="Open support chat"
         >
-          {isOpen || isAiChatOpen ? <X className="h-6 w-6" /> : <MessageSquare className="h-6 w-6" />}
-        </motion.button>
-      </div>
+          <MessageSquare className="w-5 h-5" />
+          <span className="hidden sm:inline">Chat</span>
+        </button>
+      )}
 
-      <AnimatePresence>
-        {isAiChatOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.8 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.8 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed bottom-40 md:bottom-24 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-80 h-96 bg-white rounded-lg shadow-xl flex flex-col z-50"
-          >
-            <div className="flex items-center justify-between p-4 bg-green-600 text-white rounded-t-lg">
-              <h3 className="font-semibold text-base">AI Support Chat</h3>
-              <button
-                onClick={() => setIsAiChatOpen(false)}
-                className="text-white hover:text-gray-200 focus:outline-none"
-                aria-label="Close chat"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      {/* panel */}
+      {open && (
+        <div className="fixed bottom-6 right-6 z-50 w-[92vw] max-w-sm rounded-2xl overflow-hidden shadow-2xl bg-white border border-gray-200 flex flex-col">
+          <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
+            <div className="font-semibold text-gray-800">GreenPass Support</div>
+            <button
+              className="p-1 rounded hover:bg-gray-100"
+              onClick={() => setOpen(false)}
+              aria-label="Close chat"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-            <div ref={listRef} className="flex-1 p-4 overflow-y-auto space-y-4">
-              {loading ? (
-                <div className="text-center text-gray-500">Loading chat...</div>
-              ) : (
-                messages.map((msg, idx) => {
-                  const isUser = msg.sender === 'user';
-                  return (
-                    <div
-                      key={msg.id || msg.created_date || idx}
-                      className={`flex items-end gap-2 ${isUser ? 'justify-end' : ''}`}
-                    >
-                      {!isUser && (
-                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-5 h-5 text-gray-600" />
-                        </div>
-                      )}
-                      <div
-                        className={`px-4 py-2 rounded-2xl max-w-xs ${
-                          isUser
-                            ? 'bg-green-600 text-white rounded-br-none'
-                            : 'bg-gray-100 text-gray-800 rounded-bl-none'
-                        }`}
-                      >
-                        <p className="text-sm">{msg.text}</p>
-                      </div>
-                      {isUser && (
-                        <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold">
-                          {(currentUser && currentUser.full_name && currentUser.full_name.charAt(0)) || 'U'}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="p-4 border-t border-gray-200">
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  placeholder="Type your message..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  className="w-full p-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                  disabled={loading}
-                />
-                <Button
-                  onClick={handleSendMessage}
-                  size="icon"
-                  className="bg-green-600 hover:bg-green-700"
-                  disabled={!newMessage.trim() || loading || !conversation}
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
+          {/* messages list */}
+          <div ref={listRef} className="flex-1 overflow-auto p-3 space-y-2">
+            {messages.length === 0 ? (
+              <div className="p-3 rounded-md bg-green-50 border border-green-100 text-sm text-green-800">
+                Hi! I’m GreenPass AI. Ask me anything — or use another support channel below.
               </div>
+            ) : (
+              messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                    m.sender === "user"
+                      ? "ml-auto bg-green-600 text-white"
+                      : "mr-auto bg-gray-100 text-gray-800"
+                  } ${m.error ? "ring-2 ring-red-400" : ""}`}
+                >
+                  {m.text}
+                </div>
+              ))
+            )}
+
+            {/* inline support choices */}
+            <SupportOptions
+              whatsappLink={whatsappLink}
+              zaloLink={zaloLink}
+            />
+          </div>
+
+          {/* composer */}
+          <div className="border-t bg-white p-2">
+            <div className="flex items-center gap-2">
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="Type your message..."
+              />
+              <Button onClick={handleSendMessage} disabled={loading || !newMessage.trim()}>
+                <Send className="w-4 h-4" />
+              </Button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {/* bottom support choices for mobile spacing (optional) */}
+            {/* <SupportOptions whatsappLink={whatsappLink} zaloLink={zaloLink} className="px-1 mt-2" /> */}
+          </div>
+        </div>
+      )}
     </>
   );
-};
-
-export default ChatWidget;
+}

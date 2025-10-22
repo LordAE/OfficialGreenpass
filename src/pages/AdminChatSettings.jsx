@@ -1,134 +1,139 @@
 // src/pages/AdminChatSettings.jsx
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { db } from "@/firebase";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MessageSquare, Save, Loader2, Phone, MessageCircle } from "lucide-react";
 
-const COLL = "chatSettings";
-const ID = "SINGLETON";
+const COLL = "chatSettings";       // <- collection your app uses
+const ID   = "SINGLETON";          // <- single settings doc id
 
 export default function AdminChatSettings() {
-  const [settings, setSettings] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [settings, setSettings] = React.useState({
+    whatsapp_number: "",
+    zalo_number: "",
+    whatsapp_default_message: "",
+  });
+  const [loaded, setLoaded] = React.useState(false);
 
-  useEffect(() => {
-    loadSettings();
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const ref = doc(db, COLL, ID);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          setSettings({
+            whatsapp_number: data.whatsapp_number || "",
+            zalo_number: data.zalo_number || "",
+            whatsapp_default_message: data.whatsapp_default_message || "",
+          });
+        } else {
+          const defaults = {
+            singleton_key: "SINGLETON",
+            whatsapp_number: "",
+            zalo_number: "",
+            whatsapp_default_message: "",
+            created_at: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          };
+          await setDoc(ref, defaults);
+          setSettings({
+            whatsapp_number: "",
+            zalo_number: "",
+            whatsapp_default_message: "",
+          });
+        }
+      } finally {
+        setLoaded(true);
+      }
+    })();
   }, []);
 
-  const loadSettings = async () => {
-    setLoading(true);
-    try {
-      const refDoc = doc(db, COLL, ID);
-      const snap = await getDoc(refDoc);
-
-      if (snap.exists()) {
-        setSettings({ id: ID, ...snap.data() });
-      } else {
-        const defaults = {
-          singleton_key: "SINGLETON",
-          whatsapp_number: "",
-          zalo_number: "",
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp(),
-        };
-        await setDoc(refDoc, defaults);
-        setSettings({ id: ID, ...defaults });
-      }
-    } catch (err) {
-      console.error("Error loading chat settings:", err);
-    } finally {
-      setLoading(false);
-    }
+  const onChange = (field, value) => {
+    setSettings(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleInputChange = (field, value) => {
-    setSettings((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleSave = async () => {
-    if (!settings) return;
+  const onSave = async (e) => {
+    e.preventDefault();
     setSaving(true);
     try {
-      const refDoc = doc(db, COLL, ID);
-      await updateDoc(refDoc, {
+      const ref = doc(db, COLL, ID);
+      await updateDoc(ref, {
         whatsapp_number: settings.whatsapp_number || "",
         zalo_number: settings.zalo_number || "",
+        whatsapp_default_message: settings.whatsapp_default_message || "",
         updated_at: serverTimestamp(),
       });
-      alert("Chat settings saved successfully!");
-    } catch (err) {
-      console.error("Error saving chat settings:", err);
-      alert("Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
+  if (!loaded) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="animate-pulse h-8 w-48 bg-gray-200 rounded mb-4" />
+        <div className="space-y-3">
+          <div className="h-9 bg-gray-100 rounded" />
+          <div className="h-9 bg-gray-100 rounded" />
+          <div className="h-9 bg-gray-100 rounded" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <MessageSquare className="w-8 h-8 text-gray-700" />
-          <h1 className="text-3xl font-bold text-gray-800">Chat Channel Settings</h1>
+    <div className="max-w-2xl mx-auto p-6">
+      <h1 className="text-2xl font-semibold mb-6">Chat Settings</h1>
+      <form onSubmit={onSave} className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="whatsapp_number">WhatsApp number</Label>
+          <Input
+            id="whatsapp_number"
+            placeholder="+63 9xx xxx xxxx or 639xx..."
+            value={settings.whatsapp_number}
+            onChange={(e) => onChange("whatsapp_number", e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Store in any format; we’ll sanitize to digits for the link.
+          </p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Configure Support Channels</CardTitle>
-            <CardDescription>
-              Enter your business phone numbers for WhatsApp and Zalo. These will be displayed to users on the public website.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="whatsapp_number" className="flex items-center gap-2">
-                <Phone className="w-5 h-5 text-green-600" />
-                WhatsApp Number
-              </Label>
-              <Input
-                id="whatsapp_number"
-                value={settings?.whatsapp_number || ""}
-                onChange={(e) => handleInputChange("whatsapp_number", e.target.value)}
-                placeholder="e.g., 14155552671 (include country code)"
-              />
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="zalo_number">Zalo number</Label>
+          <Input
+            id="zalo_number"
+            placeholder="+84 9xx xxx xxx or 849xx..."
+            value={settings.zalo_number}
+            onChange={(e) => onChange("zalo_number", e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Stored flexibly; sanitized to digits for <code>zalo.me</code>.
+          </p>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="zalo_number" className="flex items-center gap-2">
-                <MessageCircle className="w-5 h-5 text-blue-600" />
-                Zalo Number
-              </Label>
-              <Input
-                id="zalo_number"
-                value={settings?.zalo_number || ""}
-                onChange={(e) => handleInputChange("zalo_number", e.target.value)}
-                placeholder="e.g., 84123456789 (include country code)"
-              />
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="whatsapp_default_message">Default WhatsApp message (optional)</Label>
+          <Input
+            id="whatsapp_default_message"
+            placeholder="Hi GreenPass! I need help with…"
+            value={settings.whatsapp_default_message}
+            onChange={(e) => onChange("whatsapp_default_message", e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Appends as <code>?text=...</code> in the WhatsApp link.
+          </p>
+        </div>
 
-            <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                {saving ? "Saving..." : "Save Settings"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        <div className="pt-2">
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }

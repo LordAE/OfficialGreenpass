@@ -1085,10 +1085,17 @@ export default function Layout() {
     );
   }
 
-  // Public site (not logged in)
-  if (!currentUser) {
-    return <PublicLayout getLogoUrl={getLogoUrl} getCompanyName={getCompanyName} />;
-  }
+// Public site (not logged in)
+if (!currentUser) {
+  return (
+    <>
+      <PublicLayout getLogoUrl={getLogoUrl} getCompanyName={getCompanyName} />
+      <ChatWidget /> {/* <-- add this */}
+    </>
+  );
+}
+
+
 
   /** 🔒 Onboarding shell — show onboarding routes OR if onboarding not yet completed */
   const isOnboardingRoute = location.pathname.toLowerCase().startsWith("/onboarding");
