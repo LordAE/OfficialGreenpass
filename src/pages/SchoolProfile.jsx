@@ -1,18 +1,19 @@
+// src/pages/SchoolProfile.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { School } from '@/api/entities';
-import { User } from '@/api/entities';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { UploadFile } from '@/api/integrations';
-import { Building, Save, Upload, Globe, MapPin, Calendar, Star, Loader2, Image } from 'lucide-react';
+import { Building, Save, Upload, Loader2 } from 'lucide-react';
+
+/* ---------- Firebase ---------- */
+import { db, auth } from "@/firebase";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 export default function SchoolProfile() { 
-  const [school, setSchool] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     school_level: 'University',
@@ -34,43 +35,44 @@ export default function SchoolProfile() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  const toNum = (v) => (v === '' || v === null || v === undefined ? 0 : Number(v));
+
   const loadSchoolData = useCallback(async () => {
     setLoading(true);
     try {
-      const currentUser = await User.me();
-      const schoolData = await School.filter({ user_id: currentUser.id });
-      
-      if (schoolData.length > 0) {
-        const schoolRecord = schoolData[0];
-        setSchool(schoolRecord);
+      const uid = auth.currentUser?.uid;
+      if (!uid) { setLoading(false); return; }
+
+      const ref = doc(db, "school_profiles", uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data();
         setFormData({
-          name: schoolRecord.name || '',
-          school_level: schoolRecord.school_level || 'University',
-          location: schoolRecord.location || '',
-          province: schoolRecord.province || '',
-          country: schoolRecord.country || '',
-          founded_year: schoolRecord.founded_year || new Date().getFullYear(),
-          address: schoolRecord.address || '',
-          about: schoolRecord.about || '',
-          website: schoolRecord.website || '',
-          image_url: schoolRecord.image_url || '',
-          rating: schoolRecord.rating || 0,
-          acceptance_rate: schoolRecord.acceptance_rate || 0,
-          tuition_fees: schoolRecord.tuition_fees || 0,
-          application_fee: schoolRecord.application_fee || 0,
-          cost_of_living: schoolRecord.cost_of_living || 0
+          name: d.name || '',
+          school_level: d.school_level || 'University',
+          location: d.location || '',
+          province: d.province || '',
+          country: d.country || '',
+          founded_year: d.founded_year || new Date().getFullYear(),
+          address: d.address || '',
+          about: d.about || '',
+          website: d.website || '',
+          image_url: d.image_url || '',
+          rating: d.rating || 0,
+          acceptance_rate: d.acceptance_rate || 0,
+          tuition_fees: d.tuition_fees || 0,
+          application_fee: d.application_fee || 0,
+          cost_of_living: d.cost_of_living || 0
         });
       }
     } catch (error) {
-      console.error("Error loading school data:", error);
+      console.error("Error loading school profile:", error);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadSchoolData();
-  }, [loadSchoolData]);
+  useEffect(() => { loadSchoolData(); }, [loadSchoolData]);
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -79,7 +81,6 @@ export default function SchoolProfile() {
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setUploading(true);
     try {
       const { file_url } = await UploadFile({ file });
@@ -95,12 +96,27 @@ export default function SchoolProfile() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (school) {
-        await School.update(school.id, formData);
-      } else {
-        const currentUser = await User.me();
-        await School.create({ ...formData, user_id: currentUser.id });
-      }
+      const uid = auth.currentUser?.uid;
+      if (!uid) throw new Error("Not signed in");
+
+      const ref = doc(db, "school_profiles", uid);
+      const existing = await getDoc(ref);
+
+      const sanitized = {
+        ...formData,
+        user_id: uid,
+        founded_year: toNum(formData.founded_year),
+        rating: toNum(formData.rating),
+        acceptance_rate: toNum(formData.acceptance_rate),
+        tuition_fees: toNum(formData.tuition_fees),
+        application_fee: toNum(formData.application_fee),
+        cost_of_living: toNum(formData.cost_of_living),
+        updated_at: serverTimestamp(),
+        ...(existing.exists() ? {} : { created_at: serverTimestamp() })
+      };
+
+      // Upsert into school_profiles/{uid}
+      await setDoc(ref, sanitized, { merge: true });
       await loadSchoolData();
       alert("Profile updated successfully!");
     } catch (error) {
@@ -149,9 +165,7 @@ export default function SchoolProfile() {
                     value={formData.school_level}
                     onValueChange={(value) => handleInputChange('school_level', value)}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="University">University</SelectItem>
                       <SelectItem value="College">College</SelectItem>
@@ -206,7 +220,7 @@ export default function SchoolProfile() {
                     id="founded_year"
                     type="number"
                     value={formData.founded_year}
-                    onChange={(e) => handleInputChange('founded_year', parseInt(e.target.value))}
+                    onChange={(e) => handleInputChange('founded_year', e.target.value)}
                   />
                 </div>
                 <div>
@@ -285,7 +299,7 @@ export default function SchoolProfile() {
                     id="tuition_fees"
                     type="number"
                     value={formData.tuition_fees}
-                    onChange={(e) => handleInputChange('tuition_fees', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => handleInputChange('tuition_fees', e.target.value)}
                   />
                 </div>
                 <div>
@@ -294,7 +308,7 @@ export default function SchoolProfile() {
                     id="application_fee"
                     type="number"
                     value={formData.application_fee}
-                    onChange={(e) => handleInputChange('application_fee', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => handleInputChange('application_fee', e.target.value)}
                   />
                 </div>
                 <div>
@@ -303,7 +317,7 @@ export default function SchoolProfile() {
                     id="cost_of_living"
                     type="number"
                     value={formData.cost_of_living}
-                    onChange={(e) => handleInputChange('cost_of_living', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => handleInputChange('cost_of_living', e.target.value)}
                   />
                 </div>
               </div>
@@ -326,7 +340,7 @@ export default function SchoolProfile() {
                     min="0"
                     max="5"
                     value={formData.rating}
-                    onChange={(e) => handleInputChange('rating', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => handleInputChange('rating', e.target.value)}
                   />
                 </div>
                 <div>
@@ -337,7 +351,7 @@ export default function SchoolProfile() {
                     min="0"
                     max="100"
                     value={formData.acceptance_rate}
-                    onChange={(e) => handleInputChange('acceptance_rate', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => handleInputChange('acceptance_rate', e.target.value)}
                   />
                 </div>
               </div>

@@ -1,12 +1,10 @@
-
-import React, { useState, useEffect } from 'react';
+// src/pages/SchoolDashboard.jsx
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { School } from '@/api/entities';
-import { Reservation } from '@/api/entities';
-import { User } from '@/api/entities';
-import { Building, Users, BookOpen, DollarSign, TrendingUp, Calendar, ArrowRight, Plus, Eye } from 'lucide-react';
+import { School, Reservation, User } from '@/api/entities';
+import { Building, Users, BookOpen, DollarSign, TrendingUp, Calendar, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { format } from 'date-fns';
@@ -49,58 +47,98 @@ const QuickLink = ({ title, description, to, icon }) => (
 );
 
 export default function SchoolDashboard({ user }) {
+  const ownerId = user?.id || user?.uid || null;
+
   const [stats, setStats] = useState({
     totalPrograms: 0,
     totalLeads: 0,
     confirmedReservations: 0,
     totalRevenue: 0,
-    availableSeats: 0
+    availableSeats: 0,
   });
   const [recentLeads, setRecentLeads] = useState([]);
   const [school, setSchool] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [permError, setPermError] = useState(false);
 
   useEffect(() => {
-    const loadDashboardData = async () => {
+    if (!ownerId) return;
+
+    let cancelled = false;
+    (async () => {
       try {
-        const schoolData = await School.filter({ user_id: user.id });
-        if (schoolData.length > 0) {
-          const schoolRecord = schoolData[0];
-          setSchool(schoolRecord);
-          
-          const programs = schoolRecord.programs || [];
-          const reservations = await Reservation.filter({ school_id: schoolRecord.id });
-          
-          // Get recent leads
-          const recent = reservations.slice(0, 5);
-          if (recent.length > 0) {
-            const studentIds = [...new Set(recent.map(r => r.student_id))];
-            const studentsData = await User.filter({ id: { $in: studentIds } });
-            const studentsMap = studentsData.reduce((acc, s) => {
-              acc[s.id] = s;
-              return acc;
-            }, {});
-            
-            setRecentLeads(recent.map(r => ({ ...r, student: studentsMap[r.student_id] })));
-          }
-          
-          setStats({
-            totalPrograms: programs.length,
-            totalLeads: reservations.length,
-            confirmedReservations: reservations.filter(r => r.status === 'confirmed').length,
-            totalRevenue: reservations.filter(r => r.status === 'confirmed').reduce((sum, r) => sum + (r.amount_usd || 0), 0),
-            availableSeats: programs.reduce((sum, p) => sum + (p.available_seats || 0), 0)
-          });
+        setLoading(true);
+
+        // 1) Find the school owned by this user
+        const schoolRows = await School.filter({ user_id: ownerId });
+        if (!schoolRows?.length) {
+          if (!cancelled) setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error("Error loading dashboard data:", error);
+        const s = schoolRows[0];
+        if (cancelled) return;
+        setSchool(s);
+
+        // 2) Programs are often embedded on the school record
+        const programs = Array.isArray(s.programs) ? s.programs : [];
+        const availableSeats = programs.reduce(
+          (sum, p) => sum + (p.available_seats ?? p.open_seats ?? 0),
+          0
+        );
+
+        // 3) Get reservations/leads for this school
+        let reservations = [];
+        try {
+          reservations = await Reservation.filter({ school_id: s.id });
+        } catch (e) {
+          // If rules block us, show a friendly note on the page
+          console.error("Reservations read error:", e);
+          setPermError(true);
+          reservations = [];
+        }
+
+        // Sort newest first and keep just a few for the widget
+        const sorted = [...reservations].sort((a, b) => {
+          const da = new Date(a.created_at || a.created_date || 0).getTime();
+          const db = new Date(b.created_at || b.created_date || 0).getTime();
+          return db - da;
+        });
+        const recent = sorted.slice(0, 5);
+
+        // Try to enrich with student names, but ignore failures
+        try {
+          const studentIds = [...new Set(recent.map(r => r.student_id).filter(Boolean))];
+          if (studentIds.length) {
+            // Your entity helper may support "in" queries; if not, do nothing.
+            const users = await User.filter({ id: { $in: studentIds } });
+            const map = Object.fromEntries(users.map(u => [u.id, u]));
+            recent.forEach(r => { r.student = map[r.student_id]; });
+          }
+        } catch (e) {
+          // Not fatal; we can still render using contact_name / student_name
+          console.warn("User lookup skipped:", e);
+        }
+
+        const confirmed = reservations.filter(r => r.status === 'confirmed');
+        if (cancelled) return;
+        setRecentLeads(recent);
+        setStats({
+          totalPrograms: programs.length,
+          totalLeads: reservations.length,
+          confirmedReservations: confirmed.length,
+          totalRevenue: confirmed.reduce((sum, r) => sum + (r.amount_usd ?? r.amount ?? 0), 0),
+          availableSeats,
+        });
+      } catch (e) {
+        console.error("Error loading dashboard data:", e);
+        if (e?.code === 'permission-denied') setPermError(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    };
-    
-    loadDashboardData();
-  }, [user.id]);
+    })();
+
+    return () => { cancelled = true; };
+  }, [ownerId]);
 
   if (loading) {
     return (
@@ -122,48 +160,62 @@ export default function SchoolDashboard({ user }) {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">School Dashboard</h1>
-          <p className="text-gray-600 mt-1 text-sm sm:text-base">Welcome to {school?.name || 'your school'}</p>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">
+            Welcome to {school?.name || 'your school'}
+          </p>
         </div>
-        <Badge variant={school?.verification_status === 'verified' ? 'default' : 'secondary'} className={`self-start sm:self-center ${
-          school?.verification_status === 'verified' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-        }`}>
+        <Badge
+          variant={school?.verification_status === 'verified' ? 'default' : 'secondary'}
+          className={`self-start sm:self-center ${
+            school?.verification_status === 'verified'
+              ? 'bg-green-100 text-green-800'
+              : 'bg-yellow-100 text-yellow-800'
+          }`}
+        >
           {school?.verification_status || 'pending'}
         </Badge>
       </div>
-      
+
+      {permError && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-800">
+          Heads up, some data couldn’t be loaded due to Firestore permissions. Apply the rule
+          changes I listed above and refresh.
+        </div>
+      )}
+
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard 
-          title="Programs" 
-          value={stats.totalPrograms} 
-          icon={<BookOpen className="h-6 w-6 text-blue-200" />} 
+        <StatCard
+          title="Programs"
+          value={stats.totalPrograms}
+          icon={<BookOpen className="h-6 w-6 text-blue-200" />}
           to={createPageUrl('SchoolPrograms')}
           color="text-blue-600"
         />
-        <StatCard 
-          title="Leads" 
-          value={stats.totalLeads} 
-          icon={<Users className="h-6 w-6 text-green-200" />} 
+        <StatCard
+          title="Leads"
+          value={stats.totalLeads}
+          icon={<Users className="h-6 w-6 text-green-200" />}
           to={createPageUrl('SchoolLeads')}
           color="text-green-600"
         />
-        <StatCard 
-          title="Reservations" 
-          value={stats.confirmedReservations} 
-          icon={<Calendar className="h-6 w-6 text-purple-200" />} 
+        <StatCard
+          title="Reservations"
+          value={stats.confirmedReservations}
+          icon={<Calendar className="h-6 w-6 text-purple-200" />}
           to={createPageUrl('SchoolLeads')}
           color="text-purple-600"
         />
-        <StatCard 
-          title="Open Seats" 
-          value={stats.availableSeats} 
-          icon={<TrendingUp className="h-6 w-6 text-orange-200" />} 
+        <StatCard
+          title="Open Seats"
+          value={stats.availableSeats}
+          icon={<TrendingUp className="h-6 w-6 text-orange-200" />}
           to={createPageUrl('SchoolPrograms')}
           color="text-orange-600"
         />
-        <StatCard 
-          title="Revenue" 
-          value={`$${stats.totalRevenue.toLocaleString()}`} 
-          icon={<DollarSign className="h-6 w-6 text-emerald-200" />} 
+        <StatCard
+          title="Revenue"
+          value={`$${Number(stats.totalRevenue || 0).toLocaleString()}`}
+          icon={<DollarSign className="h-6 w-6 text-emerald-200" />}
           color="text-emerald-600"
         />
       </div>
@@ -176,18 +228,24 @@ export default function SchoolDashboard({ user }) {
           <CardContent>
             {recentLeads.length > 0 ? (
               <div className="space-y-3">
-                {recentLeads.map(lead => (
-                  <div key={lead.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">{lead.student?.full_name || 'Unknown Student'}</p>
-                      <p className="text-sm text-gray-600">{lead.program_name}</p>
-                      <p className="text-xs text-gray-500">{format(new Date(lead.created_date), 'MMM dd, yyyy')}</p>
+                {recentLeads.map((lead) => {
+                  const created = lead.created_at || lead.created_date;
+                  const when = created ? format(new Date(created), 'MMM dd, yyyy') : '';
+                  const name =
+                    lead.student?.full_name || lead.contact_name || lead.student_name || 'Unknown Student';
+                  return (
+                    <div key={lead.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-medium">{name}</p>
+                        <p className="text-sm text-gray-600">{lead.program_name}</p>
+                        {when && <p className="text-xs text-gray-500">{when}</p>}
+                      </div>
+                      <Badge variant={lead.status === 'confirmed' ? 'default' : 'secondary'}>
+                        {lead.status || 'pending'}
+                      </Badge>
                     </div>
-                    <Badge variant={lead.status === 'confirmed' ? 'default' : 'secondary'}>
-                      {lead.status}
-                    </Badge>
-                  </div>
-                ))}
+                  );
+                })}
                 <Link to={createPageUrl('SchoolLeads')}>
                   <Button variant="outline" className="w-full">
                     View All Leads <ArrowRight className="w-4 h-4 ml-2" />
