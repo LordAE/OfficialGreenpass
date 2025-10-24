@@ -199,27 +199,54 @@ const C = {
 // Events: lookup by natural key `event_id` first, then by doc id
 const EventEntity = makeEntity(C.Event, { idField: "event_id" });
 
-// EventRegistration: add default timestamps/status
+/**
+ * EventRegistration:
+ * Create MUST ONLY write the keys allowed by Firestore rules.
+ * (No implicit status/updated_at, no client clock created_at override.)
+ */
+const ALLOWED_EVENT_REG_CREATE_KEYS = [
+  "event_id",
+  "role",
+  "contact_name",
+  "contact_email",
+  "phone",
+  "organization_name",
+  "guest_country",
+  "amount_usd",
+  "amount_cad",
+  "fx_rate",
+  "is_guest_registration",
+  "reservation_code",
+  "created_at",
+  "user_id",
+  "extra", // <— allow dynamic fields map to persist
+];
+
+function pickAllowedEventReg(payload) {
+  const out = {};
+  for (const k of ALLOWED_EVENT_REG_CREATE_KEYS) {
+    if (payload[k] !== undefined) out[k] = payload[k];
+  }
+  if (!out.user_id) delete out.user_id; // guest path
+  return out;
+}
+
 const EventRegistrationEntity = {
   ...makeEntity(C.EventRegistration),
   async create(payload) {
-    const now = new Date().toISOString();
-    return await createIn(C.EventRegistration, {
-      status: "unpaid",
-      created_at: now,          // NOTE: if your rules require request.time, adjust rules or set serverTimestamp in a CF.
-      updated_at: now,
-      ...payload,
-    });
+    // Only send keys permitted by security rules.
+    const toSave = pickAllowedEventReg(payload);
+    // Optional: debug what we actually write (helps when rules reject)
+    // eslint-disable-next-line no-console
+    console.debug("[EventRegistration.create] toSave =", toSave);
+    return await createIn(C.EventRegistration, toSave);
   },
   async update(id, patch) {
-    return await updateIn(C.EventRegistration, id, {
-      ...patch,
-      updated_at: new Date().toISOString(),
-    });
+    return await updateIn(C.EventRegistration, id, { ...patch });
   },
 };
 
-// Payment: timestamp defaults
+// Payment: timestamp defaults (keep as-is; aligns with your rules)
 const PaymentEntity = {
   ...makeEntity(C.Payment),
   async create(payload) {

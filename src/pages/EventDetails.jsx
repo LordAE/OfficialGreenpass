@@ -17,13 +17,14 @@ import { format } from "date-fns";
 import YouTubeEmbed from "../components/YouTubeEmbed";
 import Countdown from "../components/events/Countdown";
 import DynamicRegistrationForm from "@/components/events/DynamicRegistrationForm";
-import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway"; // <-- your PayPal-only component
+import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway"; // PayPal-only component
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createPageUrl } from "@/utils";
 
 /* ---------- Entities / Emails ---------- */
 import { User, BankSettings, EventRegistration, Payment } from "@/api/entities";
 import { sendEventRegistrationInvoice } from "@/components/utils/invoiceSender";
+import { sendEventRegistrationConfirmation } from "@/components/utils/eventEmailSender";
 
 /* ---------- Firebase ---------- */
 import { db } from "@/firebase";
@@ -72,7 +73,16 @@ function parseZonedLocalToDate(raw, timeZone) {
   const [y, m, d] = datePart.split("-").map((x) => parseInt(x, 10));
   const [hh, mm = "00", ss = "00"] = timePart.split(":");
 
-  const asUTC = new Date(Date.UTC(y, (m || 1) - 1, d || 1, parseInt(hh ?? "0", 10), parseInt(mm ?? "0", 10), parseInt(ss ?? "0", 10)));
+  const asUTC = new Date(
+    Date.UTC(
+      y,
+      (m || 1) - 1,
+      d || 1,
+      parseInt(hh ?? "0", 10),
+      parseInt(mm ?? "0", 10),
+      parseInt(ss ?? "0", 10)
+    )
+  );
 
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -119,6 +129,22 @@ function toTargetInstant(targetDate, timeZone) {
   return null;
 }
 const normalizeTs = (v) => (v && typeof v.toDate === "function" ? v.toDate() : v);
+
+// Build a lightweight, guest-safe payload to show on Success page without Firestore reads
+const makeSuccessPayload = ({ event, registration, tier }) => ({
+  event_id: event?.event_id || event?.id,
+  event_title: event?.title,
+  starts_at: event?.start,
+  location: event?.location,
+  registration_id: registration?.id,
+  reservation_code: registration?.reservation_code,
+  contact_name: registration?.contact_name,
+  contact_email: registration?.contact_email,
+  role: tier?.role,
+  tier_name: tier?.name,
+  amount_usd: Number(tier?.price_usd ?? 0),
+  payment_method: Number(tier?.price_usd ?? 0) > 0 ? "paypal" : "free",
+});
 
 export default function EventDetails() {
   const [event, setEvent] = useState(null);
@@ -239,11 +265,18 @@ export default function EventDetails() {
   const isPastEvent = !!startInstant && startInstant < now;
 
   // ---------- Payment helpers (popup, PayPal-only) ----------
-  const createPaymentRecord = async (registration, method, status, transactionId, receiptUrl, paymentDetails) => {
+  const createPaymentRecord = async (
+    registration,
+    method,
+    status,
+    transactionId,
+    receiptUrl,
+    paymentDetails
+  ) => {
     const payload = prune({
       related_entity_id: registration.id,
       related_entity_type: "event_registration",
-      provider: method, // 'paypal'
+      provider: method, // 'paypal' | 'free'
       amount_usd: registration.amount_usd,
       amount_cad: registration.amount_cad,
       fx_rate: registration.fx_rate,
@@ -252,6 +285,7 @@ export default function EventDetails() {
       receipt_url: receiptUrl || null,
       payer_name: registration.contact_name,
       payer_email: registration.contact_email,
+      ...(paymentDetails ? { payment_details: paymentDetails } : {}),
       ...(currentUser && { user_id: currentUser.id }),
     });
 
@@ -282,6 +316,7 @@ export default function EventDetails() {
         payment_date: new Date().toISOString(),
         transaction_id: transactionId,
         payment_id: newPayment.id,
+        is_verified: true, 
       });
 
       try {
@@ -302,6 +337,56 @@ export default function EventDetails() {
       );
     } finally {
       setPageBusy(false);
+    }
+  };
+
+  // ---------- FREE TIER: auto-confirm (skip payment), email, and go to Success ----------
+  const finalizeFreeRegistration = async (registration, tier) => {
+    // This is now a fallback. Ideally the form already created a PAID/FREE registration.
+    try {
+      const finalReg = await EventRegistration.update(registration.id, {
+        status: "paid",
+        payment_method: "free",
+        payment_date: new Date().toISOString(),
+        transaction_id: null,
+        amount_usd: 0,
+        amount_cad: 0,
+      });
+
+      try {
+        await createPaymentRecord(
+          { ...finalReg, amount_usd: 0, amount_cad: 0 },
+          "free",
+          "successful",
+          null,
+          null,
+          { note: "Auto-confirmed free registration (fallback)" }
+        );
+      } catch (e) {
+        console.warn("Free payment record creation failed:", e);
+      }
+
+      try {
+        await sendEventRegistrationConfirmation(finalReg, event, {
+          amount_usd: 0,
+          provider: "free",
+        });
+        await EventRegistration.update(finalReg.id, { qr_email_sent: true });
+      } catch (e) {
+        console.warn("Free confirmation email failed:", e);
+      }
+
+      const payload = makeSuccessPayload({ event, registration: finalReg, tier });
+      let encoded = "";
+      try { encoded = btoa(JSON.stringify(payload)); } catch {}
+      const successUrlBase = createPageUrl("EventRegistrationSuccess");
+      const successUrl = encoded
+        ? `${successUrlBase}?registrationId=${finalReg.id}&p=${encodeURIComponent(encoded)}`
+        : `${successUrlBase}?registrationId=${finalReg.id}`;
+      navigate(successUrl, { state: { payload } });
+    } catch (err) {
+      console.error("Error finalizing free registration:", err);
+      setRegistrationError(err.message || "Failed to finalize your free registration. Please contact support.");
     }
   };
 
@@ -336,7 +421,7 @@ export default function EventDetails() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <Button
             variant="ghost"
-            onClick={() => navigate(-1)}
+            onClick={handleBackClick}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -401,8 +486,8 @@ export default function EventDetails() {
                 <div className="text-center">
                   <h3 className="text-xl font-semibold mb-4 text-gray-900">Event Countdown</h3>
                   <Countdown
-                    targetDate={normalizeTs(event.start)}   // Date | string | timestamp
-                    timeZone={event.timezone}                // e.g., "Asia/Ho_Chi_Minh"
+                    targetDate={normalizeTs(event.start)} // Date | string | timestamp
+                    timeZone={event.timezone} // e.g., "Asia/Ho_Chi_Minh"
                   />
                 </div>
               </div>
@@ -480,9 +565,25 @@ export default function EventDetails() {
                         selectedTier={selectedTier}
                         currentUser={currentUser}
                         fxRate={fxRate}
-                        onRegistrationComplete={(registration) => {
-                          setCreatedRegistration(registration);
-                          setShowPaymentModal(true); // open popup for PayPal
+                        onRegistrationComplete={async (registration) => {
+                        setCreatedRegistration(registration);
+                        const price = Number(selectedTier?.price_usd ?? 0);
+
+                        if (price <= 0) {
+                        // Registration was created as paid/free in a single write; just go to success.
+                        const payload = makeSuccessPayload({ event, registration, tier: selectedTier });
+                        let encoded = '';
+                        try { encoded = btoa(JSON.stringify(payload)); } catch {}
+                        const base = createPageUrl('EventRegistrationSuccess');
+                        const url = encoded
+                        ? `${base}?registrationId=${registration.id}&p=${encodeURIComponent(encoded)}`
+                        : `${base}?registrationId=${registration.id}`;
+                        navigate(url, { state: { payload } });
+                        return;
+                        }
+
+                        // Paid tiers go to payment
+                        setShowPaymentModal(true);
                         }}
                       />
                     </>
@@ -657,7 +758,7 @@ export default function EventDetails() {
       </div>
 
       {/* ===== Payment Popup Modal (contains PayPal component; PayPal opens its own popup) ===== */}
-      {showPaymentModal && createdRegistration && (
+      {showPaymentModal && createdRegistration && Number(selectedTier?.price_usd ?? 0) > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" aria-modal="true" role="dialog">
           {/* Backdrop */}
           <div

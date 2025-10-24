@@ -1,5 +1,5 @@
 // src/components/events/DynamicRegistrationForm.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,32 +7,72 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CountrySelector from '@/components/CountrySelector';
 import { Loader2 } from 'lucide-react';
-import { EventRegistration } from '@/api/entities';
-import { serverTimestamp } from 'firebase/firestore';
 
-const DynamicRegistrationForm = ({ event, selectedTier, currentUser, onRegistrationComplete, fxRate }) => {
+// ⬇️ Firestore (write-only)
+import { serverTimestamp, addDoc, collection } from 'firebase/firestore';
+import { db } from '@/firebase'; // keep same path you use elsewhere
+
+/* =========================
+   Required fields & helpers
+========================= */
+const REQUIRED_FIELDS = [
+  { field_key: 'contact_name',  label: 'Full Name', field_type: 'text',  required: true, placeholder: 'John Doe' },
+  { field_key: 'contact_email', label: 'Email',     field_type: 'email', required: true, placeholder: 'name@example.com' },
+];
+
+const ALLOWED_PAYLOAD_KEYS = new Set([
+  'event_id','role','contact_name','contact_email',
+  'amount_usd','amount_cad','fx_rate',
+  'is_guest_registration','reservation_code','created_at',
+  'user_id','extra', 'is_verified',
+  'status','payment_method','payment_date',
+]);
+
+const ensureRequired = (fields = []) => {
+  const have = new Set(fields.map((f) => f.field_key));
+  const need = REQUIRED_FIELDS.filter((r) => !have.has(r.field_key));
+  return [...need, ...fields];
+};
+
+const normalizeField = (f) => ({
+  field_key: f.field_key,
+  label: f.label ?? '',
+  field_type: f.field_type ?? 'text',
+  required: !!f.required,
+  placeholder: f.placeholder ?? '',
+  options: Array.isArray(f.options) ? f.options : undefined,
+});
+
+const DynamicRegistrationForm = ({
+  event,
+  selectedTier,
+  currentUser,
+  onRegistrationComplete,
+  fxRate,
+}) => {
+  const formFields = useMemo(() => {
+    const incoming = Array.isArray(event?.registration_form_fields)
+      ? event.registration_form_fields
+      : [];
+    return ensureRequired(incoming).map(normalizeField);
+  }, [event?.registration_form_fields]);
+
   const [formData, setFormData] = useState({
     contact_name: '',
     contact_email: '',
-    phone: '',
-    organization_name: '',
-    guest_country: 'Canada',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  /* ---------------------------
-     Prefill from currentUser
-  ---------------------------- */
   useEffect(() => {
     if (currentUser) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        contact_name: currentUser.full_name || '',
-        contact_email: currentUser.email || '',
-        phone: currentUser.phone || '',
-        organization_name: '',
-        guest_country: currentUser.country || 'Canada',
+        contact_name: currentUser.full_name || prev.contact_name || '',
+        contact_email: currentUser.email || prev.contact_email || '',
+        phone: currentUser.phone || prev.phone || '',
+        organization_name: prev.organization_name || '',
+        guest_country: currentUser.country || prev.guest_country || '',
       }));
     } else {
       setFormData({
@@ -40,24 +80,25 @@ const DynamicRegistrationForm = ({ event, selectedTier, currentUser, onRegistrat
         contact_email: '',
         phone: '',
         organization_name: '',
-        guest_country: 'Canada',
+        guest_country: '',
       });
     }
   }, [currentUser]);
 
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const handleChange = (field, value) => setFormData((p) => ({ ...p, [field]: value }));
 
-  /* ---------------------------
-     Minimal client validation
-  ---------------------------- */
   const validate = () => {
     if (!formData.contact_name?.trim()) return 'Please enter your name.';
     if (!formData.contact_email?.trim()) return 'Please enter your email.';
-    // very light email shape check
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(formData.contact_email)) return 'Please enter a valid email.';
-    if (!formData.guest_country?.trim()) return 'Please select your country.';
+    for (const f of formFields) {
+      if (f.required) {
+        const v = formData[f.field_key];
+        if (v === undefined || v === null || String(v).trim() === '') {
+          return `Please fill out: ${f.label || f.field_key}.`;
+        }
+      }
+    }
     return '';
   };
 
@@ -68,45 +109,54 @@ const DynamicRegistrationForm = ({ event, selectedTier, currentUser, onRegistrat
     if (v) { setError(v); return; }
 
     setLoading(true);
-
     try {
-      const priceUsd = Number((selectedTier && selectedTier.price_usd) || 0);
+      const priceUsd = Number(selectedTier?.price_usd || 0);
       const rate = Number(fxRate || 1);
-      const amountUsd = Number(priceUsd.toFixed(2));
-      const amountCad = Number((priceUsd * rate).toFixed(2));
+      const isFree = priceUsd <= 0;
 
-      // Generate a readable unique reservation code
-      const shortEvent = String(event?.event_id || event?.id || 'EVT').slice(-4).padStart(4, '0');
-      const rand = Math.floor(100000 + Math.random() * 900000); // 6 digits
-      const reservationCode = `EVT-${shortEvent}-${rand}`;
+      const amountUsd = isFree ? 0 : Number(priceUsd.toFixed(2));
+      const amountCad = isFree ? 0 : Number((priceUsd * rate).toFixed(2));
 
-      // ⚠️ IMPORTANT: Write ONLY the fields your Firestore rules allow.
-      // (No arbitrary extra fields; rules use .hasOnly([...]))
+      const eventIdStr = String(event?.event_id ?? event?.id ?? '');
+      const shortEvent = eventIdStr.slice(-4).padStart(4, '0');
+      const rand = Math.floor(100000 + Math.random() * 900000);
+      const reservationCode = `EVT-${shortEvent || '0000'}-${rand}`;
+
       const base = {
-        event_id: String(event?.event_id ?? event?.id ?? ''),
-        role: String((selectedTier && selectedTier.key) || 'attendee'),
+        event_id: eventIdStr,
+        role: String(selectedTier?.role ?? selectedTier?.key ?? selectedTier?.id ?? 'attendee'),
         contact_name: formData.contact_name || '',
         contact_email: formData.contact_email || '',
-        phone: formData.phone || '',
-        organization_name: formData.organization_name || '',
-        guest_country: formData.guest_country || 'Canada',
         amount_usd: amountUsd,
         amount_cad: amountCad,
         fx_rate: rate,
         is_guest_registration: !currentUser,
+        is_verified: false,
         reservation_code: reservationCode,
-        created_at: serverTimestamp(), // ✅ required by your rules (created_at == request.time)
+        created_at: serverTimestamp(),
+        ...(currentUser?.uid || currentUser?.id ? { user_id: currentUser.uid || currentUser.id } : {}),
+        ...(isFree
+          ? { status: 'paid', payment_method: 'free', payment_date: new Date().toISOString() }
+          : { status: 'created' }),
       };
 
-      // Only include user_id if signed in (rules require it to equal auth.uid)
-      const payload = (currentUser && currentUser.uid)
-        ? { ...base, user_id: currentUser.uid }
-        : base;
+      const extra = {};
+      for (const f of formFields) {
+        const k = f.field_key;
+        if (!ALLOWED_PAYLOAD_KEYS.has(k)) {
+          const val = formData[k];
+          if (val !== undefined && val !== null && String(val).trim() !== '') extra[k] = val;
+        }
+      }
+      if (Object.keys(extra).length) base.extra = extra;
 
-      const newRegistration = await EventRegistration.create(payload);
+      const payload = Object.fromEntries(Object.entries(base).filter(([k]) => ALLOWED_PAYLOAD_KEYS.has(k)));
+
+      const docRef = await addDoc(collection(db, 'event_registrations'), payload);
 
       if (typeof onRegistrationComplete === 'function') {
-        onRegistrationComplete(newRegistration);
+        // ⬇️ Return full payload so caller can skip any follow-up updates
+        onRegistrationComplete({ id: docRef.id, ...payload });
       }
     } catch (err) {
       console.error('Registration failed:', err);
@@ -116,16 +166,11 @@ const DynamicRegistrationForm = ({ event, selectedTier, currentUser, onRegistrat
     }
   };
 
-  /* ---------------------------
-     Dynamic field renderer
-     (UI-only; we DO NOT write
-     unknown fields to Firestore)
-  ---------------------------- */
   const renderField = (field) => {
     const key = field.field_key;
     const commonProps = {
       id: key,
-      value: formData[key] ?? '',
+      value: String(formData[key] ?? ''),
       onChange: (e) => handleChange(key, e.target.value),
       placeholder: field.placeholder,
       required: !!field.required,
@@ -141,14 +186,11 @@ const DynamicRegistrationForm = ({ event, selectedTier, currentUser, onRegistrat
         return <Textarea {...commonProps} />;
       case 'select':
         return (
-          <Select
-            onValueChange={(value) => handleChange(key, value)}
-            value={String(formData[key] ?? '')}
-          >
+          <Select value={String(formData[key] ?? '')} onValueChange={(v) => handleChange(key, v)}>
             <SelectTrigger><SelectValue placeholder={field.placeholder} /></SelectTrigger>
             <SelectContent>
               {(field.options || []).map((opt) => (
-                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                <SelectItem key={String(opt)} value={String(opt)}>{String(opt)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -156,28 +198,29 @@ const DynamicRegistrationForm = ({ event, selectedTier, currentUser, onRegistrat
       case 'country':
         return (
           <CountrySelector
-            onCountryChange={(value) => handleChange(key, value)}
+            onCountryChange={(v) => handleChange(key, v)}
             defaultCountry={formData[key] || 'Canada'}
           />
         );
       default:
-        return null;
+        return <Input {...commonProps} type="text" />;
     }
   };
 
+  const priceUsd = Number(selectedTier?.price_usd || 0);
+  const submitLabel = priceUsd > 0 ? 'Proceed to Payment' : 'Complete Registration';
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {(event?.registration_form_fields || []).map((field) => (
-        <div key={field.field_key}>
+      {formFields.map((field) => (
+        <div key={field.field_key} className="space-y-1">
           <Label htmlFor={field.field_key}>{field.label}</Label>
           {renderField(field)}
         </div>
       ))}
-
       {error && <p className="text-red-500 text-sm">{error}</p>}
-
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? <Loader2 className="animate-spin" /> : 'Proceed to Payment'}
+        {loading ? <Loader2 className="animate-spin" /> : submitLabel}
       </Button>
     </form>
   );

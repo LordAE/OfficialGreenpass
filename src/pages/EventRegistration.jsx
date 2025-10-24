@@ -49,6 +49,22 @@ const prune = (val) => {
   return val;
 };
 
+// Build a lightweight, guest-safe payload to show on Success page without Firestore reads
+const makeSuccessPayload = ({ event, registration, tier }) => ({
+  event_id: event?.event_id || event?.id,
+  event_title: event?.title,
+  starts_at: event?.start,
+  location: event?.location,
+  registration_id: registration?.id,
+  reservation_code: registration?.reservation_code,
+  contact_name: registration?.contact_name,
+  contact_email: registration?.contact_email,
+  role: tier?.role,
+  tier_name: tier?.name,
+  amount_usd: Number(tier?.price_usd ?? 0),
+  payment_method: Number(tier?.price_usd ?? 0) > 0 ? 'paypal' : 'free',
+});
+
 export default function EventRegistrationPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -142,7 +158,7 @@ export default function EventRegistrationPage() {
     const payload = prune({
       related_entity_id: registration.id,
       related_entity_type: 'event_registration',
-      provider: method, // 'paypal' | 'bank_transfer' | 'etransfer'
+      provider: method, // 'paypal' | 'bank_transfer' | 'etransfer' | 'free'
       amount_usd: registration.amount_usd,
       amount_cad: registration.amount_cad,
       fx_rate: registration.fx_rate,
@@ -253,6 +269,69 @@ export default function EventRegistrationPage() {
     } catch (err) {
       console.error('Error processing bank transfer:', err);
       setRegistrationError(err.message || getText('Failed to submit payment. Please try again.'));
+    } finally {
+      setPageBusy(false);
+    }
+  };
+
+  // ---------- FREE TIER: auto-confirm (skip payment), email, and go to Success ----------
+  const finalizeFreeRegistration = async (registration, tier) => {
+    setPageBusy(true);
+    setRegistrationError(null);
+
+    try {
+      // Mark as paid with "free" method
+      const finalReg = await EventRegistration.update(registration.id, {
+        status: 'paid',
+        payment_method: 'free',
+        payment_date: new Date().toISOString(),
+        transaction_id: null,
+      });
+
+      // Optional: also create a zero-amount payment record for audit trails
+      try {
+        await createPaymentRecord(
+          { ...finalReg, amount_usd: 0, amount_cad: 0 },
+          'free',
+          'successful',
+          null,
+          null,
+          { note: 'Auto-confirmed free registration' }
+        );
+      } catch (e) {
+        // Not fatal; keep going
+        console.warn('Free payment record creation failed:', e);
+      }
+
+      // Send confirmation email (no invoice for free)
+      try {
+        await sendEventRegistrationConfirmation(finalReg, event, {
+          amount_usd: 0,
+          provider: 'free'
+        });
+        await EventRegistration.update(finalReg.id, { qr_email_sent: true });
+      } catch (e) {
+        console.warn('Free confirmation email failed:', e);
+      }
+
+      // Build a guest-safe payload and pass via both router state and base64 query (?p=...) so refresh still shows details
+      const payload = makeSuccessPayload({ event, registration: finalReg, tier });
+      let encoded = '';
+      try {
+        encoded = btoa(JSON.stringify(payload));
+      } catch {
+        // if window.btoa fails for any reason, just skip adding p=
+      }
+
+      const successUrlBase = createPageUrl('EventRegistrationSuccess');
+      const successUrl = encoded
+        ? `${successUrlBase}?registrationId=${finalReg.id}&p=${encodeURIComponent(encoded)}`
+        : `${successUrlBase}?registrationId=${finalReg.id}`;
+
+      navigate(successUrl, { state: { payload } });
+    } catch (err) {
+      console.error('Error finalizing free registration:', err);
+      setRegistrationError(err.message || getText('Failed to finalize your free registration. Please contact support.'));
     } finally {
       setPageBusy(false);
     }
@@ -405,16 +484,25 @@ export default function EventRegistrationPage() {
                 selectedTier={selectedTier}
                 currentUser={currentUser}
                 fxRate={fxRate}
-                onRegistrationComplete={(registration) => {
+                onRegistrationComplete={async (registration) => {
                   setCreatedRegistration(registration);
-                  setCurrentStep(3); // proceed to SharedPaymentGateway
+
+                  const price = Number(selectedTier?.price_usd ?? 0);
+                  if (price <= 0) {
+                    // FREE TIER: auto-confirm, email, and go to success (guest-friendly)
+                    await finalizeFreeRegistration(registration, selectedTier);
+                    return;
+                  }
+
+                  // PAID TIER: continue to payment step
+                  setCurrentStep(3);
                 }}
               />
             </div>
           )}
 
-          {/* Step 3: Payment (SharedPaymentGateway ONLY) */}
-          {currentStep === 3 && createdRegistration && (
+          {/* Step 3: Payment (SharedPaymentGateway ONLY for paid tiers) */}
+          {currentStep === 3 && createdRegistration && Number(selectedTier?.price_usd ?? 0) > 0 && (
             <div className="p-6 sm:p-8">
               <h3 className="text-xl font-semibold mb-4">{getText('Complete Your Payment')}</h3>
               <p className="text-gray-600 mb-6">
