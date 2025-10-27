@@ -9,15 +9,16 @@ import {
   School as SchoolIcon, MapPin, DollarSign, Calendar,
   ChevronLeft, ChevronRight, Clock, Newspaper
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import IconResolver from '../components/IconResolver';
 import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
-import MultilineText from '@/components/MultilineText'; // <-- NEW
+import MultilineText from '@/components/MultilineText';
 
 /* ---------- Firebase ---------- */
-import { db } from '@/firebase';
+import { db, auth } from '@/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 
 /* =========================
@@ -265,7 +266,6 @@ const Hero = ({ content }) => {
             className="text-xl text-gray-200 leading-relaxed"
             style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
           >
-            {/* Preserve line breaks & bullets */}
             {hero.subtitle ? <MultilineText text={hero.subtitle} /> : ''}
           </motion.p>
         </div>
@@ -635,7 +635,6 @@ const Features = ({ features }) => {
       description: "Explore thousands of programs from top institutions worldwide. Our smart filters help you find the perfect match for your academic and career goals.",
       image_url: "",
       video_url: "",
-      youtube_url: "",
       link_url: createPageUrl('Schools'),
       link_text: "Explore Schools",
       media_position: 'right'
@@ -716,7 +715,6 @@ const Features = ({ features }) => {
                   </Link>
                 </h3>
 
-                {/* Preserve line breaks in feature description */}
                 <p className="text-lg text-slate-600 leading-relaxed">
                   <MultilineText text={feature.description} />
                 </p>
@@ -771,7 +769,6 @@ const SchoolProgramsSection = ({ content, schools }) => (
           {content?.schools_programs_section?.title || "Recommended Schools"}
         </h2>
         <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
-          {/* Preserve line breaks in subtitle */}
           <MultilineText
             text={
               content?.schools_programs_section?.subtitle ||
@@ -940,7 +937,6 @@ const Testimonials = ({ testimonials }) => (
                 )}
 
                 <blockquote className="text-slate-700 mb-6 italic text-lg leading-relaxed">
-                  {/* Preserve line breaks in quotes */}
                   <MultilineText text={`"${t.quote || ""}"`} />
                 </blockquote>
 
@@ -1006,6 +1002,20 @@ const UpcomingEvents = ({ events }) => (
    Page
 ========================= */
 export default function Home() {
+  const navigate = useNavigate();
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // 🔐 If a user is already signed in (persisted), redirect them away from Home to Dashboard
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        navigate(createPageUrl('Dashboard'), { replace: true });
+      }
+      setAuthChecked(true);
+    });
+    return unsub;
+  }, [navigate]);
+
   const [content, setContent] = useState(null);
   const [events, setEvents] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -1088,6 +1098,15 @@ export default function Home() {
       }
     })();
   }, []);
+
+  // Prevent flashing Home while we decide whether to redirect
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

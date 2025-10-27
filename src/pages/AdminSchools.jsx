@@ -8,9 +8,6 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  query,
-  orderBy,
-  limit as fbLimit,
   serverTimestamp,
 } from "firebase/firestore";
 
@@ -20,18 +17,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  PlusCircle,
-  Edit,
-  Trash2,
-  Search,
-  Loader2,
-  School as SchoolIcon,
-  Database,
-} from "lucide-react";
+import { PlusCircle, Edit, Trash2, Search, Loader2, School as SchoolIcon } from "lucide-react";
 
 import SchoolForm from "../components/admin/SchoolForm";
-import MasterDataSeeder from "../components/admin/MasterDataSeeder";
 
 const COLL = "schools"; // collection name in Firestore
 
@@ -44,34 +32,34 @@ export default function AdminSchools() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const loadSchools = useCallback(async () => {
-  setLoading(true);
-  try {
-    const snap = await getDocs(collection(db, COLL));
-    // Map and normalize
-    const data = snap.docs.map((d) => {
-      const obj = { id: d.id, ...d.data() };
-      // created_at can be a Firestore Timestamp or missing
-      const ts = obj.created_at && typeof obj.created_at.toMillis === "function"
-        ? obj.created_at.toMillis()
-        : 0;
-      return { ...obj, __createdAtMs: ts };
-    });
+    setLoading(true);
+    try {
+      const snap = await getDocs(collection(db, COLL));
+      // Map and normalize
+      const data = snap.docs.map((d) => {
+        const obj = { id: d.id, ...d.data() };
+        const ts =
+          obj.created_at && typeof obj.created_at.toMillis === "function"
+            ? obj.created_at.toMillis()
+            : 0;
+        return { ...obj, __createdAtMs: ts };
+      });
 
-    // Sort newest first, but include everything
-    data.sort((a, b) => b.__createdAtMs - a.__createdAtMs);
+      // Sort newest first
+      data.sort((a, b) => b.__createdAtMs - a.__createdAtMs);
 
-    const safe = Array.isArray(data) ? data.filter((x) => x && typeof x === "object") : [];
-    setSchools(safe);
-    setFilteredSchools(safe);
-  } catch (error) {
-    console.error("Error loading school programs:", error);
-    setSchools([]);
-    setFilteredSchools([]);
-    alert("Failed to load school programs.");
-  } finally {
-    setLoading(false);
-  }
-}, []);
+      const safe = Array.isArray(data) ? data.filter((x) => x && typeof x === "object") : [];
+      setSchools(safe);
+      setFilteredSchools(safe);
+    } catch (error) {
+      console.error("Error loading school programs:", error);
+      setSchools([]);
+      setFilteredSchools([]);
+      alert("Failed to load school programs.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadSchools();
@@ -134,11 +122,6 @@ export default function AdminSchools() {
     setIsFormOpen(true);
   };
 
-  const handleSeedSuccess = () => {
-    alert("Database seeded successfully! Reloading programs...");
-    loadSchools();
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -169,22 +152,6 @@ export default function AdminSchools() {
           </Dialog>
         </div>
 
-        <Card className="mb-6 border-blue-200 bg-blue-50/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-blue-800">
-              <Database className="w-5 h-5" />
-              Master Data Operations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-blue-700 mb-4">
-              If your lists are empty, you can seed the database with comprehensive sample data. This will populate Institutions,
-              School Programs, and School Profiles.
-            </p>
-            <MasterDataSeeder onSeedSuccess={handleSeedSuccess} />
-          </CardContent>
-        </Card>
-
         <Card className="mb-6">
           <CardContent className="p-4">
             <div className="relative">
@@ -213,7 +180,7 @@ export default function AdminSchools() {
               </div>
             ) : !filteredSchools || filteredSchools.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                No school programs found. Use the "Master Data Operations" to seed the database.
+                No school programs found.
               </div>
             ) : (
               <Table>

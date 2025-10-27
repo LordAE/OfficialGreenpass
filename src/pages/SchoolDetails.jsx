@@ -18,15 +18,7 @@ import { createPageUrl } from "@/utils";
 
 /* ---------- Firestore ---------- */
 import { db } from "@/firebase";
-import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  query,
-  where,
-  limit
-} from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, query, where, limit } from "firebase/firestore";
 
 /* ---------- helpers ---------- */
 const pickFirst = (...vals) =>
@@ -55,10 +47,8 @@ async function safeGetDoc(path, id) {
   } catch (e) {
     const msg = (e?.code || e?.message || "").toString().toLowerCase();
     if (msg.includes("permission") || msg.includes("insufficient")) {
-      // Treat like a non-existent doc so we can fall back gracefully
       return { exists: () => false };
     }
-    // Fail soft on any other error too
     return { exists: () => false };
   }
 }
@@ -67,8 +57,8 @@ export default function SchoolDetails() {
   const [searchParams] = useSearchParams();
   const schoolId = searchParams.get("id");
 
-  const [school, setSchool] = useState(null);   // header card data (from school_profiles or fallback)
-  const [programs, setPrograms] = useState([]); // programs from `schools` collection
+  const [school, setSchool] = useState(null);
+  const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [programsPage, setProgramsPage] = useState(1);
   const programsPerPage = 10;
@@ -78,7 +68,6 @@ export default function SchoolDetails() {
     return parts.join(", ");
   };
 
-  // Map a Firestore `schools` doc to the program card shape
   const mapProgramFromSchoolDoc = (snap) => {
     const d = { id: snap.id, ...snap.data() };
     return {
@@ -86,32 +75,22 @@ export default function SchoolDetails() {
       name: pickFirst(d.program_title, d.title, d.program_name, "Program"),
       level: pickFirst(d.program_level, d.level, ""),
       duration: pickFirst(d.duration_display, d.duration, "Contact School"),
-      tuition_per_year: Number(
-        pickFirst(d.tuition_per_year_cad, d.tuition_fee_cad, d.tuition, 0)
-      ),
+      tuition_per_year: Number(pickFirst(d.tuition_per_year_cad, d.tuition_fee_cad, d.tuition, 0)),
       intakes: ensureArray(pickFirst(d.intake_dates, d.intakes, [])),
       available_seats: d.available_seats
     };
   };
 
-  // Normalize a `school_profiles` doc into the header object
-  // ❗Annual Tuition comes **strictly** from school_profiles.tuition_fees
   const buildHeaderFromProfile = (p) => ({
     id: p.id,
-    name: pickFirst(
-      p.institution_name,
-      p.school_name,
-      p.name,
-      p.title,
-      "Institution"
-    ),
+    name: pickFirst(p.institution_name, p.school_name, p.name, p.title, "Institution"),
     image_url: pickFirst(p.logoUrl, p.logo_url, p.institution_logo_url, p.image_url),
     verification_status: pickFirst(p.verification_status, p.verified && "verified"),
     account_type: pickFirst(p.account_type, "real"),
     address: pickFirst(p.address, p.street_address),
     website: pickFirst(p.website, p.url, p.homepage),
     founded_year: pickFirst(p.founded_year, p.established),
-    tuition_fees: Number(p.tuition_fees ?? 0) || 0, // <-- only school_profiles.tuition_fees
+    tuition_fees: Number(p.tuition_fees ?? 0) || 0, // strictly from school_profiles
     application_fee: Number(p.application_fee ?? 0) || 0,
     rating: Number(p.rating ?? 0) || undefined,
     acceptance_rate: Number(p.acceptance_rate ?? 0) || undefined,
@@ -121,8 +100,6 @@ export default function SchoolDetails() {
     about: pickFirst(p.about, p.description)
   });
 
-  // Fallback: build header from a single `schools` doc (if id was a school row)
-  // (We do NOT set tuition_fees here to keep Annual Tuition sourced from school_profiles only.)
   const buildHeaderFromSchoolDoc = (s) => ({
     id: s.id,
     name: pickFirst(s.institution_name, s.school_name, s.name, "Institution"),
@@ -153,12 +130,8 @@ export default function SchoolDetails() {
 
       setLoading(true);
       try {
-        /* 1) Try to load a school profile by id (may be permission-restricted) */
         let profileSnap = await safeGetDoc("school_profiles", schoolId);
-        if (!profileSnap.exists()) {
-          // optional casing fallback
-          profileSnap = await safeGetDoc("SchoolProfiles", schoolId);
-        }
+        if (!profileSnap.exists()) profileSnap = await safeGetDoc("SchoolProfiles", schoolId);
 
         let header = null;
         let nameForMatch = null;
@@ -168,11 +141,8 @@ export default function SchoolDetails() {
           header = buildHeaderFromProfile(profile);
           nameForMatch = header.name;
         } else {
-          /* 2) If not a profile id, try a school doc by id */
           let sSnap = await safeGetDoc("schools", schoolId);
-          if (!sSnap.exists()) {
-            sSnap = await safeGetDoc("Schools", schoolId);
-          }
+          if (!sSnap.exists()) sSnap = await safeGetDoc("Schools", schoolId);
 
           if (sSnap.exists()) {
             const s = { id: sSnap.id, ...sSnap.data() };
@@ -192,63 +162,35 @@ export default function SchoolDetails() {
 
         if (!cancelled) setSchool(header);
 
-        /* 3) Programs:
-              - Query by school_id == {id} (in case programs link to a profile id)
-              - Then by institution_name == name(profile)
-              - Then by school_name == name(profile)
-        */
         const programsFound = [];
 
-        // Try school_id link first
         try {
-          const qId = query(
-            collection(db, "schools"),
-            where("school_id", "==", schoolId),
-            limit(500)
-          );
+          const qId = query(collection(db, "schools"), where("school_id", "==", schoolId), limit(500));
           const resId = await getDocs(qId);
           resId.forEach((snap) => {
             const id = snap.id;
-            if (!programsFound.find((p) => p.id === id)) {
-              programsFound.push(mapProgramFromSchoolDoc(snap));
-            }
+            if (!programsFound.find((p) => p.id === id)) programsFound.push(mapProgramFromSchoolDoc(snap));
           });
-        } catch (_) {
-          // ignore (index not required for simple equality, but fail-soft anyway)
-        }
+        } catch (_) {}
 
-        // Name-based queries
         if (nameForMatch) {
-          const q1 = query(
-            collection(db, "schools"),
-            where("institution_name", "==", nameForMatch),
-            limit(500)
-          );
+          const q1 = query(collection(db, "schools"), where("institution_name", "==", nameForMatch), limit(500));
           const res1 = await getDocs(q1);
           res1.forEach((snap) => {
             const id = snap.id;
-            if (!programsFound.find((p) => p.id === id)) {
-              programsFound.push(mapProgramFromSchoolDoc(snap));
-            }
+            if (!programsFound.find((p) => p.id === id)) programsFound.push(mapProgramFromSchoolDoc(snap));
           });
 
-          const q2 = query(
-            collection(db, "schools"),
-            where("school_name", "==", nameForMatch),
-            limit(500)
-          );
+          const q2 = query(collection(db, "schools"), where("school_name", "==", nameForMatch), limit(500));
           const res2 = await getDocs(q2);
           res2.forEach((snap) => {
             const id = snap.id;
-            if (!programsFound.find((p) => p.id === id)) {
-              programsFound.push(mapProgramFromSchoolDoc(snap));
-            }
+            if (!programsFound.find((p) => p.id === id)) programsFound.push(mapProgramFromSchoolDoc(snap));
           });
         }
 
         if (!cancelled) {
           setPrograms(programsFound);
-          // Reset to first page when list changes
           setProgramsPage(1);
         }
       } catch (err) {
@@ -267,17 +209,12 @@ export default function SchoolDetails() {
     };
   }, [schoolId]);
 
-  /* ---------- Average Tuition (fallback) ---------- */
   const avgTuition = useMemo(() => {
-    const vals = programs
-      .map((p) => Number(p.tuition_per_year))
-      .filter((v) => Number.isFinite(v) && v > 0);
+    const vals = programs.map((p) => Number(p.tuition_per_year)).filter((v) => Number.isFinite(v) && v > 0);
     if (!vals.length) return null;
     const sum = vals.reduce((a, b) => a + b, 0);
     return Math.round(sum / vals.length);
   }, [programs]);
-
-  /* ---------- UI (unchanged) ---------- */
 
   if (loading) {
     return (
@@ -308,26 +245,18 @@ export default function SchoolDetails() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Back Navigation */}
-        <Link
-          to={createPageUrl("Schools")}
-          className="inline-flex items-center text-emerald-600 hover:text-emerald-700 mb-6"
-        >
+        <Link to={createPageUrl("Schools")} className="inline-flex items-center text-emerald-600 hover:text-emerald-700 mb-6">
           <ChevronLeft className="w-4 h-4 mr-1" />
           Back to Schools
         </Link>
 
-        {/* School Header Card */}
+        {/* Header */}
         <Card className="bg-white/80 backdrop-blur-sm shadow-xl mb-8">
           <CardContent className="p-8">
             <div className="flex flex-col lg:flex-row gap-8">
               <div className="flex-shrink-0">
                 {school.image_url ? (
-                  <img
-                    src={school.image_url}
-                    alt={school.name}
-                    className="w-48 h-32 object-cover rounded-lg shadow-md"
-                  />
+                  <img src={school.image_url} alt={school.name} className="w-48 h-32 object-cover rounded-lg shadow-md" />
                 ) : (
                   <div className="w-48 h-32 bg-gradient-to-r from-emerald-400 to-blue-500 rounded-lg flex items-center justify-center">
                     <GraduationCap className="w-16 h-16 text-white" />
@@ -340,24 +269,12 @@ export default function SchoolDetails() {
                   <h1 className="text-4xl font-bold text-gray-900">{school.name}</h1>
                   <div className="flex gap-2">
                     {school.verification_status && (
-                      <Badge
-                        className={
-                          school.verification_status === "verified"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-yellow-100 text-yellow-800"
-                        }
-                      >
+                      <Badge className={school.verification_status === "verified" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}>
                         {school.verification_status === "verified" ? "✓ Verified" : "Pending"}
                       </Badge>
                     )}
                     {school.account_type && (
-                      <Badge
-                        className={
-                          school.account_type === "real"
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-gray-100 text-gray-800"
-                        }
-                      >
+                      <Badge className={school.account_type === "real" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"}>
                         {school.account_type === "real" ? "Real" : "Demo"}
                       </Badge>
                     )}
@@ -379,12 +296,7 @@ export default function SchoolDetails() {
                     {school.website && (
                       <div className="flex items-center text-gray-600">
                         <Globe className="w-5 h-5 mr-2 text-emerald-600" />
-                        <a
-                          href={school.website}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
-                        >
+                        <a href={school.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                           {school.website}
                         </a>
                       </div>
@@ -401,17 +313,13 @@ export default function SchoolDetails() {
                     {(school.tuition_fees !== undefined && school.tuition_fees !== null) ? (
                       <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
                         <span className="text-gray-700">Annual Tuition</span>
-                        <span className="font-bold text-emerald-600">
-                          {money(school.tuition_fees)}
-                        </span>
+                        <span className="font-bold text-emerald-600">{money(school.tuition_fees)}</span>
                       </div>
                     ) : (
                       avgTuition !== null && (
                         <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
                           <span className="text-gray-700">Average Tuition</span>
-                          <span className="font-bold text-emerald-600">
-                            {money(avgTuition)}
-                          </span>
+                          <span className="font-bold text-emerald-600">{money(avgTuition)}</span>
                         </div>
                       )
                     )}
@@ -419,9 +327,7 @@ export default function SchoolDetails() {
                     {Number.isFinite(school.application_fee) && school.application_fee > 0 && (
                       <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
                         <span className="text-gray-700">Application Fee</span>
-                        <span className="font-bold text-blue-600">
-                          {money(school.application_fee)}
-                        </span>
+                        <span className="font-bold text-blue-600">{money(school.application_fee)}</span>
                       </div>
                     )}
                     {Number.isFinite(school.rating) && (
@@ -433,9 +339,7 @@ export default function SchoolDetails() {
                     {Number.isFinite(school.acceptance_rate) && (
                       <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
                         <span className="text-gray-700">Acceptance Rate</span>
-                        <span className="font-bold text-purple-600">
-                          {school.acceptance_rate}%
-                        </span>
+                        <span className="font-bold text-purple-600">{school.acceptance_rate}%</span>
                       </div>
                     )}
                   </div>
@@ -452,7 +356,7 @@ export default function SchoolDetails() {
           </CardContent>
         </Card>
 
-        {/* Programs Section */}
+        {/* Programs */}
         <Card className="bg-white/80 backdrop-blur-sm shadow-xl">
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -471,57 +375,68 @@ export default function SchoolDetails() {
               </div>
             ) : (
               <>
-                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                {/* Cards: equal heights + aligned tuition + aligned CTAs */}
+                <div className="grid md:grid-cols-2 gap-6 mb-6 [grid-auto-rows:1fr]">
                   {currentPrograms.map((program) => (
-                    <Card key={program.id} className="border hover:shadow-lg transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="flex justify-between items-start mb-4">
-                          <div>
-                            <h4 className="text-xl font-bold text-gray-900 mb-2">{program.name}</h4>
-                            <div className="flex gap-2 mb-2">
-                              {program.level && <Badge variant="secondary">{program.level}</Badge>}
-                              {program.duration && <Badge variant="outline">{program.duration}</Badge>}
-                            </div>
-                          </div>
-                          {Number.isFinite(program.available_seats) && (
-                            <Badge
-                              className={
-                                program.available_seats > 0
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-100 text-red-800"
-                              }
-                            >
-                              {program.available_seats} seats
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="space-y-3 mb-4">
-                          {Number.isFinite(program.tuition_per_year) && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Tuition per year</span>
-                              <span className="font-bold text-emerald-600">
-                                {money(program.tuition_per_year)}
-                              </span>
-                            </div>
-                          )}
-                          {program.intakes && program.intakes.length > 0 && (
+                    <Card key={program.id} className="border hover:shadow-lg transition-shadow h-full">
+                      <CardContent className="p-6 h-full">
+                        {/* 3-row grid inside each card to align sections */}
+                        <div className="grid h-full grid-rows-[minmax(120px,auto)_auto_auto] gap-3">
+                          {/* Row 1: header (fixed min height so row 2 starts aligned) */}
+                          <div className="flex justify-between items-start gap-4">
                             <div>
-                              <span className="text-gray-600">Intakes: </span>
-                              <span className="text-gray-900">{program.intakes.join(", ")}</span>
+                              <h4 className="text-xl font-bold text-gray-900 mb-2 line-clamp-2">
+                                {program.name}
+                              </h4>
+                              <div className="flex flex-wrap gap-2">
+                                {program.level && <Badge variant="secondary">{program.level}</Badge>}
+                                {program.duration && <Badge variant="outline">{program.duration}</Badge>}
+                              </div>
                             </div>
-                          )}
-                        </div>
+                            {Number.isFinite(program.available_seats) && (
+                              <Badge
+                                className={
+                                  program.available_seats > 0
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
+                                }
+                              >
+                                {program.available_seats} seats
+                              </Badge>
+                            )}
+                          </div>
 
-                        <Link
-                          to={createPageUrl(
-                            `ProgramDetails?schoolId=${encodeURIComponent(school.id)}&programId=${encodeURIComponent(program.id)}`
-                          )}
-                        >
-                          <Button className="w-full bg-gradient-to-r from-emerald-600 to-blue-600 text-white">
-                            View Program Details
-                          </Button>
-                        </Link>
+                          {/* Row 2: details (tuition line now aligned across cards) */}
+                          <div className="space-y-3">
+                            {Number.isFinite(program.tuition_per_year) && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Tuition per year</span>
+                                <span className="font-bold text-emerald-600">
+                                  {money(program.tuition_per_year)}
+                                </span>
+                              </div>
+                            )}
+                            {program.intakes && program.intakes.length > 0 && (
+                              <div>
+                                <span className="text-gray-600">Intakes: </span>
+                                <span className="text-gray-900">{program.intakes.join(", ")}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Row 3: CTA pinned to bottom */}
+                          <div className="pt-4 border-t border-gray-100">
+                            <Link
+                              to={createPageUrl(
+                                `ProgramDetails?schoolId=${encodeURIComponent(school.id)}&programId=${encodeURIComponent(program.id)}`
+                              )}
+                            >
+                              <Button className="w-full bg-gradient-to-r from-emerald-600 to-blue-600 text-white">
+                                View Program Details
+                              </Button>
+                            </Link>
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -538,9 +453,7 @@ export default function SchoolDetails() {
                       <ChevronLeft className="w-4 h-4 mr-2" />
                       Previous
                     </Button>
-                    <span className="text-gray-600">
-                      Page {programsPage} of {totalPages}
-                    </span>
+                    <span className="text-gray-600">Page {programsPage} of {totalPages}</span>
                     <Button
                       variant="outline"
                       onClick={() => setProgramsPage((prev) => Math.min(totalPages, prev + 1))}

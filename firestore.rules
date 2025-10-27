@@ -37,12 +37,19 @@ service cloud.firestore {
       return signedIn() && request.resource.data.user_id == request.auth.uid;
     }
 
+    // Also recognizes school_profiles ownership
     function ownsSchoolId(sid) {
       return signedIn() && (
         (exists(/databases/$(database)/documents/School/$(sid)) &&
          get(/databases/$(database)/documents/School/$(sid)).data.user_id == request.auth.uid) ||
         (exists(/databases/$(database)/documents/schools/$(sid)) &&
-         get(/databases/$(database)/documents/schools/$(sid)).data.user_id == request.auth.uid)
+         get(/databases/$(database)/documents/schools/$(sid)).data.user_id == request.auth.uid) ||
+        (exists(/databases/$(database)/documents/school_profiles/$(sid)) &&
+          (
+            sid == request.auth.uid ||
+            get(/databases/$(database)/documents/school_profiles/$(sid)).data.user_id == request.auth.uid
+          )
+        )
       );
     }
 
@@ -83,18 +90,13 @@ service cloud.firestore {
         (request.resource.data.user_id == request.auth.uid);
     }
 
-    // Collection-name helper for registrations
     function isRegColl(name) {
       return [
-        // generic
         'registration','registrations',
-        // event registrations (various casings)
         'EventRegistration','EventRegistrations',
         'event_registration','event_registrations','eventRegistrations',
-        // exhibitor registrations
         'ExhibitorRegistration','ExhibitorRegistrations',
         'exhibitor_registration','exhibitor_registrations','exhibitorRegistrations',
-        // rsvps
         'StudentRSVP','student_rsvps'
       ].hasAny([name]);
     }
@@ -104,6 +106,31 @@ service cloud.firestore {
              (resource.data.active == true ||
               resource.data.enabled == true ||
               resource.data.is_active == true);
+    }
+
+    // ---------- PROGRAM HELPERS ----------
+    function validProgramCreate() {
+      return signedIn()
+        && (request.resource.data.schoolId is string)
+        && (request.resource.data.programTitle is string)
+        && (request.resource.data.programLevel is string)
+        && (isAdmin() || ownsSchoolId(request.resource.data.schoolId));
+    }
+
+    function validProgramUpdate() {
+      return signedIn()
+        && (isAdmin() ||
+            (
+              ((resource.data.schoolId is string) || (resource.data.school_id is string)) &&
+              (
+                request.resource.data.schoolId == null ||
+                request.resource.data.schoolId == (
+                  resource.data.schoolId != null ? resource.data.schoolId : resource.data.school_id
+                )
+              ) &&
+              ownsSchoolId(resource.data.schoolId != null ? resource.data.schoolId : resource.data.school_id)
+            )
+        );
     }
 
     // ── Collections ─────────────────────────────────
@@ -162,54 +189,36 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // Event registrations (root)
+    // Event registrations (root and any depth)
     match /EventRegistration/{docId} {
-      allow create: if isAdmin() ||
-                    hasAuthedEventRegistrationFields() ||
-                    hasGuestEventRegistrationFields();
+      allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
     match /event_registrations/{docId} {
-      allow create: if isAdmin() ||
-                    hasAuthedEventRegistrationFields() ||
-                    hasGuestEventRegistrationFields();
+      allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
-
-    // Event registrations (any depth)
     match /{path=**}/EventRegistration/{docId} {
-      allow create: if isAdmin() ||
-                    hasAuthedEventRegistrationFields() ||
-                    hasGuestEventRegistrationFields();
+      allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
     match /{path=**}/event_registrations/{docId} {
-      allow create: if isAdmin() ||
-                    hasAuthedEventRegistrationFields() ||
-                    hasGuestEventRegistrationFields();
+      allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
-    // Exhibitor registrations
     match /ExhibitorRegistration/{docId} {
-      allow create: if isAdmin() ||
-                    hasAuthedEventRegistrationFields() ||
-                    hasGuestEventRegistrationFields();
+      allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
     match /exhibitor_registrations/{docId} {
-      allow create: if isAdmin() ||
-                    hasAuthedEventRegistrationFields() ||
-                    hasGuestEventRegistrationFields();
+      allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
-    // ✅ UNIVERSAL REGISTRATION CREATE (safe fallback by collection name)
-    // If your app writes to, say, ".../registrations" or "EventRegistrations", this ensures the create works.
-    // It does NOT open reads/updates; those stay governed by specific rules above.
+    // Universal registration create (by collection name)
     match /{path=**}/{coll}/{docId} {
-      allow create: if isRegColl(coll) &&
-                    (hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields());
+      allow create: if isRegColl(coll) && (hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields());
     }
 
     match /FAQ/{docId} { allow read: if true; allow write: if false; }
@@ -274,8 +283,6 @@ service cloud.firestore {
       allow update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
-    match /Program/{docId} { allow read: if true; allow write: if false; }
-
     match /Registration/{docId} {
       allow create: if signedIn();
       allow read: if signedIn();
@@ -310,9 +317,7 @@ service cloud.firestore {
 
     // Student RSVPs
     match /StudentRSVP/{docId} {
-      allow create: if isAdmin() ||
-                    hasAuthedEventRegistrationFields() ||
-                    hasGuestEventRegistrationFields();
+      allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
@@ -426,15 +431,11 @@ service cloud.firestore {
     // ===== ALIASES used by the app =====
     match /home_page_content/{docId} { allow read: if true; allow write: if isAdmin(); }
     match /home_page_contents/{docId} { allow read: if true; allow write: if isAdmin(); }
-
     match /ourTeam/{docId} { allow read: if true; allow write: if isAdmin(); }
-
     match /contactPage/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /contact_page_content/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /contact_page_contents/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
-
     match /contacts/{docId} { allow create: if true; allow read, update, delete: if isAdmin(); }
-
     match /posts/{docId} {
       allow create: if signedIn();
       allow read: if
@@ -444,18 +445,59 @@ service cloud.firestore {
         isAdmin();
       allow update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
-
     match /events/{docId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
-    match /faqs/{docId}     { allow read: if true; allow write: if false; }
-    match /programs/{docId} { allow read: if true; allow write: if false; }
+    match /faqs/{docId} { allow read: if true; allow write: if false; }
 
+    // Program collections (if you keep them)
+    match /Program/{docId} {
+      allow read: if true;
+      allow create: if isAdmin() || validProgramCreate();
+      allow update: if isAdmin() || validProgramUpdate();
+      allow delete: if isAdmin() || validProgramUpdate();
+    }
+    match /programs/{docId} {
+      allow read: if true;
+      allow create: if isAdmin() || validProgramCreate();
+      allow update: if isAdmin() || validProgramUpdate();
+      allow delete: if isAdmin() || validProgramUpdate();
+    }
+    match /school_programs/{docId} {
+      allow read: if true;
+      allow create: if isAdmin() || validProgramCreate();
+      allow update: if isAdmin() || validProgramUpdate();
+      allow delete: if isAdmin() || validProgramUpdate();
+    }
+
+    // ---------- SCHOOLS (program docs live here) ----------
     match /schools/{docId} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
+
+      // Owner or Admin can create; when owner creates, it must reference a school they own.
+      allow create: if signedIn() && (
+        isAdmin() ||
+        (request.resource.data.user_id == request.auth.uid &&
+         request.resource.data.school_id is string &&
+         ownsSchoolId(request.resource.data.school_id))
+      );
+
+      // Admin can update/delete anything; owner may update only their own, and school_id cannot change.
+      allow update: if signedIn() && (
+        isAdmin() ||
+        (
+          resource.data.user_id == request.auth.uid &&
+          resource.data.school_id is string &&
+          (request.resource.data.school_id == null || request.resource.data.school_id == resource.data.school_id) &&
+          ownsSchoolId(resource.data.school_id)
+        )
+      );
+
+      allow delete: if signedIn() && (
+        isAdmin() ||
+        (resource.data.user_id == request.auth.uid && ownsSchoolId(resource.data.school_id))
+      );
     }
 
     match /users/{docId} {
@@ -468,10 +510,20 @@ service cloud.firestore {
       );
     }
 
+    // ---------- school_profiles (now fully manageable) ----------
     match /school_profiles/{uid} {
-      allow read: if (signedIn() && uid == request.auth.uid) || isAdmin();
-      allow create: if ((signedIn() && uid == request.auth.uid && request.resource.data.user_id == request.auth.uid) || isAdmin());
-      allow update, delete: if ((signedIn() && uid == request.auth.uid && resource.data.user_id == request.auth.uid) || isAdmin());
+      // Read if admin, or if this doc belongs to the caller (by id or by user_id)
+      allow read: if isAdmin() ||
+                  (signedIn() && (
+                    uid == request.auth.uid ||
+                    (resource != null && resource.data.user_id == request.auth.uid)
+                  ));
+
+      // Create if admin OR caller sets user_id to their own UID (docId no longer required to equal uid)
+      allow create: if signedIn() && (isAdmin() || request.resource.data.user_id == request.auth.uid);
+
+      // Update/Delete if admin OR the stored doc belongs to the caller
+      allow update, delete: if signedIn() && (isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
     }
 
     match /services/{docId} {
@@ -486,10 +538,15 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
+    // ---------- institutions (now fully manageable) ----------
     match /institutions/{docId} {
       allow read: if true;
-      allow create: if signedIn();
-      allow update, delete: if signedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
+
+      // Create if admin OR owner is setting user_id to self
+      allow create: if signedIn() && (isAdmin() || request.resource.data.user_id == request.auth.uid);
+
+      // Update/Delete if admin OR owner
+      allow update, delete: if signedIn() && (isAdmin() || resource.data.user_id == request.auth.uid);
     }
     match /Institutions/{docId} { allow read: if true; allow write: if isAdmin(); }
     match /Schools/{docId}      { allow read: if true; allow write: if isAdmin(); }
@@ -570,8 +627,6 @@ service cloud.firestore {
     match /chat_settings/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
 
     // final catch-all
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }
