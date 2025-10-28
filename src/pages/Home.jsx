@@ -197,7 +197,7 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   HERO (Bates-like caps, no diagonal/skew)
+   HERO
 ========================= */
 const DEFAULT_POSTER = '';
 
@@ -256,9 +256,27 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* Hero video */
-.gp-videoWrap{position:relative;width:100%;height:clamp(420px,62vh,720px);overflow:hidden;background:#0f1115}
-.gp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
+/* Hero video (responsive + mobile-flex) */
+.gp-videoWrap{
+  position:relative;
+  width:100%;
+  height:clamp(320px, 62svh, 720px);
+  overflow:hidden;
+  background:#0f1115;
+}
+/* Fallback for browsers without svh support */
+@supports not (height: 1svh){
+  .gp-videoWrap{ height:clamp(320px, 62vh, 720px); }
+}
+.gp-video{
+  position:absolute;inset:0;
+  inline-size:100%;
+  block-size:100%;
+  min-width:100%;
+  min-height:100%;
+  object-fit:cover;
+  object-position:center;
+}
 .gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
 
 /* Centered headline */
@@ -266,32 +284,39 @@ const Hero = ({ content }) => {
 .gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
 .gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* Band under hero (no clip, just overlap spacing) */
+/* Band under hero */
 .gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-80px,-12vh,-140px) auto 0;padding:0 18px}
 @media(min-width:1024px){.gp-band{padding:0 22px}}
 
 /* 4 square tiles */
-.gp-tiles{display:grid;grid-template-columns:1fr;gap:18px}
-@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:22px}}
+.gp-tiles{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:18px;
+  align-items:stretch;
+}
+@media(min-width:1024px){
+  .gp-tiles{grid-template-columns:repeat(4,1fr);gap:22px}
+}
 
-/* Tile card */
+/* Tile card (flex so CTAs align at bottom) */
 .gp-card{
-  position:relative;overflow:hidden;color:#fff;border-radius:16px;
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  color:#fff;
+  border-radius:16px;
+  overflow:hidden;
   background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.20)), var(--tile-bg, #155e63);
   box-shadow:0 8px 24px rgba(2,6,23,.25);
   min-height: 280px;
 }
-
-/* Top "cute cap" (only the top is angled; body stays straight) */
 .gp-cap{
   position:absolute;left:0;right:0;top:0;height:110px;
   background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12)), var(--cap-bg, #1a7d86);
-  /* one-sided diagonal like Bates */
   clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);
   display:flex;align-items:center;justify-content:center;
 }
-
-/* Centered icon in a subtle ring */
 .gp-ico{
   width:44px;height:44px;border-radius:9999px;
   display:flex;align-items:center;justify-content:center;
@@ -300,16 +325,27 @@ const Hero = ({ content }) => {
   backdrop-filter: blur(2px);
 }
 
-/* Body content (padding-top makes space under the cap) */
-.gp-body{position:relative;padding:26px;padding-top:126px}
-.gp-ttl{margin:0 0 6px;font-weight:800;letter-spacing:.2px;font-size:1rem}
-.gp-hr{height:1px;background:rgba(255,255,255,.28);margin:12px 0 14px}
+/* Body area = flex column, CTA sticks to bottom via margin-top:auto */
+.gp-body{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  padding:26px;
+  padding-top:126px;
+  flex:1;                 /* fill remaining height of card */
+}
+.gp-ttl{margin:0 0 2px;font-weight:800;letter-spacing:.2px;font-size:1rem}
+.gp-hr{height:1px;background:rgba(255,255,255,.28);margin:6px 0 6px}
 .gp-desc{margin:0;font-size:.95rem;line-height:1.5;opacity:.95}
 
 /* CTA */
-.gp-cta{display:inline-flex;align-items:center;gap:10px;margin-top:16px;
+.gp-cta{
+  display:inline-flex;align-items:center;gap:10px;
+  margin-top:auto;              /* <-- keeps buttons aligned */
   background:#fff;color:#0f172a;border-radius:12px;padding:12px 18px;font-weight:800;
-  box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
+  box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease
+}
 .gp-cta .chev{display:inline-block;transition:transform .2s ease}
 .gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
 .gp-cta:hover .chev{transform:translateX(2px)}
@@ -320,9 +356,15 @@ const Hero = ({ content }) => {
 .tone-sky{ --tile-bg:#287f96; --cap-bg:#2e9ab3; }
 .tone-rose{ --tile-bg:#642a2f; --cap-bg:#783238; }
 
-/* Mobile tidy */
-@media(max-width:1023px){
-  .gp-card{min-height:240px}
+/* Mobile tuning */
+@media(max-width:640px){
+  .gp-videoWrap{ height:clamp(260px, 56svh, 560px); }
+  @supports not (height: 1svh){
+    .gp-videoWrap{ height:clamp(260px, 56vh, 560px); }
+  }
+  .gp-video{ object-position:center 35%; }
+  .gp-title{ font-size:clamp(1.4rem, 6vw, 2.2rem); }
+  .gp-sub{   font-size:clamp(.9rem, 3.8vw, 1.05rem); }
   .gp-cap{height:96px;clip-path: polygon(0 0, 100% 0, 100% 64%, 0 86%);}
   .gp-body{padding-top:112px}
 }
@@ -344,6 +386,7 @@ const Hero = ({ content }) => {
             muted
             playsInline
             preload="metadata"
+            disablePictureInPicture
             onError={() => setUseImage(true)}
           />
         ) : (
@@ -509,7 +552,8 @@ function NewsHighlights({ highlights = [] }) {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
                 </div>
 
-                <div className="relative z-10 h-full flex items=end sm:items-end">
+                {/* FIX: items=end -> items-end */}
+                <div className="relative z-10 h-full flex items-end sm:items-end">
                   <div className="p-4 sm:p-8 w-full">
                     <div className="max-w-3xl bg-black/35 backdrop-blur-sm rounded-2xl px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-2 mb-2">
@@ -576,7 +620,7 @@ function PartnersStrip() {
     { name: "University of West Alabama", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofWestAlabama.png?alt=media&token=9fc57006-3137-44c5-b888-6c1fcca756b0" },
     { name: "Capilano University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FCapilanoUniversity.jpg?alt=media&token=535e4daa-5673-4ea9-ad2c-7ac4f33d1979" },
     { name: "University of Toronto", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofToronto.avif?alt=media&token=687579c2-f19f-483c-a0d6-e8c3ff20b995" },
-    { name: "McGill University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FmcgillUniversity.png?alt=media&token=7f0fcfbd-e7cd-4555-af62-978c308d6dd8" },
+    { name: "McGill University", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FmcgillUniversity.png?alt=media&token=7f0fcfbd-e7cd-4555-af62-978c308d6dd" },
     { name: "University of British Columbia", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofBristishColumbia.jpg?alt=media&token=6ee96860-9835-4996-9a30-15cbf8442c16" },
     { name: "University of Alberta", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2FUniversityofAlberta.jpg?alt=media&token=51d0f6c9-c50f-4edb-87a5-5cfa27381f08" },
     { name: "University of Waterloo", logo: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Flogos%2Funiversityofwaterloo.avif?alt=media&token=ace9a9ce-b679-4eae-b517-e5f511da629e" },
