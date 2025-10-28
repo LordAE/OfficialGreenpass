@@ -197,7 +197,7 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   HERO (Bates-style, no diagonal band)
+   HERO (Bates-style, no diagonal clip)
 ========================= */
 const DEFAULT_POSTER = '';
 
@@ -219,10 +219,34 @@ const Hero = ({ content }) => {
   }, [bgVideo]);
 
   const tiles = [
-    { icon: <Compass size={28} />,      title: "FUTURE STUDENTS",      desc: "Explore programs, admissions, and support designed for international students.", href: createPageUrl("Schools"),          tone: "teal"  },
-    { icon: <GraduationCap size={28} />, title: "ACADEMIC PROGRAMS",    desc: "Compare tuition, duration, and see intake dates and requirements.",             href: createPageUrl("ComparePrograms"),   tone: "amber" },
-    { icon: <Megaphone size={28} />,     title: "CALENDARS & KEY DATES",desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.", href: createPageUrl("FairAndEvents"), tone: "sky"   },
-    { icon: <MapPin size={28} />,        title: "VIRTUAL CAMPUS TOURS", desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.", href: createPageUrl("StudentLife"), tone: "rose"  },
+    {
+      icon: <Compass size={28} />,
+      title: "FUTURE STUDENTS",
+      desc: "Explore programs, admissions, and support designed for international students.",
+      href: createPageUrl("Schools"),
+      tone: "teal",
+    },
+    {
+      icon: <GraduationCap size={28} />,
+      title: "ACADEMIC PROGRAMS",
+      desc: "Compare tuition, duration, and see intake dates and requirements.",
+      href: createPageUrl("ComparePrograms"),
+      tone: "amber",
+    },
+    {
+      icon: <Megaphone size={28} />,
+      title: "CALENDARS & KEY DATES",
+      desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.",
+      href: createPageUrl("FairAndEvents"),
+      tone: "sky",
+    },
+    {
+      icon: <MapPin size={28} />,
+      title: "VIRTUAL CAMPUS TOURS",
+      desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.",
+      href: createPageUrl("StudentLife"),
+      tone: "rose",
+    },
   ];
 
   return (
@@ -232,33 +256,27 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* Taller hero; fills nicely on desktops, not too big on mobile */
-.gp-videoWrap{position:relative;width:100%;height:clamp(420px,60vh,680px);overflow:hidden;background:#0f1115}
+/* hero video: taller and truly cover */
+.gp-videoWrap{position:relative;width:100%;height:clamp(420px,62vh,720px);overflow:hidden;background:#0f1115}
 .gp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
 .gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
 
-/* Title centered over video */
+/* centered title */
 .gp-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem}
 .gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
 .gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* ----- Overlapping tiles (NO diagonal band) ----- */
-.gp-tilesRow{
-  --overlap:120px;                       /* tweak this for more/less overlap */
-  position:relative; z-index:2;
-  max-width:1320px;
-  margin:calc(var(--overlap) * -1) auto 0; /* pulls tiles up over the hero */
-  padding:calc(var(--overlap) + 16px) 18px 0; /* allowance so tops aren’t clipped */
-  display:grid; grid-template-columns:1fr; gap:14px;
-  overflow:visible; /* prevent skewed corners from being cut */
-}
-@media(min-width:1024px){
-  .gp-tilesRow{ grid-template-columns:repeat(4,1fr); gap:0; padding-left:22px; padding-right:22px; }
-}
+/* ----- band (NO CLIP). just a negative margin to overlap the video */
+.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-80px,-12vh,-140px) auto 0;padding:0 18px}
+@media(min-width:1024px){.gp-band{padding:0 22px}}
 
-/* individual skewed tiles (parallelograms) */
-.gp-tile{position:relative;overflow:hidden;color:#fff;border-radius:0;transform:skewX(-12deg);will-change:transform,box-shadow,filter}
-@media(min-width:1024px){ .gp-tile + .gp-tile{ margin-left:-40px } } /* subtle overlap like Bates */
+/* grid of 4 angled tiles */
+.gp-tiles{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:0}}
+
+/* angled tile like Bates; no container clip */
+.gp-tile{position:relative;overflow:hidden;color:#fff;border-radius:0;transform:skewX(-14deg);will-change:transform,box-shadow,filter}
+@media(min-width:1024px){.gp-tile + .gp-tile{margin-left:-56px}} /* overlap to share the diagonal line */
 
 /* tones close to Bates */
 .gp-tone-teal{background:#1b6b74}
@@ -266,34 +284,34 @@ const Hero = ({ content }) => {
 .gp-tone-sky{background:#2b8ca7}
 .gp-tone-rose{background:#6e272c}
 
-/* sheen + subtle divider */
+/* subtle sheen & divider */
 .gp-tile:before{content:"";position:absolute;inset:0;background:
   radial-gradient(120% 120% at 50% 8%,rgba(255,255,255,.13),transparent 60%),
   linear-gradient(to bottom,rgba(0,0,0,.14),rgba(0,0,0,.24))}
 .gp-tile:after{content:"";position:absolute;top:0;bottom:0;left:0;width:1px;background:rgba(255,255,255,.18);opacity:.7}
 
-/* de-skew content so text is straight */
-.gp-inner{transform:skewX(12deg);padding:32px 26px;min-height:300px;display:grid;align-content:start;gap:16px}
+/* unskew inner so text is straight */
+.gp-inner{transform:skewX(14deg);padding:32px 26px;min-height:300px;display:grid;align-content:start;gap:16px}
 .gp-ico{opacity:.95}
 .gp-ttl{margin:0 0 2px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase}
 .gp-hr{height:1px;background:rgba(255,255,255,.34);margin:12px 0 10px}
 .gp-desc{margin:0;font-size:.95rem;line-height:1.4;opacity:.96}
 
-/* white rounded CTA */
+/* white rounded CTA like Bates */
 .gp-cta{justify-self:start;margin-top:10px;display:inline-flex;align-items:center;gap:10px;background:#fff;color:#0f172a;border-radius:10px;padding:12px 18px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
 .gp-cta .chev{display:inline-block;transition:transform .2s ease}
 .gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
 .gp-cta:hover .chev{transform:translateX(2px)}
 
-/* hover emphasis (expand a little) */
+/* hover emphasis for whole tile */
 @media(hover:hover) and (pointer:fine){
   .gp-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease}
-  .gp-tile:hover{transform:skewX(-12deg) translateY(-6px) scale(1.03); z-index:3; box-shadow:0 18px 34px rgba(0,0,0,.28),0 10px 10px rgba(0,0,0,.18)}
+  .gp-tile:hover{transform:skewX(-14deg) translateY(-8px) scale(1.035); z-index:3; box-shadow:0 18px 34px rgba(0,0,0,.28),0 10px 10px rgba(0,0,0,.18)}
 }
 
-/* mobile: cards, no skew */
+/* mobile: no skew, rounded cards, tidy spacing */
 @media(max-width:1023px){
-  .gp-tilesRow{ margin-top:-40px; padding-top:56px; }
+  .gp-band{margin-top:-46px}
   .gp-tile{transform:none;border-radius:14px}
   .gp-inner{transform:none;min-height:auto}
   .gp-tile:after{display:none}
@@ -330,21 +348,23 @@ const Hero = ({ content }) => {
         </div>
       </div>
 
-      {/* Overlapping tiles row (no diagonal) */}
-      <div className="gp-tilesRow">
-        {tiles.map((t, i) => (
-          <article key={i} className={`gp-tile gp-tone-${t.tone}`}>
-            <div className="gp-inner">
-              <div className="gp-ico">{t.icon}</div>
-              <h3 className="gp-ttl">{t.title}</h3>
-              <div className="gp-hr" />
-              <p className="gp-desc">{t.desc}</p>
-              <Link className="gp-cta" to={t.href}>
-                Learn More <span className="chev">»</span>
-              </Link>
-            </div>
-          </article>
-        ))}
+      {/* Angled tiles; no diagonal band clipping */}
+      <div className="gp-band">
+        <div className="gp-tiles">
+          {tiles.map((t, i) => (
+            <article key={i} className={`gp-tile gp-tone-${t.tone}`}>
+              <div className="gp-inner">
+                <div className="gp-ico">{t.icon}</div>
+                <h3 className="gp-ttl">{t.title}</h3>
+                <div className="gp-hr" />
+                <p className="gp-desc">{t.desc}</p>
+                <Link className="gp-cta" to={t.href}>
+                  Learn More <span className="chev">»</span>
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
