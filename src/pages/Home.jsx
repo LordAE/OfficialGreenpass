@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowRight, Star, Users, GraduationCap, TrendingUp,
   School as SchoolIcon, MapPin, DollarSign, Calendar,
-  ChevronLeft, ChevronRight, Clock, Newspaper
+  ChevronLeft, ChevronRight, Clock, Newspaper,
+  Megaphone, Compass
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -206,6 +207,7 @@ const isHighlightedNow = (post) => {
 ========================= */
 const DEFAULT_POSTER = '';
 
+/* ======== UPDATED: Bates-style Hero with video + 4 angled tiles ======== */
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
   const bgVideo = hero.background_video_url || hero.video_url || "";
@@ -223,54 +225,156 @@ const Hero = ({ content }) => {
     return () => el.removeEventListener("canplay", tryPlay);
   }, [bgVideo]);
 
+  // Four tiles beneath the video (links chosen from your existing routes)
+  const tiles = [
+    {
+      icon: <Compass size={28} />,
+      title: "Future Students",
+      desc: "Explore programs, admissions, and support designed for international students.",
+      href: createPageUrl("Schools"),
+      tone: "teal",
+      leftCut: "0px",
+      rightCut: "28px",
+    },
+    {
+      icon: <GraduationCap size={28} />,
+      title: "Academic Programs",
+      desc: "Compare tuition, duration, and see intake dates and requirements.",
+      href: createPageUrl("ComparePrograms"),
+      tone: "amber",
+      leftCut: "28px",
+      rightCut: "28px",
+    },
+    {
+      icon: <Megaphone size={28} />,
+      title: "Calendars & Events",
+      desc: "Stay on top of fairs, deadlines, workshops, and interviews.",
+      href: createPageUrl("FairAndEvents"),
+      tone: "sky",
+      leftCut: "28px",
+      rightCut: "28px",
+    },
+    {
+      icon: <MapPin size={28} />,
+      title: "Student Life",
+      desc: "Housing, banking, virtual tours, and real tips for your first weeks.",
+      href: createPageUrl("StudentLife"),
+      tone: "rose",
+      leftCut: "28px",
+      rightCut: "0px",
+    },
+  ];
+
   return (
-    <div className="relative text-white overflow-hidden min-h-[calc(100vh-80px)]">
-      {!useImage && bgVideo ? (
-        <video
-          key={bgVideo}
-          ref={videoRef}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[100%] w-auto"
-          src={bgVideo}
-          poster={poster}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          onError={() => setUseImage(true)}
-        />
-      ) : (
-        <img
-          src={poster}
-          alt=""
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[100%] w-auto"
-          loading="eager"
-        />
-      )}
+    <section className="gp-hero-root">
+      {/* Scoped CSS: only affects gp-hero-* */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+.gp-hero-root{position:relative;width:100%;color:#fff;}
+.gp-hero-videoWrap{position:relative;width:100%;height:clamp(280px,42vw,520px);overflow:hidden;background:#111;}
+.gp-hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+.gp-hero-overlay{position:absolute;inset:0;background:
+  linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55)),
+  radial-gradient(1200px 400px at 50% 0%,rgba(0,0,0,.35),transparent 60%);}
+.gp-hero-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem;}
+.gp-hero-title{font-size:clamp(1.5rem,3.6vw,3rem);font-weight:800;line-height:1.1;letter-spacing:.2px;margin:0 0 .6rem;text-shadow:0 2px 20px rgba(0,0,0,.35);}
+.gp-hero-sub{max-width:68ch;font-size:clamp(.95rem,1.2vw,1.1rem);opacity:.95;text-shadow:0 1px 14px rgba(0,0,0,.35);}
 
-      <div className="relative z-10 max-w-7xl mx-auto py-24 sm:py-32 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl space-y-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            <h1
-              className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight"
-              style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}
-            >
-              {hero.title || (<><br/><br/><span className="text-green-400"><br/><br/></span><br/><br/></>)}
+/* tiles row overlapping the bottom of the video, like Bates */
+.gp-hero-tiles{display:grid;grid-template-columns:1fr;gap:12px;margin-top:-56px;padding:0 12px 16px;position:relative;z-index:2;}
+@media (min-width:900px){
+  .gp-hero-tiles{grid-template-columns:repeat(4,1fr);gap:0;padding:0;margin:-70px auto 0;max-width:1280px;}
+}
+
+/* tile base */
+.gp-hero-tile{position:relative;overflow:hidden;color:#fff;}
+.gp-hero-tile::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(100% 120% at 50% 10%,rgba(255,255,255,.08),transparent 60%);pointer-events:none;}
+.gp-hero-tileInner{position:relative;z-index:1;padding:22px 18px 18px;min-height:220px;display:grid;align-content:start;gap:10px;background:rgba(0,0,0,.06);backdrop-filter:saturate(120%) brightness(100%);}
+.gp-hero-icon{opacity:.95;}
+.gp-hero-tileTitle{margin:2px 0 0;font-weight:800;letter-spacing:.2px;font-size:.95rem;text-transform:uppercase;}
+.gp-hero-desc{margin:4px 0 10px;font-size:.92rem;line-height:1.35;opacity:.95;}
+.gp-hero-btn{justify-self:start;}
+
+/* color tones */
+.gp-hero-teal{background:#117a8b;}
+.gp-hero-amber{background:#b9972b;}
+.gp-hero-sky{background:#2a8fb3;}
+.gp-hero-rose{background:#7a2a2a;}
+
+/* angled edges desktop only */
+@media (min-width:900px){
+  .gp-hero-tile{clip-path:polygon(var(--gp-leftCut,0px) 0%,100% 0%,calc(100% - var(--gp-rightCut,0px)) 100%,0% 100%);}
+  .gp-hero-tileInner{padding:28px 22px 24px;min-height:260px;}
+}
+          `,
+        }}
+      />
+
+      {/* Video band */}
+      <div className="gp-hero-videoWrap">
+        {!useImage && bgVideo ? (
+          <video
+            key={bgVideo}
+            ref={videoRef}
+            className="gp-hero-video"
+            src={bgVideo}
+            poster={poster}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            onError={() => setUseImage(true)}
+          />
+        ) : (
+          <img
+            src={poster}
+            alt=""
+            className="gp-hero-video"
+            loading="eager"
+          />
+        )}
+
+        <div className="gp-hero-overlay" />
+
+        <div className="gp-hero-center">
+          <div>
+            <h1 className="gp-hero-title">
+              {hero.title || "GreenPass Super App"}
             </h1>
-          </motion.div>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-xl text-gray-200 leading-relaxed"
-            style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
-          >
-            {hero.subtitle ? <MultilineText text={hero.subtitle} /> : ''}
-          </motion.p>
+            {hero.subtitle ? (
+              <p className="gp-hero-sub">
+                <MultilineText text={hero.subtitle} />
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Feature tiles row */}
+      <div className="gp-hero-tiles">
+        {tiles.map((t, i) => (
+          <article
+            key={i}
+            className={`gp-hero-tile gp-hero-${t.tone}`}
+            style={{ ["--gp-leftCut"]: t.leftCut, ["--gp-rightCut"]: t.rightCut }}
+          >
+            <div className="gp-hero-tileInner">
+              <div className="gp-hero-icon">{t.icon}</div>
+              <h3 className="gp-hero-tileTitle">{t.title}</h3>
+              <p className="gp-hero-desc">{t.desc}</p>
+              <Button asChild className="gp-hero-btn">
+                <Link to={t.href}>
+                  Learn More <ChevronRight size={18} />
+                </Link>
+              </Button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 };
 
@@ -693,7 +797,7 @@ const Features = ({ features }) => {
                         {[...Array(5)].map((_, i) => (
                           <Star
                             key={i}
-                            className={`w-5 h-5 ${i < Math.floor(feature.school_rating || 4.5)
+                            className={`w-5 h-5 ${i < Math.floor((feature.school_rating || 4.5))
                               ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
                           />
                         ))}
@@ -909,7 +1013,7 @@ const SchoolProgramsSection = ({ content, schools }) => (
 ========================= */
 const Testimonials = ({ testimonials }) => (
   <div className="py-20 bg-white">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx_auto px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-16 space-y-4">
         <h2 className="text-3xl sm:text-4xl font-bold text-slate-900"></h2>
         <p className="text-xl text-slate-600"></p>
