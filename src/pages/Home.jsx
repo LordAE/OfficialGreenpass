@@ -197,7 +197,7 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   HERO (Bates-style, single diagonal band)
+   HERO (Bates-style, no diagonal band)
 ========================= */
 const DEFAULT_POSTER = '';
 
@@ -219,10 +219,10 @@ const Hero = ({ content }) => {
   }, [bgVideo]);
 
   const tiles = [
-    { icon: <Compass size={44} />,         title: "FUTURE STUDENTS",       desc: "Explore programs, admissions, and support designed for international students.",                         href: createPageUrl("Schools"),          tone: "teal"  },
-    { icon: <GraduationCap size={44} />,   title: "ACADEMIC PROGRAMS",      desc: "Compare tuition, duration, and see intake dates and requirements.",                                      href: createPageUrl("ComparePrograms"),  tone: "amber" },
-    { icon: <Megaphone size={44} />,       title: "CALENDARS & KEY DATES",  desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.", href: createPageUrl("FairAndEvents"), tone: "sky"   },
-    { icon: <MapPin size={44} />,          title: "VIRTUAL CAMPUS TOURS",   desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.",       href: createPageUrl("StudentLife"),      tone: "rose"  },
+    { icon: <Compass size={28} />,      title: "FUTURE STUDENTS",      desc: "Explore programs, admissions, and support designed for international students.", href: createPageUrl("Schools"),          tone: "teal"  },
+    { icon: <GraduationCap size={28} />, title: "ACADEMIC PROGRAMS",    desc: "Compare tuition, duration, and see intake dates and requirements.",             href: createPageUrl("ComparePrograms"),   tone: "amber" },
+    { icon: <Megaphone size={28} />,     title: "CALENDARS & KEY DATES",desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.", href: createPageUrl("FairAndEvents"), tone: "sky"   },
+    { icon: <MapPin size={28} />,        title: "VIRTUAL CAMPUS TOURS", desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.", href: createPageUrl("StudentLife"), tone: "rose"  },
   ];
 
   return (
@@ -232,29 +232,33 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* Taller video so overlap feels right and video fully covers height */
-.gp-videoWrap{position:relative;width:100%;height:clamp(420px,58vh,720px);overflow:hidden;background:#0f1115}
+/* Taller hero; fills nicely on desktops, not too big on mobile */
+.gp-videoWrap{position:relative;width:100%;height:clamp(420px,60vh,680px);overflow:hidden;background:#0f1115}
 .gp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
-.gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.44),rgba(0,0,0,.58))}
+.gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
 
+/* Title centered over video */
 .gp-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem}
-.gp-title{font-size:clamp(2rem,3.8vw,3rem);font-weight:800;line-height:1.08;text-shadow:0 2px 18px rgba(0,0,0,.36)}
+.gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
 .gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* ===== Single diagonal band wrapper (clip the whole row) ===== */
-.gp-band{position:relative;z-index:2;max-width:1380px;margin:-132px auto 0;padding:0 22px}
-.gp-bandClip{position:relative;padding-top:22px;
-  clip-path:polygon(0 42%,100% 24%,100% 100%,0 100%);
-  -webkit-clip-path:polygon(0 42%,100% 24%,100% 100%,0 100%);
-  box-shadow:0 -6px 24px rgba(0,0,0,.28); /* soft band shadow like Bates */
+/* ----- Overlapping tiles (NO diagonal band) ----- */
+.gp-tilesRow{
+  --overlap:120px;                       /* tweak this for more/less overlap */
+  position:relative; z-index:2;
+  max-width:1320px;
+  margin:calc(var(--overlap) * -1) auto 0; /* pulls tiles up over the hero */
+  padding:calc(var(--overlap) + 16px) 18px 0; /* allowance so tops aren’t clipped */
+  display:grid; grid-template-columns:1fr; gap:14px;
+  overflow:visible; /* prevent skewed corners from being cut */
+}
+@media(min-width:1024px){
+  .gp-tilesRow{ grid-template-columns:repeat(4,1fr); gap:0; padding-left:22px; padding-right:22px; }
 }
 
-/* grid of 4 tiles */
-.gp-tiles{display:grid;grid-template-columns:1fr;gap:16px}
-@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:0}}
-
-.gp-tile{position:relative;overflow:hidden;color:#fff;border-radius:0;transform:skewX(-14deg);will-change:transform,box-shadow,filter}
-@media(min-width:1024px){.gp-tile{height:340px}.gp-tile + .gp-tile{margin-left:-64px}} /* more overlap */
+/* individual skewed tiles (parallelograms) */
+.gp-tile{position:relative;overflow:hidden;color:#fff;border-radius:0;transform:skewX(-12deg);will-change:transform,box-shadow,filter}
+@media(min-width:1024px){ .gp-tile + .gp-tile{ margin-left:-40px } } /* subtle overlap like Bates */
 
 /* tones close to Bates */
 .gp-tone-teal{background:#1b6b74}
@@ -262,36 +266,34 @@ const Hero = ({ content }) => {
 .gp-tone-sky{background:#2b8ca7}
 .gp-tone-rose{background:#6e272c}
 
-/* sheen + faint divider */
+/* sheen + subtle divider */
 .gp-tile:before{content:"";position:absolute;inset:0;background:
-  radial-gradient(120% 120% at 50% 8%,rgba(255,255,255,.12),transparent 60%),
+  radial-gradient(120% 120% at 50% 8%,rgba(255,255,255,.13),transparent 60%),
   linear-gradient(to bottom,rgba(0,0,0,.14),rgba(0,0,0,.24))}
 .gp-tile:after{content:"";position:absolute;top:0;bottom:0;left:0;width:1px;background:rgba(255,255,255,.18);opacity:.7}
 
-/* counter-skew content; centered like Bates */
-.gp-inner{transform:skewX(14deg);padding:32px 26px;min-height:300px;display:grid;align-content:center;justify-items:center;text-align:center;gap:16px}
-.gp-ico{opacity:.98;filter:drop-shadow(0 2px 6px rgba(0,0,0,.25))}
-.gp-ttl{margin:4px 0 2px;font-weight:900;letter-spacing:.35px;font-size:1.05rem;text-transform:uppercase;text-shadow:0 1px 10px rgba(0,0,0,.28)}
-.gp-hr{height:1px;width:86%;background:rgba(255,255,255,.35);margin:12px auto 8px}
-.gp-desc{margin:0;font-size:.98rem;line-height:1.45;max-width:36ch;opacity:.97;text-shadow:0 1px 10px rgba(0,0,0,.2)}
+/* de-skew content so text is straight */
+.gp-inner{transform:skewX(12deg);padding:32px 26px;min-height:300px;display:grid;align-content:start;gap:16px}
+.gp-ico{opacity:.95}
+.gp-ttl{margin:0 0 2px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase}
+.gp-hr{height:1px;background:rgba(255,255,255,.34);margin:12px 0 10px}
+.gp-desc{margin:0;font-size:.95rem;line-height:1.4;opacity:.96}
 
-/* wide white CTA bar */
-.gp-cta{margin-top:12px;display:inline-flex;align-items:center;justify-content:center;gap:12px;background:#fff;color:#0f172a;border-radius:10px;padding:14px 22px;font-weight:800;
-  box-shadow:0 2px 0 rgba(0,0,0,.08);transition:transform .22s ease,box-shadow .22s ease;min-width:clamp(220px,64%,300px)}
-.gp-cta .chev{display:inline-block;transform:translateX(0);transition:transform .22s ease}
-.gp-cta:hover{box-shadow:0 12px 28px rgba(0,0,0,.22),0 6px 10px rgba(0,0,0,.16);transform:translateY(-2px)}
-.gp-cta:hover .chev{transform:translateX(4px)}
+/* white rounded CTA */
+.gp-cta{justify-self:start;margin-top:10px;display:inline-flex;align-items:center;gap:10px;background:#fff;color:#0f172a;border-radius:10px;padding:12px 18px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
+.gp-cta .chev{display:inline-block;transition:transform .2s ease}
+.gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
+.gp-cta:hover .chev{transform:translateX(2px)}
 
-/* hover lift */
+/* hover emphasis (expand a little) */
 @media(hover:hover) and (pointer:fine){
-  .gp-tile{transition:transform .22s ease,box-shadow .22s ease,filter .22s ease}
-  .gp-tile:hover{transform:skewX(-14deg) translateY(-8px) scale(1.035);z-index:3;box-shadow:0 18px 36px rgba(0,0,0,.26),0 10px 12px rgba(0,0,0,.18);filter:saturate(1.05) brightness(1.04)}
+  .gp-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease}
+  .gp-tile:hover{transform:skewX(-12deg) translateY(-6px) scale(1.03); z-index:3; box-shadow:0 18px 34px rgba(0,0,0,.28),0 10px 10px rgba(0,0,0,.18)}
 }
 
-/* mobile */
+/* mobile: cards, no skew */
 @media(max-width:1023px){
-  .gp-band{margin-top:-56px}
-  .gp-bandClip{clip-path:none;-webkit-clip-path:none;box-shadow:none}
+  .gp-tilesRow{ margin-top:-40px; padding-top:56px; }
   .gp-tile{transform:none;border-radius:14px}
   .gp-inner{transform:none;min-height:auto}
   .gp-tile:after{display:none}
@@ -322,31 +324,27 @@ const Hero = ({ content }) => {
         <div className="gp-vignette" />
         <div className="gp-center">
           <div>
-            <h1 className="gp-title">{hero.title || ""}</h1>
+            <h1 className="gp-title">{hero.title || "GreenPass Super App"}</h1>
             {hero.subtitle ? <p className="gp-sub"><MultilineText text={hero.subtitle} /></p> : null}
           </div>
         </div>
       </div>
 
-      {/* Angled band with one continuous diagonal + 4 tiles */}
-      <div className="gp-band">
-        <div className="gp-bandClip">
-          <div className="gp-tiles">
-            {tiles.map((t, i) => (
-              <article key={i} className={`gp-tile gp-tone-${t.tone}`}>
-                <div className="gp-inner">
-                  <div className="gp-ico">{t.icon}</div>
-                  <h3 className="gp-ttl">{t.title}</h3>
-                  <div className="gp-hr" />
-                  <p className="gp-desc">{t.desc}</p>
-                  <Link className="gp-cta" to={t.href}>
-                    Learn More <span className="chev">»</span>
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
+      {/* Overlapping tiles row (no diagonal) */}
+      <div className="gp-tilesRow">
+        {tiles.map((t, i) => (
+          <article key={i} className={`gp-tile gp-tone-${t.tone}`}>
+            <div className="gp-inner">
+              <div className="gp-ico">{t.icon}</div>
+              <h3 className="gp-ttl">{t.title}</h3>
+              <div className="gp-hr" />
+              <p className="gp-desc">{t.desc}</p>
+              <Link className="gp-cta" to={t.href}>
+                Learn More <span className="chev">»</span>
+              </Link>
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );
