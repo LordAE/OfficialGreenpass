@@ -197,7 +197,7 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   HERO (Bates-style, 4 tiles side-by-side, only TOP edge angled)
+   HERO (Bates-style cards: flat tiles, angled TOP ONLY)
 ========================= */
 const DEFAULT_POSTER = '';
 
@@ -220,32 +220,36 @@ const Hero = ({ content }) => {
 
   const tiles = [
     {
-      icon: <Compass size={28} />,
+      icon: <Compass size={32} />,
       title: "FUTURE STUDENTS",
       desc: "Explore programs, admissions, and support designed for international students.",
       href: createPageUrl("Schools"),
       tone: "teal",
+      capClass: "cap-1",
     },
     {
-      icon: <GraduationCap size={28} />,
+      icon: <GraduationCap size={32} />,
       title: "ACADEMIC PROGRAMS",
       desc: "Compare tuition, duration, and see intake dates and requirements.",
       href: createPageUrl("ComparePrograms"),
       tone: "amber",
+      capClass: "cap-2",
     },
     {
-      icon: <Megaphone size={28} />,
+      icon: <Megaphone size={32} />,
       title: "CALENDARS & KEY DATES",
       desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.",
       href: createPageUrl("FairAndEvents"),
       tone: "sky",
+      capClass: "cap-3",
     },
     {
-      icon: <MapPin size={28} />,
+      icon: <MapPin size={32} />,
       title: "VIRTUAL CAMPUS TOURS",
       desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.",
       href: createPageUrl("StudentLife"),
       tone: "rose",
+      capClass: "cap-4",
     },
   ];
 
@@ -256,68 +260,85 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* hero video */
+/* Hero video */
 .gp-videoWrap{position:relative;width:100%;height:clamp(420px,62vh,720px);overflow:hidden;background:#0f1115}
 .gp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
 .gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
 
-/* centered title */
+/* Title */
 .gp-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem}
 .gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
 .gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* band sits slightly over hero for the Bates feel */
-.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-84px,-10vh,-140px) auto 0;padding:0 22px}
+/* Band (no clip) – just rides up under the hero a bit */
+.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-80px,-12vh,-140px) auto 0;padding:0 18px}
+@media(min-width:1024px){.gp-band{padding:0 22px}}
 
-/* 4 tiles, side-by-side, clean gaps (no overlap) */
-.gp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px}
+/* Grid of 4 squared tiles, no overlap */
+.gp-tiles{display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr)}}
 
-/* tile with ONLY the top edge angled via clip-path */
-.gp-tile{
-  position:relative;overflow:hidden;color:#fff;border-radius:12px;isolation:isolate;
-  box-shadow:0 10px 24px rgba(0,0,0,.14);
-  clip-path:polygon(0 var(--cut,16%), 100% 0, 100% 100%, 0% 100%);
+/* Card base (no skew) */
+.gp-card{
+  position:relative; overflow:hidden; color:#fff; border-radius:14px;
+  background:#1b6b74; /* default fallback */
+  box-shadow:0 10px 20px rgba(0,0,0,.18);
+  transition:transform .18s ease, box-shadow .18s ease;
 }
-.gp-tiles > .gp-tile:nth-child(1){ --cut:22% }
-.gp-tiles > .gp-tile:nth-child(2){ --cut:14% }
-.gp-tiles > .gp-tile:nth-child(3){ --cut:8%  }
-.gp-tiles > .gp-tile:nth-child(4){ --cut:0%  }
+.gp-card:hover{transform:translateY(-4px); box-shadow:0 18px 34px rgba(0,0,0,.24)}
 
-/* tones */
-.gp-tone-teal { background:#1b6b74; }
-.gp-tone-amber{ background:#b49324; }
-.gp-tone-sky  { background:#2b8ca7; }
-.gp-tone-rose { background:#6e272c; }
+/* Tones */
+.gp-tone-teal{background:#1b6b74}
+.gp-tone-amber{background:#b49324}
+.gp-tone-sky{background:#2b8ca7}
+.gp-tone-rose{background:#6e272c}
 
-/* sheen */
-.gp-tile:before{content:"";position:absolute;inset:0;background:
-  radial-gradient(120% 120% at 50% 8%,rgba(255,255,255,.10),transparent 60%),
-  linear-gradient(to bottom,rgba(0,0,0,.10),rgba(0,0,0,.18));z-index:-1}
+/* Global sheen + subtle depth */
+.gp-card::after{
+  content:""; position:absolute; inset:0;
+  background:
+    radial-gradient(120% 120% at 50% 6%, rgba(255,255,255,.12), transparent 60%),
+    linear-gradient(to bottom, rgba(0,0,0,.10), rgba(0,0,0,.20));
+  pointer-events:none;
+}
 
-/* inner content (straight) */
-.gp-inner{padding:30px 26px 26px;display:grid;align-content:start;gap:16px}
-.gp-ico{opacity:.95}
-.gp-ttl{margin:0 0 2px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase}
-.gp-hr{height:1px;background:rgba(255,255,255,.34);margin:12px 0 8px}
-.gp-desc{margin:0;font-size:.95rem;line-height:1.4;opacity:.96}
+/* The "cute" top cap (angled top ONLY, text unaffected) */
+.gp-topCap{
+  position:absolute; left:0; right:0; top:0; height:42%;
+  pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.04));
+}
+/* Each cap gets a slightly different diagonal so together they mimic Bates */
+.gp-card.cap-1 .gp-topCap{clip-path:polygon(0% 28%, 100% 8%, 100% 0%, 0% 0%)}
+.gp-card.cap-2 .gp-topCap{clip-path:polygon(0% 24%, 100% 6%, 100% 0%, 0% 0%)}
+.gp-card.cap-3 .gp-topCap{clip-path:polygon(0% 20%, 100% 4%, 100% 0%, 0% 0%)}
+.gp-card.cap-4 .gp-topCap{clip-path:polygon(0% 16%, 100% 2%, 100% 0%, 0% 0%)}
+
+/* Centered icon + title area (not skewed) */
+.gp-head{
+  position:absolute; left:50%; transform:translateX(-50%);
+  top:24px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px;
+  width:min(92%, 320px);
+}
+.gp-icon{opacity:.95}
+.gp-ttl{margin:0; font-weight:900; letter-spacing:.3px; font-size:0.95rem; text-transform:uppercase}
+
+/* Divider & body */
+.gp-hr{height:1px; background:rgba(255,255,255,.34); margin:12px auto 0; width:86%}
+.gp-body{padding:22px; padding-top:118px}
+.gp-desc{margin:16px 0 0; font-size:.95rem; line-height:1.45; opacity:.96}
 
 /* CTA */
-.gp-cta{justify-self:start;margin-top:8px;display:inline-flex;align-items:center;gap:10px;background:#fff;color:#0f172a;border-radius:10px;padding:12px 18px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
-.gp-cta .chev{display:inline-block;transition:transform .2s ease}
-.gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
+.gp-cta{margin-top:18px; display:inline-flex; align-items:center; gap:10px; background:#fff; color:#0f172a; border-radius:10px; padding:12px 18px; font-weight:800; box-shadow:0 2px 0 rgba(0,0,0,.1); transition:transform .2s ease, box-shadow .2s ease}
+.gp-cta .chev{display:inline-block; transition:transform .2s ease}
+.gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24); transform:translateY(-2px)}
 .gp-cta:hover .chev{transform:translateX(2px)}
 
-/* hover lift (no overlap) */
-@media(hover:hover) and (pointer:fine){
-  .gp-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease}
-  .gp-tile:hover{transform:translateY(-6px) scale(1.02); z-index:1; box-shadow:0 18px 34px rgba(0,0,0,.22)}
-}
-
-/* mobile: simple cards */
+/* Mobile: cap stays, layout stacks cleanly */
 @media(max-width:1023px){
-  .gp-band{margin-top:-36px}
-  .gp-tiles{grid-template-columns:1fr;gap:14px}
-  .gp-tile{clip-path:none}
+  .gp-band{margin-top:-40px}
+  .gp-head{top:20px}
+  .gp-body{padding-top:110px}
 }
           `,
         }}
@@ -351,15 +372,18 @@ const Hero = ({ content }) => {
         </div>
       </div>
 
-      {/* 4 squared tiles with angled top only */}
+      {/* Flat tiles with angled TOP caps */}
       <div className="gp-band">
         <div className="gp-tiles">
           {tiles.map((t, i) => (
-            <article key={i} className={`gp-tile gp-tone-${t.tone}`}>
-              <div className="gp-inner">
-                <div className="gp-ico">{t.icon}</div>
+            <article key={i} className={`gp-card gp-tone-${t.tone} ${t.capClass}`}>
+              <div className="gp-topCap" />
+              <div className="gp-head">
+                <div className="gp-icon">{t.icon}</div>
                 <h3 className="gp-ttl">{t.title}</h3>
                 <div className="gp-hr" />
+              </div>
+              <div className="gp-body">
                 <p className="gp-desc">{t.desc}</p>
                 <Link className="gp-cta" to={t.href}>
                   Learn More <span className="chev">»</span>
