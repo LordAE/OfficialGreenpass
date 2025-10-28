@@ -197,7 +197,7 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   HERO (Bates-style exact cut, no gaps, centered icons)
+   HERO (Bates-like caps, no diagonal/skew)
 ========================= */
 const DEFAULT_POSTER = '';
 
@@ -218,40 +218,34 @@ const Hero = ({ content }) => {
     return () => el.removeEventListener("canplay", tryPlay);
   }, [bgVideo]);
 
-  // 4 tiles, tone + icon + content
   const tiles = [
     {
-      icon: <Compass size={28} />,
+      icon: <Compass size={22} />,
       title: "FUTURE STUDENTS",
       desc: "Explore programs, admissions, and support designed for international students.",
       href: createPageUrl("Schools"),
       tone: "teal",
-      // top cut (rises left→right); values are % of height
-      cutA: 26, cutB: 18
     },
     {
-      icon: <GraduationCap size={28} />,
+      icon: <GraduationCap size={22} />,
       title: "ACADEMIC PROGRAMS",
       desc: "Compare tuition, duration, and see intake dates and requirements.",
       href: createPageUrl("ComparePrograms"),
       tone: "amber",
-      cutA: 21, cutB: 14
     },
     {
-      icon: <Megaphone size={28} />,
+      icon: <Megaphone size={22} />,
       title: "CALENDARS & KEY DATES",
       desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.",
       href: createPageUrl("FairAndEvents"),
       tone: "sky",
-      cutA: 16, cutB: 10
     },
     {
-      icon: <MapPin size={28} />,
+      icon: <MapPin size={22} />,
       title: "VIRTUAL CAMPUS TOURS",
       desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.",
       href: createPageUrl("StudentLife"),
       tone: "rose",
-      cutA: 11, cutB: 6
     },
   ];
 
@@ -262,77 +256,75 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* hero video */
+/* Hero video */
 .gp-videoWrap{position:relative;width:100%;height:clamp(420px,62vh,720px);overflow:hidden;background:#0f1115}
 .gp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
 .gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
 
-/* centered title */
+/* Centered headline */
 .gp-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem}
 .gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
 .gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* ----- Bates band: flush tiles, single rising diagonal, no gaps */
-.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-90px,-12vh,-140px) auto 0;padding:0 18px}
+/* Band under hero (no clip, just overlap spacing) */
+.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-80px,-12vh,-140px) auto 0;padding:0 18px}
 @media(min-width:1024px){.gp-band{padding:0 22px}}
 
-.gp-tiles{display:grid;grid-template-columns:1fr;gap:0} /* NO GAPS */
-@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr)}}
+/* 4 square tiles */
+.gp-tiles{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:22px}}
 
-/* Each tile is a perfect rectangle clipped with a top diagonal.
-   Content is NOT skewed or distorted. */
-.gp-card{position:relative;overflow:hidden;color:#fff;height:360px;border-radius:12px;isolation:isolate}
-@media(min-width:1280px){.gp-card{height:380px}}
-.gp-card::before{
-  content:"";
-  position:absolute;inset:0;z-index:-1;
-  /* tone background + sheen */
-  background:
-    radial-gradient(140% 95% at 50% 0%, rgba(255,255,255,.14), transparent 50%),
-    linear-gradient(to bottom, rgba(0,0,0,.14), rgba(0,0,0,.28));
-  mix-blend-mode:overlay;
-}
-.gp-card[data-tone="teal"]{background:#1b6b74}
-.gp-card[data-tone="amber"]{background:#b49324}
-.gp-card[data-tone="sky"]{background:#2b8ca7}
-.gp-card[data-tone="rose"]{background:#6e272c}
-
-/* The exact "cut" across the top; values set per tile with CSS vars */
+/* Tile card */
 .gp-card{
-  --cutA:20%; /* left top Y */
-  --cutB:12%; /* right top Y */
-  clip-path:polygon(0% var(--cutA), 100% var(--cutB), 100% 100%, 0% 100%);
+  position:relative;overflow:hidden;color:#fff;border-radius:16px;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.20)), var(--tile-bg, #155e63);
+  box-shadow:0 8px 24px rgba(2,6,23,.25);
+  min-height: 280px;
 }
 
-/* inner layout: icon centered, title, rule, text, CTA aligned bottom */
-.gp-inner{
-  display:grid;grid-template-rows:auto auto 1fr auto;gap:14px;
-  padding:22px 24px 22px 24px;height:100%;
+/* Top "cute cap" (only the top is angled; body stays straight) */
+.gp-cap{
+  position:absolute;left:0;right:0;top:0;height:110px;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12)), var(--cap-bg, #1a7d86);
+  /* one-sided diagonal like Bates */
+  clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);
+  display:flex;align-items:center;justify-content:center;
 }
-.gp-icon{
-  width:64px;height:64px;border-radius:9999px;border:2px solid rgba(255,255,255,.75);
-  display:grid;place-items:center;margin:0 auto; /* centered */
-  background:rgba(255,255,255,.12);backdrop-filter:saturate(140%) blur(0px)
-}
-.gp-ttl{margin:0;text-align:left;font-weight:800;letter-spacing:.2px;font-size:1.05rem}
-.gp-hr{height:1px;background:rgba(255,255,255,.35);margin:6px 0 2px}
-.gp-desc{margin:0;opacity:.95;line-height:1.45}
 
-.gp-cta{
-  justify-self:start;align-self:end;
-  display:inline-flex;align-items:center;gap:10px;
-  background:#fff;color:#0f172a;padding:12px 18px;border-radius:10px;
-  font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.08)
+/* Centered icon in a subtle ring */
+.gp-ico{
+  width:44px;height:44px;border-radius:9999px;
+  display:flex;align-items:center;justify-content:center;
+  border:2px solid rgba(255,255,255,.85);
+  background: rgba(0,0,0,.08);
+  backdrop-filter: blur(2px);
 }
-.gp-cta .chev{transition:transform .2s ease}
+
+/* Body content (padding-top makes space under the cap) */
+.gp-body{position:relative;padding:26px;padding-top:126px}
+.gp-ttl{margin:0 0 6px;font-weight:800;letter-spacing:.2px;font-size:1rem}
+.gp-hr{height:1px;background:rgba(255,255,255,.28);margin:12px 0 14px}
+.gp-desc{margin:0;font-size:.95rem;line-height:1.5;opacity:.95}
+
+/* CTA */
+.gp-cta{display:inline-flex;align-items:center;gap:10px;margin-top:16px;
+  background:#fff;color:#0f172a;border-radius:12px;padding:12px 18px;font-weight:800;
+  box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
+.gp-cta .chev{display:inline-block;transition:transform .2s ease}
+.gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
 .gp-cta:hover .chev{transform:translateX(2px)}
 
+/* Color themes (tile bg & cap bg) */
+.tone-teal{ --tile-bg:#165e66; --cap-bg:#1b7f89; }
+.tone-amber{ --tile-bg:#967c1e; --cap-bg:#b08f27; }
+.tone-sky{ --tile-bg:#287f96; --cap-bg:#2e9ab3; }
+.tone-rose{ --tile-bg:#642a2f; --cap-bg:#783238; }
+
+/* Mobile tidy */
 @media(max-width:1023px){
-  .gp-band{margin-top:-40px}
-  .gp-card{clip-path:none;height:auto;border-radius:14px;margin-bottom:14px}
-  .gp-inner{padding:20px}
-  .gp-ttl{text-align:center}
-  .gp-cta{justify-self:center}
+  .gp-card{min-height:240px}
+  .gp-cap{height:96px;clip-path: polygon(0 0, 100% 0, 100% 64%, 0 86%);}
+  .gp-body{padding-top:112px}
 }
           `,
         }}
@@ -366,28 +358,19 @@ const Hero = ({ content }) => {
         </div>
       </div>
 
-      {/* Bates-style band: 4 flush tiles, one rising cut */}
+      {/* 4 squared tiles with angled caps */}
       <div className="gp-band">
         <div className="gp-tiles">
           {tiles.map((t, i) => (
-            <article
-              key={i}
-              data-tone={t.tone}
-              className="gp-card"
-              style={{
-                // set the cut per tile (creates the shared rising diagonal)
-                ['--cutA']: `${t.cutA}%`,
-                ['--cutB']: `${t.cutB}%`,
-              }}
-            >
-              <div className="gp-inner">
-                <div className="gp-icon">{t.icon}</div>
+            <article key={i} className={`gp-card tone-${t.tone}`}>
+              <div className="gp-cap">
+                <div className="gp-ico">{t.icon}</div>
+              </div>
 
+              <div className="gp-body">
                 <h3 className="gp-ttl">{t.title}</h3>
                 <div className="gp-hr" />
-
                 <p className="gp-desc">{t.desc}</p>
-
                 <Link className="gp-cta" to={t.href}>
                   Learn More <span className="chev">»</span>
                 </Link>
