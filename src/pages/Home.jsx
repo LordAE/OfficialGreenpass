@@ -195,9 +195,8 @@ const isHighlightedNow = (post) => {
   }
   return true;
 };
-
 /* =========================
-   HERO (Bates-style cards: flat tiles, angled TOP ONLY)
+   HERO (Bates-like caps, no diagonal/skew)
 ========================= */
 const DEFAULT_POSTER = '';
 
@@ -220,36 +219,32 @@ const Hero = ({ content }) => {
 
   const tiles = [
     {
-      icon: <Compass size={32} />,
+      icon: <Compass size={22} />,
       title: "FUTURE STUDENTS",
       desc: "Explore programs, admissions, and support designed for international students.",
       href: createPageUrl("Schools"),
       tone: "teal",
-      capClass: "cap-1",
     },
     {
-      icon: <GraduationCap size={32} />,
+      icon: <GraduationCap size={22} />,
       title: "ACADEMIC PROGRAMS",
       desc: "Compare tuition, duration, and see intake dates and requirements.",
       href: createPageUrl("ComparePrograms"),
       tone: "amber",
-      capClass: "cap-2",
     },
     {
-      icon: <Megaphone size={32} />,
+      icon: <Megaphone size={22} />,
       title: "CALENDARS & KEY DATES",
       desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.",
       href: createPageUrl("FairAndEvents"),
       tone: "sky",
-      capClass: "cap-3",
     },
     {
-      icon: <MapPin size={32} />,
+      icon: <MapPin size={22} />,
       title: "VIRTUAL CAMPUS TOURS",
       desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.",
       href: createPageUrl("StudentLife"),
       tone: "rose",
-      capClass: "cap-4",
     },
   ];
 
@@ -265,80 +260,70 @@ const Hero = ({ content }) => {
 .gp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
 .gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
 
-/* Title */
+/* Centered headline */
 .gp-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem}
 .gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
 .gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* Band (no clip) – just rides up under the hero a bit */
+/* Band under hero (no clip, just overlap spacing) */
 .gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-80px,-12vh,-140px) auto 0;padding:0 18px}
 @media(min-width:1024px){.gp-band{padding:0 22px}}
 
-/* Grid of 4 squared tiles, no overlap */
-.gp-tiles{display:grid;grid-template-columns:1fr;gap:16px}
-@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr)}}
+/* 4 square tiles */
+.gp-tiles{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:22px}}
 
-/* Card base (no skew) */
+/* Tile card */
 .gp-card{
-  position:relative; overflow:hidden; color:#fff; border-radius:14px;
-  background:#1b6b74; /* default fallback */
-  box-shadow:0 10px 20px rgba(0,0,0,.18);
-  transition:transform .18s ease, box-shadow .18s ease;
-}
-.gp-card:hover{transform:translateY(-4px); box-shadow:0 18px 34px rgba(0,0,0,.24)}
-
-/* Tones */
-.gp-tone-teal{background:#1b6b74}
-.gp-tone-amber{background:#b49324}
-.gp-tone-sky{background:#2b8ca7}
-.gp-tone-rose{background:#6e272c}
-
-/* Global sheen + subtle depth */
-.gp-card::after{
-  content:""; position:absolute; inset:0;
-  background:
-    radial-gradient(120% 120% at 50% 6%, rgba(255,255,255,.12), transparent 60%),
-    linear-gradient(to bottom, rgba(0,0,0,.10), rgba(0,0,0,.20));
-  pointer-events:none;
+  position:relative;overflow:hidden;color:#fff;border-radius:16px;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.20)), var(--tile-bg, #155e63);
+  box-shadow:0 8px 24px rgba(2,6,23,.25);
+  min-height: 280px;
 }
 
-/* The "cute" top cap (angled top ONLY, text unaffected) */
-.gp-topCap{
-  position:absolute; left:0; right:0; top:0; height:42%;
-  pointer-events:none;
-  background:linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.04));
+/* Top "cute cap" (only the top is angled; body stays straight) */
+.gp-cap{
+  position:absolute;left:0;right:0;top:0;height:110px;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12)), var(--cap-bg, #1a7d86);
+  /* one-sided diagonal like Bates */
+  clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);
+  display:flex;align-items:center;justify-content:center;
 }
-/* Each cap gets a slightly different diagonal so together they mimic Bates */
-.gp-card.cap-1 .gp-topCap{clip-path:polygon(0% 28%, 100% 8%, 100% 0%, 0% 0%)}
-.gp-card.cap-2 .gp-topCap{clip-path:polygon(0% 24%, 100% 6%, 100% 0%, 0% 0%)}
-.gp-card.cap-3 .gp-topCap{clip-path:polygon(0% 20%, 100% 4%, 100% 0%, 0% 0%)}
-.gp-card.cap-4 .gp-topCap{clip-path:polygon(0% 16%, 100% 2%, 100% 0%, 0% 0%)}
 
-/* Centered icon + title area (not skewed) */
-.gp-head{
-  position:absolute; left:50%; transform:translateX(-50%);
-  top:24px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px;
-  width:min(92%, 320px);
+/* Centered icon in a subtle ring */
+.gp-ico{
+  width:44px;height:44px;border-radius:9999px;
+  display:flex;align-items:center;justify-content:center;
+  border:2px solid rgba(255,255,255,.85);
+  background: rgba(0,0,0,.08);
+  backdrop-filter: blur(2px);
 }
-.gp-icon{opacity:.95}
-.gp-ttl{margin:0; font-weight:900; letter-spacing:.3px; font-size:0.95rem; text-transform:uppercase}
 
-/* Divider & body */
-.gp-hr{height:1px; background:rgba(255,255,255,.34); margin:12px auto 0; width:86%}
-.gp-body{padding:22px; padding-top:118px}
-.gp-desc{margin:16px 0 0; font-size:.95rem; line-height:1.45; opacity:.96}
+/* Body content (padding-top makes space under the cap) */
+.gp-body{position:relative;padding:26px;padding-top:126px}
+.gp-ttl{margin:0 0 6px;font-weight:800;letter-spacing:.2px;font-size:1rem}
+.gp-hr{height:1px;background:rgba(255,255,255,.28);margin:12px 0 14px}
+.gp-desc{margin:0;font-size:.95rem;line-height:1.5;opacity:.95}
 
 /* CTA */
-.gp-cta{margin-top:18px; display:inline-flex; align-items:center; gap:10px; background:#fff; color:#0f172a; border-radius:10px; padding:12px 18px; font-weight:800; box-shadow:0 2px 0 rgba(0,0,0,.1); transition:transform .2s ease, box-shadow .2s ease}
-.gp-cta .chev{display:inline-block; transition:transform .2s ease}
-.gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24); transform:translateY(-2px)}
+.gp-cta{display:inline-flex;align-items:center;gap:10px;margin-top:16px;
+  background:#fff;color:#0f172a;border-radius:12px;padding:12px 18px;font-weight:800;
+  box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
+.gp-cta .chev{display:inline-block;transition:transform .2s ease}
+.gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
 .gp-cta:hover .chev{transform:translateX(2px)}
 
-/* Mobile: cap stays, layout stacks cleanly */
+/* Color themes (tile bg & cap bg) */
+.tone-teal{ --tile-bg:#165e66; --cap-bg:#1b7f89; }
+.tone-amber{ --tile-bg:#967c1e; --cap-bg:#b08f27; }
+.tone-sky{ --tile-bg:#287f96; --cap-bg:#2e9ab3; }
+.tone-rose{ --tile-bg:#642a2f; --cap-bg:#783238; }
+
+/* Mobile tidy */
 @media(max-width:1023px){
-  .gp-band{margin-top:-40px}
-  .gp-head{top:20px}
-  .gp-body{padding-top:110px}
+  .gp-card{min-height:240px}
+  .gp-cap{height:96px;clip-path: polygon(0 0, 100% 0, 100% 64%, 0 86%);}
+  .gp-body{padding-top:112px}
 }
           `,
         }}
@@ -366,24 +351,24 @@ const Hero = ({ content }) => {
         <div className="gp-vignette" />
         <div className="gp-center">
           <div>
-            <h1 className="gp-title">{hero.title || "GreenPass Super App"}</h1>
+            <h1 className="gp-title">{hero.title || ""}</h1>
             {hero.subtitle ? <p className="gp-sub"><MultilineText text={hero.subtitle} /></p> : null}
           </div>
         </div>
       </div>
 
-      {/* Flat tiles with angled TOP caps */}
+      {/* 4 squared tiles with angled caps */}
       <div className="gp-band">
         <div className="gp-tiles">
           {tiles.map((t, i) => (
-            <article key={i} className={`gp-card gp-tone-${t.tone} ${t.capClass}`}>
-              <div className="gp-topCap" />
-              <div className="gp-head">
-                <div className="gp-icon">{t.icon}</div>
+            <article key={i} className={`gp-card tone-${t.tone}`}>
+              <div className="gp-cap">
+                <div className="gp-ico">{t.icon}</div>
+              </div>
+
+              <div className="gp-body">
                 <h3 className="gp-ttl">{t.title}</h3>
                 <div className="gp-hr" />
-              </div>
-              <div className="gp-body">
                 <p className="gp-desc">{t.desc}</p>
                 <Link className="gp-cta" to={t.href}>
                   Learn More <span className="chev">»</span>
