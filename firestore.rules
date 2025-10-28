@@ -133,6 +133,57 @@ service cloud.firestore {
         );
     }
 
+    // ---------- COMMON EMAIL/SESSION HELPERS ----------
+    function sameEmail(a, b) {
+      return a != null && b != null && a == b;
+    }
+
+    function authEmail() {
+      return signedIn() ? request.auth.token.email : null;
+    }
+
+    // Check if caller is the tutor of a TutoringSession doc (by uid OR email OR app user id fields)
+    function isTutorOfSession(res) {
+      return signedIn() && (
+        // direct uid fields commonly used
+        res.data.tutor_auth_uid == request.auth.uid ||
+        res.data.tutor_uid == request.auth.uid ||
+        res.data.tutor_id == request.auth.uid ||
+        // match by email
+        sameEmail(authEmail(), res.data.tutor_email) ||
+        // allow when app stored a different "user id" for the same account
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          (
+            res.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
+            res.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
+            res.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
+          )
+        )
+      );
+    }
+
+    // Check if caller is the student of a TutoringSession doc (by uid OR email OR app user id fields)
+    function isStudentOfSession(res) {
+      return signedIn() && (
+        res.data.student_auth_uid == request.auth.uid ||
+        res.data.student_uid == request.auth.uid ||
+        res.data.student_id == request.auth.uid ||
+        sameEmail(authEmail(), res.data.student_email) ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          (
+            res.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
+            res.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
+            res.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
+          )
+        )
+      );
+    }
+
+    function canReadSession(res) { return isAdmin() || isTutorOfSession(res) || isStudentOfSession(res); }
+    function canWriteSession(res) { return isAdmin() || isTutorOfSession(res) || isStudentOfSession(res); }
+
     // ── Collections ─────────────────────────────────
 
     match /AboutPageContent/{docId} { allow read, write: if isAdmin(); }
@@ -351,12 +402,27 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
+    // ---------- TutoringSession (expanded to support uid/email/aliases) ----------
     match /TutoringSession/{docId} {
-      allow create: if isAdmin() || (signedIn() && request.resource.data.student_id == request.auth.uid);
-      allow read, update, delete: if isAdmin() || (signedIn() && (
-        resource.data.student_id == request.auth.uid ||
-        resource.data.tutor_id   == request.auth.uid
-      ));
+      allow create: if canWriteSession(request.resource);
+      allow read: if canReadSession(resource);
+      allow update, delete: if isAdmin() || isTutorOfSession(resource);
+    }
+    match /tutoring_sessions/{docId} {
+      allow create: if canWriteSession(request.resource);
+      allow read: if canReadSession(resource);
+      allow update, delete: if isAdmin() || isTutorOfSession(resource);
+    }
+    // In case your sessions live under a subcollection (aliases)
+    match /{path=**}/TutoringSession/{docId} {
+      allow create: if canWriteSession(request.resource);
+      allow read: if canReadSession(resource);
+      allow update, delete: if isAdmin() || isTutorOfSession(resource);
+    }
+    match /{path=**}/tutoring_sessions/{docId} {
+      allow create: if canWriteSession(request.resource);
+      allow read: if canReadSession(resource);
+      allow update, delete: if isAdmin() || isTutorOfSession(resource);
     }
 
     match /User/{docId} {
