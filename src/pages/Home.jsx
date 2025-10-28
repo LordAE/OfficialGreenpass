@@ -199,7 +199,8 @@ const isHighlightedNow = (post) => {
 /* =========================
    HERO
 ========================= */
-const DEFAULT_POSTER = '';
+const DEFAULT_POSTER =
+  "https://images.unsplash.com/photo-1529078155058-5d716f45d604?q=80&w=1920&auto=format&fit=crop"; // safe fallback
 
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
@@ -209,44 +210,41 @@ const Hero = ({ content }) => {
   const [useImage, setUseImage] = React.useState(!bgVideo);
   const videoRef = React.useRef(null);
 
+  // Try to play; if device blocks autoplay, fall back to poster quickly
   React.useEffect(() => {
     if (!bgVideo || !videoRef.current) return;
     const el = videoRef.current;
-    const tryPlay = () => el.play().catch(() => {});
+    let timer;
+
+    const tryPlay = async () => {
+      try {
+        el.muted = true;
+        await el.play();
+        setUseImage(false);
+      } catch {
+        setUseImage(true);
+      }
+    };
+
     if (el.readyState >= 2) tryPlay();
     else el.addEventListener("canplay", tryPlay, { once: true });
-    return () => el.removeEventListener("canplay", tryPlay);
+
+    // if still paused after a second, swap to image so we don't show a blank pane
+    timer = setTimeout(() => {
+      if (el.paused) setUseImage(true);
+    }, 1200);
+
+    return () => {
+      el.removeEventListener("canplay", tryPlay);
+      clearTimeout(timer);
+    };
   }, [bgVideo]);
 
   const tiles = [
-    {
-      icon: <Compass size={22} />,
-      title: "FUTURE STUDENTS",
-      desc: "Explore programs, admissions, and support designed for international students.",
-      href: createPageUrl("Schools"),
-      tone: "teal",
-    },
-    {
-      icon: <GraduationCap size={22} />,
-      title: "ACADEMIC PROGRAMS",
-      desc: "Compare tuition, duration, and see intake dates and requirements.",
-      href: createPageUrl("ComparePrograms"),
-      tone: "amber",
-    },
-    {
-      icon: <Megaphone size={22} />,
-      title: "CALENDARS & KEY DATES",
-      desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.",
-      href: createPageUrl("FairAndEvents"),
-      tone: "sky",
-    },
-    {
-      icon: <MapPin size={22} />,
-      title: "VIRTUAL CAMPUS TOURS",
-      desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.",
-      href: createPageUrl("StudentLife"),
-      tone: "rose",
-    },
+    { icon: <Compass size={22} />, title: "FUTURE STUDENTS", desc: "Explore programs, admissions, and support designed for international students.", href: createPageUrl("Schools"), tone: "teal" },
+    { icon: <GraduationCap size={22} />, title: "ACADEMIC PROGRAMS", desc: "Compare tuition, duration, and see intake dates and requirements.", href: createPageUrl("ComparePrograms"), tone: "amber" },
+    { icon: <Megaphone size={22} />, title: "CALENDARS & KEY DATES", desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.", href: createPageUrl("FairAndEvents"), tone: "sky" },
+    { icon: <MapPin size={22} />, title: "VIRTUAL CAMPUS TOURS", desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.", href: createPageUrl("StudentLife"), tone: "rose" },
   ];
 
   return (
@@ -256,24 +254,23 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* Hero video (responsive + mobile-flex) */
+/* Hero video (responsive + robust mobile heights) */
 .gp-videoWrap{
   position:relative;
   width:100%;
-  height:clamp(320px, 62svh, 720px);
+  height:clamp(280px, min(62svh, 72dvh), 720px);
   overflow:hidden;
   background:#0f1115;
 }
-/* Fallback for browsers without svh support */
+/* Fallbacks for older browsers */
 @supports not (height: 1svh){
-  .gp-videoWrap{ height:clamp(320px, 62vh, 720px); }
+  .gp-videoWrap{ height:clamp(280px, 62vh, 720px); }
 }
 .gp-video{
   position:absolute;inset:0;
-  inline-size:100%;
-  block-size:100%;
-  min-width:100%;
-  min-height:100%;
+  display:block;            /* remove inline gap */
+  width:100%;height:100%;
+  min-width:100%;min-height:100%;
   object-fit:cover;
   object-position:center;
 }
@@ -285,72 +282,34 @@ const Hero = ({ content }) => {
 .gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
 /* Band under hero */
-.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-80px,-12vh,-140px) auto 0;padding:0 18px}
+.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-72px,-12vh,-120px) auto 0;padding:0 18px}
 @media(min-width:1024px){.gp-band{padding:0 22px}}
 
 /* 4 square tiles */
-.gp-tiles{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:18px;
-  align-items:stretch;
-}
-@media(min-width:1024px){
-  .gp-tiles{grid-template-columns:repeat(4,1fr);gap:22px}
-}
+.gp-tiles{display:grid;grid-template-columns:1fr;gap:18px;align-items:stretch}
+@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:22px}}
 
-/* Tile card (flex so CTAs align at bottom) */
+/* Tile card (flex so CTAs align) */
 .gp-card{
-  position:relative;
-  display:flex;
-  flex-direction:column;
-  color:#fff;
-  border-radius:16px;
-  overflow:hidden;
+  position:relative;display:flex;flex-direction:column;
+  color:#fff;border-radius:16px;overflow:hidden;
   background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.20)), var(--tile-bg, #155e63);
-  box-shadow:0 8px 24px rgba(2,6,23,.25);
-  min-height: 280px;
+  box-shadow:0 8px 24px rgba(2,6,23,.25);min-height: 280px;
 }
-.gp-cap{
-  position:absolute;left:0;right:0;top:0;height:110px;
-  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12)), var(--cap-bg, #1a7d86);
-  clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);
-  display:flex;align-items:center;justify-content:center;
-}
-.gp-ico{
-  width:44px;height:44px;border-radius:9999px;
-  display:flex;align-items:center;justify-content:center;
-  border:2px solid rgba(255,255,255,.85);
-  background: rgba(0,0,0,.08);
-  backdrop-filter: blur(2px);
-}
+.gp-cap{position:absolute;left:0;right:0;top:0;height:110px;background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12)), var(--cap-bg, #1a7d86);clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);display:flex;align-items:center;justify-content:center;}
+.gp-ico{width:44px;height:44px;border-radius:9999px;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.85);background: rgba(0,0,0,.08);backdrop-filter: blur(2px);}
 
-/* Body area = flex column, CTA sticks to bottom via margin-top:auto */
-.gp-body{
-  position:relative;
-  display:flex;
-  flex-direction:column;
-  gap:12px;
-  padding:26px;
-  padding-top:126px;
-  flex:1;                 /* fill remaining height of card */
-}
+.gp-body{position:relative;display:flex;flex-direction:column;gap:12px;padding:26px;padding-top:126px;flex:1;}
 .gp-ttl{margin:0 0 2px;font-weight:800;letter-spacing:.2px;font-size:1rem}
 .gp-hr{height:1px;background:rgba(255,255,255,.28);margin:6px 0 6px}
 .gp-desc{margin:0;font-size:.95rem;line-height:1.5;opacity:.95}
 
 /* CTA */
-.gp-cta{
-  display:inline-flex;align-items:center;gap:10px;
-  margin-top:auto;              /* <-- keeps buttons aligned */
-  background:#fff;color:#0f172a;border-radius:12px;padding:12px 18px;font-weight:800;
-  box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease
-}
+.gp-cta{display:inline-flex;align-items:center;gap:10px;margin-top:auto;background:#fff;color:#0f172a;border-radius:12px;padding:12px 18px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
 .gp-cta .chev{display:inline-block;transition:transform .2s ease}
 .gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
 .gp-cta:hover .chev{transform:translateX(2px)}
 
-/* Color themes (tile bg & cap bg) */
 .tone-teal{ --tile-bg:#165e66; --cap-bg:#1b7f89; }
 .tone-amber{ --tile-bg:#967c1e; --cap-bg:#b08f27; }
 .tone-sky{ --tile-bg:#287f96; --cap-bg:#2e9ab3; }
@@ -362,7 +321,7 @@ const Hero = ({ content }) => {
   @supports not (height: 1svh){
     .gp-videoWrap{ height:clamp(260px, 56vh, 560px); }
   }
-  .gp-video{ object-position:center 35%; }
+  .gp-video{ object-position:center 40%; }
   .gp-title{ font-size:clamp(1.4rem, 6vw, 2.2rem); }
   .gp-sub{   font-size:clamp(.9rem, 3.8vw, 1.05rem); }
   .gp-cap{height:96px;clip-path: polygon(0 0, 100% 0, 100% 64%, 0 86%);}
@@ -386,7 +345,6 @@ const Hero = ({ content }) => {
             muted
             playsInline
             preload="metadata"
-            disablePictureInPicture
             onError={() => setUseImage(true)}
           />
         ) : (
@@ -542,18 +500,18 @@ function NewsHighlights({ highlights = [] }) {
                 exit={{ opacity: 0, x: -40 }}
                 transition={{ duration: 0.5, ease: 'easeOut' }}
               >
-                <div className="absolute inset-0">
+                <div className="absolute inset-0 pointer-events-none">
                   <img
                     src={active.cover}
                     alt={active.title}
                     className="w-full h-full object-cover"
                     loading="eager"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent pointer-events-none" />
                 </div>
 
-                {/* FIX: items=end -> items-end */}
-                <div className="relative z-10 h-full flex items-end sm:items-end">
+                {/* caption */}
+                <div className="relative z-10 h-full flex items-end sm:items-end pointer-events-auto">
                   <div className="p-4 sm:p-8 w-full">
                     <div className="max-w-3xl bg-black/35 backdrop-blur-sm rounded-2xl px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-2 mb-2">
@@ -571,8 +529,8 @@ function NewsHighlights({ highlights = [] }) {
                         </p>
                       ) : null}
                       <div className="mt-4">
-                        <Link to={active.href}>
-                          <Button className="bg-green-600 hover:bg-green-700">
+                        <Link to={active.href} className="block">
+                          <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700">
                             Read more <ArrowRight className="ml-2 w-4 h-4" />
                           </Button>
                         </Link>
@@ -583,6 +541,7 @@ function NewsHighlights({ highlights = [] }) {
               </motion.div>
             </AnimatePresence>
 
+            {/* mobile arrows */}
             <div className="sm:hidden absolute inset-x-0 bottom-4 px-4 flex items-center justify-between">
               <button aria-label="Previous" onClick={prev} className="p-2 rounded-full bg-white/90 shadow hover:bg-white">
                 <ChevronLeft className="w-5 h-5 text-slate-800" />
@@ -1164,7 +1123,7 @@ export default function Home() {
   const [highlightedPosts, setHighlightedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+    useEffect(() => {
     (async () => {
       setLoading(true);
       try {
@@ -1221,6 +1180,7 @@ export default function Home() {
         });
         setSchools(merged);
 
+        // FIX: removed extra ")" here
         const postsRef = collection(db, 'posts');
         const postsSnap = await getDocs(
           query(postsRef, where('isHighlight', '==', true), limit(5))
@@ -1235,6 +1195,7 @@ export default function Home() {
       }
     })();
   }, []);
+
 
   if (!authChecked) {
     return (
