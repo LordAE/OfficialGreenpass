@@ -168,8 +168,6 @@ import AdminAgentAssignments from "@/pages/AdminAgentAssignments";
 
 import { BrowserRouter as Router, Route, Routes, useLocation, Navigate } from 'react-router-dom';
 
-import HeroWithFeatureTiles from "@/components/home/HeroWithFeatureTiles";
-
 
 const PAGES = {
     
