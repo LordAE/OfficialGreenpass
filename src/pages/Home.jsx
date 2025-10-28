@@ -197,7 +197,7 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   HERO (Bates-style, no diagonal clip)
+   HERO (Bates-style, 4 tiles side-by-side, only TOP edge angled)
 ========================= */
 const DEFAULT_POSTER = '';
 
@@ -256,7 +256,7 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* hero video: taller and truly cover */
+/* hero video */
 .gp-videoWrap{position:relative;width:100%;height:clamp(420px,62vh,720px);overflow:hidden;background:#0f1115}
 .gp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
 .gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
@@ -266,55 +266,58 @@ const Hero = ({ content }) => {
 .gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
 .gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* ----- band (NO CLIP). just a negative margin to overlap the video */
-.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-80px,-12vh,-140px) auto 0;padding:0 18px}
-@media(min-width:1024px){.gp-band{padding:0 22px}}
+/* band sits slightly over hero for the Bates feel */
+.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-84px,-10vh,-140px) auto 0;padding:0 22px}
 
-/* grid of 4 angled tiles */
-.gp-tiles{display:grid;grid-template-columns:1fr;gap:14px}
-@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:0}}
+/* 4 tiles, side-by-side, clean gaps (no overlap) */
+.gp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px}
 
-/* angled tile like Bates; no container clip */
-.gp-tile{position:relative;overflow:hidden;color:#fff;border-radius:0;transform:skewX(-14deg);will-change:transform,box-shadow,filter}
-@media(min-width:1024px){.gp-tile + .gp-tile{margin-left:-56px}} /* overlap to share the diagonal line */
+/* tile with ONLY the top edge angled via clip-path */
+.gp-tile{
+  position:relative;overflow:hidden;color:#fff;border-radius:12px;isolation:isolate;
+  box-shadow:0 10px 24px rgba(0,0,0,.14);
+  clip-path:polygon(0 var(--cut,16%), 100% 0, 100% 100%, 0% 100%);
+}
+.gp-tiles > .gp-tile:nth-child(1){ --cut:22% }
+.gp-tiles > .gp-tile:nth-child(2){ --cut:14% }
+.gp-tiles > .gp-tile:nth-child(3){ --cut:8%  }
+.gp-tiles > .gp-tile:nth-child(4){ --cut:0%  }
 
-/* tones close to Bates */
-.gp-tone-teal{background:#1b6b74}
-.gp-tone-amber{background:#b49324}
-.gp-tone-sky{background:#2b8ca7}
-.gp-tone-rose{background:#6e272c}
+/* tones */
+.gp-tone-teal { background:#1b6b74; }
+.gp-tone-amber{ background:#b49324; }
+.gp-tone-sky  { background:#2b8ca7; }
+.gp-tone-rose { background:#6e272c; }
 
-/* subtle sheen & divider */
+/* sheen */
 .gp-tile:before{content:"";position:absolute;inset:0;background:
-  radial-gradient(120% 120% at 50% 8%,rgba(255,255,255,.13),transparent 60%),
-  linear-gradient(to bottom,rgba(0,0,0,.14),rgba(0,0,0,.24))}
-.gp-tile:after{content:"";position:absolute;top:0;bottom:0;left:0;width:1px;background:rgba(255,255,255,.18);opacity:.7}
+  radial-gradient(120% 120% at 50% 8%,rgba(255,255,255,.10),transparent 60%),
+  linear-gradient(to bottom,rgba(0,0,0,.10),rgba(0,0,0,.18));z-index:-1}
 
-/* unskew inner so text is straight */
-.gp-inner{transform:skewX(14deg);padding:32px 26px;min-height:300px;display:grid;align-content:start;gap:16px}
+/* inner content (straight) */
+.gp-inner{padding:30px 26px 26px;display:grid;align-content:start;gap:16px}
 .gp-ico{opacity:.95}
 .gp-ttl{margin:0 0 2px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase}
-.gp-hr{height:1px;background:rgba(255,255,255,.34);margin:12px 0 10px}
+.gp-hr{height:1px;background:rgba(255,255,255,.34);margin:12px 0 8px}
 .gp-desc{margin:0;font-size:.95rem;line-height:1.4;opacity:.96}
 
-/* white rounded CTA like Bates */
-.gp-cta{justify-self:start;margin-top:10px;display:inline-flex;align-items:center;gap:10px;background:#fff;color:#0f172a;border-radius:10px;padding:12px 18px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
+/* CTA */
+.gp-cta{justify-self:start;margin-top:8px;display:inline-flex;align-items:center;gap:10px;background:#fff;color:#0f172a;border-radius:10px;padding:12px 18px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
 .gp-cta .chev{display:inline-block;transition:transform .2s ease}
 .gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
 .gp-cta:hover .chev{transform:translateX(2px)}
 
-/* hover emphasis for whole tile */
+/* hover lift (no overlap) */
 @media(hover:hover) and (pointer:fine){
   .gp-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease}
-  .gp-tile:hover{transform:skewX(-14deg) translateY(-8px) scale(1.035); z-index:3; box-shadow:0 18px 34px rgba(0,0,0,.28),0 10px 10px rgba(0,0,0,.18)}
+  .gp-tile:hover{transform:translateY(-6px) scale(1.02); z-index:1; box-shadow:0 18px 34px rgba(0,0,0,.22)}
 }
 
-/* mobile: no skew, rounded cards, tidy spacing */
+/* mobile: simple cards */
 @media(max-width:1023px){
-  .gp-band{margin-top:-46px}
-  .gp-tile{transform:none;border-radius:14px}
-  .gp-inner{transform:none;min-height:auto}
-  .gp-tile:after{display:none}
+  .gp-band{margin-top:-36px}
+  .gp-tiles{grid-template-columns:1fr;gap:14px}
+  .gp-tile{clip-path:none}
 }
           `,
         }}
@@ -348,7 +351,7 @@ const Hero = ({ content }) => {
         </div>
       </div>
 
-      {/* Angled tiles; no diagonal band clipping */}
+      {/* 4 squared tiles with angled top only */}
       <div className="gp-band">
         <div className="gp-tiles">
           {tiles.map((t, i) => (
