@@ -342,7 +342,7 @@ const Hero = ({ content }) => {
         <div className="gp-hero-center">
           <div>
             <h1 className="gp-hero-title">
-              {hero.title || "GreenPass Super App"}
+              {hero.title || ""}
             </h1>
             {hero.subtitle ? (
               <p className="gp-hero-sub">
