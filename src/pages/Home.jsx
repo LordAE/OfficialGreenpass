@@ -352,7 +352,7 @@ const Hero = ({ content }) => {
         <div className="gp-vignette" />
         <div className="gp-center">
           <div>
-            <h1 className="gp-title">{hero.title || "GreenPass Super App"}</h1>
+            <h1 className="gp-title">{hero.title || ""}</h1>
             {hero.subtitle ? <p className="gp-sub"><MultilineText text={hero.subtitle} /></p> : null}
           </div>
         </div>
