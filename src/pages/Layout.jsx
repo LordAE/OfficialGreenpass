@@ -5,7 +5,7 @@ import { createPageUrl } from "@/utils";
 import {
   Home, School, Users, BookOpen, FileText, Settings, UserCheck, Calendar, ShoppingCart,
   Store, Package, BarChart3, Building, LogOut, Globe, MoreHorizontal, X, DollarSign,
-  Menu, Rocket, LifeBuoy, GraduationCap, Handshake, Search, ArrowRight, Compass, MessageSquare,
+  Menu, Rocket, LifeBuoy, GraduationCap, Handshake, Search, Compass, MessageSquare,
   Edit, Phone, Info, Palette, Landmark, Facebook, Instagram, Linkedin, Youtube,
   ChevronDown,
 } from "lucide-react";
@@ -22,8 +22,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import ChatWidget from "@/components/chat/ChatWidget";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-
 
 /* ---------- Firebase auth/profile ---------- */
 import { auth, db } from "@/firebase";
@@ -406,7 +404,6 @@ function HoverDropdown({ label, color = "green", items = [] }) {
 
 /* ---------- Explore Bar: hover menus + right socials ---------- */
 const ExploreBar = ({ socialLinks = [] }) => {
-  // Build from current language every render so labels stay in sync
   const students = React.useMemo(buildExploreForStudents, [getLang()]);
   const partners = React.useMemo(buildExploreForPartners, [getLang()]);
   const quick = React.useMemo(buildQuickLinks, [getLang()]);
@@ -478,7 +475,6 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
     window.location.reload();
   }, []);
 
-  // Build menus reactively for current language
   const students = React.useMemo(buildExploreForStudents, [language]);
   const partners = React.useMemo(buildExploreForPartners, [language]);
   const quick = React.useMemo(buildQuickLinks, [language]);
@@ -504,7 +500,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
             <div className="hidden md:flex items-center">
               <NavigationMenu>
                 <NavigationMenuList>
-                  {/* ✅ FIX: use asChild to avoid <a> inside <a> */}
+                  {/* keep asChild here to avoid anchor-in-anchor */}
                   <NavigationMenuItem>
                     <NavigationMenuLink asChild>
                       <Link
@@ -633,7 +629,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                     </Select>
                   </div>
 
-                  <Link to={createPageUrl("Welcome")} className="block w-full">
+                  <Link to={createPageUrl("Welcome")} className="block w/full">
                     <Button variant="outline" className="w-full font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 py-3 transition-all duration-200">
                       {getText("login")}
                     </Button>
@@ -713,7 +709,6 @@ const Footer = ({ getCompanyName }) => {
           ))}
         </div>
 
-        {/* Socials in footer (reuse same links) */}
         <div className="mt-8 border-t border-gray-700 pt-8 md:flex md:items-center md:justify-between">
           <div className="flex space-x-6 md:order-2">
             {SOCIAL_LINKS.map((social, index) => (
@@ -1006,7 +1001,7 @@ export default function Layout() {
             uid: fbUser.uid,
             full_name: fbUser.displayName || "",
             email: fbUser.email || "",
-            user_type: "student", // keep consistent with your app (student/user)
+            user_type: "student",
             onboarding_completed: false,
             settings: { language: language || "en" },
             createdAt: Date.now(),
@@ -1073,7 +1068,6 @@ export default function Layout() {
   );
   const getCompanyName = React.useCallback(() => "GreenPass", []);
 
-  // Include language as a dep so titles update on language change
   const navigationItems = React.useMemo(() => buildDesktopNav(currentUser), [currentUser, language]);
   const mobileNavigationItems = React.useMemo(() => buildMobileNav(currentUser), [currentUser, language]);
 
@@ -1085,19 +1079,16 @@ export default function Layout() {
     );
   }
 
-// Public site (not logged in)
-if (!currentUser) {
-  return (
-    <>
-      <PublicLayout getLogoUrl={getLogoUrl} getCompanyName={getCompanyName} />
-      <ChatWidget /> {/* <-- add this */}
-    </>
-  );
-}
+  // Public site (not logged in)
+  if (!currentUser) {
+    return (
+      <>
+        <PublicLayout getLogoUrl={getLogoUrl} getCompanyName={getCompanyName} />
+        <ChatWidget />
+      </>
+    );
+  }
 
-
-
-  /** 🔒 Onboarding shell — show onboarding routes OR if onboarding not yet completed */
   const isOnboardingRoute = location.pathname.toLowerCase().startsWith("/onboarding");
   const notDoneOnboarding = currentUser?.onboarding_completed === false;
 
@@ -1131,13 +1122,14 @@ if (!currentUser) {
               {navigationItems.map((item, index) => {
                 const isActive = location.pathname === item.url || location.pathname.startsWith(item.url);
                 return (
-                  <SidebarMenuItem
-                    key={index}
-                    asChild
-                    isActive={isActive}
-                    className={`rounded-lg ${isActive ? "bg-green-100 text-green-700" : "hover:bg-gray-100"}`}
-                  >
-                    <Link to={item.url} className="flex items-center gap-3">
+                  <SidebarMenuItem key={index} className="rounded-lg">
+                    <Link
+                      to={item.url}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
+                        isActive ? "bg-green-100 text-green-700" : "hover:bg-gray-100 text-gray-700"
+                      )}
+                    >
                       <item.icon className="w-5 h-5" />
                       <span className="flex-1">{item.title}</span>
                     </Link>
@@ -1160,8 +1152,8 @@ if (!currentUser) {
             </div>
 
             <SidebarMenu>
-              <SidebarMenuItem asChild className="rounded-lg hover:bg-gray-100">
-                <Link to={createPageUrl("Profile")} className="flex items-center gap-3">
+              <SidebarMenuItem className="rounded-lg">
+                <Link to={createPageUrl("Profile")} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700">
                   <Settings className="w-5 h-5 text-gray-600" />
                   <span className="text-gray-700">{getText("profileSettings")}</span>
                 </Link>
@@ -1192,7 +1184,7 @@ if (!currentUser) {
             </div>
           </header>
 
-          {/* Page content (pad by measured bottom nav height on mobile) */}
+          {/* Page content */}
           <div className="flex-1 overflow-auto md:pb-0" style={{ paddingBottom: bottomH || 0 }}>
             <Outlet />
           </div>
