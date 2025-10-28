@@ -197,7 +197,7 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   HERO (bates-style)
+   HERO (Bates-style with single diagonal band)
 ========================= */
 const DEFAULT_POSTER = '';
 
@@ -254,72 +254,82 @@ const Hero = ({ content }) => {
       <style
         dangerouslySetInnerHTML={{
           __html: `
-.gp-hero-root{position:relative;color:#fff;}
-/* slightly taller banner; keeps overlap sweet spot */
-.gp-hero-videoWrap{position:relative;width:100%;height:clamp(320px,48vh,540px);overflow:hidden;background:#101214;}
-.gp-hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
-.gp-hero-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55));}
-.gp-hero-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem;}
-.gp-hero-title{font-size:clamp(1.8rem,3.6vw,2.8rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35);}
-.gp-hero-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35);}
+.gp-hero-root{position:relative;color:#fff}
 
-/* TILES: skewed parallelograms with overlap, like Bates */
-.gp-tiles{position:relative;z-index:2;max-width:1320px;margin:-84px auto 0;padding:0 14px;display:grid;grid-template-columns:1fr;gap:14px;}
-@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:0;padding:0 20px;}}
-.gp-tile{position:relative;overflow:hidden;color:#fff;border-radius:0;transform:skewX(-12deg);will-change:transform, box-shadow, filter;}
-.gp-tile + .gp-tile{margin-left:0;}
-@media(min-width:1024px){.gp-tile + .gp-tile{margin-left:-28px;}}
+/* Taller banner so the tile overlap feels like Bates */
+.gp-videoWrap{position:relative;width:100%;height:clamp(380px,62vh,700px);overflow:hidden;background:#0f1115}
+.gp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
+.gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
 
-/* colored backgrounds approximating Bates’ palette */
-.gp-tone-teal{background:#1f6e7c;}
-.gp-tone-amber{background:#b08b22;}
-.gp-tone-sky{background:#2b8aa7;}
-.gp-tone-rose{background:#6f2529;}
-.gp-tile::before{content:"";position:absolute;inset:0;background:
-  radial-gradient(120% 120% at 50% 10%,rgba(255,255,255,.12),transparent 60%),
-  linear-gradient(to bottom,rgba(0,0,0,.18),rgba(0,0,0,.28));
-  mix-blend-mode:normal;pointer-events:none;}
-/* subtle left divider highlight like Bates */
-.gp-tile::after{content:"";position:absolute;top:0;bottom:0;left:0;width:1px;background:rgba(255,255,255,.18);opacity:.7}
+/* Title centered over video */
+.gp-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem}
+.gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
+.gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* tile inner counter-skew so text is straight */
-.gp-inner{transform:skewX(12deg);padding:30px 26px;min-height:260px;display:grid;align-content:start;gap:16px;}
-.gp-ico{opacity:.95;}
-.gp-ttl{margin:0 0 4px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase;}
-.gp-hr{height:1px;background:rgba(255,255,255,.3);margin:10px 0;}
-.gp-desc{margin:0;font-size:.95rem;line-height:1.4;opacity:.96;}
-/* white CTA like Bates */
-.gp-cta{justify-self:start;margin-top:10px;display:inline-flex;align-items:center;gap:10px;background:#fff;color:#0f172a;border-radius:8px;padding:12px 18px;font-weight:700;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease, box-shadow .2s ease, background .2s ease;}
-.gp-cta .chev{display:inline-block;transition:transform .2s ease;}
-.gp-cta:hover{box-shadow:0 10px 24px rgba(0,0,0,.22);transform:translateY(-2px);}
-.gp-cta:hover .chev{transform:translateX(2px);}
+/* ----- Bates-style angled band with ONE continuous diagonal ----- */
+.gp-band{position:relative;z-index:2;max-width:1320px;margin:-128px auto 0;padding:0 18px}
+@media(min-width:1024px){.gp-band{padding:0 22px}}
+/* The clip-path creates the shared diagonal cut across all tiles */
+.gp-bandClip{position:relative;padding-top:18px;clip-path:polygon(0 38%,100% 20%,100% 100%,0 100%)}
 
-/* hover emphasis of the whole tile */
+/* grid of 4 tiles */
+.gp-tiles{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:0}}
+
+/* each tile is a skewed block with deeper overlap like Bates */
+.gp-tile{position:relative;overflow:hidden;color:#fff;border-radius:0;transform:skewX(-14deg);will-change:transform,box-shadow,filter}
+@media(min-width:1024px){.gp-tile + .gp-tile{margin-left:-56px}} /* overlap */
+
+/* tones close to Bates palettes */
+.gp-tone-teal{background:#1b6b74}
+.gp-tone-amber{background:#b49324}
+.gp-tone-sky{background:#2b8ca7}
+.gp-tone-rose{background:#6e272c}
+
+/* sheen + subtle divider line */
+.gp-tile:before{content:"";position:absolute;inset:0;background:
+  radial-gradient(120% 120% at 50% 8%,rgba(255,255,255,.13),transparent 60%),
+  linear-gradient(to bottom,rgba(0,0,0,.14),rgba(0,0,0,.24))}
+.gp-tile:after{content:"";position:absolute;top:0;bottom:0;left:0;width:1px;background:rgba(255,255,255,.18);opacity:.7}
+
+/* counter-skew for content */
+.gp-inner{transform:skewX(14deg);padding:32px 26px;min-height:300px;display:grid;align-content:start;gap:16px}
+.gp-ico{opacity:.95}
+.gp-ttl{margin:0 0 2px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase}
+.gp-hr{height:1px;background:rgba(255,255,255,.34);margin:12px 0 10px}
+.gp-desc{margin:0;font-size:.95rem;line-height:1.4;opacity:.96}
+
+/* white rounded CTA like Bates */
+.gp-cta{justify-self:start;margin-top:10px;display:inline-flex;align-items:center;gap:10px;background:#fff;color:#0f172a;border-radius:10px;padding:12px 18px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
+.gp-cta .chev{display:inline-block;transition:transform .2s ease}
+.gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
+.gp-cta:hover .chev{transform:translateX(2px)}
+
+/* hover emphasis for whole tile */
 @media(hover:hover) and (pointer:fine){
-  .gp-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease;}
-  .gp-tile:hover{transform:skewX(-12deg) translateY(-6px) scale(1.02); z-index:3; box-shadow:0 16px 30px rgba(0,0,0,.25), 0 10px 10px rgba(0,0,0,.18);}
-  .gp-tile:hover::before{background:
-    radial-gradient(120% 120% at 50% 10%,rgba(255,255,255,.18),transparent 60%),
-    linear-gradient(to bottom,rgba(0,0,0,.14),rgba(0,0,0,.22));}
+  .gp-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease}
+  .gp-tile:hover{transform:skewX(-14deg) translateY(-8px) scale(1.035); z-index:3; box-shadow:0 18px 34px rgba(0,0,0,.28),0 10px 10px rgba(0,0,0,.18)}
 }
 
-/* mobile adjustments */
+/* mobile: no skew, rounded cards */
 @media(max-width:1023px){
-  .gp-tile{transform:none;border-radius:14px;}
-  .gp-inner{transform:none;min-height:auto;}
-  .gp-tile::after{display:none;}
+  .gp-band{margin-top:-46px}
+  .gp-bandClip{clip-path:none}
+  .gp-tile{transform:none;border-radius:14px}
+  .gp-inner{transform:none;min-height:auto}
+  .gp-tile:after{display:none}
 }
           `,
         }}
       />
 
       {/* Video */}
-      <div className="gp-hero-videoWrap">
+      <div className="gp-videoWrap">
         {!useImage && bgVideo ? (
           <video
             key={bgVideo}
             ref={videoRef}
-            className="gp-hero-video"
+            className="gp-video"
             src={bgVideo}
             poster={poster}
             autoPlay
@@ -330,32 +340,38 @@ const Hero = ({ content }) => {
             onError={() => setUseImage(true)}
           />
         ) : (
-          <img src={poster} alt="" className="gp-hero-video" loading="eager" />
+          <img src={poster} alt="" className="gp-video" loading="eager" />
         )}
-        <div className="gp-hero-overlay" />
-        <div className="gp-hero-center">
+        <div className="gp-vignette" />
+        <div className="gp-center">
           <div>
-            <h1 className="gp-hero-title">{hero.title || "GreenPass Super App"}</h1>
-            {hero.subtitle ? <p className="gp-hero-sub"><MultilineText text={hero.subtitle} /></p> : null}
+            <h1 className="gp-title">{hero.title || "GreenPass Super App"}</h1>
+            {hero.subtitle ? <p className="gp-sub"><MultilineText text={hero.subtitle} /></p> : null}
           </div>
         </div>
       </div>
 
-      {/* Tiles */}
-      <div className="gp-tiles">
-        {tiles.map((t, i) => (
-          <article key={i} className={`gp-tile gp-tone-${t.tone}`}>
-            <div className="gp-inner">
-              <div className="gp-ico">{t.icon}</div>
-              <h3 className="gp-ttl">{t.title}</h3>
-              <div className="gp-hr" />
-              <p className="gp-desc">{t.desc}</p>
-              <Link className="gp-cta" to={t.href}>
-                Learn More <span className="chev">»</span>
-              </Link>
-            </div>
-          </article>
-        ))}
+      {/* Angled band with single diagonal + 4 tiles */}
+      <div className="gp-band">
+        <div className="gp-bandClip">
+          <div className="gp-tiles">
+            {[
+              ...tiles
+            ].map((t, i) => (
+              <article key={i} className={`gp-tile gp-tone-${t.tone}`}>
+                <div className="gp-inner">
+                  <div className="gp-ico">{t.icon}</div>
+                  <h3 className="gp-ttl">{t.title}</h3>
+                  <div className="gp-hr" />
+                  <p className="gp-desc">{t.desc}</p>
+                  <Link className="gp-cta" to={t.href}>
+                    Learn More <span className="chev">»</span>
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   );
