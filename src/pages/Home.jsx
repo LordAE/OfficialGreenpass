@@ -229,38 +229,38 @@ const Hero = ({ content }) => {
   const tiles = [
     {
       icon: <Compass size={28} />,
-      title: "Future Students",
+      title: "FUTURE STUDENTS",
       desc: "Explore programs, admissions, and support designed for international students.",
       href: createPageUrl("Schools"),
       tone: "teal",
       leftCut: "0px",
-      rightCut: "28px",
+      rightCut: "48px",
     },
     {
       icon: <GraduationCap size={28} />,
-      title: "Academic Programs",
+      title: "ACADEMIC PROGRAMS",
       desc: "Compare tuition, duration, and see intake dates and requirements.",
       href: createPageUrl("ComparePrograms"),
       tone: "amber",
-      leftCut: "28px",
-      rightCut: "28px",
+      leftCut: "48px",
+      rightCut: "48px",
     },
     {
       icon: <Megaphone size={28} />,
-      title: "Calendars & Events",
+      title: "CALENDARS & EVENTS",
       desc: "Stay on top of fairs, deadlines, workshops, and interviews.",
       href: createPageUrl("FairAndEvents"),
       tone: "sky",
-      leftCut: "28px",
-      rightCut: "28px",
+      leftCut: "48px",
+      rightCut: "48px",
     },
     {
       icon: <MapPin size={28} />,
-      title: "Student Life",
+      title: "STUDENT LIFE",
       desc: "Housing, banking, virtual tours, and real tips for your first weeks.",
       href: createPageUrl("StudentLife"),
       tone: "rose",
-      leftCut: "28px",
+      leftCut: "48px",
       rightCut: "0px",
     },
   ];
@@ -272,41 +272,51 @@ const Hero = ({ content }) => {
         dangerouslySetInnerHTML={{
           __html: `
 .gp-hero-root{position:relative;width:100%;color:#fff;}
-.gp-hero-videoWrap{position:relative;width:100%;height:clamp(280px,42vw,520px);overflow:hidden;background:#111;}
-.gp-hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+/* slimmer, banner-like height similar to Bates; still responsive */
+.gp-hero-videoWrap{position:relative;width:100%;height:clamp(260px,36vw,480px);overflow:hidden;background:#111;}
+.gp-hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;object-position:center;}
 .gp-hero-overlay{position:absolute;inset:0;background:
   linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55)),
   radial-gradient(1200px 400px at 50% 0%,rgba(0,0,0,.35),transparent 60%);}
 .gp-hero-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem;}
-.gp-hero-title{font-size:clamp(1.5rem,3.6vw,3rem);font-weight:800;line-height:1.1;letter-spacing:.2px;margin:0 0 .6rem;text-shadow:0 2px 20px rgba(0,0,0,.35);}
+.gp-hero-title{font-size:clamp(1.6rem,3.2vw,2.6rem);font-weight:800;line-height:1.15;letter-spacing:.2px;margin:0;text-shadow:0 2px 20px rgba(0,0,0,.35);}
 .gp-hero-sub{max-width:68ch;font-size:clamp(.95rem,1.2vw,1.1rem);opacity:.95;text-shadow:0 1px 14px rgba(0,0,0,.35);}
 
 /* tiles row overlapping the bottom of the video, like Bates */
-.gp-hero-tiles{display:grid;grid-template-columns:1fr;gap:12px;margin-top:-56px;padding:0 12px 16px;position:relative;z-index:2;}
+.gp-hero-tiles{display:grid;grid-template-columns:1fr;gap:12px;margin-top:-56px;padding:0 12px 18px;position:relative;z-index:2;overflow:visible;}
 @media (min-width:900px){
-  .gp-hero-tiles{grid-template-columns:repeat(4,1fr);gap:0;padding:0;margin:-70px auto 0;max-width:1280px;}
+  .gp-hero-tiles{grid-template-columns:repeat(4,1fr);gap:0;margin:-72px auto 0;padding:0;max-width:1280px;}
 }
 
 /* tile base */
-.gp-hero-tile{position:relative;overflow:hidden;color:#fff;}
+.gp-hero-tile{position:relative;overflow:hidden;color:#fff;transform-origin:center;will-change:transform, box-shadow;}
 .gp-hero-tile::before{content:"";position:absolute;inset:0;background:
-  radial-gradient(100% 120% at 50% 10%,rgba(255,255,255,.08),transparent 60%);pointer-events:none;}
-.gp-hero-tileInner{position:relative;z-index:1;padding:22px 18px 18px;min-height:220px;display:grid;align-content:start;gap:10px;background:rgba(0,0,0,.06);backdrop-filter:saturate(120%) brightness(100%);}
+  radial-gradient(120% 120% at 50% 10%,rgba(255,255,255,.10),transparent 60%);pointer-events:none;}
+.gp-hero-tileInner{position:relative;z-index:1;padding:28px 22px 22px;min-height:240px;display:grid;align-content:start;gap:12px;background:rgba(0,0,0,.08);backdrop-filter:saturate(120%) brightness(100%);}
 .gp-hero-icon{opacity:.95;}
-.gp-hero-tileTitle{margin:2px 0 0;font-weight:800;letter-spacing:.2px;font-size:.95rem;text-transform:uppercase;}
-.gp-hero-desc{margin:4px 0 10px;font-size:.92rem;line-height:1.35;opacity:.95;}
-.gp-hero-btn{justify-self:start;}
+.gp-hero-tileTitle{margin:2px 0 2px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase;}
+.gp-hero-desc{margin:4px 0 12px;font-size:.95rem;line-height:1.35;opacity:.96;}
+.gp-hero-btn{justify-self:start}
 
-/* color tones */
-.gp-hero-teal{background:#117a8b;}
-.gp-hero-amber{background:#b9972b;}
+/* color tones (close to the screenshot) */
+.gp-hero-teal{background:#0f7483;}
+.gp-hero-amber{background:#b38d22;}
 .gp-hero-sky{background:#2a8fb3;}
 .gp-hero-rose{background:#7a2a2a;}
 
 /* angled edges desktop only */
 @media (min-width:900px){
-  .gp-hero-tile{clip-path:polygon(var(--gp-leftCut,0px) 0%,100% 0%,calc(100% - var(--gp-rightCut,0px)) 100%,0% 100%);}
-  .gp-hero-tileInner{padding:28px 22px 24px;min-height:260px;}
+  .gp-hero-tile{
+    clip-path:polygon(var(--gp-leftCut,0px) 0%,100% 0%,calc(100% - var(--gp-rightCut,0px)) 100%,0% 100%);
+  }
+  .gp-hero-tileInner{padding:32px 24px 24px;min-height:260px;}
+}
+
+/* hover emphasis: subtle expand + lift + stronger shadow */
+@media (hover:hover) and (pointer:fine){
+  .gp-hero-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease;}
+  .gp-hero-tile:hover{transform:translateY(-4px) scale(1.02); z-index:3; box-shadow:0 14px 28px rgba(0,0,0,.22), 0 8px 10px rgba(0,0,0,.18);}
+  .gp-hero-tile:hover::before{background:radial-gradient(120% 120% at 50% 10%,rgba(255,255,255,.16),transparent 60%);}
 }
           `,
         }}
@@ -342,7 +352,7 @@ const Hero = ({ content }) => {
         <div className="gp-hero-center">
           <div>
             <h1 className="gp-hero-title">
-              {hero.title || ""}
+              {hero.title || "GreenPass Super App"}
             </h1>
             {hero.subtitle ? (
               <p className="gp-hero-sub">
@@ -367,7 +377,9 @@ const Hero = ({ content }) => {
               <p className="gp-hero-desc">{t.desc}</p>
               <Button asChild className="gp-hero-btn">
                 <Link to={t.href}>
-                  Learn More <ChevronRight size={18} />
+                  Learn More
+                  {/* keep the icon subtle; Bates uses chevrons */}
+                  <ChevronRight size={18} />
                 </Link>
               </Button>
             </div>
@@ -589,7 +601,6 @@ function PartnersStrip() {
 
   const marquee = [...partners, ...partners];
   const controls = useAnimation();
-  const [paused, setPaused] = React.useState(false);
 
   React.useEffect(() => {
     controls.start({
@@ -598,12 +609,6 @@ function PartnersStrip() {
     });
   }, [controls]);
 
-  const handleEnter = () => { setPaused(true); controls.stop(); };
-  const handleLeave = () => {
-    setPaused(false);
-    controls.start({ x: ["0%", "-50%"], transition: { duration: 40, ease: "linear", repeat: Infinity } });
-  };
-
   return (
     <section className="bg-white py-14 sm:py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -611,7 +616,7 @@ function PartnersStrip() {
           Top university partners
         </h2>
 
-        <div className="relative mt-10 overflow-hidden pb-10 sm:pb-12" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+        <div className="relative mt-10 overflow-hidden pb-10 sm:pb-12">
           <motion.div animate={controls} className="flex gap-6 sm:gap-10 md:gap-12 w-[200%]">
             {marquee.map((p, i) => (
               <motion.div
@@ -1013,7 +1018,7 @@ const SchoolProgramsSection = ({ content, schools }) => (
 ========================= */
 const Testimonials = ({ testimonials }) => (
   <div className="py-20 bg-white">
-    <div className="max-w-7xl mx_auto px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-16 space-y-4">
         <h2 className="text-3xl sm:text-4xl font-bold text-slate-900"></h2>
         <p className="text-xl text-slate-600"></p>
