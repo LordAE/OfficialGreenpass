@@ -17,14 +17,11 @@ import EventCard from '../components/home/EventCard';
 import YouTubeEmbed from '../components/YouTubeEmbed';
 import MultilineText from '@/components/MultilineText';
 
-/* ---------- Firebase ---------- */
 import { db, auth } from '@/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 
-/* =========================
-   Helpers
-========================= */
+/* ---------- helpers ---------- */
 const pickFirst = (...vals) =>
   vals.find((v) => v !== undefined && v !== null && (`${v}`.trim?.() ?? `${v}`) !== '') ?? undefined;
 
@@ -66,7 +63,6 @@ const relTime = (d) => {
   return `${months} mo ago`;
 };
 
-/* ---------- Labels ---------- */
 const getLevelLabel = (level) => {
   switch ((level || '').toLowerCase()) {
     case 'undergraduate': return 'Undergraduate';
@@ -89,9 +85,7 @@ const getProvinceLabel = (code) => {
   return provinces[code] || code;
 };
 
-/* =========================
-   Content mappers
-========================= */
+/* ---------- content mappers ---------- */
 const sanitizeHomeContent = (loaded = {}) => {
   const prev = {
     hero_section: {
@@ -171,7 +165,7 @@ const mapEventDoc = (snap) => {
   };
 };
 
-/* ---------- Blog highlight helpers (EXCERPT + COVER IMAGE ONLY) ---------- */
+/* ---------- blog highlight helpers ---------- */
 const mapPostDoc = (snap) => {
   const d = { id: snap.id, ...snap.data() };
   return {
@@ -203,11 +197,10 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   Sections (UI)
+   HERO (bates-style)
 ========================= */
 const DEFAULT_POSTER = '';
 
-/* ======== UPDATED: Bates-style Hero with video + 4 angled tiles ======== */
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
   const bgVideo = hero.background_video_url || hero.video_url || "";
@@ -225,7 +218,6 @@ const Hero = ({ content }) => {
     return () => el.removeEventListener("canplay", tryPlay);
   }, [bgVideo]);
 
-  // Four tiles beneath the video (links chosen from your existing routes)
   const tiles = [
     {
       icon: <Compass size={28} />,
@@ -233,8 +225,6 @@ const Hero = ({ content }) => {
       desc: "Explore programs, admissions, and support designed for international students.",
       href: createPageUrl("Schools"),
       tone: "teal",
-      leftCut: "0px",
-      rightCut: "48px",
     },
     {
       icon: <GraduationCap size={28} />,
@@ -242,87 +232,88 @@ const Hero = ({ content }) => {
       desc: "Compare tuition, duration, and see intake dates and requirements.",
       href: createPageUrl("ComparePrograms"),
       tone: "amber",
-      leftCut: "48px",
-      rightCut: "48px",
     },
     {
       icon: <Megaphone size={28} />,
-      title: "CALENDARS & EVENTS",
-      desc: "Stay on top of fairs, deadlines, workshops, and interviews.",
+      title: "CALENDARS & KEY DATES",
+      desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.",
       href: createPageUrl("FairAndEvents"),
       tone: "sky",
-      leftCut: "48px",
-      rightCut: "48px",
     },
     {
       icon: <MapPin size={28} />,
-      title: "STUDENT LIFE",
-      desc: "Housing, banking, virtual tours, and real tips for your first weeks.",
+      title: "VIRTUAL CAMPUS TOURS",
+      desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.",
       href: createPageUrl("StudentLife"),
       tone: "rose",
-      leftCut: "48px",
-      rightCut: "0px",
     },
   ];
 
   return (
     <section className="gp-hero-root">
-      {/* Scoped CSS: only affects gp-hero-* */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
-.gp-hero-root{position:relative;width:100%;color:#fff;}
-/* slimmer, banner-like height similar to Bates; still responsive */
-.gp-hero-videoWrap{position:relative;width:100%;height:clamp(260px,36vw,480px);overflow:hidden;background:#111;}
-.gp-hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;object-position:center;}
-.gp-hero-overlay{position:absolute;inset:0;background:
-  linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55)),
-  radial-gradient(1200px 400px at 50% 0%,rgba(0,0,0,.35),transparent 60%);}
+.gp-hero-root{position:relative;color:#fff;}
+/* slightly taller banner; keeps overlap sweet spot */
+.gp-hero-videoWrap{position:relative;width:100%;height:clamp(320px,48vh,540px);overflow:hidden;background:#101214;}
+.gp-hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
+.gp-hero-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55));}
 .gp-hero-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem;}
-.gp-hero-title{font-size:clamp(1.6rem,3.2vw,2.6rem);font-weight:800;line-height:1.15;letter-spacing:.2px;margin:0;text-shadow:0 2px 20px rgba(0,0,0,.35);}
-.gp-hero-sub{max-width:68ch;font-size:clamp(.95rem,1.2vw,1.1rem);opacity:.95;text-shadow:0 1px 14px rgba(0,0,0,.35);}
+.gp-hero-title{font-size:clamp(1.8rem,3.6vw,2.8rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35);}
+.gp-hero-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35);}
 
-/* tiles row overlapping the bottom of the video, like Bates */
-.gp-hero-tiles{display:grid;grid-template-columns:1fr;gap:12px;margin-top:-56px;padding:0 12px 18px;position:relative;z-index:2;overflow:visible;}
-@media (min-width:900px){
-  .gp-hero-tiles{grid-template-columns:repeat(4,1fr);gap:0;margin:-72px auto 0;padding:0;max-width:1280px;}
+/* TILES: skewed parallelograms with overlap, like Bates */
+.gp-tiles{position:relative;z-index:2;max-width:1320px;margin:-84px auto 0;padding:0 14px;display:grid;grid-template-columns:1fr;gap:14px;}
+@media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:0;padding:0 20px;}}
+.gp-tile{position:relative;overflow:hidden;color:#fff;border-radius:0;transform:skewX(-12deg);will-change:transform, box-shadow, filter;}
+.gp-tile + .gp-tile{margin-left:0;}
+@media(min-width:1024px){.gp-tile + .gp-tile{margin-left:-28px;}}
+
+/* colored backgrounds approximating Bates’ palette */
+.gp-tone-teal{background:#1f6e7c;}
+.gp-tone-amber{background:#b08b22;}
+.gp-tone-sky{background:#2b8aa7;}
+.gp-tone-rose{background:#6f2529;}
+.gp-tile::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(120% 120% at 50% 10%,rgba(255,255,255,.12),transparent 60%),
+  linear-gradient(to bottom,rgba(0,0,0,.18),rgba(0,0,0,.28));
+  mix-blend-mode:normal;pointer-events:none;}
+/* subtle left divider highlight like Bates */
+.gp-tile::after{content:"";position:absolute;top:0;bottom:0;left:0;width:1px;background:rgba(255,255,255,.18);opacity:.7}
+
+/* tile inner counter-skew so text is straight */
+.gp-inner{transform:skewX(12deg);padding:30px 26px;min-height:260px;display:grid;align-content:start;gap:16px;}
+.gp-ico{opacity:.95;}
+.gp-ttl{margin:0 0 4px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase;}
+.gp-hr{height:1px;background:rgba(255,255,255,.3);margin:10px 0;}
+.gp-desc{margin:0;font-size:.95rem;line-height:1.4;opacity:.96;}
+/* white CTA like Bates */
+.gp-cta{justify-self:start;margin-top:10px;display:inline-flex;align-items:center;gap:10px;background:#fff;color:#0f172a;border-radius:8px;padding:12px 18px;font-weight:700;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease, box-shadow .2s ease, background .2s ease;}
+.gp-cta .chev{display:inline-block;transition:transform .2s ease;}
+.gp-cta:hover{box-shadow:0 10px 24px rgba(0,0,0,.22);transform:translateY(-2px);}
+.gp-cta:hover .chev{transform:translateX(2px);}
+
+/* hover emphasis of the whole tile */
+@media(hover:hover) and (pointer:fine){
+  .gp-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease;}
+  .gp-tile:hover{transform:skewX(-12deg) translateY(-6px) scale(1.02); z-index:3; box-shadow:0 16px 30px rgba(0,0,0,.25), 0 10px 10px rgba(0,0,0,.18);}
+  .gp-tile:hover::before{background:
+    radial-gradient(120% 120% at 50% 10%,rgba(255,255,255,.18),transparent 60%),
+    linear-gradient(to bottom,rgba(0,0,0,.14),rgba(0,0,0,.22));}
 }
 
-/* tile base */
-.gp-hero-tile{position:relative;overflow:hidden;color:#fff;transform-origin:center;will-change:transform, box-shadow;}
-.gp-hero-tile::before{content:"";position:absolute;inset:0;background:
-  radial-gradient(120% 120% at 50% 10%,rgba(255,255,255,.10),transparent 60%);pointer-events:none;}
-.gp-hero-tileInner{position:relative;z-index:1;padding:28px 22px 22px;min-height:240px;display:grid;align-content:start;gap:12px;background:rgba(0,0,0,.08);backdrop-filter:saturate(120%) brightness(100%);}
-.gp-hero-icon{opacity:.95;}
-.gp-hero-tileTitle{margin:2px 0 2px;font-weight:900;letter-spacing:.3px;font-size:1rem;text-transform:uppercase;}
-.gp-hero-desc{margin:4px 0 12px;font-size:.95rem;line-height:1.35;opacity:.96;}
-.gp-hero-btn{justify-self:start}
-
-/* color tones (close to the screenshot) */
-.gp-hero-teal{background:#0f7483;}
-.gp-hero-amber{background:#b38d22;}
-.gp-hero-sky{background:#2a8fb3;}
-.gp-hero-rose{background:#7a2a2a;}
-
-/* angled edges desktop only */
-@media (min-width:900px){
-  .gp-hero-tile{
-    clip-path:polygon(var(--gp-leftCut,0px) 0%,100% 0%,calc(100% - var(--gp-rightCut,0px)) 100%,0% 100%);
-  }
-  .gp-hero-tileInner{padding:32px 24px 24px;min-height:260px;}
-}
-
-/* hover emphasis: subtle expand + lift + stronger shadow */
-@media (hover:hover) and (pointer:fine){
-  .gp-hero-tile{transition:transform .22s ease, box-shadow .22s ease, filter .22s ease;}
-  .gp-hero-tile:hover{transform:translateY(-4px) scale(1.02); z-index:3; box-shadow:0 14px 28px rgba(0,0,0,.22), 0 8px 10px rgba(0,0,0,.18);}
-  .gp-hero-tile:hover::before{background:radial-gradient(120% 120% at 50% 10%,rgba(255,255,255,.16),transparent 60%);}
+/* mobile adjustments */
+@media(max-width:1023px){
+  .gp-tile{transform:none;border-radius:14px;}
+  .gp-inner{transform:none;min-height:auto;}
+  .gp-tile::after{display:none;}
 }
           `,
         }}
       />
 
-      {/* Video band */}
+      {/* Video */}
       <div className="gp-hero-videoWrap">
         {!useImage && bgVideo ? (
           <video
@@ -339,49 +330,29 @@ const Hero = ({ content }) => {
             onError={() => setUseImage(true)}
           />
         ) : (
-          <img
-            src={poster}
-            alt=""
-            className="gp-hero-video"
-            loading="eager"
-          />
+          <img src={poster} alt="" className="gp-hero-video" loading="eager" />
         )}
-
         <div className="gp-hero-overlay" />
-
         <div className="gp-hero-center">
           <div>
-            <h1 className="gp-hero-title">
-              {hero.title || "GreenPass Super App"}
-            </h1>
-            {hero.subtitle ? (
-              <p className="gp-hero-sub">
-                <MultilineText text={hero.subtitle} />
-              </p>
-            ) : null}
+            <h1 className="gp-hero-title">{hero.title || "GreenPass Super App"}</h1>
+            {hero.subtitle ? <p className="gp-hero-sub"><MultilineText text={hero.subtitle} /></p> : null}
           </div>
         </div>
       </div>
 
-      {/* Feature tiles row */}
-      <div className="gp-hero-tiles">
+      {/* Tiles */}
+      <div className="gp-tiles">
         {tiles.map((t, i) => (
-          <article
-            key={i}
-            className={`gp-hero-tile gp-hero-${t.tone}`}
-            style={{ ["--gp-leftCut"]: t.leftCut, ["--gp-rightCut"]: t.rightCut }}
-          >
-            <div className="gp-hero-tileInner">
-              <div className="gp-hero-icon">{t.icon}</div>
-              <h3 className="gp-hero-tileTitle">{t.title}</h3>
-              <p className="gp-hero-desc">{t.desc}</p>
-              <Button asChild className="gp-hero-btn">
-                <Link to={t.href}>
-                  Learn More
-                  {/* keep the icon subtle; Bates uses chevrons */}
-                  <ChevronRight size={18} />
-                </Link>
-              </Button>
+          <article key={i} className={`gp-tile gp-tone-${t.tone}`}>
+            <div className="gp-inner">
+              <div className="gp-ico">{t.icon}</div>
+              <h3 className="gp-ttl">{t.title}</h3>
+              <div className="gp-hr" />
+              <p className="gp-desc">{t.desc}</p>
+              <Link className="gp-cta" to={t.href}>
+                Learn More <span className="chev">»</span>
+              </Link>
             </div>
           </article>
         ))}
@@ -391,8 +362,7 @@ const Hero = ({ content }) => {
 };
 
 /* =========================
-   News & Highlights Carousel
-   (cover image only + excerpt only)
+   News & Highlights
 ========================= */
 const fallbackSlides = [
   {
@@ -574,7 +544,7 @@ function NewsHighlights({ highlights = [] }) {
 }
 
 /* =========================
-   Partners strip (marquee)
+   Partners strip
 ========================= */
 function PartnersStrip() {
   const partners = [
@@ -1014,7 +984,7 @@ const SchoolProgramsSection = ({ content, schools }) => (
 );
 
 /* =========================
-   Testimonials, Events
+   Testimonials & Events
 ========================= */
 const Testimonials = ({ testimonials }) => (
   <div className="py-20 bg-white">
@@ -1114,12 +1084,9 @@ export default function Home() {
   const navigate = useNavigate();
   const [authChecked, setAuthChecked] = useState(false);
 
-  // 🔐 If a user is already signed in (persisted), redirect them away from Home to Dashboard
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        navigate(createPageUrl('Dashboard'), { replace: true });
-      }
+      if (u) navigate(createPageUrl('Dashboard'), { replace: true });
       setAuthChecked(true);
     });
     return unsub;
@@ -1135,12 +1102,10 @@ export default function Home() {
     (async () => {
       setLoading(true);
       try {
-        // Home content
         const homeSnap = await getDoc(doc(db, 'home_page_contents', 'SINGLETON'));
         const homeData = homeSnap.exists() ? sanitizeHomeContent(homeSnap.data()) : sanitizeHomeContent({});
         setContent(homeData);
 
-        // Events
         const evSnap = await getDocs(collection(db, 'events'));
         const evs = evSnap.docs.map(mapEventDoc);
         evs.sort((a, b) => {
@@ -1159,7 +1124,6 @@ export default function Home() {
         });
         setEvents(upcoming);
 
-        // Featured schools
         let sSnap = await getDocs(
           query(collection(db, 'schools'), where('is_featured', '==', true), limit(60))
         );
@@ -1170,7 +1134,6 @@ export default function Home() {
         }
         const featuredSchools = sSnap.docs.map(mapSchoolDoc);
 
-        // Institutions (for logos merge)
         let instSnap = await getDocs(collection(db, 'institutions'));
         if (instSnap.empty) instSnap = await getDocs(collection(db, 'Institutions'));
         const institutions = instSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1192,7 +1155,6 @@ export default function Home() {
         });
         setSchools(merged);
 
-        // Highlighted blog posts — ONLY check isHighlight == true
         const postsRef = collection(db, 'posts');
         const postsSnap = await getDocs(
           query(postsRef, where('isHighlight', '==', true), limit(5))
@@ -1208,7 +1170,6 @@ export default function Home() {
     })();
   }, []);
 
-  // Prevent flashing Home while we decide whether to redirect
   if (!authChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
