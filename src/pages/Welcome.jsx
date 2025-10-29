@@ -1,9 +1,9 @@
 // src/pages/Welcome.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Mail, Lock, User as UserIcon, Eye, EyeOff, Check, X, Loader2 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Input } from '@/components/ui/input';
 
@@ -53,12 +53,21 @@ function InfoDialog({ open, title, message, onClose }) {
 }
 
 // ───────────────────────────────── helpers ─────────────────────────────────
-function buildUserDoc({ email, full_name = '' }) {
+const VALID_ROLES = ['agent', 'tutor', 'school'];
+const DEFAULT_ROLE = 'user';
+
+function normalizeRole(r) {
+  const v = (r || '').toString().trim().toLowerCase();
+  return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
+}
+
+function buildUserDoc({ email, full_name = '', userType = DEFAULT_ROLE, signupEntryRole = DEFAULT_ROLE }) {
   return {
-    role: 'user',
+    role: userType,            // keep for legacy UI that reads "role"
     email,
     full_name,
-    user_type: 'user',
+    user_type: userType,       // ← canonical field
+    signup_entry_role: signupEntryRole, // ← how they entered (from URL)
     phone: '',
     country: '',
     address: { street: '', ward: '', district: '', province: '', postal_code: '' },
@@ -113,24 +122,30 @@ function RuleRow({ ok, label }) {
   );
 }
 
-async function routeAfterSignIn(navigate, fbUser) {
+async function routeAfterSignIn(navigate, fbUser, entryRole = DEFAULT_ROLE) {
   const ref = doc(db, 'users', fbUser.uid);
   const snap = await getDoc(ref);
 
   if (!snap.exists()) {
+    const createRole = normalizeRole(entryRole);
     await setDoc(
       ref,
       buildUserDoc({
         email: fbUser.email || '',
         full_name: fbUser.displayName || '',
+        userType: createRole,
+        signupEntryRole: createRole,
       }),
+      { merge: true }
     );
-    return navigate(createPageUrl('Onboarding'));
+    // carry role to onboarding
+    return navigate(`${createPageUrl('Onboarding')}?role=${createRole}`);
   }
 
   const profile = snap.data();
   if (!profile?.onboarding_completed) {
-    return navigate(createPageUrl('Onboarding'));
+    const roleToUse = normalizeRole(profile?.user_type || entryRole || DEFAULT_ROLE);
+    return navigate(`${createPageUrl('Onboarding')}?role=${roleToUse}`);
   }
   return navigate(createPageUrl('Dashboard'));
 }
@@ -138,6 +153,15 @@ async function routeAfterSignIn(navigate, fbUser) {
 // ───────────────────────────── component ─────────────────────────────
 export default function Welcome() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+
+  // role from URL (defaults to 'user' when missing/invalid)
+  const entryRole = useMemo(() => normalizeRole(params.get('role')), [params]);
+
+  // persist for OAuth redirect hops
+  useEffect(() => {
+    sessionStorage.setItem('onboarding_role', entryRole);
+  }, [entryRole]);
 
   const [mode, setMode] = useState('signin');
 
@@ -163,12 +187,11 @@ export default function Welcome() {
   // email availability (signup)
   const [emailCheck, setEmailCheck] = useState({
     checking: false,
-    available: null,   // true | false | null
-    methods: [],       // e.g. ['password', 'google.com', 'apple.com']
+    available: null,
+    methods: [],
     error: ''
   });
 
-  // race-condition guards for email checks
   const [emailCheckVersion, setEmailCheckVersion] = useState(0);
   const emailCheckVersionRef = useRef(0);
   useEffect(() => { emailCheckVersionRef.current = emailCheckVersion; }, [emailCheckVersion]);
@@ -183,18 +206,19 @@ export default function Welcome() {
       unsub = onAuthStateChanged(auth, async (user) => {
         setChecking(false);
         if (user) {
-          await routeAfterSignIn(navigate, user);
+          // prefer Firestore user_type, fall back to session/URL
+          const roleHint = sessionStorage.getItem('onboarding_role') || entryRole || DEFAULT_ROLE;
+          await routeAfterSignIn(navigate, user, roleHint);
         }
       });
     })();
     return () => unsub && unsub();
-  }, [navigate]);
+  }, [navigate, entryRole]);
 
-  // helper to run email check safely (signup)
   async function runEmailCheck(em, versionAtCall) {
     try {
       const methods = await fetchSignInMethodsForEmail(auth, em);
-      if (versionAtCall !== emailCheckVersionRef.current) return; // ignore stale
+      if (versionAtCall !== emailCheckVersionRef.current) return;
       setEmailCheck({
         checking: false,
         available: methods.length === 0,
@@ -220,15 +244,12 @@ export default function Welcome() {
       setEmailCheck({ checking: false, available: null, methods: [], error: '' });
       return;
     }
-
     const nextVersion = emailCheckVersion + 1;
     setEmailCheckVersion(nextVersion);
     setEmailCheck({ checking: true, available: null, methods: [], error: '' });
-
     const handle = setTimeout(() => {
       runEmailCheck(em, nextVersion);
     }, 400);
-
     return () => clearTimeout(handle);
   }, [email, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -236,11 +257,12 @@ export default function Welcome() {
   const handleLoginGoogle = async () => {
     try {
       setBusy(true);
+      // keep role through OAuth
+      sessionStorage.setItem('onboarding_role', entryRole);
       const provider = new GoogleAuthProvider();
       const cred = await signInWithPopup(auth, provider);
-      await routeAfterSignIn(navigate, cred.user);
+      await routeAfterSignIn(navigate, cred.user, entryRole);
     } catch (err) {
-      // Helpful guidance for "account-exists-with-different-credential"
       if (err?.code === 'auth/account-exists-with-different-credential') {
         setDialog({
           open: true,
@@ -248,7 +270,7 @@ export default function Welcome() {
           message: 'This email is already linked to a different sign-in method. Try signing in with Email & Password or Apple.',
         });
       } else if (err?.code === 'auth/popup-closed-by-user') {
-        // ignore silently or show a soft message
+        // ignore silently
       } else {
         setDialog({
           open: true,
@@ -264,11 +286,10 @@ export default function Welcome() {
   const handleLoginApple = async () => {
     try {
       setBusy(true);
+      sessionStorage.setItem('onboarding_role', entryRole);
       const appleProvider = new OAuthProvider('apple.com');
-      // You can customize scopes / params if needed:
-      // appleProvider.addScope('email'); appleProvider.addScope('name');
       const cred = await signInWithPopup(auth, appleProvider);
-      await routeAfterSignIn(navigate, cred.user);
+      await routeAfterSignIn(navigate, cred.user, entryRole);
     } catch (err) {
       if (err?.code === 'auth/operation-not-supported-in-this-environment') {
         setDialog({
@@ -311,20 +332,15 @@ export default function Welcome() {
     }
     try {
       setBusy(true);
-
-      // 1) Try to sign in directly.
+      sessionStorage.setItem('onboarding_role', entryRole);
       const cred = await signInWithEmailAndPassword(auth, em, password);
-      await routeAfterSignIn(navigate, cred.user);
-
+      await routeAfterSignIn(navigate, cred.user, entryRole);
     } catch (err) {
-      // 2) Handle common errors first.
       if (err?.code === 'auth/wrong-password' || err?.code === 'auth/invalid-credential') {
         setDialog({ open: true, title: 'Incorrect password', message: 'The password you entered is incorrect. Please try again.' });
       } else if (err?.code === 'auth/user-not-found') {
-        // 3) Now check providers to give guidance (avoid false "no account" upfront).
         try {
           const methods = await fetchSignInMethodsForEmail(auth, em);
-
           if (!methods || methods.length === 0) {
             setMode('signup');
             setDialog({ open: true, title: 'No account found', message: 'We couldn’t find an account for that email. Please create one.' });
@@ -396,11 +412,14 @@ export default function Welcome() {
         return;
       }
 
+      // persist chosen entryRole for onboarding that follows
+      sessionStorage.setItem('onboarding_role', entryRole);
+
       const cred = await createUserWithEmailAndPassword(auth, em, password);
       if (fullName.trim()) {
         await updateProfile(cred.user, { displayName: fullName.trim() });
       }
-      await routeAfterSignIn(navigate, cred.user);
+      await routeAfterSignIn(navigate, cred.user, entryRole);
     } catch (err) {
       let message = err?.message || 'Sign-up failed.';
       if (err?.code === 'auth/invalid-email') message = 'Please enter a valid email address.';

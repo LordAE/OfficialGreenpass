@@ -83,6 +83,10 @@ import AuthForm from "./pages/AuthForm";
 import EventRegistrationSuccess from "@/pages/EventRegistrationSuccess";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import PostDetail from "./pages/PostDetail";
+import PartnerAgents from "@/pages/PartnerAgents";
+import PartnerTutors from "@/pages/PartnerTutors";
+import PartnerSchools from "@/pages/PartnerSchools";
+
 
 export default function App() {
   return (
@@ -112,6 +116,10 @@ export default function App() {
         <Route path="programdetail" element={<ProgramDetail />} />
         <Route path="resetpassword" element={<ResetPassword />} />
         <Route path="postdetail" element={<PostDetail/>} />
+        <Route path="partner-agents" element={<PartnerAgents />} />
+        <Route path="partner-tutors" element={<PartnerTutors />} />
+        <Route path="partner-schools" element={<PartnerSchools />} />
+
         {/* Private routes */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="onboarding" element={<Onboarding />} />

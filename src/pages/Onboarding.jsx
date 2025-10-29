@@ -1,5 +1,5 @@
 // src/pages/Onboarding.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, User as UserIcon, Briefcase, BookOpen, Building, Store, ArrowRight, Check, ArrowLeft, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Loader2, User as UserIcon, Briefcase, BookOpen, Building, Store, ArrowRight, Check, ArrowLeft, LogOut, BadgeCheck } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
 // 🔥 Firebase
@@ -101,8 +101,27 @@ function buildUserDefaults({ email, full_name = '' }) {
   };
 }
 
+const VALID_ROLES = ['user', 'agent', 'tutor', 'school', 'vendor'];
+const LOCKABLE_ROLES = ['agent', 'tutor', 'school']; // these auto-lock when coming from partner pages
+const DEFAULT_ROLE = 'user';
+
+const normalizeRole = (r) => {
+  const v = (r || '').toString().trim().toLowerCase();
+  return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
+};
+
 export default function Onboarding() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+
+  // Role hints (priority: URL > session > profile)
+  const urlRole = useMemo(() => normalizeRole(params.get('role')), [params]);
+  const sessionRole = useMemo(
+    () => normalizeRole(typeof window !== 'undefined' ? sessionStorage.getItem('onboarding_role') : null),
+    []
+  );
+  const roleHintFromEntry = useMemo(() => (urlRole !== DEFAULT_ROLE ? urlRole : (sessionRole !== DEFAULT_ROLE ? sessionRole : DEFAULT_ROLE)), [urlRole, sessionRole]);
+  const roleLockedFromEntry = useMemo(() => LOCKABLE_ROLES.includes(roleHintFromEntry), [roleHintFromEntry]);
 
   const [currentStep, setCurrentStep] = useState(STEPS.CHOOSE_ROLE);
   const [selectedRole, setSelectedRole] = useState(null);
@@ -132,10 +151,25 @@ export default function Onboarding() {
       const data = finalSnap.data() || {};
       setProfile(data);
 
-      const roleFromProfile = data.selected_role || 'user';
-      setSelectedRole(roleFromProfile);
-      setCurrentStep(data.onboarding_completed ? STEPS.COMPLETE : (data.onboarding_step || STEPS.CHOOSE_ROLE));
+      // Resolve effective role: URL/session > profile.selected_role > profile.user_type > user
+      const roleFromProfile = normalizeRole(data.selected_role || data.user_type || DEFAULT_ROLE);
+      const effectiveRole = roleHintFromEntry !== DEFAULT_ROLE ? roleHintFromEntry : roleFromProfile;
 
+      // If we arrived with a lockable role and user hasn't progressed, lock role & skip choose step
+      let nextStep = data.onboarding_completed ? STEPS.COMPLETE : (data.onboarding_step || STEPS.CHOOSE_ROLE);
+      if (roleLockedFromEntry && (nextStep === STEPS.CHOOSE_ROLE)) {
+        nextStep = STEPS.BASIC_INFO;
+        await updateDoc(ref, {
+          selected_role: effectiveRole,
+          onboarding_step: STEPS.BASIC_INFO,
+          updated_at: serverTimestamp(),
+        });
+      }
+
+      setSelectedRole(effectiveRole);
+      setCurrentStep(nextStep);
+
+      // Pre-fill form data from profile
       setFormData({
         full_name: data.full_name || fbUser.displayName || '',
         phone: data.phone || '',
@@ -167,7 +201,7 @@ export default function Onboarding() {
       setAuthChecked(true);
     });
     return () => unsub();
-  }, [navigate]);
+  }, [navigate, roleHintFromEntry, roleLockedFromEntry]);
 
   const getStepProgress = () => {
     const map = {
@@ -180,6 +214,8 @@ export default function Onboarding() {
   };
 
   const handleRoleSelect = async (roleType) => {
+    // If entry is locked, ignore manual switching
+    if (roleLockedFromEntry) return;
     setSelectedRole(roleType);
     setCurrentStep(STEPS.BASIC_INFO);
     if (auth.currentUser) {
@@ -221,7 +257,14 @@ export default function Onboarding() {
   };
 
   const handleBack = async () => {
-    const next = currentStep === STEPS.ROLE_SPECIFIC ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE;
+    // If role is locked from entry (agent/tutor/school), do not go back to Choose Role
+    let next;
+    if (currentStep === STEPS.ROLE_SPECIFIC) next = STEPS.BASIC_INFO;
+    else if (currentStep === STEPS.BASIC_INFO) next = roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE;
+    else next = STEPS.CHOOSE_ROLE;
+
+    if (next === currentStep) return; // nothing to do
+
     setCurrentStep(next);
     if (auth.currentUser) {
       const ref = doc(db, 'users', auth.currentUser.uid);
@@ -233,11 +276,9 @@ export default function Onboarding() {
   };
 
   /**
-   * ✅ CRITICAL FIX:
-   * After updating /users/{uid}, we seed the corresponding role collection
-   * with verification_status: "pending" so the Admin → Verifications page
-   * can pick it up, and later public pages (Tutors/Agents) will show items
-   * only after verification_status is "verified".
+   * ✅ Complete onboarding:
+   * - Update /users/{uid} with user_type + profile fields
+   * - Seed role collection with verification_status: "pending"
    */
   const handleCompleteOnboarding = async () => {
     if (!auth.currentUser || !selectedRole || !validateRoleSpecificInfo()) return;
@@ -387,6 +428,21 @@ export default function Onboarding() {
     }
   };
 
+  const RoleLockedPill = ({ role }) => {
+    if (!LOCKABLE_ROLES.includes(role)) return null;
+    const icon =
+      role === 'agent' ? <Briefcase className="w-4 h-4" /> :
+      role === 'tutor' ? <BookOpen className="w-4 h-4" /> :
+      <Building className="w-4 h-4" />;
+    const label = role.charAt(0).toUpperCase() + role.slice(1);
+    return (
+      <div className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm bg-white/70">
+        {icon} Signing up as <span className="font-semibold">{label}</span>
+        <BadgeCheck className="w-4 h-4 text-emerald-600" />
+      </div>
+    );
+  };
+
   // ————— renderers —————
   const renderChooseRole = () => (
     <div className="text-center max-w-4xl mx-auto">
@@ -396,8 +452,14 @@ export default function Onboarding() {
       </div>
       <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {ROLE_OPTIONS.map((role) => (
-          <Card key={role.type} className="cursor-pointer hover:shadow-xl transition-all duration-300 border-2 hover:border-green-500 hover:scale-105 group"
-                onClick={() => handleRoleSelect(role.type)}>
+          <Card
+            key={role.type}
+            className={`cursor-pointer transition-all duration-300 border-2 hover:shadow-xl hover:scale-105 group
+              ${roleLockedFromEntry ? 'opacity-60 pointer-events-none' : 'hover:border-green-500'}
+            `}
+            onClick={() => handleRoleSelect(role.type)}
+            title={roleLockedFromEntry ? 'Role is locked from entry page' : `Sign up as ${role.title}`}
+          >
             <CardContent className="p-6">
               <div className="text-center">
                 <div className={`${role.color} text-white p-4 rounded-full mb-4 mx-auto w-fit group-hover:scale-110 transition-transform`}>
@@ -423,7 +485,7 @@ export default function Onboarding() {
   );
 
   const renderBasicInfo = () => {
-    const selectedRoleData = ROLE_OPTIONS.find(r => r.type === selectedRole);
+    const selectedRoleData = ROLE_OPTIONS.find(r => r.type === selectedRole) || ROLE_OPTIONS[0];
     return (
       <div className="max-w-md mx-auto">
         <div className="text-center mb-8">
@@ -431,7 +493,12 @@ export default function Onboarding() {
             {selectedRoleData?.icon}
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Basic Information</h2>
-          <p className="text-gray-600">Setting up your {selectedRoleData?.title} profile</p>
+          <p className="text-gray-600">
+            Setting up your {selectedRoleData?.title} profile
+          </p>
+          <div className="mt-3">
+            <RoleLockedPill role={selectedRole} />
+          </div>
         </div>
         <div className="space-y-6">
           <div>
@@ -452,7 +519,13 @@ export default function Onboarding() {
             <Input id="country" value={formData.country || ''} onChange={(e) => setFormData((p)=>({...p, country: e.target.value}))} placeholder="Enter your country" className="mt-1" />
           </div>
           <div className="flex gap-3 pt-4">
-            <Button variant="outline" onClick={() => setCurrentStep(STEPS.CHOOSE_ROLE)} className="flex-1">
+            <Button
+              variant="outline"
+              onClick={handleBack}
+              className="flex-1"
+              disabled={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO}
+              title={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO ? 'Role locked by entry page' : 'Back'}
+            >
               <ArrowLeft className="w-4 h-4 mr-2" /> Back
             </Button>
             <Button onClick={handleBasicInfoSubmit} className="flex-1" disabled={!validateBasicInfo()}>
@@ -472,154 +545,163 @@ export default function Onboarding() {
           <div className={`${selectedRoleData?.color} text-white p-3 rounded-full mb-4 mx-auto w-fit`}>
             {selectedRoleData?.icon}
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your {selectedRoleData?.title} Profile</h2>
-          <p className="text-gray-600">Just a few more details to get started</p>
-        </div>
-
-        {/* Agent */}
-        {selectedRole === 'agent' && (
-          <div className="space-y-6">
-            <div><Label htmlFor="company_name">Company Name *</Label>
-              <Input id="company_name" value={formData.company_name || ''} onChange={(e) => setFormData((p)=>({...p, company_name: e.target.value}))} placeholder="Your education consultancy name" className="mt-1" />
-            </div>
-            <div><Label htmlFor="business_license_mst">Business License (MST) *</Label>
-              <Input id="business_license_mst" value={formData.business_license_mst || ''} onChange={(e) => setFormData((p)=>({...p, business_license_mst: e.target.value}))} placeholder="Enter your business license number" className="mt-1" />
-            </div>
-            <div><Label htmlFor="year_established">Year Established</Label>
-              <Input id="year_established" type="number" value={formData.year_established || ''} onChange={(e) => setFormData((p)=>({...p, year_established: e.target.value}))} placeholder="2020" className="mt-1" />
-            </div>
-            <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
-              <p className="text-xs text-gray-500 mt-1">Required for commission payouts</p>
-            </div>
-          </div>
-        )}
-
-        {/* Tutor */}
-        {selectedRole === 'tutor' && (
-          <div className="space-y-6">
-            <div><Label htmlFor="specializations">Specializations *</Label>
-              <Input id="specializations" value={formData.specializations || ''} onChange={(e) => setFormData((p)=>({...p, specializations: e.target.value}))} placeholder="IELTS, TOEFL, General English" className="mt-1" />
-              <p className="text-xs text-gray-500 mt-1">Separate multiple specializations with commas</p>
-            </div>
-            <div><Label htmlFor="experience_years">Years of Experience *</Label>
-              <Input id="experience_years" type="number" value={formData.experience_years || ''} onChange={(e) => setFormData((p)=>({...p, experience_years: e.target.value}))} placeholder="5" className="mt-1" />
-            </div>
-            <div><Label htmlFor="hourly_rate">Hourly Rate (USD) *</Label>
-              <Input id="hourly_rate" type="number" step="0.01" value={formData.hourly_rate || ''} onChange={(e) => setFormData((p)=>({...p, hourly_rate: e.target.value}))} placeholder="25.00" className="mt-1" />
-            </div>
-            <div><Label htmlFor="bio">Professional Bio</Label>
-              <Textarea id="bio" value={formData.bio || ''} onChange={(e) => setFormData((p)=>({...p, bio: e.target.value}))} placeholder="Tell students about your teaching experience and approach..." className="mt-1" rows={3} />
-            </div>
-            <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
-              <p className="text-xs text-gray-500 mt-1">Required for session payouts</p>
-            </div>
-          </div>
-        )}
-
-        {/* School */}
-        {selectedRole === 'school' && (
-          <div className="space-y-6">
-            <div><Label htmlFor="school_name">Institution Name *</Label>
-              <Input id="school_name" value={formData.school_name || ''} onChange={(e) => setFormData((p)=>({...p, school_name: e.target.value}))} placeholder="e.g., University of Toronto" className="mt-1" />
-            </div>
-            <div><Label htmlFor="type">School Type *</Label>
-              <Select value={formData.type || ''} onValueChange={(v) => setFormData((p)=>({...p, type: v}))}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select institution type" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="High School">High School</SelectItem>
-                  <SelectItem value="College">College</SelectItem>
-                  <SelectItem value="University">University</SelectItem>
-                  <SelectItem value="Institute">Institute</SelectItem>
-                  <SelectItem value="Vocational">Vocational School</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label htmlFor="location">City/Location *</Label>
-              <Input id="location" value={formData.location || ''} onChange={(e) => setFormData((p)=>({...p, location: e.target.value}))} placeholder="e.g., Toronto, ON" className="mt-1" />
-            </div>
-            <div><Label htmlFor="website">Official Website *</Label>
-              <Input id="website" type="url" value={formData.website || ''} onChange={(e) => setFormData((p)=>({...p, website: e.target.value}))} placeholder="https://www.university.edu" className="mt-1" />
-            </div>
-            <div><Label htmlFor="about">About Your Institution</Label>
-              <Textarea id="about" value={formData.about || ''} onChange={(e) => setFormData((p)=>({...p, about: e.target.value}))} placeholder="Brief description of your institution..." className="mt-1" rows={3} />
-            </div>
-          </div>
-        )}
-
-        {/* Vendor */}
-        {selectedRole === 'vendor' && (
-          <div className="space-y-6">
-            <div><Label htmlFor="business_name">Business Name *</Label>
-              <Input id="business_name" value={formData.business_name || ''} onChange={(e) => setFormData((p)=>({...p, business_name: e.target.value}))} placeholder="Your business name" className="mt-1" />
-            </div>
-            <div>
-              <Label>Service Categories *</Label>
-              <div className="grid grid-cols-2 gap-3 mt-2">
-                {["Transport","SIM Card","Banking","Accommodation","Delivery","Tours"].map(category => (
-                  <div key={category} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={`category-${category}`}
-                      checked={formData.service_categories?.includes(category) || false}
-                      onChange={(e) => {
-                        const cur = formData.service_categories || [];
-                        const updated = e.target.checked ? [...cur, category] : cur.filter(c => c !== category);
-                        setFormData((p) => ({ ...p, service_categories: updated }));
-                      }}
-                      className="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                    />
-                    <label htmlFor={`category-${category}`} className="text-sm text-gray-700">{category}</label>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
-              <p className="text-xs text-gray-500 mt-1">Required for service payouts</p>
-            </div>
-          </div>
-        )}
-
-        {selectedRole === 'user' && (
-          <div className="text-center py-8">
-            <Check className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">You're All Set!</h3>
-            <p className="text-gray-600">
-              As a student, you can start exploring programs, connecting with agents, and planning your study abroad journey.
-            </p>
-          </div>
-        )}
-
-        <div className="flex gap-3 pt-4">
-          <Button variant="outline" onClick={handleBack} className="flex-1">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
-          </Button>
-          <Button onClick={handleCompleteOnboarding} disabled={saving || !validateRoleSpecificInfo()} className="flex-1">
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Setting up...
-              </>
-            ) : (
-              <>
-                Complete Setup
-                <Check className="w-4 h-4 ml-2" />
-              </>
-            )}
-          </Button>
-        </div>
-
-        {/* Soft escape for users who don't want to continue */}
-        <div className="text-center mt-4">
-          <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-600 inline-flex items-center gap-1">
-            <LogOut className="w-4 h-4" /> Log out instead
-          </button>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your {selectedRoleData?.title} Profile</h2>
+        <p className="text-gray-600">Just a few more details to get started</p>
+        <div className="mt-3">
+          <RoleLockedPill role={selectedRole} />
         </div>
       </div>
-    );
+
+      {/* Agent */}
+      {selectedRole === 'agent' && (
+        <div className="space-y-6">
+          <div><Label htmlFor="company_name">Company Name *</Label>
+            <Input id="company_name" value={formData.company_name || ''} onChange={(e) => setFormData((p)=>({...p, company_name: e.target.value}))} placeholder="Your education consultancy name" className="mt-1" />
+          </div>
+          <div><Label htmlFor="business_license_mst">Business License (MST) *</Label>
+            <Input id="business_license_mst" value={formData.business_license_mst || ''} onChange={(e) => setFormData((p)=>({...p, business_license_mst: e.target.value}))} placeholder="Enter your business license number" className="mt-1" />
+          </div>
+          <div><Label htmlFor="year_established">Year Established</Label>
+            <Input id="year_established" type="number" value={formData.year_established || ''} onChange={(e) => setFormData((p)=>({...p, year_established: e.target.value}))} placeholder="2020" className="mt-1" />
+          </div>
+          <div><Label htmlFor="paypal_email">PayPal Email *</Label>
+            <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
+            <p className="text-xs text-gray-500 mt-1">Required for commission payouts</p>
+          </div>
+        </div>
+      )}
+
+      {/* Tutor */}
+      {selectedRole === 'tutor' && (
+        <div className="space-y-6">
+          <div><Label htmlFor="specializations">Specializations *</Label>
+            <Input id="specializations" value={formData.specializations || ''} onChange={(e) => setFormData((p)=>({...p, specializations: e.target.value}))} placeholder="IELTS, TOEFL, General English" className="mt-1" />
+            <p className="text-xs text-gray-500 mt-1">Separate multiple specializations with commas</p>
+          </div>
+          <div><Label htmlFor="experience_years">Years of Experience *</Label>
+            <Input id="experience_years" type="number" value={formData.experience_years || ''} onChange={(e) => setFormData((p)=>({...p, experience_years: e.target.value}))} placeholder="5" className="mt-1" />
+          </div>
+          <div><Label htmlFor="hourly_rate">Hourly Rate (USD) *</Label>
+            <Input id="hourly_rate" type="number" step="0.01" value={formData.hourly_rate || ''} onChange={(e) => setFormData((p)=>({...p, hourly_rate: e.target.value}))} placeholder="25.00" className="mt-1" />
+          </div>
+          <div><Label htmlFor="bio">Professional Bio</Label>
+            <Textarea id="bio" value={formData.bio || ''} onChange={(e) => setFormData((p)=>({...p, bio: e.target.value}))} placeholder="Tell students about your teaching experience and approach..." className="mt-1" rows={3} />
+          </div>
+          <div><Label htmlFor="paypal_email">PayPal Email *</Label>
+            <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
+            <p className="text-xs text-gray-500 mt-1">Required for session payouts</p>
+          </div>
+        </div>
+      )}
+
+      {/* School */}
+      {selectedRole === 'school' && (
+        <div className="space-y-6">
+          <div><Label htmlFor="school_name">Institution Name *</Label>
+            <Input id="school_name" value={formData.school_name || ''} onChange={(e) => setFormData((p)=>({...p, school_name: e.target.value}))} placeholder="e.g., University of Toronto" className="mt-1" />
+          </div>
+          <div><Label htmlFor="type">School Type *</Label>
+            <Select value={formData.type || ''} onValueChange={(v) => setFormData((p)=>({...p, type: v}))}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Select institution type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="High School">High School</SelectItem>
+                <SelectItem value="College">College</SelectItem>
+                <SelectItem value="University">University</SelectItem>
+                <SelectItem value="Institute">Institute</SelectItem>
+                <SelectItem value="Vocational">Vocational School</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div><Label htmlFor="location">City/Location *</Label>
+            <Input id="location" value={formData.location || ''} onChange={(e) => setFormData((p)=>({...p, location: e.target.value}))} placeholder="e.g., Toronto, ON" className="mt-1" />
+          </div>
+          <div><Label htmlFor="website">Official Website *</Label>
+            <Input id="website" type="url" value={formData.website || ''} onChange={(e) => setFormData((p)=>({...p, website: e.target.value}))} placeholder="https://www.university.edu" className="mt-1" />
+          </div>
+          <div><Label htmlFor="about">About Your Institution</Label>
+            <Textarea id="about" value={formData.about || ''} onChange={(e) => setFormData((p)=>({...p, about: e.target.value}))} placeholder="Brief description of your institution..." className="mt-1" rows={3} />
+          </div>
+        </div>
+      )}
+
+      {/* Vendor */}
+      {selectedRole === 'vendor' && (
+        <div className="space-y-6">
+          <div><Label htmlFor="business_name">Business Name *</Label>
+            <Input id="business_name" value={formData.business_name || ''} onChange={(e) => setFormData((p)=>({...p, business_name: e.target.value}))} placeholder="Your business name" className="mt-1" />
+          </div>
+          <div>
+            <Label>Service Categories *</Label>
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              {["Transport","SIM Card","Banking","Accommodation","Delivery","Tours"].map(category => (
+                <div key={category} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id={`category-${category}`}
+                    checked={formData.service_categories?.includes(category) || false}
+                    onChange={(e) => {
+                      const cur = formData.service_categories || [];
+                      const updated = e.target.checked ? [...cur, category] : cur.filter(c => c !== category);
+                      setFormData((p) => ({ ...p, service_categories: updated }));
+                    }}
+                    className="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                  />
+                  <label htmlFor={`category-${category}`} className="text-sm text-gray-700">{category}</label>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div><Label htmlFor="paypal_email">PayPal Email *</Label>
+            <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
+            <p className="text-xs text-gray-500 mt-1">Required for service payouts</p>
+          </div>
+        </div>
+      )}
+
+      {selectedRole === 'user' && (
+        <div className="text-center py-8">
+          <Check className="w-16 h-16 text-green-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">You're All Set!</h3>
+          <p className="text-gray-600">
+            As a student, you can start exploring programs, connecting with agents, and planning your study abroad journey.
+          </p>
+        </div>
+      )}
+
+      <div className="flex gap-3 pt-4">
+        <Button
+          variant="outline"
+          onClick={handleBack}
+          className="flex-1"
+          disabled={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO}
+          title={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO ? 'Role locked by entry page' : 'Back'}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back
+        </Button>
+        <Button onClick={handleCompleteOnboarding} disabled={saving || !validateRoleSpecificInfo()} className="flex-1">
+          {saving ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Setting up...
+            </>
+          ) : (
+            <>
+              Complete Setup
+              <Check className="w-4 h-4 ml-2" />
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Soft escape for users who don't want to continue */}
+      <div className="text-center mt-4">
+        <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-600 inline-flex items-center gap-1">
+          <LogOut className="w-4 h-4" /> Log out instead
+        </button>
+      </div>
+    </div>
+  );
   };
 
   const renderComplete = () => (

@@ -26,7 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 /* ---------- Firebase auth/profile ---------- */
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
 
 /* =========================
    i18n
@@ -134,6 +134,8 @@ export const translations = {
     studentLife: "Student Life",
     visaHousingTips: "Visa, housing, and arrival tips",
     agentNetwork: "Agent Network",
+    schoolPartners: "School Partners",
+    partnerWithSchools: "Partner with us to reach qualified students",
     joinVerifiedAgent: "Join our verified agent group",
     tutorPrep: "Tutor Prep",
     connectStudentsPrep: "Connect with students for prep",
@@ -230,6 +232,8 @@ export const translations = {
     homePageEditor: "Trang chủ",
     chatSettings: "Cài đặt trò chuyện",
     bankSettings: "Cài đặt ngân hàng",
+    schoolPartners: "Đối tác Trường học",
+    partnerWithSchools: "Hợp tác để tiếp cận sinh viên phù hợp",
     blogEditor: "Trình chỉnh sửa Blog",
     aboutPageEditor: "Trình chỉnh sửa trang Giới thiệu",
     faqEditor: "Trình chỉnh sửa FAQ",
@@ -332,8 +336,24 @@ const buildExploreForStudents = () => ([
 ]);
 
 const buildExploreForPartners = () => ([
-  { title: getText("agentNetwork"), href: createPageUrl("Partnership"), icon: Handshake, description: getText("joinVerifiedAgent") },
-  { title: getText("tutorPrep"), href: createPageUrl("Partnership"), icon: GraduationCap, description: getText("connectStudentsPrep") },
+  {
+    title: getText("agentNetwork"),
+    href: createPageUrl("Partner Agents"),
+    icon: Handshake,
+    description: getText("joinVerifiedAgent"),
+  },
+  {
+    title: getText("tutorPrep"),
+    href: createPageUrl("Partner Tutors"),
+    icon: GraduationCap,
+    description: getText("connectStudentsPrep"),
+  },
+  {
+    title: getText("schoolPartners"),
+    href: createPageUrl("Partner Schools"),
+    icon: Building,
+    description: getText("partnerWithSchools"),
+  },
 ]);
 
 const buildQuickLinks = () => ([
@@ -972,6 +992,9 @@ export default function Layout() {
   const bottomNavRef = React.useRef(null);
   const [bottomH, setBottomH] = React.useState(0);
 
+  // 🔁 profile listener holder
+  const profileUnsubRef = React.useRef(null);
+
   React.useLayoutEffect(() => {
     const update = () => setBottomH(bottomNavRef.current?.offsetHeight ?? 0);
     update();
@@ -984,15 +1007,22 @@ export default function Layout() {
     };
   }, []);
 
-  // 🔐 Auth listener: mount once, not per-route
+  // 🔐 Auth + live profile subscription
   React.useEffect(() => {
     setLoading(true);
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+    const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+      // Clear previous profile listener
+      if (profileUnsubRef.current) {
+        profileUnsubRef.current();
+        profileUnsubRef.current = null;
+      }
+
       if (!fbUser) {
         setCurrentUser(null);
         setLoading(false);
         return;
       }
+
       try {
         const ref = doc(db, "users", fbUser.uid);
         const snap = await getDoc(ref);
@@ -1008,23 +1038,34 @@ export default function Layout() {
             updatedAt: Date.now(),
           };
           await setDoc(ref, seed, { merge: true });
-          setCurrentUser(normalizeUser(fbUser.uid, seed, fbUser));
-        } else {
-          const profile = normalizeUser(fbUser.uid, snap.data(), fbUser);
+        }
+
+        // Live subscribe to profile so onboarding/role changes reflect immediately
+        profileUnsubRef.current = onSnapshot(ref, (docSnap) => {
+          const data = docSnap.data() || {};
+          const profile = normalizeUser(fbUser.uid, data, fbUser);
           setCurrentUser(profile);
+
           const prefLang = profile.settings?.language || profile.language;
           if (prefLang && prefLang !== language) {
             setLanguage(prefLang);
             if (typeof window !== "undefined") localStorage.setItem("greenpass-language", prefLang);
           }
-        }
+        });
       } catch {
         setCurrentUser({ id: fbUser.uid, user_type: "student", full_name: fbUser.displayName || "" });
       } finally {
         setLoading(false);
       }
     });
-    return () => unsub();
+
+    return () => {
+      unsubAuth();
+      if (profileUnsubRef.current) {
+        profileUnsubRef.current();
+        profileUnsubRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount once
 
@@ -1033,7 +1074,15 @@ export default function Layout() {
     const user_type = (data.user_type || data.role || "student").toLowerCase();
     const onboarding_completed = data.onboarding_completed ?? data.onboardingComplete ?? false;
     const settings = data.settings || {};
-    return { id: uid, ...data, full_name, user_type, onboarding_completed, purchased_packages: Array.isArray(data.purchased_packages) ? data.purchased_packages : [], settings };
+    return {
+      id: uid,
+      ...data,
+      full_name,
+      user_type,
+      onboarding_completed,
+      purchased_packages: Array.isArray(data.purchased_packages) ? data.purchased_packages : [],
+      settings
+    };
   }, []);
 
   const handleLogout = React.useCallback(async () => {
@@ -1070,6 +1119,13 @@ export default function Layout() {
 
   const navigationItems = React.useMemo(() => buildDesktopNav(currentUser), [currentUser, language]);
   const mobileNavigationItems = React.useMemo(() => buildMobileNav(currentUser), [currentUser, language]);
+
+  // ➜ If onboarding just finished and we're still on /onboarding, push to Dashboard
+  React.useEffect(() => {
+    if (currentUser?.onboarding_completed && location.pathname.toLowerCase().startsWith("/onboarding")) {
+      navigate(createPageUrl("Dashboard"), { replace: true });
+    }
+  }, [currentUser?.onboarding_completed, location.pathname, navigate]);
 
   if (loading) {
     return (
