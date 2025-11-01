@@ -417,20 +417,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </Link>
             </div>
 
-            {/* Mobile actions: Login + Hamburger */}
+            {/* Mobile actions: Hamburger only (login is inside the menu) */}
             <div className="flex md:hidden items-center gap-2">
-              <Link to={createPageUrl("Welcome")} aria-label={getText("login")}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 font-semibold border-gray-400 text-gray-700 bg-white/80
-                            hover:border-green-500 hover:text-green-600 hover:bg-green-50 px-4 py-1.5
-                            transition-all duration-200"
-                >
-                  {getText("login")}
-                </Button>
-              </Link>
-
               <button
                 onClick={() => setIsMenuOpen((v) => !v)}
                 className="inline-flex items-center justify-center p-2 rounded-md text-gray-600
@@ -445,7 +433,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
           </div>
         </nav>
 
-        {/* Mobile dropdown (menus only) */}
+        {/* Mobile dropdown (menus + login button inside) */}
         <AnimatePresence>
           {isMenuOpen && (
             <motion.div
@@ -501,7 +489,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                 </div>
 
                 <div className="pt-4 border-t border-gray-200">
-                  <Link to={createPageUrl("Welcome")} onClick={() => setIsMenuOpen(false)} className="block w/full">
+                  <Link to={createPageUrl("Welcome")} onClick={() => setIsMenuOpen(false)} className="block w-full">
                     <Button
                       variant="outline"
                       className="w-full font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 py-3 transition-all duration-200"
