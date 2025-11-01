@@ -417,8 +417,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </Link>
             </div>
 
-            {/* Mobile actions: Hamburger only (login is inside the menu) */}
-            <div className="flex md:hidden items-center gap-2">
+            {/* Mobile actions: Hamburger only (Login moved inside menu) */}
+            <div className="flex md:hidden items-center">
               <button
                 onClick={() => setIsMenuOpen((v) => !v)}
                 className="inline-flex items-center justify-center p-2 rounded-md text-gray-600
@@ -433,7 +433,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
           </div>
         </nav>
 
-        {/* Mobile dropdown (menus + login button inside) */}
+        {/* Mobile dropdown (menus + sticky Login) */}
         <AnimatePresence>
           {isMenuOpen && (
             <motion.div
@@ -442,7 +442,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               exit={{ opacity: 0, height: 0 }}
               className="md:hidden bg-gray-100/95 backdrop-blur-md border-t border-gray-200 z-10"
             >
-              <div className="px-4 pt-4 pb-6 space-y-4">
+              {/* Scrollable menu content with extra bottom padding to avoid overlap */}
+              <div className="px-4 pt-4 pb-24 space-y-4">
                 <div className="space-y-3">
                   <p className="text-xs uppercase font-bold text-blue-600 tracking-wider px-2">{getText("forStudents")}</p>
                   {students.map((link) => (
@@ -487,17 +488,23 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                     </Link>
                   ))}
                 </div>
+              </div>
 
-                <div className="pt-4 border-t border-gray-200">
-                  <Link to={createPageUrl("Welcome")} onClick={() => setIsMenuOpen(false)} className="block w-full">
-                    <Button
-                      variant="outline"
-                      className="w-full font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 py-3 transition-all duration-200"
-                    >
-                      {getText("login")}
-                    </Button>
-                  </Link>
-                </div>
+              {/* Sticky Login CTA at the bottom (always visible) */}
+              <div className="sticky bottom-0 left-0 right-0 bg-gray-100/95 border-t border-gray-200 p-4">
+                <Link
+                  to={createPageUrl("Welcome")}
+                  onClick={() => setIsMenuOpen(false)}
+                  className="block w-full"
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 py-3 transition-all duration-200"
+                    aria-label={getText("login")}
+                  >
+                    {getText("login")}
+                  </Button>
+                </Link>
               </div>
             </motion.div>
           )}
@@ -681,7 +688,6 @@ function buildDesktopNav(currentUser) {
         { title: getText("contactPageEditor"), url: createPageUrl("AdminContactEditor"), icon: Phone },
         { title: getText("faqEditor"), url: createPageUrl("AdminFAQ"), icon: MessageSquare },
         { title: getText("ourTeamEditor"), url: createPageUrl("AdminOurTeamEditor"), icon: Users },
-        { title: "Brand Settings", url: createPageUrl("AdminBrandSettings"), icon: Palette },
         { title: getText("chatSettings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
         { title: getText("marketplaceAdmin"), url: createPageUrl("MarketplaceAdmin"), icon: Store },
         { title: getText("packageAdmin"), url: createPageUrl("AdminPackages"), icon: Package },
@@ -1093,7 +1099,7 @@ export default function Layout() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="md:hidden fixed inset-0 bg-black/40 z-[60]"
+                  className="md:hidden fixed inset-0 bg:black/40 bg-black/40 z-[60]"
                   onClick={() => setShowMoreMenu(false)}
                 />
                 <motion.div
