@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Mail, Phone, MapPin, Clock, Loader2, CheckCircle } from 'lucide-react';
-import { getLang, getText } from '@/pages/Layout';
+import { getText } from '@/pages/Layout';
 
 // --- Firebase ---
 import { db } from '@/firebase';
