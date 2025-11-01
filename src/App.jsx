@@ -86,6 +86,7 @@ import PostDetail from "./pages/PostDetail";
 import PartnerAgents from "@/pages/PartnerAgents";
 import PartnerTutors from "@/pages/PartnerTutors";
 import PartnerSchools from "@/pages/PartnerSchools";
+import PartnerVendor from "./pages/PartnerVendor";
 
 
 export default function App() {
@@ -119,7 +120,7 @@ export default function App() {
         <Route path="partner-agents" element={<PartnerAgents />} />
         <Route path="partner-tutors" element={<PartnerTutors />} />
         <Route path="partner-schools" element={<PartnerSchools />} />
-
+        <Route path="partner-vendors" element={<PartnerVendor/>} />
         {/* Private routes */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="onboarding" element={<Onboarding />} />

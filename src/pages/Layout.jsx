@@ -160,6 +160,8 @@ export const translations = {
     agentAgreement: "Agent Agreement",
     institutionManagement: "Institution Management",
     institutionManagementShort: "Institutions",
+    vendorNetwork: "Vendor Network",
+    joinVendorNetwork: "Offer services on our marketplace",
   },
 };
 
@@ -204,6 +206,7 @@ const buildExploreForPartners = () => ([
   { title: getText("agentNetwork"), href: createPageUrl("Partner Agents"), icon: Handshake, description: getText("joinVerifiedAgent") },
   { title: getText("tutorPrep"), href: createPageUrl("Partner Tutors"), icon: GraduationCap, description: getText("connectStudentsPrep") },
   { title: getText("schoolPartners"), href: createPageUrl("Partner Schools"), icon: Building, description: getText("partnerWithSchools") },
+  { title: getText("vendorNetwork"), href: createPageUrl("Partner Vendors"), icon: Store, description: getText("joinVendorNetwork") }, 
 ]);
 
 const buildQuickLinks = () => ([
