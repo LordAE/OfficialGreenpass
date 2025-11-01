@@ -417,12 +417,28 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </Link>
             </div>
 
-            <div className="-mr-2 flex md:hidden">
+            {/* Mobile actions: Login + Hamburger */}
+            <div className="flex md:hidden items-center gap-2">
+              <Link to={createPageUrl("Welcome")} aria-label={getText("login")}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 font-semibold border-gray-400 text-gray-700 bg-white/80
+                            hover:border-green-500 hover:text-green-600 hover:bg-green-50 px-4 py-1.5
+                            transition-all duration-200"
+                >
+                  {getText("login")}
+                </Button>
+              </Link>
+
               <button
                 onClick={() => setIsMenuOpen((v) => !v)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-600 hover:text-gray-800 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-green-300 transition-all duration-200"
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-600
+                          hover:text-gray-800 hover:bg-gray-200 focus:outline-none focus:ring-2
+                          focus:ring-inset focus:ring-green-300 transition-all duration-200"
+                aria-expanded={isMenuOpen}
+                aria-label="Open main menu"
               >
-                <span className="sr-only">Open main menu</span>
                 {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
             </div>
