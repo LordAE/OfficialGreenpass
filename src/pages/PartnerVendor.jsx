@@ -18,7 +18,7 @@ export default function PartnerVendor() {
   const [hoveredBenefit, setHoveredBenefit] = useState(null);
 
   // Pass vendor preselection to Welcome
-  const welcomeVendorHref = `${createPageUrl("Welcome")}?userType=vendor`;
+  const welcomeVendorHref = `${createPageUrl("Welcome")}?role=vendor`;
   const welcomeVendorState = { preselectUserType: "vendor", forceRole: "vendor" };
 
   const benefits = [

@@ -16,7 +16,7 @@ export default function PartnerTutors() {
   const [expandedStep, setExpandedStep] = useState(null);
 
   // ---- Welcome link + state: preselect TUTOR ----
-  const welcomeTutorHref = `${createPageUrl("Welcome")}?userType=tutor`;
+  const welcomeTutorHref = `${createPageUrl("Welcome")}?role=tutor`;
   const welcomeTutorState = { preselectUserType: "tutor", forceRole: "tutor" };
 
   const benefits = [

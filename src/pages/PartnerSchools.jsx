@@ -11,7 +11,7 @@ import { createPageUrl } from '@/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function PartnerSchools() {
-  // ✅ JS state (no TS generics)
+  
   const [hoveredBenefit, setHoveredBenefit] = useState(null);
   const [expandedFeature, setExpandedFeature] = useState(null);
   const [expandedStep, setExpandedStep] = useState(null);
@@ -169,7 +169,7 @@ export default function PartnerSchools() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link to={`${createPageUrl("Welcome")}?as=school`}>
+                <Link to={`${createPageUrl("Welcome")}?role=school`}>
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button size="lg" className="w-full sm:w-auto bg-white text-indigo-600 hover:bg-indigo-50 px-8 py-6 text-lg font-semibold shadow-xl">
                       Register Your Institution
@@ -467,7 +467,7 @@ export default function PartnerSchools() {
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">Ready to Grow Your International Enrollment?</h2>
             <p className="text-xl text-indigo-100 mb-8 max-w-2xl mx-auto">Join 1,200+ institutions already recruiting students through GreenPass.</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to={`${createPageUrl("Welcome")}?as=school`}>
+              <Link to={`${createPageUrl("Welcome")}?role=school`}>
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button size="lg" className="w-full sm:w-auto bg-white text-indigo-600 hover:bg-indigo-50 px-10 py-6 text-xl font-semibold shadow-2xl">
                     Get Started Now

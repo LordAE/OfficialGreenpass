@@ -53,7 +53,7 @@ function InfoDialog({ open, title, message, onClose }) {
 }
 
 // ───────────────────────────────── helpers ─────────────────────────────────
-const VALID_ROLES = ['agent', 'tutor', 'school'];
+const VALID_ROLES = ['agent', 'tutor', 'school', 'vendor'];
 const DEFAULT_ROLE = 'user';
 
 function normalizeRole(r) {
@@ -63,11 +63,12 @@ function normalizeRole(r) {
 
 function buildUserDoc({ email, full_name = '', userType = DEFAULT_ROLE, signupEntryRole = DEFAULT_ROLE }) {
   return {
-    role: userType,            // keep for legacy UI that reads "role"
+    role: userType,                 // legacy UI that reads "role"
+    userType,                       // camelCase for any legacy reads
+    user_type: userType,            // ← canonical field
+    signup_entry_role: signupEntryRole, // how they entered (from URL)
     email,
     full_name,
-    user_type: userType,       // ← canonical field
-    signup_entry_role: signupEntryRole, // ← how they entered (from URL)
     phone: '',
     country: '',
     address: { street: '', ward: '', district: '', province: '', postal_code: '' },
@@ -155,8 +156,11 @@ export default function Welcome() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  // role from URL (defaults to 'user' when missing/invalid)
-  const entryRole = useMemo(() => normalizeRole(params.get('role')), [params]);
+  // role from URL (with legacy fallbacks)
+  const entryRole = useMemo(() => {
+    const raw = params.get('role') ?? params.get('userType') ?? params.get('as');
+    return normalizeRole(raw);
+  }, [params]);
 
   // persist for OAuth redirect hops
   useEffect(() => {

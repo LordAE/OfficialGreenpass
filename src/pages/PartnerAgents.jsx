@@ -16,7 +16,7 @@ export default function PartnerAgents() {
   const [expandedStep, setExpandedStep] = useState(null);
 
   // ---- Welcome link + state: preselect AGENT ----
-  const welcomeAgentHref = `${createPageUrl("Welcome")}?userType=agent`;
+  const welcomeAgentHref = `${createPageUrl("Welcome")}?role=agent`;
   const welcomeAgentState = { preselectUserType: "agent", forceRole: "agent" };
 
   const benefits = [
