@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 /* ---------- Firebase auth/profile ---------- */
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 
 /* =========================
    i18n (English only)
@@ -312,7 +312,7 @@ const ExploreBar = ({ socialLinks = [] }) => {
   );
 };
 
-/* ---------- Public layout (English only, no language selector) ---------- */
+/* ---------- Public layout (English only) ---------- */
 const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const headerRef = React.useRef(null);
@@ -337,6 +337,23 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
     };
   }, [measured]);
 
+  // prevent background scroll when menu is open
+  React.useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    if (isMenuOpen) {
+      html.style.overflow = "hidden";
+      body.style.overflow = "hidden";
+    } else {
+      html.style.overflow = "";
+      body.style.overflow = "";
+    }
+    return () => {
+      html.style.overflow = "";
+      body.style.overflow = "";
+    };
+  }, [isMenuOpen]);
+
   const students = React.useMemo(buildExploreForStudents, []);
   const partners = React.useMemo(buildExploreForPartners, []);
   const quick = React.useMemo(buildQuickLinks, []);
@@ -349,7 +366,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
       >
         <ExploreBar socialLinks={SOCIAL_LINKS} />
 
-        {/* Main nav: About / Events & Fairs / Blog */}
+        {/* Main nav bar */}
         <nav className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
@@ -358,6 +375,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </Link>
             </div>
 
+            {/* Desktop top-links */}
             <div className="hidden md:flex items-center">
               <NavigationMenu>
                 <NavigationMenuList>
@@ -406,6 +424,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </NavigationMenu>
             </div>
 
+            {/* Desktop Login */}
             <div className="hidden md:flex items-center space-x-3">
               <Link to={createPageUrl("Welcome")}>
                 <Button
@@ -417,7 +436,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </Link>
             </div>
 
-            {/* Mobile actions: Hamburger only (Login moved inside menu) */}
+            {/* Mobile: hamburger only (login is inside the menu below "Our Team") */}
             <div className="flex md:hidden items-center">
               <button
                 onClick={() => setIsMenuOpen((v) => !v)}
@@ -433,17 +452,17 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
           </div>
         </nav>
 
-        {/* Mobile dropdown (menus + sticky Login) */}
+        {/* Mobile dropdown (single scrollable area, Login placed after "Our Team") */}
         <AnimatePresence>
           {isMenuOpen && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden bg-gray-100/95 backdrop-blur-md border-t border-gray-200 z-10"
+              className="md:hidden bg-gray-100/95 backdrop-blur-md border-t border-gray-200 z-10 max-h-[85vh] overflow-y-auto"
+              style={{ WebkitOverflowScrolling: "touch" }}
             >
-              {/* Scrollable menu content with extra bottom padding to avoid overlap */}
-              <div className="px-4 pt-4 pb-24 space-y-4">
+              <div className="px-4 pt-4 pb-6 space-y-4">
                 <div className="space-y-3">
                   <p className="text-xs uppercase font-bold text-blue-600 tracking-wider px-2">{getText("forStudents")}</p>
                   {students.map((link) => (
@@ -487,24 +506,20 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                       <span>{link.title}</span>
                     </Link>
                   ))}
-                </div>
-              </div>
 
-              {/* Sticky Login CTA at the bottom (always visible) */}
-              <div className="sticky bottom-0 left-0 right-0 bg-gray-100/95 border-t border-gray-200 p-4">
-                <Link
-                  to={createPageUrl("Welcome")}
-                  onClick={() => setIsMenuOpen(false)}
-                  className="block w-full"
-                >
-                  <Button
-                    variant="outline"
-                    className="w-full font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 py-3 transition-all duration-200"
-                    aria-label={getText("login")}
-                  >
-                    {getText("login")}
-                  </Button>
-                </Link>
+                  {/* Login button directly below "Our Team" entry */}
+                  <div className="pt-2">
+                    <Link to={createPageUrl("Welcome")} onClick={() => setIsMenuOpen(false)} className="block w-full">
+                      <Button
+                        variant="outline"
+                        className="w-full font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 py-3 transition-all duration-200"
+                        aria-label={getText("login")}
+                      >
+                        {getText("login")}
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
@@ -1039,7 +1054,7 @@ export default function Layout() {
 
         {/* Main area + mobile chrome */}
         <main className="flex-1 flex flex-col min-h-[100svh]">
-          {/* Mobile Header (no language selector) */}
+          {/* Mobile Header */}
           <header className="bg-white/90 backdrop-blur-sm border-b border-gray-200 px-4 py-3 md:hidden sticky top-0 z-40">
             <div className="flex items-center justify-between">
               <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
@@ -1090,7 +1105,7 @@ export default function Layout() {
             </div>
           </nav>
 
-          {/* Mobile More Menu */}
+          {/* Mobile More Menu (authenticated) */}
           <AnimatePresence>
             {showMoreMenu && (
               <>
@@ -1099,7 +1114,7 @@ export default function Layout() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="md:hidden fixed inset-0 bg:black/40 bg-black/40 z-[60]"
+                  className="md:hidden fixed inset-0 bg-black/40 z-[60]"
                   onClick={() => setShowMoreMenu(false)}
                 />
                 <motion.div
