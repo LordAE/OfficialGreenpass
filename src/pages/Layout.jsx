@@ -21,7 +21,6 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import ChatWidget from "@/components/chat/ChatWidget";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /* ---------- Firebase auth/profile ---------- */
 import { auth, db } from "@/firebase";
@@ -29,7 +28,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
 
 /* =========================
-   i18n
+   i18n (English only)
 ========================= */
 export const translations = {
   en: {
@@ -162,145 +161,11 @@ export const translations = {
     institutionManagement: "Institution Management",
     institutionManagementShort: "Institutions",
   },
-  vi: {
-    dashboard: "Bảng điều khiển",
-    events: "Hội chợ và Sự kiện",
-    discoverSchools: "Khám phá trường học",
-    visaPackages: "Gói visa",
-    findAgent: "Tìm agent",
-    findTutors: "Tìm gia sư",
-    marketplace: "Thị trường",
-    mySessions: "Các buổi học của tôi",
-    visaApplications: "Đơn xin visa",
-    myStudents: "Học sinh của tôi",
-    visaCases: "Hồ sơ visa",
-    leads: "Khách hàng tiềm năng",
-    earnings: "Thu nhập",
-    availability: "Lịch trống",
-    myServices: "Dịch vụ của tôi",
-    myOrders: "Đơn hàng của tôi",
-    analytics: "Phân tích",
-    profile: "Hồ sơ",
-    programs: "Chương trình",
-    userManagement: "Quản lý người dùng",
-    schoolManagement: "Quản lý trường học",
-    verifications: "Xác minh",
-    adminVisaRequests: "Quản lý đơn visa",
-    marketplaceAdmin: "Quản lý thị trường",
-    eventsAdmin: "Quản lý sự kiện",
-    packageAdmin: "Quản lý gói",
-    reports: "Báo cáo",
-    profileSettings: "Cài đặt hồ sơ",
-    logOut: "Đăng xuất",
-    paymentVerification: "Xác minh thanh toán",
-    walletManagement: "Quản lý ví",
-    myAgent: "Agent của tôi",
-    assignedAgent: "Agent được chỉ định",
-    loading: "Đang tải...",
-    status: "Trạng thái",
-    pending: "Đang chờ",
-    verified: "Đã xác minh",
-    rejected: "Bị từ chối",
-    actions: "Hành động",
-    save: "Lưu",
-    cancel: "Hủy",
-    submit: "Gửi",
-    search: "Tìm kiếm",
-    viewDetails: "Xem chi tiết",
-    all: "Tất cả",
-    more: "Thêm",
-    dashboardShort: "Trang chủ",
-    discoverSchoolsShort: "Trường",
-    findTutorsShort: "Gia sư",
-    findAgentShort: "Agent",
-    mySessionsShort: "Buổi học",
-    visaApplicationsShort: "Visa",
-    visaPackagesShort: "Gói",
-    marketplaceShort: "Chợ",
-    profileShort: "Hồ sơ",
-    myStudentsShort: "Học sinh",
-    visaCasesShort: "Hồ sơ",
-    earningsShort: "Thu nhập",
-    myServicesShort: "Dịch vụ",
-    myOrdersShort: "Đơn hàng",
-    analyticsShort: "Phân tích",
-    availabilityShort: "Lịch",
-    programsShort: "Chương trình",
-    leadsShort: "Khách hàng",
-    userManagementShort: "Người dùng",
-    verificationsShort: "Xác minh",
-    homePageEditor: "Trang chủ",
-    chatSettings: "Cài đặt trò chuyện",
-    bankSettings: "Cài đặt ngân hàng",
-    schoolPartners: "Đối tác Trường học",
-    partnerWithSchools: "Hợp tác để tiếp cận sinh viên phù hợp",
-    blogEditor: "Trình chỉnh sửa Blog",
-    aboutPageEditor: "Trình chỉnh sửa trang Giới thiệu",
-    faqEditor: "Trình chỉnh sửa FAQ",
-    contactPageEditor: "Trình chỉnh sửa trang Liên hệ",
-    ourTeam: "Đội ngũ của chúng tôi",
-    ourTeamEditor: "Trình chỉnh sửa Đội ngũ",
-    meetTheTeam: "Gặp gỡ những người đứng sau thành công của chúng tôi",
-    welcome: "Chào mừng",
-    chooseRole: "Chọn vai trò của bạn để bắt đầu",
-    welcomeSubtitle: "Ứng dụng toàn diện cho việc du học",
-    studyAbroadConfidence: "Du học với sự tự tin",
-    exploreSchoolsPrograms: "Khám phá trường học, nhận sự giúp đỡ từ chuyên gia, và lập kế hoạch từng bước",
-    getStarted: "Bắt đầu",
-    about: "Giới thiệu",
-    blog: "News and Highlights",
-    contactUs: "Liên hệ chúng tôi",
-    faq: "Câu hỏi thường gặp",
-    frequentlyAskedQuestions: "Các câu hỏi thường gặp",
-    getInTouch: "Liên hệ với đội ngũ hỗ trợ của chúng tôi",
-    guidesForStudents: "Tài nguyên cho sinh viên, đối tác",
-    exploreSchools: "Khám phá trường học",
-    login: "Đăng nhập",
-    forStudents: "Dành cho sinh viên",
-    forPartners: "Dành cho đối tác",
-    quickLinks: "Liên kết nhanh",
-    findSchoolsPrograms: "Tìm trường học & chương trình",
-    searchTopSchools: "Tìm kiếm các trường hàng đầu",
-    comparePrograms: "So sánh chương trình",
-    filterByLevel: "Lọc theo cấp độ, khu vực, đợt tuyển sinh",
-    studentLife: "Đời sống sinh viên",
-    visaHousingTips: "Mẹo về visa, nhà ở và đến nơi",
-    agentNetwork: "Mạng lưới agent",
-    joinVerifiedAgent: "Tham gia nhóm agent đã xác minh của chúng tôi",
-    tutorPrep: "Chuẩn bị gia sư",
-    connectStudentsPrep: "Kết nối với sinh viên để chuẩn bị",
-    eventsAndFairs: "Sự kiện & Hội chợ",
-    promoteEvent: "Quảng bá hoặc tài trợ sự kiện của bạn",
-    faqs: "Câu hỏi thường gặp",
-    findQuickAnswers: "Tìm câu trả lời nhanh tại đây",
-    contact: "Liên hệ",
-    messageSupportTeam: "Nhắn tin cho đội ngũ hỗ trợ",
-    resources: "Tài nguyên",
-    solutions: "Giải pháp",
-    findSchools: "Tìm trường học",
-    findAnAgent: "Tìm Agent",
-    findATutor: "Tìm Gia sư",
-    visaHelp: "Hỗ trợ Visa",
-    chatSupport: "Hỗ trợ trò chuyện",
-    company: "Công ty",
-    aboutUs: "Về chúng tôi",
-    partnerships: "Đối tác",
-    legal: "Pháp lý",
-    termsOfService: "Điều khoản dịch vụ",
-    privacyPolicy: "Chính sách bảo mật",
-    agentAgreement: "Thỏa thuận Agent",
-    institutionManagement: "Quản lý Tổ chức",
-    institutionManagementShort: "Tổ chức",
-  },
 };
 
-export const getLang = () =>
-  (typeof window !== "undefined" ? localStorage.getItem("greenpass-language") || "en" : "en");
+export const getText = (key) => translations.en[key] || key;
 
-export const getText = (key) =>
-  translations[getLang()][key] || translations.en[key] || key;
-
-/* ---------- Social links (no DB needed) ---------- */
+/* ---------- Social links ---------- */
 const SOCIAL_LINKS = [
   { platform: "YouTube",  url: "https://www.youtube.com/@GreenPassGroup" },
   { platform: "Facebook", url: "https://www.facebook.com/greenpassgroup" },
@@ -328,7 +193,7 @@ const iconByPlatform = (platform = "") => {
   return <Globe className="h-5 w-5" />;
 };
 
-/* ---------- Build “Explore” menus from current language (reactive) ---------- */
+/* ---------- Build “Explore” menus ---------- */
 const buildExploreForStudents = () => ([
   { title: getText("findSchoolsPrograms"), href: createPageUrl("Schools"), icon: Search, description: getText("searchTopSchools") },
   { title: getText("comparePrograms"), href: createPageUrl("ComparePrograms"), icon: Compass, description: getText("filterByLevel") },
@@ -336,24 +201,9 @@ const buildExploreForStudents = () => ([
 ]);
 
 const buildExploreForPartners = () => ([
-  {
-    title: getText("agentNetwork"),
-    href: createPageUrl("Partner Agents"),
-    icon: Handshake,
-    description: getText("joinVerifiedAgent"),
-  },
-  {
-    title: getText("tutorPrep"),
-    href: createPageUrl("Partner Tutors"),
-    icon: GraduationCap,
-    description: getText("connectStudentsPrep"),
-  },
-  {
-    title: getText("schoolPartners"),
-    href: createPageUrl("Partner Schools"),
-    icon: Building,
-    description: getText("partnerWithSchools"),
-  },
+  { title: getText("agentNetwork"), href: createPageUrl("Partner Agents"), icon: Handshake, description: getText("joinVerifiedAgent") },
+  { title: getText("tutorPrep"), href: createPageUrl("Partner Tutors"), icon: GraduationCap, description: getText("connectStudentsPrep") },
+  { title: getText("schoolPartners"), href: createPageUrl("Partner Schools"), icon: Building, description: getText("partnerWithSchools") },
 ]);
 
 const buildQuickLinks = () => ([
@@ -407,9 +257,7 @@ function HoverDropdown({ label, color = "green", items = [] }) {
                     <item.icon className={`mt-0.5 h-5 w-5 ${palette.icon} ${palette.hover}`} />
                     <div>
                       <div className={`text-sm font-semibold text-gray-900 ${palette.hover}`}>{item.title}</div>
-                      {item.description && (
-                        <p className="text-sm text-gray-600">{item.description}</p>
-                      )}
+                      {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
                     </div>
                   </Link>
                 </li>
@@ -422,11 +270,11 @@ function HoverDropdown({ label, color = "green", items = [] }) {
   );
 }
 
-/* ---------- Explore Bar: hover menus + right socials ---------- */
+/* ---------- Explore Bar ---------- */
 const ExploreBar = ({ socialLinks = [] }) => {
-  const students = React.useMemo(buildExploreForStudents, [getLang()]);
-  const partners = React.useMemo(buildExploreForPartners, [getLang()]);
-  const quick = React.useMemo(buildQuickLinks, [getLang()]);
+  const students = React.useMemo(buildExploreForStudents, []);
+  const partners = React.useMemo(buildExploreForPartners, []);
+  const quick = React.useMemo(buildQuickLinks, []);
 
   return (
     <div className="bg-white/95 border-b border-gray-200 hidden md:block relative z-30">
@@ -461,10 +309,9 @@ const ExploreBar = ({ socialLinks = [] }) => {
   );
 };
 
-/* ---------- Public layout (NO Support menu, socials added) ---------- */
+/* ---------- Public layout (English only, no language selector) ---------- */
 const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
-  const [language, setLanguage] = React.useState(getLang());
   const headerRef = React.useRef(null);
   const [headerH, setHeaderH] = React.useState(120);
   const [measured, setMeasured] = React.useState(false);
@@ -487,25 +334,16 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
     };
   }, [measured]);
 
-  const handleLanguageChange = React.useCallback((newLang) => {
-    setLanguage(newLang);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("greenpass-language", newLang);
-    }
-    window.location.reload();
-  }, []);
-
-  const students = React.useMemo(buildExploreForStudents, [language]);
-  const partners = React.useMemo(buildExploreForPartners, [language]);
-  const quick = React.useMemo(buildQuickLinks, [language]);
+  const students = React.useMemo(buildExploreForStudents, []);
+  const partners = React.useMemo(buildExploreForPartners, []);
+  const quick = React.useMemo(buildQuickLinks, []);
 
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-800">
+    <div className="min-h-[100svh] bg-white font-sans text-gray-800">
       <header
         ref={headerRef}
         className="fixed top-0 left-0 right-0 z-50 bg-gray-100/95 backdrop-blur-md text-gray-800 border-b border-gray-200 shadow-sm"
       >
-        {/* Explore bar with hard-coded socials (no DB) */}
         <ExploreBar socialLinks={SOCIAL_LINKS} />
 
         {/* Main nav: About / Events & Fairs / Blog */}
@@ -520,7 +358,6 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
             <div className="hidden md:flex items-center">
               <NavigationMenu>
                 <NavigationMenuList>
-                  {/* keep asChild here to avoid anchor-in-anchor */}
                   <NavigationMenuItem>
                     <NavigationMenuLink asChild>
                       <Link
@@ -567,18 +404,11 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
             </div>
 
             <div className="hidden md:flex items-center space-x-3">
-              <Select value={language} onValueChange={handleLanguageChange}>
-                <SelectTrigger className="w-auto h-9 border-gray-300 bg-white/90 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="en">🇺🇸 English</SelectItem>
-                  <SelectItem value="vi">🇻🇳 Tiếng Việt</SelectItem>
-                </SelectContent>
-              </Select>
-
               <Link to={createPageUrl("Welcome")}>
-                <Button variant="outline" className="font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 px-6 py-2 transition-all duration-200">
+                <Button
+                  variant="outline"
+                  className="font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 px-6 py-2 transition-all duration-200"
+                >
                   {getText("login")}
                 </Button>
               </Link>
@@ -609,7 +439,12 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                 <div className="space-y-3">
                   <p className="text-xs uppercase font-bold text-blue-600 tracking-wider px-2">{getText("forStudents")}</p>
                   {students.map((link) => (
-                    <Link key={link.title} to={link.href} className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-green-700 transition-all duration-200">
+                    <Link
+                      key={link.title}
+                      to={link.href}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-green-700 transition-all duration-200"
+                    >
                       <link.icon className="h-5 w-5 text-green-600" />
                       <span>{link.title}</span>
                     </Link>
@@ -619,7 +454,12 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                 <div className="space-y-3 border-t border-gray-200 pt-4">
                   <p className="text-xs uppercase font-bold text-purple-600 tracking-wider px-2">{getText("forPartners")}</p>
                   {partners.map((link) => (
-                    <Link key={link.title} to={link.href} className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-purple-700 transition-all duration-200">
+                    <Link
+                      key={link.title}
+                      to={link.href}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-purple-700 transition-all duration-200"
+                    >
                       <link.icon className="h-5 w-5 text-purple-600" />
                       <span>{link.title}</span>
                     </Link>
@@ -629,28 +469,24 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                 <div className="space-y-3 border-t border-gray-200 pt-4">
                   <p className="text-xs uppercase font-bold text-emerald-600 tracking-wider px-2">{getText("quickLinks")}</p>
                   {quick.map((link) => (
-                    <Link key={link.title} to={link.href} className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-emerald-700 transition-all duration-200">
+                    <Link
+                      key={link.title}
+                      to={link.href}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-200 hover:text-emerald-700 transition-all duration-200"
+                    >
                       <link.icon className="h-5 w-5 text-emerald-600" />
                       <span>{link.title}</span>
                     </Link>
                   ))}
                 </div>
 
-                <div className="pt-4 border-t border-gray-200 space-y-3">
-                  <div className="px-3">
-                    <Select value={language} onValueChange={handleLanguageChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="en">🇺🇸 English</SelectItem>
-                        <SelectItem value="vi">🇻🇳 Tiếng Việt</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <Link to={createPageUrl("Welcome")} className="block w/full">
-                    <Button variant="outline" className="w-full font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 py-3 transition-all duration-200">
+                <div className="pt-4 border-t border-gray-200">
+                  <Link to={createPageUrl("Welcome")} onClick={() => setIsMenuOpen(false)} className="block w/full">
+                    <Button
+                      variant="outline"
+                      className="w-full font-semibold border-gray-400 text-gray-700 hover:border-green-500 hover:text-green-600 hover:bg-green-50 py-3 transition-all duration-200"
+                    >
                       {getText("login")}
                     </Button>
                   </Link>
@@ -661,7 +497,10 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
         </AnimatePresence>
       </header>
 
-      <main className="min-h-screen transition-[padding] ease-out" style={{ paddingTop: headerH, visibility: measured ? "visible" : "hidden" }}>
+      <main
+        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y"
+        style={{ paddingTop: headerH, visibility: measured ? "visible" : "hidden", WebkitOverflowScrolling: "touch" }}
+      >
         <Outlet />
       </main>
 
@@ -670,7 +509,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   );
 };
 
-/* ---------- Footer (no brand settings needed) ---------- */
+/* ---------- Footer ---------- */
 const Footer = ({ getCompanyName }) => {
   const footerLinks = [
     {
@@ -748,7 +587,7 @@ const Footer = ({ getCompanyName }) => {
 };
 
 /* =========================
-   AUTHENTICATED LAYOUT (helpers)
+   AUTHENTICATED LAYOUT
 ========================= */
 const UserAvatar = ({ user, sizeClass = "w-10 h-10", textClass = "text-lg", className = "" }) => {
   const name = user?.full_name || "User";
@@ -757,7 +596,7 @@ const UserAvatar = ({ user, sizeClass = "w-10 h-10", textClass = "text-lg", clas
   return <div className={`rounded-full bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center text-white font-bold ${sizeClass} ${textClass} ${className}`}>{initial}</div>;
 };
 
-/* ---------- pure builders (no hooks) ---------- */
+/* ---------- Nav builders ---------- */
 function buildDesktopNav(currentUser) {
   const baseItems = [
     { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
@@ -985,14 +824,10 @@ export default function Layout() {
 
   const [currentUser, setCurrentUser] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
-  const [language, setLanguage] = React.useState(getLang());
 
-  // For logged-in mobile nav
   const [showMoreMenu, setShowMoreMenu] = React.useState(false);
   const bottomNavRef = React.useRef(null);
   const [bottomH, setBottomH] = React.useState(0);
-
-  // 🔁 profile listener holder
   const profileUnsubRef = React.useRef(null);
 
   React.useLayoutEffect(() => {
@@ -1007,11 +842,10 @@ export default function Layout() {
     };
   }, []);
 
-  // 🔐 Auth + live profile subscription
+  // Auth + live profile subscription
   React.useEffect(() => {
     setLoading(true);
     const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
-      // Clear previous profile listener
       if (profileUnsubRef.current) {
         profileUnsubRef.current();
         profileUnsubRef.current = null;
@@ -1033,24 +867,16 @@ export default function Layout() {
             email: fbUser.email || "",
             user_type: "student",
             onboarding_completed: false,
-            settings: { language: language || "en" },
             createdAt: Date.now(),
             updatedAt: Date.now(),
           };
           await setDoc(ref, seed, { merge: true });
         }
 
-        // Live subscribe to profile so onboarding/role changes reflect immediately
         profileUnsubRef.current = onSnapshot(ref, (docSnap) => {
           const data = docSnap.data() || {};
           const profile = normalizeUser(fbUser.uid, data, fbUser);
           setCurrentUser(profile);
-
-          const prefLang = profile.settings?.language || profile.language;
-          if (prefLang && prefLang !== language) {
-            setLanguage(prefLang);
-            if (typeof window !== "undefined") localStorage.setItem("greenpass-language", prefLang);
-          }
         });
       } catch {
         setCurrentUser({ id: fbUser.uid, user_type: "student", full_name: fbUser.displayName || "" });
@@ -1067,13 +893,12 @@ export default function Layout() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // mount once
+  }, []);
 
   const normalizeUser = React.useCallback((uid, data = {}, fbUser = {}) => {
     const full_name = data.full_name || data.displayName || fbUser.displayName || data.name || "";
     const user_type = (data.user_type || data.role || "student").toLowerCase();
     const onboarding_completed = data.onboarding_completed ?? data.onboardingComplete ?? false;
-    const settings = data.settings || {};
     return {
       id: uid,
       ...data,
@@ -1081,7 +906,7 @@ export default function Layout() {
       user_type,
       onboarding_completed,
       purchased_packages: Array.isArray(data.purchased_packages) ? data.purchased_packages : [],
-      settings
+      settings: data.settings || {}
     };
   }, []);
 
@@ -1093,34 +918,15 @@ export default function Layout() {
     } catch {}
   }, [navigate]);
 
-  const handleLanguageChange = React.useCallback(async (newLang) => {
-    setLanguage(newLang);
-    if (typeof window !== "undefined") localStorage.setItem("greenpass-language", newLang);
-    try {
-      if (currentUser?.id) {
-        const ref = doc(db, "users", currentUser.id);
-        const currentSettings = currentUser.settings || {};
-        try {
-          await updateDoc(ref, { settings: { ...currentSettings, language: newLang } });
-        } catch {
-          await setDoc(ref, { settings: { language: newLang } }, { merge: true });
-        }
-        setCurrentUser((prev) => ({ ...prev, settings: { ...currentSettings, language: newLang } }));
-      }
-    } catch {}
-    window.location.reload();
-  }, [currentUser]);
-
   const getLogoUrl = React.useCallback(
     () => "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/rawdatas%2FGreenPass%20Superapp.png?alt=media&token=987ad375-1aeb-4e1f-af08-7d89eb0ee2d8",
     []
   );
   const getCompanyName = React.useCallback(() => "GreenPass", []);
 
-  const navigationItems = React.useMemo(() => buildDesktopNav(currentUser), [currentUser, language]);
-  const mobileNavigationItems = React.useMemo(() => buildMobileNav(currentUser), [currentUser, language]);
+  const navigationItems = React.useMemo(() => buildDesktopNav(currentUser), [currentUser]);
+  const mobileNavigationItems = React.useMemo(() => buildMobileNav(currentUser), [currentUser]);
 
-  // ➜ If onboarding just finished and we're still on /onboarding, push to Dashboard
   React.useEffect(() => {
     if (currentUser?.onboarding_completed && location.pathname.toLowerCase().startsWith("/onboarding")) {
       navigate(createPageUrl("Dashboard"), { replace: true });
@@ -1135,7 +941,7 @@ export default function Layout() {
     );
   }
 
-  // Public site (not logged in)
+  // Public site
   if (!currentUser) {
     return (
       <>
@@ -1150,7 +956,7 @@ export default function Layout() {
 
   if (isOnboardingRoute || notDoneOnboarding) {
     return (
-      <div className="min-h-screen w-full bg-gray-50">
+      <div className="min-h-[100svh] w-full bg-gray-50">
         <main className="max-w-7xl mx-auto p-4 md:p-8">
           <Outlet />
         </main>
@@ -1158,10 +964,10 @@ export default function Layout() {
     );
   }
 
-  // Authenticated shell with navigation
+  // Authenticated shell
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gray-50">
+      <div className="min-h-[100svh] flex w-full bg-gray-50">
         {/* Desktop Sidebar */}
         <Sidebar className="border-r border-gray-200 bg-white hidden md:flex">
           <SidebarHeader className="border-b border-gray-200 p-4">
@@ -1219,29 +1025,21 @@ export default function Layout() {
         </Sidebar>
 
         {/* Main area + mobile chrome */}
-        <main className="flex-1 flex flex-col">
-          {/* Mobile Header */}
+        <main className="flex-1 flex flex-col min-h-[100svh]">
+          {/* Mobile Header (no language selector) */}
           <header className="bg-white/90 backdrop-blur-sm border-b border-gray-200 px-4 py-3 md:hidden sticky top-0 z-40">
             <div className="flex items-center justify-between">
               <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 w-auto object-contain" />
               </Link>
-              <div className="flex items-center gap-2">
-                <Select value={getLang()} onValueChange={handleLanguageChange}>
-                  <SelectTrigger className="w-auto h-9 border-0 bg-gray-100">
-                    <Globe className="w-4 h-4 text-gray-600" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">🇺🇸 EN</SelectItem>
-                    <SelectItem value="vi">🇻🇳 VI</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           </header>
 
           {/* Page content */}
-          <div className="flex-1 overflow-auto md:pb-0" style={{ paddingBottom: bottomH || 0 }}>
+          <div
+            className="flex-1 overflow-y-auto md:pb-0"
+            style={{ paddingBottom: bottomH || 0, WebkitOverflowScrolling: "touch" }}
+          >
             <Outlet />
           </div>
 
@@ -1262,11 +1060,7 @@ export default function Layout() {
                     }`}
                   >
                     <item.icon className={`w-5 h-5 mb-1 ${isActive ? "text-green-600" : "text-gray-600"}`} />
-                    <span
-                      className={`text-[11px] font-medium text-center leading-tight ${
-                        isActive ? "text-green-600" : "text-gray-600"
-                      }`}
-                    >
+                    <span className={`text-[11px] font-medium text-center leading-tight ${isActive ? "text-green-600" : "text-gray-600"}`}>
                       {item.title}
                     </span>
                   </Link>
@@ -1301,6 +1095,7 @@ export default function Layout() {
                   exit={{ y: "100%" }}
                   transition={{ type: "spring", damping: 30, stiffness: 250 }}
                   className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-50 rounded-t-2xl shadow-2xl z-[70] max-h-[85vh] overflow-y-auto"
+                  style={{ WebkitOverflowScrolling: "touch" }}
                 >
                   <div className="p-4 pt-3">
                     <div className="w-10 h-1.5 bg-gray-300 rounded-full mx-auto mb-4"></div>
@@ -1360,7 +1155,7 @@ export default function Layout() {
           </AnimatePresence>
         </main>
       </div>
-      
+
       {/* In-app chat for logged-in users */}
       <ChatWidget />
     </SidebarProvider>

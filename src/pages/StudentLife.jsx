@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,21 +22,21 @@ import {
 } from 'lucide-react';
 
 const GuideSection = ({ icon: Icon, title, children, image, imagePosition = 'right' }) => (
-  <Card className="mb-8 overflow-hidden">
+  <Card className="mb-12 overflow-hidden">
     <CardContent className="p-0">
-      <div className={`grid lg:grid-cols-2 gap-0 items-center ${imagePosition === 'left' ? 'lg:grid-flow-col-reverse' : ''}`}>
-        <div className="p-8">
-          <div className="flex items-center gap-3 mb-4">
+      <div className={`grid lg:grid-cols-2 items-stretch gap-8 lg:gap-12 ${imagePosition === 'left' ? 'lg:grid-flow-col-reverse' : ''}`}>
+        <div className="p-8 md:p-10 lg:p-12">
+          <div className="flex items-center gap-3 mb-6">
             <div className="bg-green-100 p-3 rounded-full">
               <Icon className="w-6 h-6 text-green-600" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
           </div>
-          <div className="space-y-4 text-gray-600">
+          <div className="space-y-5 md:space-y-6 text-gray-600">
             {children}
           </div>
         </div>
-        <div className="relative h-64 lg:h-full min-h-[300px]">
+        <div className="relative h-72 md:h-80 lg:h-full min-h-[320px]">
           <img 
             src={image} 
             alt={title}
@@ -50,8 +49,8 @@ const GuideSection = ({ icon: Icon, title, children, image, imagePosition = 'rig
 );
 
 const QuickTip = ({ icon: Icon, title, description }) => (
-  <Card className="hover:shadow-md transition-shadow">
-    <CardContent className="p-6">
+  <Card className="hover:shadow-md transition-shadow h-full">
+    <CardContent className="p-6 md:p-7">
       <div className="flex items-start gap-4">
         <div className="bg-blue-100 p-2 rounded-lg shrink-0">
           <Icon className="w-5 h-5 text-blue-600" />
@@ -93,9 +92,9 @@ export default function StudentLife() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
         {/* Hero Section */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-12 lg:mb-16">
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent mb-6">
             Student Life in Canada
           </h1>
@@ -105,13 +104,13 @@ export default function StudentLife() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap justify-center gap-2 mb-10">
+        <div className="flex flex-wrap justify-center gap-3 mb-12">
           {sections.map(section => (
             <Button
               key={section.id}
               variant={activeSection === section.id ? 'default' : 'outline'}
               onClick={() => setActiveSection(section.id)}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 rounded-full"
             >
               <section.icon className="w-4 h-4" />
               {section.label}
@@ -121,7 +120,7 @@ export default function StudentLife() {
 
         {/* Housing & Accommodation */}
         {activeSection === 'housing' && (
-          <div className="space-y-8">
+          <div className="space-y-12">
             <GuideSection 
               icon={Home} 
               title="Housing & Accommodation"
@@ -149,7 +148,7 @@ export default function StudentLife() {
               </div>
             </GuideSection>
 
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-3 gap-8">
               <QuickTip 
                 icon={Globe}
                 title="Housing Resources"
@@ -171,7 +170,7 @@ export default function StudentLife() {
 
         {/* Visa & Immigration */}
         {activeSection === 'visa' && (
-          <div className="space-y-8">
+          <div className="space-y-12">
             <GuideSection 
               icon={FileText} 
               title="Visa & Immigration Process"
@@ -200,38 +199,42 @@ export default function StudentLife() {
               </div>
             </GuideSection>
 
-            <div className="bg-white rounded-xl p-8">
-              <h3 className="text-2xl font-bold text-gray-900 mb-6">Immigration Timeline</h3>
-              <div className="space-y-4">
-                <TimelineItem 
-                  icon={FileText}
-                  title="1. Get Accepted"
-                  description="Receive Letter of Acceptance from a Designated Learning Institution (DLI)"
-                />
-                <TimelineItem 
-                  icon={CreditCard}
-                  title="2. Prepare Finances"
-                  description="Gather proof of funds, tuition payment, and financial support documents"
-                />
-                <TimelineItem 
-                  icon={Shield}
-                  title="3. Apply for Study Permit"
-                  description="Submit online application with all required documents and biometrics"
-                />
-                <TimelineItem 
-                  icon={Plane}
-                  title="4. Travel to Canada"
-                  description="Book flights, arrange temporary accommodation, and prepare for arrival"
-                  isLast={true}
-                />
-              </div>
-            </div>
+            <Card className="bg-white rounded-xl">
+              <CardHeader>
+                <CardTitle className="text-2xl">Immigration Timeline</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <TimelineItem 
+                    icon={FileText}
+                    title="1. Get Accepted"
+                    description="Receive Letter of Acceptance from a Designated Learning Institution (DLI)"
+                  />
+                  <TimelineItem 
+                    icon={CreditCard}
+                    title="2. Prepare Finances"
+                    description="Gather proof of funds, tuition payment, and financial support documents"
+                  />
+                  <TimelineItem 
+                    icon={Shield}
+                    title="3. Apply for Study Permit"
+                    description="Submit online application with all required documents and biometrics"
+                  />
+                  <TimelineItem 
+                    icon={Plane}
+                    title="4. Travel to Canada"
+                    description="Book flights, arrange temporary accommodation, and prepare for arrival"
+                    isLast={true}
+                  />
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
         {/* Arrival & Settlement */}
         {activeSection === 'arrival' && (
-          <div className="space-y-8">
+          <div className="space-y-12">
             <GuideSection 
               icon={Plane} 
               title="Arriving in Canada"
@@ -259,7 +262,7 @@ export default function StudentLife() {
               </div>
             </GuideSection>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
               <QuickTip 
                 icon={CreditCard}
                 title="Banking"
@@ -286,7 +289,7 @@ export default function StudentLife() {
 
         {/* Student Life */}
         {activeSection === 'life' && (
-          <div className="space-y-8">
+          <div className="space-y-12">
             <GuideSection 
               icon={Users} 
               title="Campus Life & Community"
@@ -320,10 +323,10 @@ export default function StudentLife() {
                 <CardTitle>Canadian Student Lifestyle</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid md:grid-cols-2 gap-8">
+                <div className="grid md:grid-cols-2 gap-10">
                   <div>
-                    <h3 className="font-semibold text-gray-900 mb-3">Social Activities</h3>
-                    <div className="space-y-3">
+                    <h3 className="font-semibold text-gray-900 mb-4">Social Activities</h3>
+                    <div className="space-y-4">
                       <div className="flex items-center gap-3">
                         <Coffee className="w-5 h-5 text-orange-500" />
                         <span>Coffee culture and study cafes</span>
@@ -339,8 +342,8 @@ export default function StudentLife() {
                     </div>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900 mb-3">Academic Culture</h3>
-                    <div className="space-y-3">
+                    <h3 className="font-semibold text-gray-900 mb-4">Academic Culture</h3>
+                    <div className="space-y-4">
                       <div className="flex items-center gap-3">
                         <Clock className="w-5 h-5 text-purple-500" />
                         <span>Punctuality and deadline management</span>
@@ -363,7 +366,7 @@ export default function StudentLife() {
 
         {/* Health & Wellness */}
         {activeSection === 'health' && (
-          <div className="space-y-8">
+          <div className="space-y-12">
             <GuideSection 
               icon={Heart} 
               title="Health & Wellness"
@@ -391,7 +394,7 @@ export default function StudentLife() {
               </div>
             </GuideSection>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-2 gap-8">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -434,7 +437,7 @@ export default function StudentLife() {
         )}
 
         {/* Emergency Resources */}
-        <Card className="bg-red-50 border-red-200">
+        <Card className="bg-red-50 border-red-200 mt-16 md:mt-20">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-red-800">
               <Phone className="w-5 h-5" />
@@ -442,18 +445,18 @@ export default function StudentLife() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid md:grid-cols-3 gap-6 text-center">
-              <div>
+            <div className="grid md:grid-cols-3 gap-8 text-center">
+              <div className="space-y-1">
                 <div className="text-2xl font-bold text-red-600">911</div>
                 <p className="text-red-700 font-medium">Emergency Services</p>
                 <p className="text-sm text-red-600">Police, Fire, Ambulance</p>
               </div>
-              <div>
+              <div className="space-y-1">
                 <div className="text-2xl font-bold text-red-600">Campus Security</div>
                 <p className="text-red-700 font-medium">24/7 Campus Safety</p>
                 <p className="text-sm text-red-600">Check your student handbook</p>
               </div>
-              <div>
+              <div className="space-y-1">
                 <div className="text-2xl font-bold text-red-600">Health Link</div>
                 <p className="text-red-700 font-medium">Non-Emergency Health</p>
                 <p className="text-sm text-red-600">811 (varies by province)</p>
@@ -463,10 +466,10 @@ export default function StudentLife() {
         </Card>
 
         {/* CTA Section */}
-        <Card className="bg-gradient-to-r from-green-500 to-blue-500 text-white">
-          <CardContent className="p-8 text-center">
-            <h2 className="text-3xl font-bold mb-4">Ready to Start Your Journey?</h2>
-            <p className="text-xl mb-6 text-green-100">Join thousands of successful international students in Canada.</p>
+        <Card className="bg-gradient-to-r from-green-500 to-blue-500 text-white mt-12 lg:mt-16">
+          <CardContent className="p-8 md:p-10 lg:p-12 text-center">
+            <h2 className="text-3xl font-bold mb-5">Ready to Start Your Journey?</h2>
+            <p className="text-xl mb-8 text-green-100">Join thousands of successful international students in Canada.</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button variant="secondary" size="lg" asChild>
                 <a href={createPageUrl('Schools')}>Explore Schools</a>

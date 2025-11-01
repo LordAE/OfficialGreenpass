@@ -1,8 +1,8 @@
+// vite.config.js
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -21,8 +21,8 @@ export default defineConfig({
       },
     },
   },
-   build: {
+  build: {
     chunkSizeWarningLimit: 4000,
     reportCompressedSize: true,
   },
-}) 
+})

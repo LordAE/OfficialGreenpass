@@ -1,5 +1,5 @@
 import React from "react";
-import Layout from "../../Layout";
+import Layout from "@/pages/Layout";
 import ChatWidget from "../chat/ChatWidget";
 
 export default function LayoutWithChat({ children, currentPageName }) {
