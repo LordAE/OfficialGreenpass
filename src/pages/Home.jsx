@@ -94,8 +94,9 @@ const sanitizeHomeContent = (loaded = {}) => {
       image_url: '',
       video_url: '',
       background_video_url:
-        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
-      poster_url: ''
+        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Ffeatures%2F2%2F1761752853921-whatsapp-video-2025-10-29-at-23.07.36_eafc79ff.mp4?alt=media&token=1c6edf1e-a945-40fd-a918-0f47a8d03b93',
+      poster_url: '',
+      fit_mode: 'contain' // show whole video by default
     },
     features_section: [],
     testimonials_section: [],
@@ -206,6 +207,7 @@ const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
   const bgVideo = hero.background_video_url || hero.video_url || "";
   const poster = hero.poster_url || hero.image_url || DEFAULT_POSTER;
+  const fitMode = (hero.fit_mode || 'contain').toLowerCase(); // 'contain' or 'cover'
 
   const [useImage, setUseImage] = React.useState(!bgVideo);
   const videoRef = React.useRef(null);
@@ -229,7 +231,6 @@ const Hero = ({ content }) => {
     if (el.readyState >= 2) tryPlay();
     else el.addEventListener("canplay", tryPlay, { once: true });
 
-    // if still paused after a second, swap to image so we don't show a blank pane
     timer = setTimeout(() => {
       if (el.paused) setUseImage(true);
     }, 1200);
@@ -240,13 +241,6 @@ const Hero = ({ content }) => {
     };
   }, [bgVideo]);
 
-  const tiles = [
-    { icon: <Compass size={22} />, title: "FUTURE STUDENTS", desc: "Explore programs, admissions, and support designed for international students.", href: createPageUrl("Schools"), tone: "teal" },
-    { icon: <GraduationCap size={22} />, title: "ACADEMIC PROGRAMS", desc: "Compare tuition, duration, and see intake dates and requirements.", href: createPageUrl("ComparePrograms"), tone: "amber" },
-    { icon: <Megaphone size={22} />, title: "CALENDARS & KEY DATES", desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.", href: createPageUrl("FairAndEvents"), tone: "sky" },
-    { icon: <MapPin size={22} />, title: "VIRTUAL CAMPUS TOURS", desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.", href: createPageUrl("StudentLife"), tone: "rose" },
-  ];
-
   return (
     <section className="gp-hero-root">
       <style
@@ -254,26 +248,18 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* Hero video (responsive + robust mobile heights) */
+/* Hero video (responsive) + blurred edge fill */
 .gp-videoWrap{
-  position:relative;
-  width:100%;
-  height:clamp(280px, min(62svh, 72dvh), 720px);
-  overflow:hidden;
-  background:#0f1115;
+  --gp-fit:${fitMode};
+  position:relative;width:100%;
+  height:clamp(320px,min(62svh,72dvh),760px);
+  overflow:hidden;background:#000;
 }
-/* Fallbacks for older browsers */
 @supports not (height: 1svh){
-  .gp-videoWrap{ height:clamp(280px, 62vh, 720px); }
+  .gp-videoWrap{height:clamp(300px,56vh,560px);}
 }
-.gp-video{
-  position:absolute;inset:0;
-  display:block;            /* remove inline gap */
-  width:100%;height:100%;
-  min-width:100%;min-height:100%;
-  object-fit:cover;
-  object-position:center;
-}
+.gp-fill{position:absolute;inset:-10px;background-image:var(--gpPoster);background-size:cover;background-position:center;filter:blur(14px) saturate(1.1);transform:scale(1.08);opacity:.7}
+.gp-video{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;object-fit:var(--gp-fit,contain);object-position:center center;background:transparent}
 .gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
 
 /* Centered headline */
@@ -285,19 +271,42 @@ const Hero = ({ content }) => {
 .gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-72px,-12vh,-120px) auto 0;padding:0 18px}
 @media(min-width:1024px){.gp-band{padding:0 22px}}
 
-/* 4 square tiles */
+/* 4 feature tiles */
 .gp-tiles{display:grid;grid-template-columns:1fr;gap:18px;align-items:stretch}
 @media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:22px}}
 
-/* Tile card (flex so CTAs align) */
+/* Tile card */
 .gp-card{
   position:relative;display:flex;flex-direction:column;
   color:#fff;border-radius:16px;overflow:hidden;
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.20)), var(--tile-bg, #155e63);
-  box-shadow:0 8px 24px rgba(2,6,23,.25);min-height: 280px;
+  background:var(--tile-fallback,#0f172a);
+  box-shadow:0 8px 24px rgba(2,6,23,.25);min-height:280px;isolation:isolate;
 }
-.gp-cap{position:absolute;left:0;right:0;top:0;height:110px;background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.12)), var(--cap-bg, #1a7d86);clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);display:flex;align-items:center;justify-content:center;}
-.gp-ico{width:44px;height:44px;border-radius:9999px;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.85);background: rgba(0,0,0,.08);backdrop-filter: blur(2px);}
+.gp-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;transform:scale(1.02)}
+
+/* Color tint overlay to match palette while keeping images visible */
+.gp-tint{position:absolute;inset:0;pointer-events:none;
+  background:
+    linear-gradient(180deg,
+      var(--tile-tint,transparent) 0%,
+      var(--tile-tint,transparent) 44%,
+      var(--tile-tint-bottom,transparent) 100%);
+}
+
+/* Neutral scrim for readability */
+.gp-scrim{position:absolute;inset:0;background:
+  linear-gradient(180deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.22) 38%, rgba(0,0,0,.60) 100%);
+}
+
+/* Top slanted cap picks up the tile tint for the "band" look */
+.gp-cap{position:absolute;left:0;right:0;top:0;height:110px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.18)),
+    linear-gradient(165deg, var(--tile-tint,transparent) 0%, transparent 64%);
+  clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);
+  display:flex;align-items:center;justify-content:center;
+}
+.gp-ico{width:44px;height:44px;border-radius:9999px;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.85);background:rgba(0,0,0,.18);backdrop-filter:blur(2px)}
 
 .gp-body{position:relative;display:flex;flex-direction:column;gap:12px;padding:26px;padding-top:126px;flex:1;}
 .gp-ttl{margin:0 0 2px;font-weight:800;letter-spacing:.2px;font-size:1rem}
@@ -310,29 +319,24 @@ const Hero = ({ content }) => {
 .gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
 .gp-cta:hover .chev{transform:translateX(2px)}
 
-.tone-teal{ --tile-bg:#165e66; --cap-bg:#1b7f89; }
-.tone-amber{ --tile-bg:#967c1e; --cap-bg:#b08f27; }
-.tone-sky{ --tile-bg:#287f96; --cap-bg:#2e9ab3; }
-.tone-rose{ --tile-bg:#642a2f; --cap-bg:#783238; }
-
 /* Mobile tuning */
 @media(max-width:640px){
-  .gp-videoWrap{ height:clamp(260px, 56svh, 560px); }
-  @supports not (height: 1svh){
-    .gp-videoWrap{ height:clamp(260px, 56vh, 560px); }
-  }
-  .gp-video{ object-position:center 40%; }
-  .gp-title{ font-size:clamp(1.4rem, 6vw, 2.2rem); }
-  .gp-sub{   font-size:clamp(.9rem, 3.8vw, 1.05rem); }
-  .gp-cap{height:96px;clip-path: polygon(0 0, 100% 0, 100% 64%, 0 86%);}
+  .gp-videoWrap{height:clamp(300px,56svh,560px)}
+  @supports not (height: 1svh){.gp-videoWrap{height:clamp(300px,56vh,560px)}}
+  .gp-video{object-position:center center}
+  .gp-title{font-size:clamp(1.5rem,6vw,2.2rem)}
+  .gp-sub{font-size:clamp(.9rem,3.8vw,1.05rem)}
+  .gp-cap{height:96px;clip-path:polygon(0 0,100% 0,100% 64%,0 86%)}
   .gp-body{padding-top:112px}
 }
           `,
         }}
       />
 
-      {/* Video */}
-      <div className="gp-videoWrap">
+      <div className="gp-videoWrap" style={{ '--gpPoster': `url("${poster}")` }}>
+        {/* blurred edge fill behind the video/poster so no black bars */}
+        <div className="gp-fill" style={{ '--gpPoster': `url("${poster}")` }} />
+
         {!useImage && bgVideo ? (
           <video
             key={bgVideo}
@@ -359,30 +363,122 @@ const Hero = ({ content }) => {
         </div>
       </div>
 
-      {/* 4 squared tiles with angled caps */}
-      <div className="gp-band">
-        <div className="gp-tiles">
-          {tiles.map((t, i) => (
-            <article key={i} className={`gp-card tone-${t.tone}`}>
-              <div className="gp-cap">
-                <div className="gp-ico">{t.icon}</div>
-              </div>
-
-              <div className="gp-body">
-                <h3 className="gp-ttl">{t.title}</h3>
-                <div className="gp-hr" />
-                <p className="gp-desc">{t.desc}</p>
-                <Link className="gp-cta" to={t.href}>
-                  Learn More <span className="chev">»</span>
-                </Link>
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
+      {/* 4 squared tiles with image backgrounds */}
+      <FeatureTiles />
     </section>
   );
 };
+
+/* ======= Feature tiles (with robust images + palette tints) ======= */
+const TILE_IMAGES = {
+  students: "https://images.pexels.com/photos/1438072/pexels-photo-1438072.jpeg?auto=compress&cs=tinysrgb&w=1600&h=900&fit=crop",
+  programs: "https://images.pexels.com/photos/1181298/pexels-photo-1181298.jpeg?auto=compress&cs=tinysrgb&w=1600&h=900&fit=crop",
+  dates:    "https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=1600&auto=format&fit=crop",
+  tours:    "https://images.pexels.com/photos/207691/pexels-photo-207691.jpeg?auto=compress&cs=tinysrgb&w=1600&h=900&fit=crop"
+};
+const FALLBACK_IMG =
+  "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?q=80&w=1600&auto=format&fit=crop";
+
+function FeatureTiles() {
+  const tiles = [
+    {
+      icon: <Compass size={22} />,
+      title: "FUTURE STUDENTS",
+      desc: "Explore programs, admissions, and support designed for international students.",
+      href: createPageUrl("Schools"),
+      bg: TILE_IMAGES.students,
+      theme: {
+        base: "#0E6A6B",
+        tint: "rgba(14,106,107,.26)",
+        tintBottom: "rgba(14,106,107,.52)",
+      },
+    },
+    {
+      icon: <GraduationCap size={22} />,
+      title: "ACADEMIC PROGRAMS",
+      desc: "Compare tuition, duration, and see intake dates and requirements.",
+      href: createPageUrl("ComparePrograms"),
+      bg: TILE_IMAGES.programs,
+      theme: {
+        base: "#B08E2C",
+        tint: "rgba(176,142,44,.24)",
+        tintBottom: "rgba(176,142,44,.50)",
+      },
+    },
+    {
+      icon: <Megaphone size={22} />,
+      title: "CALENDARS & KEY DATES",
+      desc: "Explore key academic dates, campus visits, public events, class schedules, alumni activities, arts, athletics, and more.",
+      href: createPageUrl("FairAndEvents"),
+      bg: TILE_IMAGES.dates,
+      theme: {
+        base: "#1789A4",
+        tint: "rgba(23,137,164,.24)",
+        tintBottom: "rgba(23,137,164,.50)",
+      },
+    },
+    {
+      icon: <MapPin size={22} />,
+      title: "VIRTUAL CAMPUS TOURS",
+      desc: "Take a virtual tour, learn about admission and financial aid, and speak with current students.",
+      href: createPageUrl("StudentLife"),
+      bg: TILE_IMAGES.tours,
+      theme: {
+        base: "#7A2F35",
+        tint: "rgba(122,47,53,.24)",
+        tintBottom: "rgba(122,47,53,.50)",
+      },
+    },
+  ];
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 640 : false;
+
+  return (
+    <div className="gp-band">
+      <div className="gp-tiles">
+        {tiles.map((t, i) => (
+          <motion.article
+            key={i}
+            className="gp-card"
+            style={{
+              '--tile-fallback': t.theme.base,
+              '--tile-tint': t.theme.tint,
+              '--tile-tint-bottom': t.theme.tintBottom,
+            }}
+            initial={{ opacity: 0, y: 40, x: isMobile ? (i % 2 === 0 ? -24 : 24) : 0 }}
+            whileInView={{ opacity: 1, y: 0, x: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+          >
+            <img
+              className="gp-bg"
+              src={t.bg}
+              alt=""
+              loading="lazy"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = FALLBACK_IMG;
+              }}
+            />
+            <div className="gp-tint" />
+            <div className="gp-scrim" />
+            <div className="gp-cap">
+              <div className="gp-ico">{t.icon}</div>
+            </div>
+
+            <div className="gp-body">
+              <h3 className="gp-ttl">{t.title}</h3>
+              <div className="gp-hr" />
+              <p className="gp-desc">{t.desc}</p>
+              <Link className="gp-cta" to={t.href}>
+                Learn More <span className="chev">»</span>
+              </Link>
+            </div>
+          </motion.article>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /* =========================
    News & Highlights
@@ -1123,7 +1219,7 @@ export default function Home() {
   const [highlightedPosts, setHighlightedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
+  useEffect(() => {
     (async () => {
       setLoading(true);
       try {
@@ -1180,7 +1276,6 @@ export default function Home() {
         });
         setSchools(merged);
 
-        // FIX: removed extra ")" here
         const postsRef = collection(db, 'posts');
         const postsSnap = await getDocs(
           query(postsRef, where('isHighlight', '==', true), limit(5))
