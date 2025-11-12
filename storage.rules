@@ -1,46 +1,9 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-
-    // ---------- helpers ----------
-    function authed() { return request.auth != null; }
-    function isOwner(uid) { return authed() && request.auth.uid == uid; }
-    function isImage() { return request.resource.contentType.matches('image/.*'); }
-    function isUnder2MB() { return request.resource.size <= 2 * 1024 * 1024; }
-    function isUnder10MB() { return request.resource.size <= 10 * 1024 * 1024; }
-
-    // ---------- public site media (admin-managed) ----------
-    match /home/{allPaths=**} {
-      allow read: if true;
-      allow write: if authed(); // tighten with admin claim if needed
-    }
-    match /about/{allPaths=**} {
-      allow read: if true;
-      allow write: if authed();
-    }
-
-    // ---------- user profile images ----------
-    match /users/{uid}/profile/{file=**} {
-      allow read: if true;
-      allow write: if isOwner(uid) && isImage() && isUnder2MB();
-    }
-
-    // ---------- NEW: generic uploads used by forms (e.g., uploads/v2/...) ----------
-    match /uploads/{allPaths=**} {
-      // download URLs already require tokens; public read here is fine for images
-      allow read: if true;
-      allow write: if authed() && isImage() && isUnder10MB();
-    }
-
-    // ---------- OPTIONAL: per-school media (schools/{uid}/...) ----------
-    match /schools/{uid}/{allPaths=**} {
-      allow read: if true;
-      allow write: if isOwner(uid) && isImage() && isUnder10MB();
-    }
-
-    // default deny
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 }
