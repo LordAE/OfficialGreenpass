@@ -175,7 +175,7 @@ const SOCIAL_LINKS = [
   { platform: "TikTok",   url: "https://www.tiktok.com/@greenpasstv?_t=ZS-8zH7Q114gVM&_r=1" },
 ];
 
-// TikTok icon (lucide-react doesn't include TikTok)
+// TikTok icon
 const TikTokIcon = ({ className = "h-5 w-5" }) => (
   <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
     <path
@@ -206,7 +206,7 @@ const buildExploreForPartners = () => ([
   { title: getText("agentNetwork"), href: createPageUrl("Partner Agents"), icon: Handshake, description: getText("joinVerifiedAgent") },
   { title: getText("tutorPrep"), href: createPageUrl("Partner Tutors"), icon: GraduationCap, description: getText("connectStudentsPrep") },
   { title: getText("schoolPartners"), href: createPageUrl("Partner Schools"), icon: Building, description: getText("partnerWithSchools") },
-  { title: getText("vendorNetwork"), href: createPageUrl("Partner Vendors"), icon: Store, description: getText("joinVendorNetwork") }, 
+  { title: getText("vendorNetwork"), href: createPageUrl("Partner Vendors"), icon: Store, description: getText("joinVendorNetwork") },
 ]);
 
 const buildQuickLinks = () => ([
@@ -216,7 +216,7 @@ const buildQuickLinks = () => ([
   { title: getText("ourTeam"), href: createPageUrl("OurTeam"), icon: Users, description: getText("meetTheTeam") },
 ]);
 
-/* ---------- Desktop hover dropdown ---------- */
+/* ---------- Desktop hover dropdown for Explore (unchanged) ---------- */
 function HoverDropdown({ label, color = "green", items = [] }) {
   const [open, setOpen] = React.useState(false);
   const palette = {
@@ -273,6 +273,168 @@ function HoverDropdown({ label, color = "green", items = [] }) {
   );
 }
 
+/* ---------- NEW: Countries mega-menu (MSM style) ---------- */
+function CountriesMegaMenu() {
+  const [open, setOpen] = React.useState(false);
+  const [geom, setGeom] = React.useState({ top: 64, left: 0, width: 960 });
+  const btnRef = React.useRef(null);
+
+  const moreCountries = [
+    { name: "Australia", href: createPageUrl("StudyAustralia") },
+    { name: "Ireland", href: createPageUrl("StudyIreland") },
+    { name: "Germany", href: createPageUrl("StudyGermany") },
+    { name: "United Kingdom", href: createPageUrl("StudyUnitedKingdom") },
+    { name: "United States", href: createPageUrl("StudyUnitedStates") },
+  ];
+
+  const Card = ({ to, title, img, desc }) => (
+    <Link
+      to={to}
+      className="group block rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition"
+    >
+      <div className="relative h-48">
+        <img src={img} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/5 to-transparent" />
+      </div>
+      <div className="p-4">
+        <div className="text-sm font-semibold text-gray-900 mb-1 whitespace-normal break-words leading-snug">
+          {title}
+        </div>
+        <p className="text-sm text-gray-600 leading-snug line-clamp-3">{desc}</p>
+      </div>
+    </Link>
+  );
+
+  // Center the menu to the nav container (max-w-7xl), under the button
+  const computeGeom = React.useCallback(() => {
+    // 1) where is the button? (viewport coords)
+    const br = btnRef.current?.getBoundingClientRect();
+    const btnBottom = (br?.bottom ?? 56) + 8; // add small offset
+
+    // 2) find the first nav container with max-w-7xl (your header nav)
+    const container =
+      document.querySelector("nav .max-w-7xl") ||
+      document.querySelector("header .max-w-7xl") ||
+      document.querySelector(".max-w-7xl");
+
+    const cr = container?.getBoundingClientRect();
+    const containerLeft = cr?.left ?? 0;                // viewport coords
+    const containerWidth = cr?.width ?? window.innerWidth;
+
+    // 3) clamp panel width to container (padding 16px each side)
+    const desired = 980;
+    const maxW = Math.max(320, containerWidth - 32);
+    const width = Math.min(desired, maxW);
+
+    // 4) center inside the container
+    const left = Math.round(containerLeft + (containerWidth - width) / 2);
+
+    setGeom({ top: Math.round(btnBottom), left, width });
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    computeGeom();
+    const onResize = () => computeGeom();
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, [open, computeGeom]);
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (!open) return;
+      if (e.key === "Escape") {
+        setOpen(false);
+        btnRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex items-center gap-1 rounded-lg px-4 py-2 text-sm font-semibold transition
+          ${open ? "bg-gray-200 text-green-700 ring-1 ring-green-300" : "text-gray-700 hover:bg-gray-200"}`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        Countries <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.12 }}
+            role="menu"
+            // exact positioning based on measured geometry (viewport coords for fixed)
+            className="fixed z-[100] rounded-2xl bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5"
+            style={{ top: geom.top, left: geom.left, width: geom.width }}
+          >
+            <div className="grid grid-cols-12 gap-6 p-5">
+              <div className="col-span-12 md:col-span-5">
+                <Card
+                  to={createPageUrl("StudyCanada")}
+                  title="Study in Canada"
+                  img="https://images.unsplash.com/photo-1494526585095-c41746248156?q=80&w=1600&auto=format&fit=crop"
+                  alt="Toronto skyline with the CN Tower at sunset"
+                  desc="Hassle-free visa options, affordable tuition, and globally ranked universities make Canada a top destination."
+                />
+              </div>
+              <div className="col-span-12 md:col-span-4">
+                <Card
+                  to={createPageUrl("StudyNewZealand")}
+                  title="Study in New Zealand"
+                  img="https://images.unsplash.com/photo-1502786129293-79981df4e689?q=80&w=1600&auto=format&fit=crop"
+                  alt="Milford Sound, Fiordland National Park, New Zealand"
+                  desc="Safe cities, world-class research, flexible work-study options, and breathtaking scenery."
+                />
+              </div>
+
+              {/* Sidebar — 2 -> 3 */}
+              <div className="col-span-12 md:col-span-3 border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-4">
+                <div className="text-xs font-extrabold text-pink-600 tracking-wide mb-2">More Countries</div>
+                <ul className="space-y-1.5">
+                  {moreCountries.map((c) => (
+                    <li key={c.name}>
+                      <Link
+                        to={c.href}
+                        className="flex items-center gap-2 rounded-md px-2 py-1 text-[13px] text-gray-700 hover:bg-gray-50 hover:text-green-700 whitespace-normal break-words"
+                      >
+                        <span>Study in {c.name}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Button: keep on one line */}
+                <Link
+                  to={createPageUrl("Schools")}
+                  className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-semibold text-pink-700 hover:bg-pink-100 whitespace-nowrap"
+                >
+                  Explore all countries
+                </Link>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /* ---------- Explore Bar ---------- */
 const ExploreBar = ({ socialLinks = [] }) => {
   const students = React.useMemo(buildExploreForStudents, []);
@@ -312,7 +474,7 @@ const ExploreBar = ({ socialLinks = [] }) => {
   );
 };
 
-/* ---------- Public layout (English only) ---------- */
+/* ---------- Public layout ---------- */
 const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const headerRef = React.useRef(null);
@@ -337,7 +499,6 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
     };
   }, [measured]);
 
-  // prevent background scroll when menu is open
   React.useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
@@ -375,8 +536,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </Link>
             </div>
 
-            {/* Desktop top-links */}
-            <div className="hidden md:flex items-center">
+            <div className="hidden md:flex items-center gap-2">
+              <CountriesMegaMenu />
               <NavigationMenu>
                 <NavigationMenuList>
                   <NavigationMenuItem>
@@ -436,7 +597,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </Link>
             </div>
 
-            {/* Mobile: hamburger only (login is inside the menu below "Our Team") */}
+            {/* Mobile hamburger */}
             <div className="flex md:hidden items-center">
               <button
                 onClick={() => setIsMenuOpen((v) => !v)}
@@ -452,7 +613,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
           </div>
         </nav>
 
-        {/* Mobile dropdown (single scrollable area, Login placed after "Our Team") */}
+        {/* Mobile dropdown */}
         <AnimatePresence>
           {isMenuOpen && (
             <motion.div
@@ -507,7 +668,6 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                     </Link>
                   ))}
 
-                  {/* Login button directly below "Our Team" entry */}
                   <div className="pt-2">
                     <Link to={createPageUrl("Welcome")} onClick={() => setIsMenuOpen(false)} className="block w-full">
                       <Button
@@ -538,15 +698,13 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   );
 };
 
-/* ---------- Footer ---------- */
+/* ---------- Footer (unchanged) ---------- */
 const Footer = ({ getCompanyName }) => {
   const footerLinks = [
     {
       column_title: "Solutions",
       links: [
         { text: "Find Schools", url: createPageUrl("Schools") },
-        { text: "Find an Agent", url: createPageUrl("FindAgent") },
-        { text: "Find a Tutor", url: createPageUrl("Tutors") },
         { text: "Visa Help", url: createPageUrl("VisaRequests") },
       ],
     },
@@ -703,6 +861,7 @@ function buildDesktopNav(currentUser) {
         { title: getText("contactPageEditor"), url: createPageUrl("AdminContactEditor"), icon: Phone },
         { title: getText("faqEditor"), url: createPageUrl("AdminFAQ"), icon: MessageSquare },
         { title: getText("ourTeamEditor"), url: createPageUrl("AdminOurTeamEditor"), icon: Users },
+        { title: "Brand Settings", url: createPageUrl("AdminBrandSettings"), icon: Palette },
         { title: getText("chatSettings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
         { title: getText("marketplaceAdmin"), url: createPageUrl("MarketplaceAdmin"), icon: Store },
         { title: getText("packageAdmin"), url: createPageUrl("AdminPackages"), icon: Package },

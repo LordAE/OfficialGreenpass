@@ -1,6 +1,13 @@
 // src/pages/Home.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useAnimation } from 'framer-motion';
+import {
+  motion,
+  AnimatePresence,
+  useAnimation,
+  useInView,
+  useScroll,
+  useTransform,
+} from 'framer-motion';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -85,6 +92,47 @@ const getProvinceLabel = (code) => {
   return provinces[code] || code;
 };
 
+/* ---------- replay on scroll ---------- */
+const ReplayOnScroll = ({
+  children,
+  threshold = 0.3,
+  margin = '-10% 0% -10% 0%',
+  variants,
+  delay = 0,
+  once = false,
+  initial = 'hidden',
+  visible = 'visible',
+  className,
+  ...rest
+}) => {
+  const ref = React.useRef(null);
+  const controls = useAnimation();
+  const inView = useInView(ref, { amount: threshold, margin, once });
+
+  const v = variants || {
+    hidden: { opacity: 0, y: 40 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut', delay } },
+  };
+
+  React.useEffect(() => {
+    if (inView) controls.start(visible);
+    else if (!once) controls.start(initial);
+  }, [inView, controls, initial, visible, once]);
+
+  return (
+    <motion.div
+      ref={ref}
+      className={className}
+      initial={initial}
+      animate={controls}
+      variants={v}
+      {...rest}
+    >
+      {children}
+    </motion.div>
+  );
+};
+
 /* ---------- content mappers ---------- */
 const sanitizeHomeContent = (loaded = {}) => {
   const prev = {
@@ -94,7 +142,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       image_url: '',
       video_url: '',
       background_video_url:
-        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Ffeatures%2F2%2F1761752853921-whatsapp-video-2025-10-29-at-23.07.36_eafc79ff.mp4?alt=media&token=1c6edf1e-a945-40fd-a918-0f47a8d03b93',
+        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Ffeatures%2F2%2F1762958415881-gp-hero-2.mp4?alt=media&token=9bd70db8-d77c-453d-9f55-3c31912d4bd6',
       poster_url: '',
       fit_mode: 'contain' // show whole video by default
     },
@@ -198,21 +246,29 @@ const isHighlightedNow = (post) => {
 };
 
 /* =========================
-   HERO
+   HERO (taller height)
+========================= */
+/* =========================
+   HERO with mute / unmute
 ========================= */
 const DEFAULT_POSTER =
-  "https://images.unsplash.com/photo-1529078155058-5d716f45d604?q=80&w=1920&auto=format&fit=crop"; // safe fallback
+  "https://images.unsplash.com/photo-1529078155058-5d716f45d604?q=80&w=1920&auto=format&fit=crop";
 
 const Hero = ({ content }) => {
   const hero = content?.hero_section || {};
   const bgVideo = hero.background_video_url || hero.video_url || "";
   const poster = hero.poster_url || hero.image_url || DEFAULT_POSTER;
-  const fitMode = (hero.fit_mode || 'contain').toLowerCase(); // 'contain' or 'cover'
+  const fitMode = (hero.fit_mode || "cover").toLowerCase(); // 'cover' | 'contain'
 
   const [useImage, setUseImage] = React.useState(!bgVideo);
+  const [isMuted, setIsMuted] = React.useState(true);
   const videoRef = React.useRef(null);
 
-  // Try to play; if device blocks autoplay, fall back to poster quickly
+  // subtle parallax on title
+  const { scrollY } = useScroll();
+  const titleY = useTransform(scrollY, [0, 300], [0, -24]);
+  const titleO = useTransform(scrollY, [0, 300], [1, 0.85]);
+
   React.useEffect(() => {
     if (!bgVideo || !videoRef.current) return;
     const el = videoRef.current;
@@ -220,7 +276,8 @@ const Hero = ({ content }) => {
 
     const tryPlay = async () => {
       try {
-        el.muted = true;
+        el.muted = true;       // must start muted for autoplay
+        setIsMuted(true);
         await el.play();
         setUseImage(false);
       } catch {
@@ -233,13 +290,25 @@ const Hero = ({ content }) => {
 
     timer = setTimeout(() => {
       if (el.paused) setUseImage(true);
-    }, 1200);
+    }, 1000);
 
     return () => {
       el.removeEventListener("canplay", tryPlay);
       clearTimeout(timer);
     };
   }, [bgVideo]);
+
+  const toggleMute = () => {
+    if (!videoRef.current) return;
+    const nextMuted = !isMuted;
+    videoRef.current.muted = nextMuted;
+    setIsMuted(nextMuted);
+
+    // if user unmutes and video is paused, try to play
+    if (!nextMuted && videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+    }
+  };
 
   return (
     <section className="gp-hero-root">
@@ -248,72 +317,83 @@ const Hero = ({ content }) => {
           __html: `
 .gp-hero-root{position:relative;color:#fff}
 
-/* Hero video (responsive) + blurred edge fill */
+/* HERO VIDEO HEIGHT */
 .gp-videoWrap{
   --gp-fit:${fitMode};
   position:relative;width:100%;
-  height:clamp(320px,min(62svh,72dvh),760px);
-  overflow:hidden;background:#000;
+  height:clamp(460px,min(75svh,82dvh),900px);
+  overflow:hidden;background:#0a0f12;
 }
 @supports not (height: 1svh){
-  .gp-videoWrap{height:clamp(300px,56vh,560px);}
+  .gp-videoWrap{height:clamp(420px,68vh,820px);}
 }
-.gp-fill{position:absolute;inset:-10px;background-image:var(--gpPoster);background-size:cover;background-position:center;filter:blur(14px) saturate(1.1);transform:scale(1.08);opacity:.7}
-.gp-video{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;object-fit:var(--gp-fit,contain);object-position:center center;background:transparent}
-.gp-vignette{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,.55))}
+
+/* Actual video/poster */
+.gp-video{
+  position:absolute;inset:0;display:block;width:100%;height:100%;
+  min-width:100%;min-height:100%;object-fit:var(--gp-fit,cover);
+  object-position:center center;background:transparent;
+}
+
+/* Vignette & grain */
+.gp-vignette{
+  position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(120% 80% at 50% 10%, rgba(0,0,0,.0) 0%, rgba(0,0,0,.25) 60%, rgba(0,0,0,.46) 100%),
+    linear-gradient(to bottom, rgba(0,0,0,.55) 0%, rgba(0,0,0,.28) 32%, rgba(0,0,0,.45) 100%);
+}
+.gp-noise{
+  position:absolute;inset:0;pointer-events:none;opacity:.05;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.8'/></svg>");
+  background-size:340px 340px;
+}
 
 /* Centered headline */
-.gp-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem}
-.gp-title{font-size:clamp(1.9rem,3.7vw,2.9rem);font-weight:800;line-height:1.1;text-shadow:0 2px 18px rgba(0,0,0,.35)}
-.gp-sub{max-width:70ch;font-size:clamp(.95rem,1.1vw,1.05rem);opacity:.95;text-shadow:0 1px 12px rgba(0,0,0,.35)}
+.gp-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 1rem;z-index:3}
+.gp-title{font-size:clamp(2rem,3.9vw,3rem);font-weight:800;line-height:1.06;
+  text-shadow:0 2px 18px rgba(0,0,0,.35), 0 6px 32px rgba(0,0,0,.28)}
+.gp-sub{max-width:72ch;font-size:clamp(1rem,1.2vw,1.1rem);opacity:.97;
+  text-shadow:0 1px 12px rgba(0,0,0,.35)}
 
-/* Band under hero */
-.gp-band{position:relative;z-index:3;max-width:1320px;margin:clamp(-72px,-12vh,-120px) auto 0;padding:0 18px}
+/* Mute / unmute button */
+.gp-audioToggle{
+  position:absolute;right:1rem;bottom:1rem;z-index:4;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.4rem .75rem;border-radius:9999px;
+  border:1px solid rgba(255,255,255,.7);
+  background:rgba(15,23,42,.80);backdrop-filter:blur(6px);
+  color:#fff;font-size:.8rem;font-weight:500;cursor:pointer;
+  box-shadow:0 6px 18px rgba(15,23,42,.4);
+  transition:background .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.gp-audioToggle:hover{
+  background:rgba(15,23,42,.95);
+  transform:translateY(-1px);
+  box-shadow:0 10px 26px rgba(15,23,42,.55);
+}
+
+/* Band under hero (cards row) */
+.gp-band{
+  position:relative;z-index:4;max-width:1320px;
+  margin:clamp(-80px,-12vh,-120px) auto 0;
+  padding:0 18px;
+}
 @media(min-width:1024px){.gp-band{padding:0 22px}}
 
-/* 4 feature tiles */
+/* Tiles layout + styling (unchanged) */
 .gp-tiles{display:grid;grid-template-columns:1fr;gap:18px;align-items:stretch}
 @media(min-width:1024px){.gp-tiles{grid-template-columns:repeat(4,1fr);gap:22px}}
 
-/* Tile card */
-.gp-card{
-  position:relative;display:flex;flex-direction:column;
-  color:#fff;border-radius:16px;overflow:hidden;
-  background:var(--tile-fallback,#0f172a);
-  box-shadow:0 8px 24px rgba(2,6,23,.25);min-height:280px;isolation:isolate;
-}
+.gp-card{position:relative;display:flex;flex-direction:column;color:#fff;border-radius:16px;overflow:hidden;background:var(--tile-fallback,#0f172a);box-shadow:0 8px 24px rgba(2,6,23,.25);min-height:280px;isolation:isolate;}
 .gp-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;transform:scale(1.02)}
-
-/* Color tint overlay to match palette while keeping images visible */
-.gp-tint{position:absolute;inset:0;pointer-events:none;
-  background:
-    linear-gradient(180deg,
-      var(--tile-tint,transparent) 0%,
-      var(--tile-tint,transparent) 44%,
-      var(--tile-tint-bottom,transparent) 100%);
-}
-
-/* Neutral scrim for readability */
-.gp-scrim{position:absolute;inset:0;background:
-  linear-gradient(180deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.22) 38%, rgba(0,0,0,.60) 100%);
-}
-
-/* Top slanted cap picks up the tile tint for the "band" look */
-.gp-cap{position:absolute;left:0;right:0;top:0;height:110px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.18)),
-    linear-gradient(165deg, var(--tile-tint,transparent) 0%, transparent 64%);
-  clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);
-  display:flex;align-items:center;justify-content:center;
-}
+.gp-tint{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,var(--tile-tint,transparent) 0%,var(--tile-tint,transparent) 44%,var(--tile-tint-bottom,transparent) 100%)}
+.gp-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.04) 0%, rgba(0,0,0,.22) 38%, rgba(0,0,0,.60) 100%)}
+.gp-cap{position:absolute;left:0;right:0;top:0;height:110px;background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.18)),linear-gradient(165deg, var(--tile-tint,transparent) 0%, transparent 64%);clip-path: polygon(0 0, 100% 0, 100% 66%, 0 86%);display:flex;align-items:center;justify-content:center;}
 .gp-ico{width:44px;height:44px;border-radius:9999px;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.85);background:rgba(0,0,0,.18);backdrop-filter:blur(2px)}
-
 .gp-body{position:relative;display:flex;flex-direction:column;gap:12px;padding:26px;padding-top:126px;flex:1;}
 .gp-ttl{margin:0 0 2px;font-weight:800;letter-spacing:.2px;font-size:1rem}
 .gp-hr{height:1px;background:rgba(255,255,255,.28);margin:6px 0 6px}
 .gp-desc{margin:0;font-size:.95rem;line-height:1.5;opacity:.95}
-
-/* CTA */
 .gp-cta{display:inline-flex;align-items:center;gap:10px;margin-top:auto;background:#fff;color:#0f172a;border-radius:12px;padding:12px 18px;font-weight:800;box-shadow:0 2px 0 rgba(0,0,0,.1);transition:transform .2s ease,box-shadow .2s ease}
 .gp-cta .chev{display:inline-block;transition:transform .2s ease}
 .gp-cta:hover{box-shadow:0 12px 26px rgba(0,0,0,.24);transform:translateY(-2px)}
@@ -321,11 +401,10 @@ const Hero = ({ content }) => {
 
 /* Mobile tuning */
 @media(max-width:640px){
-  .gp-videoWrap{height:clamp(300px,56svh,560px)}
-  @supports not (height: 1svh){.gp-videoWrap{height:clamp(300px,56vh,560px)}}
-  .gp-video{object-position:center center}
-  .gp-title{font-size:clamp(1.5rem,6vw,2.2rem)}
-  .gp-sub{font-size:clamp(.9rem,3.8vw,1.05rem)}
+  .gp-videoWrap{height:clamp(380px,70svh,640px)}
+  @supports not (height: 1svh){.gp-videoWrap{height:clamp(380px,70vh,640px)}}
+  .gp-title{font-size:clamp(1.7rem,6vw,2.3rem)}
+  .gp-sub{font-size:clamp(.95rem,3.8vw,1.05rem)}
   .gp-cap{height:96px;clip-path:polygon(0 0,100% 0,100% 64%,0 86%)}
   .gp-body{padding-top:112px}
 }
@@ -333,10 +412,7 @@ const Hero = ({ content }) => {
         }}
       />
 
-      <div className="gp-videoWrap" style={{ '--gpPoster': `url("${poster}")` }}>
-        {/* blurred edge fill behind the video/poster so no black bars */}
-        <div className="gp-fill" style={{ '--gpPoster': `url("${poster}")` }} />
-
+      <div className="gp-videoWrap">
         {!useImage && bgVideo ? (
           <video
             key={bgVideo}
@@ -354,16 +430,36 @@ const Hero = ({ content }) => {
         ) : (
           <img src={poster} alt="" className="gp-video" loading="eager" />
         )}
+
         <div className="gp-vignette" />
+        <div className="gp-noise" />
+
+        {/* Mute / Unmute button – only when we actually have a video */}
+        {!useImage && bgVideo && (
+          <button
+            type="button"
+            className="gp-audioToggle"
+            onClick={toggleMute}
+            aria-pressed={!isMuted}
+            aria-label={isMuted ? "Unmute hero video" : "Mute hero video"}
+          >
+            <span>{isMuted ? "🔇" : "🔊"}</span>
+            <span>{isMuted ? "Sound off" : "Sound on"}</span>
+          </button>
+        )}
+
         <div className="gp-center">
-          <div>
+          <motion.div style={{ y: titleY, opacity: titleO }}>
             <h1 className="gp-title">{hero.title || ""}</h1>
-            {hero.subtitle ? <p className="gp-sub"><MultilineText text={hero.subtitle} /></p> : null}
-          </div>
+            {hero.subtitle ? (
+              <p className="gp-sub">
+                <MultilineText text={hero.subtitle} />
+              </p>
+            ) : null}
+          </motion.div>
         </div>
       </div>
 
-      {/* 4 squared tiles with image backgrounds */}
       <FeatureTiles />
     </section>
   );
@@ -436,7 +532,7 @@ function FeatureTiles() {
     <div className="gp-band">
       <div className="gp-tiles">
         {tiles.map((t, i) => (
-          <motion.article
+          <ReplayOnScroll
             key={i}
             className="gp-card"
             style={{
@@ -444,10 +540,11 @@ function FeatureTiles() {
               '--tile-tint': t.theme.tint,
               '--tile-tint-bottom': t.theme.tintBottom,
             }}
-            initial={{ opacity: 0, y: 40, x: isMobile ? (i % 2 === 0 ? -24 : 24) : 0 }}
-            whileInView={{ opacity: 1, y: 0, x: 0 }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
+            threshold={0.3}
+            variants={{
+              hidden: { opacity: 0, y: 40, x: isMobile ? (i % 2 === 0 ? -24 : 24) : 0 },
+              visible: { opacity: 1, y: 0, x: 0, transition: { duration: 0.6, ease: 'easeOut' } }
+            }}
           >
             <img
               className="gp-bg"
@@ -473,7 +570,7 @@ function FeatureTiles() {
                 Learn More <span className="chev">»</span>
               </Link>
             </div>
-          </motion.article>
+          </ReplayOnScroll>
         ))}
       </div>
     </div>
@@ -715,7 +812,7 @@ function PartnersStrip() {
                 className="shrink-0 w-[200px] sm:w-[220px] lg:w-[230px]"
                 initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.3 }}
+                viewport={{ once: false, amount: 0.3 }}   // replay on scroll
                 whileHover={{ scale: 1.04, y: -2 }}
                 transition={{ type: "spring", stiffness: 320, damping: 20 }}
               >
@@ -802,20 +899,23 @@ function Stats({ stats }) {
         <motion.div
           className="grid gap-10 sm:gap-12 grid-cols-2 sm:grid-cols-4"
           onViewportEnter={() => setStart(true)}
-          viewport={{ once: true, amount: 0.4 }}
+          onViewportLeave={() => setStart(false)}     // reset so it replays
+          viewport={{ once: false, amount: 0.4 }}
         >
           {items.map((it, i) => {
             const Icon = it.icon || Users;
             return (
-              <div key={i} className="flex items-start gap-4">
-                <Icon className="w-12 h-12 text-slate-400" />
-                <div>
-                  <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-600">
-                    <CountUp valueString={it.value} start={start} duration={1.4} />
+              <ReplayOnScroll key={i} threshold={0.5} delay={i * 0.05}>
+                <div className="flex items-start gap-4">
+                  <Icon className="w-12 h-12 text-slate-400" />
+                  <div>
+                    <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-600">
+                      <CountUp valueString={it.value} start={start} duration={1.4} />
+                    </div>
+                    <div className="text-slate-700 text-base sm:text-lg">{it.label}</div>
                   </div>
-                  <div className="text-slate-700 text-base sm:text-lg">{it.label}</div>
                 </div>
-              </div>
+              </ReplayOnScroll>
             );
           })}
         </motion.div>
@@ -877,12 +977,14 @@ const Features = ({ features }) => {
 
         <div className="space-y-16 sm:space-y-24">
           {featuresToDisplay.map((feature, index) => (
-            <motion.div
+            <ReplayOnScroll
               key={index}
-              initial={{ opacity: 0, y: 50 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              viewport={{ once: true, amount: 0.3 }}
+              threshold={0.3}
+              delay={0.1}
+              variants={{
+                hidden: { opacity: 0, y: 50 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
+              }}
               className="grid lg:grid-cols-2 gap-10 sm:gap-16 items-center"
             >
               <div className={`space-y-6 text-center lg:text-left ${feature.media_position === 'right' ? 'lg:order-1' : 'lg:order-2'}`}>
@@ -950,7 +1052,7 @@ const Features = ({ features }) => {
                   )}
                 </div>
               </div>
-            </motion.div>
+            </ReplayOnScroll>
           ))}
         </div>
       </div>
@@ -984,12 +1086,14 @@ const SchoolProgramsSection = ({ content, schools }) => (
             {schools
               .slice(0, content?.schools_programs_section?.max_items || 6)
               .map((school, index) => (
-                <motion.div
+                <ReplayOnScroll
                   key={school.id || index}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                  viewport={{ once: true }}
+                  threshold={0.35}
+                  delay={Math.min(index * 0.06, 0.24)}
+                  variants={{
+                    hidden: { opacity: 0, y: 30 },
+                    visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
+                  }}
                 >
                   <Card className="h-full border-0 shadow-md hover:shadow-xl transition-all duration-300 group overflow-hidden">
                     <div className="relative h-48 overflow-hidden">
@@ -1075,7 +1179,7 @@ const SchoolProgramsSection = ({ content, schools }) => (
                       </div>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </ReplayOnScroll>
               ))}
           </div>
 
@@ -1121,12 +1225,13 @@ const Testimonials = ({ testimonials }) => (
           { author_name: "", author_title: "", author_image_url: "", quote: "" },
           { author_name: "", author_title: "", author_image_url: "", quote: "" },
         ]).map((t, i) => (
-          <motion.div
+          <ReplayOnScroll
             key={i}
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: i * 0.1 }}
-            viewport={{ once: true }}
+            delay={i * 0.1}
+            variants={{
+              hidden: { opacity: 0, y: 30 },
+              visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
+            }}
           >
             <Card className="h-full border-0 shadow-sm hover:shadow-lg transition-all duration-300">
               <CardContent className="p-8">
@@ -1153,7 +1258,7 @@ const Testimonials = ({ testimonials }) => (
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </ReplayOnScroll>
         ))}
       </div>
     </div>

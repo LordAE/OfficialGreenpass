@@ -87,16 +87,39 @@ import PartnerAgents from "@/pages/PartnerAgents";
 import PartnerTutors from "@/pages/PartnerTutors";
 import PartnerSchools from "@/pages/PartnerSchools";
 import PartnerVendor from "./pages/PartnerVendor";
+import StudyCanada from "@/pages/countries/StudyCanada";
+import StudyNewZealand from "@/pages/countries/StudyNewZealand";
+import StudyAustralia from "@/pages/countries/StudyAustralia";
+import StudyIreland from "@/pages/countries/StudyIreland";
+import StudyGermany from "@/pages/countries/StudyGermany";
+import StudyUnitedKingdom from "@/pages/countries/StudyUnitedKingdom";
+import StudyUnitedStates from "@/pages/countries/StudyUnitedStates";
+
+// --- Safe import of createPageUrl (with fallback if not exported) ---
+import * as Utils from "@/utils";
+const createPageUrl =
+  (Utils && Utils.createPageUrl) ||
+  ((label = "") =>
+    label
+      .toString()
+      .trim()
+      .replace(/\s+/g, "")         
+      .replace(/[^\w/]/g, "")
+      .toLowerCase()
+  );
+
 
 
 export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        {/* Index route → Home */}
+        {/* Index → Home */}
         <Route index element={<Home />} />
         <Route path="home" element={<Home />} />
         <Route path="welcome" element={<Welcome />} />
+
+        {/* Public site */}
         <Route path="schools" element={<Schools />} />
         <Route path="programs" element={<ProgramsPage />} />
         <Route path="compareprograms" element={<ComparePrograms />} />
@@ -107,30 +130,41 @@ export default function App() {
         <Route path="blog" element={<Blog />} />
         <Route path="partnership" element={<Partnership />} />
         <Route path="faq" element={<FAQ />} />
-        <Route path="contact" element={<ContactPage />} />  
+        <Route path="contact" element={<ContactPage />} />
         <Route path="resources" element={<Resources />} />
         <Route path="ourteam" element={<OurTeam />} />
         <Route path="eventdetails" element={<EventDetails />} />
         <Route path="eventregistration" element={<EventRegistrationPage />} />
         <Route path="login" element={<AuthForm />} />
-        <Route path="/EventRegistrationSuccess" element={<EventRegistrationSuccess />} />
+        {/* normalized to relative (no leading slash) */}
+        <Route path={createPageUrl("EventRegistrationSuccess")} element={<EventRegistrationSuccess />} />
         <Route path="programdetail" element={<ProgramDetail />} />
         <Route path="resetpassword" element={<ResetPassword />} />
-        <Route path="postdetail" element={<PostDetail/>} />
+        <Route path="postdetail" element={<PostDetail />} />
         <Route path="partner-agents" element={<PartnerAgents />} />
         <Route path="partner-tutors" element={<PartnerTutors />} />
         <Route path="partner-schools" element={<PartnerSchools />} />
-        <Route path="partner-vendors" element={<PartnerVendor/>} />
-        {/* Private routes */}
+        <Route path="partner-vendors" element={<PartnerVendor />} />
+
+        {/* Countries (MSM-style) */}
+        <Route path={createPageUrl("StudyCanada")} element={<StudyCanada />} />
+        <Route path={createPageUrl("StudyNewZealand")} element={<StudyNewZealand />} />
+        <Route path={createPageUrl("StudyAustralia")} element={<StudyAustralia />} />
+        <Route path={createPageUrl("StudyIreland")} element={<StudyIreland />} />
+        <Route path={createPageUrl("StudyGermany")} element={<StudyGermany />} />
+        <Route path={createPageUrl("StudyUnitedKingdom")} element={<StudyUnitedKingdom />} />
+        <Route path={createPageUrl("StudyUnitedStates")} element={<StudyUnitedStates />} />
+
+        {/* Authenticated shell entry points */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="onboarding" element={<Onboarding />} />
-        <Route path="profile" element={<Profile />} />  
+        <Route path="profile" element={<Profile />} />
 
         {/* Public extras used by Layout */}
         <Route path="fairandevents" element={<FairAndEvents />} />
         <Route path="tutors" element={<Tutors />} />
         <Route path="programdetails" element={<ProgramDetails />} />
-        <Route path="termsOfService" element={<TermsOfService />} />
+        <Route path="termsofservice" element={<TermsOfService />} />
         <Route path="privacypolicy" element={<PrivacyPolicy />} />
         <Route path="agentagreement" element={<AgentAgreement />} />
 
@@ -205,7 +239,6 @@ export default function App() {
 
         {/* User utilities */}
         <Route path="userdetails" element={<UserDetails />} />
-
       </Route>
     </Routes>
   );
