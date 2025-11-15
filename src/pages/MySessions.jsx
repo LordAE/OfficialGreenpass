@@ -12,10 +12,40 @@ import { createPageUrl } from '@/utils';
 import { getAuth } from 'firebase/auth';
 import { db } from '@/firebase';
 import {
-  collection, query, where, orderBy, getDocs, doc, updateDoc
+  collection, query, where, getDocs, doc, updateDoc
 } from 'firebase/firestore';
 
-const SessionCard = ({ session, tutorData, onJoin, onRate }) => {
+/* ---------- helpers ---------- */
+const toValidDate = (v) => {
+  if (!v) return null;
+
+  // Firestore Timestamp object
+  if (v && typeof v.toDate === 'function') {
+    const d = v.toDate();
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Timestamp-like { seconds: number }
+  if (typeof v === 'object' && typeof v.seconds === 'number') {
+    const d = new Date(v.seconds * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Fallback: treat as string/number
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+// chunk array for Firestore where-in (max 10)
+const chunk = (arr, size = 10) => {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+};
+
+const SessionCard = ({ session, tutorData, scheduledDate, onJoin, onRate }) => {
+  const sessionTime = scheduledDate || new Date();
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'scheduled': return 'bg-blue-100 text-blue-800';
@@ -27,10 +57,9 @@ const SessionCard = ({ session, tutorData, onJoin, onRate }) => {
   };
 
   const canJoinSession = () => {
-    if (session.status !== 'scheduled') return false;
-    const sessionTime = new Date(session.scheduled_date);
+    if (session.status !== 'scheduled' || !scheduledDate) return false;
     const now = new Date();
-    const diff = sessionTime.getTime() - now.getTime();
+    const diff = scheduledDate.getTime() - now.getTime();
     // Join from -30m to +15m window
     return diff <= 15 * 60 * 1000 && diff >= -30 * 60 * 1000;
   };
@@ -53,11 +82,19 @@ const SessionCard = ({ session, tutorData, onJoin, onRate }) => {
         <div className="space-y-3 mb-4">
           <div className="flex items-center gap-2 text-gray-600">
             <Calendar className="w-4 h-4" />
-            <span>{format(new Date(session.scheduled_date), 'EEEE, MMMM do, yyyy')}</span>
+            <span>
+              {scheduledDate
+                ? format(scheduledDate, 'EEEE, MMMM do, yyyy')
+                : 'Date not set'}
+            </span>
           </div>
           <div className="flex items-center gap-2 text-gray-600">
             <Clock className="w-4 h-4" />
-            <span>{format(new Date(session.scheduled_date), 'h:mm a')} ({session.duration} minutes)</span>
+            <span>
+              {scheduledDate
+                ? `${format(scheduledDate, 'h:mm a')} (${session.duration} minutes)`
+                : `${session.duration} minutes`}
+            </span>
           </div>
           <div className="flex items-center gap-2 text-gray-600">
             <BookOpen className="w-4 h-4" />
@@ -128,13 +165,6 @@ export default function MySessions() {
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
 
-  // helper: chunk array for Firestore where-in (max 10)
-  const chunk = (arr, size = 10) => {
-    const out = [];
-    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-    return out;
-  };
-
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -150,14 +180,25 @@ export default function MySessions() {
         }
         setMe(user);
 
-        // Sessions for this student
+        // --- Sessions for this student (NO orderBy here -> no composite index needed) ---
         const q = query(
           collection(db, 'tutoring_sessions'),
-          where('student_id', '==', user.uid),
-          orderBy('scheduled_date', 'desc')
+          where('student_id', '==', user.uid)
         );
         const snap = await getDocs(q);
-        const userSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const rawSessions = snap.docs.map(d => ({
+          id: d.id,
+          ...d.data(),
+        }));
+
+        // sort by scheduled_date DESC on the client
+        const userSessions = rawSessions.sort((a, b) => {
+          const da = toValidDate(a.scheduled_date);
+          const db = toValidDate(b.scheduled_date);
+          return (db?.getTime() || 0) - (da?.getTime() || 0);
+        });
+
         setSessions(userSessions);
 
         // Load tutors (from users collection) for display names/avatars
@@ -203,7 +244,9 @@ export default function MySessions() {
       });
       // Optimistic local update
       setSessions(prev =>
-        prev.map(s => (s.id === session.id ? { ...s, student_rating: rating, student_feedback: feedback } : s))
+        prev.map(s =>
+          s.id === session.id ? { ...s, student_rating: rating, student_feedback: feedback } : s
+        )
       );
     } catch (err) {
       console.error('Error rating session:', err);
@@ -222,12 +265,18 @@ export default function MySessions() {
     );
   }
 
-  const upcomingSessions = sessions.filter(s =>
-    s.status === 'scheduled' && new Date(s.scheduled_date) > new Date()
-  );
-  const pastSessions = sessions.filter(s =>
-    s.status === 'completed' || (s.status === 'scheduled' && new Date(s.scheduled_date) <= new Date())
-  );
+  const now = new Date();
+  const upcomingSessions = sessions.filter(s => {
+    const d = toValidDate(s.scheduled_date);
+    return s.status === 'scheduled' && d && d > now;
+  });
+  const pastSessions = sessions.filter(s => {
+    const d = toValidDate(s.scheduled_date);
+    return (
+      s.status === 'completed' ||
+      (s.status === 'scheduled' && d && d <= now)
+    );
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -239,8 +288,8 @@ export default function MySessions() {
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-600">Session Credits Available</p>
-            {/* If you store credits in user profile doc, fetch and show it. */}
-            <p className="text-2xl font-bold text-green-600">{/* e.g., userProfile?.session_credits ?? 0 */}0</p>
+            {/* hook this up to a user profile doc later */}
+            <p className="text-2xl font-bold text-green-600">0</p>
           </div>
         </div>
 
@@ -249,7 +298,9 @@ export default function MySessions() {
             <CardContent className="p-8 text-center">
               <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">No sessions yet</h3>
-              <p className="text-gray-600 mb-4">Book your first tutoring session to get started.</p>
+              <p className="text-gray-600 mb-4">
+                Book your first tutoring session to get started.
+              </p>
               <Link to={createPageUrl('Tutors')}>
                 <Button>Find a Tutor</Button>
               </Link>
@@ -266,6 +317,7 @@ export default function MySessions() {
                       key={session.id}
                       session={session}
                       tutorData={tutors[session.tutor_id]}
+                      scheduledDate={toValidDate(session.scheduled_date)}
                       onJoin={handleJoinSession}
                       onRate={handleRateSession}
                     />
@@ -283,6 +335,7 @@ export default function MySessions() {
                       key={session.id}
                       session={session}
                       tutorData={tutors[session.tutor_id]}
+                      scheduledDate={toValidDate(session.scheduled_date)}
                       onJoin={handleJoinSession}
                       onRate={handleRateSession}
                     />

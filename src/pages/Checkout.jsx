@@ -82,7 +82,11 @@ export default function Checkout() {
 
       // 2) fallback: query by name
       try {
-        const qy = query(collection(db, colName), where("name", "==", idOrName), limit(1));
+        const qy = query(
+          collection(db, colName),
+          where("name", "==", idOrName),
+          limit(1)
+        );
         const snap = await getDocs(qy);
         if (!snap.empty) {
           const d = snap.docs[0];
@@ -155,7 +159,10 @@ export default function Checkout() {
           name: `Tutoring Session - ${s.subject || "Session"}`,
           description: `${s.duration || 60} minute session`,
           price_usd: s.price ?? s.price_usd ?? 0,
-          features: [`Subject: ${s.subject || "-"}`, `Duration: ${s.duration || 60} minutes`],
+          features: [
+            `Subject: ${s.subject || "-"}`,
+            `Duration: ${s.duration || 60} minutes`,
+          ],
         };
       }
       case "marketplace_order": {
@@ -182,9 +189,10 @@ export default function Checkout() {
           name: serviceName,
           description: serviceDesc,
           price_usd: order.amount_usd ?? order.amount ?? 0,
-          features: [serviceName, order.category ? `Category: ${order.category}` : null].filter(
-            Boolean
-          ),
+          features: [
+            serviceName,
+            order.category ? `Category: ${order.category}` : null,
+          ].filter(Boolean),
         };
       }
       default:
@@ -194,7 +202,7 @@ export default function Checkout() {
     }
   };
 
-  // ---------- PayPal client ID resolver (ENV -> doc "paypal" -> query by provider/type/payment_type) ----------
+  // ---------- PayPal client ID resolver ----------
   useEffect(() => {
     let cancelled = false;
 
@@ -235,7 +243,11 @@ export default function Checkout() {
         for (const colName of colCandidates) {
           // provider
           try {
-            const q1 = query(collection(db, colName), where("provider", "==", "paypal"), limit(1));
+            const q1 = query(
+              collection(db, colName),
+              where("provider", "==", "paypal"),
+              limit(1)
+            );
             const r1 = await getDocs(q1);
             if (!r1.empty) {
               const cid = extractClientId(r1.docs[0].data());
@@ -248,7 +260,11 @@ export default function Checkout() {
 
           // type
           try {
-            const q2 = query(collection(db, colName), where("type", "==", "paypal"), limit(1));
+            const q2 = query(
+              collection(db, colName),
+              where("type", "==", "paypal"),
+              limit(1)
+            );
             const r2 = await getDocs(q2);
             if (!r2.empty) {
               const cid = extractClientId(r2.docs[0].data());
@@ -354,7 +370,9 @@ export default function Checkout() {
 
       switch (pkg.type) {
         case "visa": {
-          const purchased = Array.isArray(u.purchased_packages) ? u.purchased_packages : [];
+          const purchased = Array.isArray(u.purchased_packages)
+            ? u.purchased_packages
+            : [];
           updates.purchased_packages = [...purchased, pkg.name];
           if (u.user_type !== "student") updates.user_type = "student";
 
@@ -397,6 +415,7 @@ export default function Checkout() {
         }
 
         case "tutoring_session":
+          // session-specific updates already handled elsewhere (booking)
           break;
 
         case "marketplace_order":
@@ -422,7 +441,8 @@ export default function Checkout() {
           navigate(createPageUrl("Tutors"));
           break;
         case "tutoring_session":
-          navigate(createPageUrl("StudentDashboard"));
+          // FIXED: StudentDashboard route doesn't exist; send to MySessions (or Dashboard)
+          navigate(createPageUrl("MySessions"));
           break;
         case "marketplace_order":
           navigate(createPageUrl("Dashboard"));
@@ -462,13 +482,22 @@ export default function Checkout() {
         <Card className="w-full max-w-md">
           <CardContent className="p-6 text-center">
             <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Checkout Error</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              Checkout Error
+            </h2>
             <p className="text-gray-600 mb-4 text-sm">{error}</p>
             <div className="flex flex-col gap-2">
-              <Button onClick={() => navigate(createPageUrl("Dashboard"))} variant="outline">
+              <Button
+                onClick={() => navigate(createPageUrl("Dashboard"))}
+                variant="outline"
+              >
                 Return to Dashboard
               </Button>
-              <Button onClick={() => window.location.reload()} size="sm" variant="ghost">
+              <Button
+                onClick={() => window.location.reload()}
+                size="sm"
+                variant="ghost"
+              >
                 Try Again
               </Button>
             </div>
@@ -484,9 +513,16 @@ export default function Checkout() {
         <Card className="w-full max-w-md">
           <CardContent className="p-6 text-center">
             <PackageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Package Not Found</h2>
-            <p className="text-gray-600 mb-4">The requested package could not be found.</p>
-            <Button onClick={() => navigate(createPageUrl("Dashboard"))} variant="outline">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              Package Not Found
+            </h2>
+            <p className="text-gray-600 mb-4">
+              The requested package could not be found.
+            </p>
+            <Button
+              onClick={() => navigate(createPageUrl("Dashboard"))}
+              variant="outline"
+            >
               Return to Dashboard
             </Button>
           </CardContent>
@@ -499,8 +535,12 @@ export default function Checkout() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Complete Your Purchase</h1>
-          <p className="text-gray-600">Review your selection and complete payment</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Complete Your Purchase
+          </h1>
+          <p className="text-gray-600">
+            Review your selection and complete payment
+          </p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">
@@ -523,7 +563,10 @@ export default function Checkout() {
                   <h4 className="font-medium text-gray-900 mb-2">Included:</h4>
                   <ul className="space-y-1">
                     {pkg.features.map((feature, idx) => (
-                      <li key={idx} className="flex items-center gap-2 text-sm text-gray-600">
+                      <li
+                        key={idx}
+                        className="flex items-center gap-2 text-sm text-gray-600"
+                      >
                         <CheckCircle className="w-4 h-4 text-green-500" />
                         {feature}
                       </li>
