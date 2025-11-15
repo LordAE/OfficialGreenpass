@@ -84,12 +84,17 @@ const CaseCard = ({ case: caseData, school }) => {
         )}
 
         <div className="flex gap-2 pt-2">
-          <Link to={createPageUrl(`VisaDocuments?caseId=${caseData.id}`)} className="flex-1">
+          {/* IMPORTANT: do NOT use createPageUrl here, to avoid lowercasing the ID */}
+          <Link
+            to={`/visadocuments?caseId=${caseData.id}`}
+            className="flex-1"
+          >
             <Button variant="outline" className="w-full">
               <FileText className="w-4 h-4 mr-2" />
               View Documents
             </Button>
           </Link>
+
           <Link to={createPageUrl("MyAgent")} className="flex-1">
             <Button className="w-full bg-gradient-to-r from-emerald-600 to-blue-600 text-white">
               <MessageCircle className="w-4 h-4 mr-2" />
@@ -115,7 +120,9 @@ export default function VisaRequests() {
         const user = await User.me();
         setCurrentUser(user || null);
 
-        const purchased = Array.isArray(user?.purchased_packages) ? user.purchased_packages : [];
+        const purchased = Array.isArray(user?.purchased_packages)
+          ? user.purchased_packages
+          : [];
         if (purchased.length === 0) {
           setCases([]);
           return;
@@ -143,11 +150,16 @@ export default function VisaRequests() {
         });
 
         // Load all cases for this user
-        const allCasesRaw = await Case.filter({ student_id: user.id }, "-created_date");
+        const allCasesRaw = await Case.filter(
+          { student_id: user.id },
+          "-created_date"
+        );
         const allCases = Array.isArray(allCasesRaw) ? allCasesRaw : [];
 
         // Keep only cases whose package_id is in purchased set
-        const purchasedCases = allCases.filter((c) => c?.package_id && purchasedIdSet.has(c.package_id));
+        const purchasedCases = allCases.filter(
+          (c) => c?.package_id && purchasedIdSet.has(c.package_id)
+        );
         setCases(purchasedCases);
 
         // Fetch school data for those cases
@@ -212,9 +224,12 @@ export default function VisaRequests() {
           currentUser.purchased_packages.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No visa packages purchased</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              No visa packages purchased
+            </h3>
             <p className="text-gray-600 mb-6">
-              Purchase a visa package to start your application process and track your progress here.
+              Purchase a visa package to start your application process and track
+              your progress here.
             </p>
             <Link to={createPageUrl("VisaPackages")}>
               <Button className="bg-gradient-to-r from-emerald-600 to-blue-600 text-white">
@@ -226,9 +241,12 @@ export default function VisaRequests() {
         ) : cases.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Applications being processed</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Applications being processed
+            </h3>
             <p className="text-gray-600 mb-6">
-              Your visa applications are being set up. They will appear here shortly.
+              Your visa applications are being set up. They will appear here
+              shortly.
             </p>
             <Link to={createPageUrl("VisaPackages")}>
               <Button className="bg-gradient-to-r from-emerald-600 to-blue-600 text-white">
@@ -240,7 +258,11 @@ export default function VisaRequests() {
         ) : (
           <div className="grid lg:grid-cols-2 gap-6">
             {cases.map((caseData) => (
-              <CaseCard key={caseData.id} case={caseData} school={schools[caseData.school_id]} />
+              <CaseCard
+                key={caseData.id}
+                case={caseData}
+                school={schools[caseData.school_id]}
+              />
             ))}
           </div>
         )}

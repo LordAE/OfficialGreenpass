@@ -210,9 +210,20 @@ service cloud.firestore {
 
     match /BrandSettings/{docId} { allow read, write: if isAdmin(); }
 
+    // ---------- Case (PascalCase) ----------
     match /Case/{docId} {
-      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+      // student or user can create their own case
+      allow create: if signedIn() && (
+        request.resource.data.student_id == request.auth.uid ||
+        request.resource.data.user_id == request.auth.uid
+      );
+
+      // student, owner (user_id) or admin can read/update/delete
+      allow read, update, delete: if signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     match /chatSettings/{docId} {
@@ -441,9 +452,18 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || isOwner(resource);
     }
 
+    // ---------- VisaDocument (all possible collection names) ----------
     match /VisaDocument/{docId} {
       allow create: if ownerCreating();
-      allow read, update, delete: if isOwner(resource);
+      allow read, update, delete: if isOwner(resource) || isAdmin();
+    }
+    match /visaDocuments/{docId} {
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource) || isAdmin();
+    }
+    match /visa_documents/{docId} {
+      allow create: if ownerCreating();
+      allow read, update, delete: if isOwner(resource) || isAdmin();
     }
 
     match /visaPackages/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
@@ -659,10 +679,33 @@ service cloud.firestore {
       allow read, update, delete: if isOwner(resource);
     }
 
-    match /cases/{docId} {
-      allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.student_id == request.auth.uid;
+        // ---------- Case (PascalCase) ----------
+    match /Case/{docId} {
+      // student or user can create their own case
+      allow create: if signedIn();
+
+      // any signed-in user can read, only owner/admin can modify
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
     }
+
+    // ---------- cases (lowercase) ----------
+    match /cases/{docId} {
+      // same as /Case but for lowercase collection name
+      allow create: if signedIn();
+
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
 
     match /agents/{docId} {
       allow read: if publiclyListable(resource) || isOwner(resource) || isAdmin();

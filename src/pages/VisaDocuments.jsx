@@ -218,7 +218,11 @@ const UploadTipsCard = ({ tips }) => {
 
 export default function VisaDocuments() {
   const [searchParams] = useSearchParams();
-  const caseId = searchParams.get('caseId');
+
+  // accept both ?caseId= and ?caseid=
+  const caseId =
+    searchParams.get('caseId') ||
+    searchParams.get('caseid');
 
   const [caseData, setCaseData] = useState(null);
   const [user, setUser] = useState(null);
@@ -240,7 +244,15 @@ export default function VisaDocuments() {
   const [userNote, setUserNote] = useState('');
 
   const loadCaseData = useCallback(async () => {
-    if (!caseId) return;
+    // handle missing/invalid caseId gracefully
+    if (!caseId) {
+      setCaseData(null);
+      setRequiredDocs([]);
+      setDocuments([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const currentUser = await User.me();
