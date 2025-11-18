@@ -28,6 +28,8 @@ import {
   where,
   updateDoc,
   serverTimestamp,
+  getDocs,       // 👈 NEW
+  writeBatch,    // 👈 NEW
 } from "firebase/firestore";
 
 /* ---------- Utils ---------- */
@@ -49,6 +51,38 @@ async function fetchAgentWithUser(agentId) {
     return { agent, agentUser };
   } catch {
     return { agent: null, agentUser: null };
+  }
+}
+
+/**
+ * Link all existing visa cases for this student (that have no agent yet)
+ * to the given agent user id.
+ *
+ * This fixes: "package first → then agent"
+ */
+async function linkExistingCasesToAgent(studentId, agentUserId) {
+  if (!studentId || !agentUserId) return;
+
+  try {
+    const casesRef = collection(db, "cases");
+    const qCases = query(casesRef, where("student_id", "==", studentId));
+    const snap = await getDocs(qCases);
+
+    if (snap.empty) return;
+
+    const batch = writeBatch(db);
+
+    snap.forEach((caseDoc) => {
+      const data = caseDoc.data();
+      // Only touch cases that don't already have an agent
+      if (!data.agent_id) {
+        batch.update(caseDoc.ref, { agent_id: agentUserId });
+      }
+    });
+
+    await batch.commit();
+  } catch (err) {
+    console.error("Failed to link existing cases to agent:", err);
   }
 }
 
@@ -165,6 +199,7 @@ export default function AdminAgentAssignments() {
     }
     setActingId(user.id);
     try {
+      // 1) Approve + set assigned_agent_id on the user
       await updateDoc(doc(db, "users", user.id), {
         assigned_agent_id: req.new_agent_id,
         assigned_agent_at: serverTimestamp(),
@@ -174,6 +209,9 @@ export default function AdminAgentAssignments() {
           approved_at: serverTimestamp(),
         },
       });
+
+      // 2) Link all existing cases (package-first scenario) to this agent
+      await linkExistingCasesToAgent(user.id, req.new_agent_id);
     } catch (e) {
       console.error("Approve failed:", e);
       alert("Approve failed. Check console for details.");
@@ -360,7 +398,10 @@ export default function AdminAgentAssignments() {
               variant={showSection === "ready" ? "default" : "outline"}
               onClick={() => setShowSection("ready")}
             >
-              Ready <Badge className="ml-2 bg-emerald-100 text-emerald-800">{readyCount}</Badge>
+              Ready{" "}
+              <Badge className="ml-2 bg-emerald-100 text-emerald-800">
+                {readyCount}
+              </Badge>
             </Button>
             <Button
               type="button"

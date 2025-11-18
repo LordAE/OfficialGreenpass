@@ -5,7 +5,13 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2, Plus, Trash2, Save, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -48,7 +54,8 @@ const DEFAULT_FEATURE = {
   description: "",
   image_url: "",
   youtube_url: "",
-  video_url: "", // NEW: mp4 (or any direct video URL)
+  video_url: "", // mp4 (or any direct video URL)
+  collage_images: [], // NEW: up to 5 collage background images
   link_url: "",
   link_text: "",
   media_position: "left",
@@ -83,7 +90,9 @@ export default function AdminHomeEditor() {
       ? base.testimonials_section.map((t) => ({ ...DEFAULT_TESTIMONIAL, ...t }))
       : [];
 
-    const sanitizedStats = Array.isArray(base.stats_section) ? base.stats_section : [];
+    const sanitizedStats = Array.isArray(base.stats_section)
+      ? base.stats_section
+      : [];
 
     return {
       ...base,
@@ -95,7 +104,10 @@ export default function AdminHomeEditor() {
         ...DEFAULTS.schools_programs_section,
         ...(base.schools_programs_section || {}),
       },
-      final_cta_section: { ...DEFAULTS.final_cta_section, ...(base.final_cta_section || {}) },
+      final_cta_section: {
+        ...DEFAULTS.final_cta_section,
+        ...(base.final_cta_section || {}),
+      },
     };
   };
 
@@ -111,7 +123,9 @@ export default function AdminHomeEditor() {
       } catch (e) {
         console.error("Error loading content:", e);
         if (e?.code === "permission-denied") {
-          alert("You don't have permission to view the Home page content. Ask an admin for access.");
+          alert(
+            "You don't have permission to view the Home page content. Ask an admin for access."
+          );
         } else {
           alert("Failed to load Home page content.");
         }
@@ -127,7 +141,11 @@ export default function AdminHomeEditor() {
     try {
       await setDoc(
         doc(db, DOC_PATH.col, DOC_PATH.id),
-        { ...content, singleton_key: "SINGLETON", updated_at: serverTimestamp() },
+        {
+          ...content,
+          singleton_key: "SINGLETON",
+          updated_at: serverTimestamp(),
+        },
         { merge: true }
       );
       alert("Content saved successfully!");
@@ -150,16 +168,21 @@ export default function AdminHomeEditor() {
     try {
       const cleanName = file.name.replace(/\s+/g, "-").toLowerCase();
       let path = `home/${section}/${Date.now()}-${cleanName}`;
+
       if ((section === "feature" || section === "testimonial") && index !== null) {
         // upload under /home/features/{i}/... or /home/testimonials/{i}/...
         path = `home/${section}s/${index}/${Date.now()}-${cleanName}`;
       }
+
       const storageRef = ref(storage, path);
       await uploadBytes(storageRef, file);
       const file_url = await getDownloadURL(storageRef);
 
       if (section === "hero") {
-        setContent((prev) => ({ ...prev, hero_section: { ...prev.hero_section, [field]: file_url } }));
+        setContent((prev) => ({
+          ...prev,
+          hero_section: { ...prev.hero_section, [field]: file_url },
+        }));
       } else if (section === "feature" && index !== null) {
         setContent((prev) => ({
           ...prev,
@@ -183,9 +206,60 @@ export default function AdminHomeEditor() {
     }
   };
 
+  // Upload multiple collage images for a feature (max 5 total)
+  const handleUploadCollageImages = async (fileList, featureIndex) => {
+    if (!fileList || !fileList.length) return;
+    setUploading(true);
+    try {
+      const files = Array.from(fileList);
+      const uploadedUrls = [];
+
+      for (const file of files) {
+        const cleanName = file.name.replace(/\s+/g, "-").toLowerCase();
+        const path = `home/features/${featureIndex}/collage/${Date.now()}-${cleanName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
+        uploadedUrls.push(url);
+      }
+
+      setContent((prev) => {
+        const current = prev.features_section[featureIndex]?.collage_images || [];
+        const next = [...current, ...uploadedUrls].slice(0, 5); // enforce max 5
+        return {
+          ...prev,
+          features_section: prev.features_section.map((f, i) =>
+            i === featureIndex ? { ...f, collage_images: next } : f
+          ),
+        };
+      });
+    } catch (error) {
+      console.error("Error uploading collage images:", error);
+      alert("Failed to upload collage images.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeCollageImage = (featureIndex, imageIndex) => {
+    setContent((prev) => ({
+      ...prev,
+      features_section: prev.features_section.map((f, i) => {
+        if (i !== featureIndex) return f;
+        const next = (f.collage_images || []).filter(
+          (_, idx) => idx !== imageIndex
+        );
+        return { ...f, collage_images: next };
+      }),
+    }));
+  };
+
   // Generic update function for nested sections
   const updateField = (sectionKey, field, value) => {
-    setContent((prev) => ({ ...prev, [sectionKey]: { ...prev[sectionKey], [field]: value } }));
+    setContent((prev) => ({
+      ...prev,
+      [sectionKey]: { ...prev[sectionKey], [field]: value },
+    }));
   };
 
   // Features
@@ -195,6 +269,7 @@ export default function AdminHomeEditor() {
       features_section: [...(prev.features_section || []), { ...DEFAULT_FEATURE }],
     }));
   };
+
   const updateFeature = (index, field, value) => {
     setContent((prev) => ({
       ...prev,
@@ -203,6 +278,7 @@ export default function AdminHomeEditor() {
       ),
     }));
   };
+
   const removeFeature = (index) => {
     setContent((prev) => ({
       ...prev,
@@ -214,9 +290,13 @@ export default function AdminHomeEditor() {
   const addTestimonial = () => {
     setContent((prev) => ({
       ...prev,
-      testimonials_section: [...prev.testimonials_section, { ...DEFAULT_TESTIMONIAL }],
+      testimonials_section: [
+        ...prev.testimonials_section,
+        { ...DEFAULT_TESTIMONIAL },
+      ],
     }));
   };
+
   const updateTestimonial = (index, field, value) => {
     setContent((prev) => ({
       ...prev,
@@ -225,23 +305,33 @@ export default function AdminHomeEditor() {
       ),
     }));
   };
+
   const removeTestimonial = (index) => {
     setContent((prev) => ({
       ...prev,
-      testimonials_section: prev.testimonials_section.filter((_, i) => i !== index),
+      testimonials_section: prev.testimonials_section.filter(
+        (_, i) => i !== index
+      ),
     }));
   };
 
   // Stats
   const addStat = () => {
-    setContent((prev) => ({ ...prev, stats_section: [...prev.stats_section, { value: "", label: "" }] }));
+    setContent((prev) => ({
+      ...prev,
+      stats_section: [...prev.stats_section, { value: "", label: "" }],
+    }));
   };
+
   const updateStat = (index, field, value) => {
     setContent((prev) => ({
       ...prev,
-      stats_section: prev.stats_section.map((s, i) => (i === index ? { ...s, [field]: value } : s)),
+      stats_section: prev.stats_section.map((s, i) =>
+        i === index ? { ...s, [field]: value } : s
+      ),
     }));
   };
+
   const removeStat = (index) => {
     setContent((prev) => ({
       ...prev,
@@ -270,7 +360,11 @@ export default function AdminHomeEditor() {
               </Button>
             </Link>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+              {saving ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
               Save Changes
             </Button>
           </div>
@@ -287,7 +381,9 @@ export default function AdminHomeEditor() {
               <Input
                 id="hero_title"
                 value={content.hero_section?.title || ""}
-                onChange={(e) => updateField("hero_section", "title", e.target.value)}
+                onChange={(e) =>
+                  updateField("hero_section", "title", e.target.value)
+                }
                 placeholder="Study Abroad with Confidence"
               />
             </div>
@@ -296,37 +392,56 @@ export default function AdminHomeEditor() {
               <Textarea
                 id="hero_subtitle"
                 value={content.hero_section?.subtitle || ""}
-                onChange={(e) => updateField("hero_section", "subtitle", e.target.value)}
+                onChange={(e) =>
+                  updateField("hero_section", "subtitle", e.target.value)
+                }
                 placeholder="Your comprehensive super app for studying abroad..."
                 rows={3}
               />
             </div>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="hero_image">Hero Image</Label>
+                <Label htmlFor="hero_image">Hero Image (Poster)</Label>
                 <Input
                   id="hero_image"
                   type="file"
                   accept="image/*"
-                  onChange={(e) => e.target.files?.[0] && handleUploadToField(e.target.files[0], "hero", "image_url")}
+                  onChange={(e) =>
+                    e.target.files?.[0] &&
+                    handleUploadToField(e.target.files[0], "hero", "image_url")
+                  }
                   disabled={uploading}
                 />
                 {content.hero_section?.image_url && (
-                  <img src={content.hero_section.image_url} alt="Hero" className="mt-2 w-32 h-20 object-cover rounded" />
+                  <img
+                    src={content.hero_section.image_url}
+                    alt="Hero"
+                    className="mt-2 w-32 h-20 object-cover rounded"
+                  />
                 )}
               </div>
               <div>
-                <Label htmlFor="hero_video_url">YouTube Video URL</Label>
+                <Label htmlFor="hero_video_url">
+                  Background Video URL (MP4)
+                </Label>
                 <Input
                   id="hero_video_url"
                   value={content.hero_section?.video_url || ""}
-                  onChange={(e) => updateField("hero_section", "video_url", e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=..."
+                  onChange={(e) =>
+                    updateField("hero_section", "video_url", e.target.value)
+                  }
+                  placeholder="https://.../hero-video.mp4"
                 />
                 {content.hero_section?.video_url && (
-                  <div className="mt-2">
-                    <YouTubeEmbed url={content.hero_section.video_url} className="w-full h-32 rounded" />
-                  </div>
+                  <video
+                    className="mt-2 w-full h-32 rounded"
+                    src={content.hero_section.video_url}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
                 )}
               </div>
             </div>
@@ -346,10 +461,17 @@ export default function AdminHomeEditor() {
           </CardHeader>
           <CardContent className="space-y-4">
             {(content.features_section || []).map((feature, index) => (
-              <div key={index} className="border rounded-lg p-4 space-y-3 bg-gray-50/50">
+              <div
+                key={index}
+                className="border rounded-lg p-4 space-y-3 bg-gray-50/50"
+              >
                 <div className="flex justify-between items-center">
                   <h4 className="font-medium">Feature {index + 1}</h4>
-                  <Button variant="destructive" size="sm" onClick={() => removeFeature(index)}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => removeFeature(index)}
+                  >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -359,7 +481,9 @@ export default function AdminHomeEditor() {
                     <Label>Title</Label>
                     <Input
                       value={feature.title}
-                      onChange={(e) => updateFeature(index, "title", e.target.value)}
+                      onChange={(e) =>
+                        updateFeature(index, "title", e.target.value)
+                      }
                       placeholder="Feature title"
                     />
                   </div>
@@ -385,9 +509,13 @@ export default function AdminHomeEditor() {
                         <SelectItem value="Users">Users</SelectItem>
                         <SelectItem value="BookOpen">Book Open</SelectItem>
                         <SelectItem value="Globe">Globe</SelectItem>
-                        <SelectItem value="CheckCircle">Check Circle</SelectItem>
+                        <SelectItem value="CheckCircle">
+                          Check Circle
+                        </SelectItem>
                         <SelectItem value="School">School</SelectItem>
-                        <SelectItem value="GraduationCap">GraduationCap</SelectItem>
+                        <SelectItem value="GraduationCap">
+                          GraduationCap
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -404,7 +532,11 @@ export default function AdminHomeEditor() {
                       value={feature.school_rating}
                       onChange={(e) => {
                         const val = Number.parseFloat(e.target.value);
-                        updateFeature(index, "school_rating", Number.isFinite(val) ? val : 4.5);
+                        updateFeature(
+                          index,
+                          "school_rating",
+                          Number.isFinite(val) ? val : 4.5
+                        );
                       }}
                       placeholder="4.5"
                     />
@@ -415,7 +547,9 @@ export default function AdminHomeEditor() {
                   <Label>Description</Label>
                   <Textarea
                     value={feature.description}
-                    onChange={(e) => updateFeature(index, "description", e.target.value)}
+                    onChange={(e) =>
+                      updateFeature(index, "description", e.target.value)
+                    }
                     placeholder="Feature description"
                     rows={3}
                   />
@@ -424,21 +558,33 @@ export default function AdminHomeEditor() {
                 {/* Media inputs */}
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label>Image</Label>
+                    <Label>Image (main flyer)</Label>
                     <div className="flex items-center gap-2">
                       <Input
                         type="file"
                         accept="image/*"
                         onChange={(e) =>
-                          e.target.files?.[0] && handleUploadToField(e.target.files[0], "feature", "image_url", index)
+                          e.target.files?.[0] &&
+                          handleUploadToField(
+                            e.target.files[0],
+                            "feature",
+                            "image_url",
+                            index
+                          )
                         }
                         disabled={uploading}
                         className="flex-grow"
                       />
-                      {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {uploading && (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      )}
                     </div>
                     {feature.image_url && (
-                      <img src={feature.image_url} alt="" className="mt-2 w-24 h-16 object-cover rounded" />
+                      <img
+                        src={feature.image_url}
+                        alt=""
+                        className="mt-2 w-24 h-16 object-cover rounded"
+                      />
                     )}
                   </div>
 
@@ -446,12 +592,17 @@ export default function AdminHomeEditor() {
                     <Label>YouTube URL (optional)</Label>
                     <Input
                       value={feature.youtube_url || ""}
-                      onChange={(e) => updateFeature(index, "youtube_url", e.target.value)}
+                      onChange={(e) =>
+                        updateFeature(index, "youtube_url", e.target.value)
+                      }
                       placeholder="https://youtube.com/watch?v=..."
                     />
                     {feature.youtube_url && (
                       <div className="mt-2">
-                        <YouTubeEmbed url={feature.youtube_url} className="w-full h-32 rounded" />
+                        <YouTubeEmbed
+                          url={feature.youtube_url}
+                          className="w-full h-32 rounded"
+                        />
                       </div>
                     )}
                   </div>
@@ -465,17 +616,27 @@ export default function AdminHomeEditor() {
                         type="file"
                         accept="video/*"
                         onChange={(e) =>
-                          e.target.files?.[0] && handleUploadToField(e.target.files[0], "feature", "video_url", index)
+                          e.target.files?.[0] &&
+                          handleUploadToField(
+                            e.target.files[0],
+                            "feature",
+                            "video_url",
+                            index
+                          )
                         }
                         disabled={uploading}
                         className="flex-grow"
                       />
-                      {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {uploading && (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      )}
                     </div>
                     <Input
                       className="mt-2"
                       value={feature.video_url || ""}
-                      onChange={(e) => updateFeature(index, "video_url", e.target.value)}
+                      onChange={(e) =>
+                        updateFeature(index, "video_url", e.target.value)
+                      }
                       placeholder="https://.../your-video.mp4"
                     />
                     {feature.video_url && (
@@ -488,7 +649,8 @@ export default function AdminHomeEditor() {
                       />
                     )}
                     <p className="text-xs text-muted-foreground mt-1">
-                      If both YouTube and MP4 are set, the homepage uses <b>YouTube</b> first.
+                      If both YouTube and MP4 are set, the homepage uses{" "}
+                      <b>YouTube</b> first.
                     </p>
                   </div>
 
@@ -496,7 +658,9 @@ export default function AdminHomeEditor() {
                     <Label>Media Position</Label>
                     <Select
                       value={feature.media_position || "left"}
-                      onValueChange={(value) => updateFeature(index, "media_position", value)}
+                      onValueChange={(value) =>
+                        updateFeature(index, "media_position", value)
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -509,12 +673,61 @@ export default function AdminHomeEditor() {
                   </div>
                 </div>
 
+                {/* Collage images */}
+                <div>
+                  <Label>Collage Images (background, max 5)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) =>
+                        e.target.files &&
+                        handleUploadCollageImages(e.target.files, index)
+                      }
+                      disabled={uploading}
+                      className="flex-grow"
+                    />
+                    {uploading && (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    )}
+                  </div>
+                  {feature.collage_images && feature.collage_images.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {feature.collage_images.map((url, ci) => (
+                        <div key={ci} className="relative">
+                          <img
+                            src={url}
+                            alt={`Collage ${ci + 1}`}
+                            className="w-16 h-16 object-cover rounded"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeCollageImage(index, ci)
+                            }
+                            className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    The first image will be used as the main collage tile,
+                    additional images fill the background grid (up to 5).
+                  </p>
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label>Link URL</Label>
                     <Input
                       value={feature.link_url || ""}
-                      onChange={(e) => updateFeature(index, "link_url", e.target.value)}
+                      onChange={(e) =>
+                        updateFeature(index, "link_url", e.target.value)
+                      }
                       placeholder="/programs"
                     />
                   </div>
@@ -522,7 +735,9 @@ export default function AdminHomeEditor() {
                     <Label>Link Text</Label>
                     <Input
                       value={feature.link_text || ""}
-                      onChange={(e) => updateFeature(index, "link_text", e.target.value)}
+                      onChange={(e) =>
+                        updateFeature(index, "link_text", e.target.value)
+                      }
                       placeholder="Learn More"
                     />
                   </div>
@@ -543,12 +758,16 @@ export default function AdminHomeEditor() {
               </Button>
             </CardTitle>
           </CardHeader>
-        <CardContent className="space-y-4">
+          <CardContent className="space-y-4">
             {content.testimonials_section?.map((testimonial, index) => (
               <div key={index} className="border rounded-lg p-4 space-y-3">
                 <div className="flex justify-between items-center">
                   <h4 className="font-medium">Testimonial {index + 1}</h4>
-                  <Button variant="destructive" size="sm" onClick={() => removeTestimonial(index)}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => removeTestimonial(index)}
+                  >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -558,7 +777,9 @@ export default function AdminHomeEditor() {
                     <Label>Author Name</Label>
                     <Input
                       value={testimonial.author_name}
-                      onChange={(e) => updateTestimonial(index, "author_name", e.target.value)}
+                      onChange={(e) =>
+                        updateTestimonial(index, "author_name", e.target.value)
+                      }
                       placeholder="John Doe"
                     />
                   </div>
@@ -566,7 +787,9 @@ export default function AdminHomeEditor() {
                     <Label>Author Title</Label>
                     <Input
                       value={testimonial.author_title}
-                      onChange={(e) => updateTestimonial(index, "author_title", e.target.value)}
+                      onChange={(e) =>
+                        updateTestimonial(index, "author_title", e.target.value)
+                      }
                       placeholder="University of Toronto Student"
                     />
                   </div>
@@ -580,12 +803,19 @@ export default function AdminHomeEditor() {
                       accept="image/*"
                       onChange={(e) =>
                         e.target.files?.[0] &&
-                        handleUploadToField(e.target.files[0], "testimonial", "author_image_url", index)
+                        handleUploadToField(
+                          e.target.files[0],
+                          "testimonial",
+                          "author_image_url",
+                          index
+                        )
                       }
                       disabled={uploading}
                       className="flex-grow"
                     />
-                    {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {uploading && (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    )}
                   </div>
                   {testimonial.author_image_url && (
                     <img
@@ -600,7 +830,9 @@ export default function AdminHomeEditor() {
                   <Label>Quote</Label>
                   <Textarea
                     value={testimonial.quote}
-                    onChange={(e) => updateTestimonial(index, "quote", e.target.value)}
+                    onChange={(e) =>
+                      updateTestimonial(index, "quote", e.target.value)
+                    }
                     placeholder="GreenPass made my dream come true..."
                     rows={3}
                   />
@@ -610,12 +842,17 @@ export default function AdminHomeEditor() {
                   <Label>Video URL (Optional)</Label>
                   <Input
                     value={testimonial.video_url || ""}
-                    onChange={(e) => updateTestimonial(index, "video_url", e.target.value)}
+                    onChange={(e) =>
+                      updateTestimonial(index, "video_url", e.target.value)
+                    }
                     placeholder="https://www.youtube.com/watch?v=..."
                   />
                   {testimonial.video_url && (
                     <div className="mt-2">
-                      <YouTubeEmbed url={testimonial.video_url} className="w-full h-32 rounded" />
+                      <YouTubeEmbed
+                        url={testimonial.video_url}
+                        className="w-full h-32 rounded"
+                      />
                     </div>
                   )}
                 </div>
@@ -640,7 +877,11 @@ export default function AdminHomeEditor() {
               <div key={index} className="border rounded-lg p-4">
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="font-medium">Statistic {index + 1}</h4>
-                  <Button variant="destructive" size="sm" onClick={() => removeStat(index)}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => removeStat(index)}
+                  >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -649,7 +890,9 @@ export default function AdminHomeEditor() {
                     <Label>Value</Label>
                     <Input
                       value={stat.value}
-                      onChange={(e) => updateStat(index, "value", e.target.value)}
+                      onChange={(e) =>
+                        updateStat(index, "value", e.target.value)
+                      }
                       placeholder="10,000+"
                     />
                   </div>
@@ -657,7 +900,9 @@ export default function AdminHomeEditor() {
                     <Label>Label</Label>
                     <Input
                       value={stat.label}
-                      onChange={(e) => updateStat(index, "label", e.target.value)}
+                      onChange={(e) =>
+                        updateStat(index, "label", e.target.value)
+                      }
                       placeholder="Students Helped"
                     />
                   </div>
@@ -678,7 +923,13 @@ export default function AdminHomeEditor() {
               <Input
                 id="schools_title"
                 value={content.schools_programs_section?.title || ""}
-                onChange={(e) => updateField("schools_programs_section", "title", e.target.value)}
+                onChange={(e) =>
+                  updateField(
+                    "schools_programs_section",
+                    "title",
+                    e.target.value
+                  )
+                }
                 placeholder="Recommended Schools"
               />
             </div>
@@ -687,7 +938,13 @@ export default function AdminHomeEditor() {
               <Textarea
                 id="schools_subtitle"
                 value={content.schools_programs_section?.subtitle || ""}
-                onChange={(e) => updateField("schools_programs_section", "subtitle", e.target.value)}
+                onChange={(e) =>
+                  updateField(
+                    "schools_programs_section",
+                    "subtitle",
+                    e.target.value
+                  )
+                }
                 placeholder="Discover our personally recommended educational institutions selected for their excellence and student success rates"
                 rows={3}
               />
@@ -696,16 +953,26 @@ export default function AdminHomeEditor() {
               <div>
                 <Label>Show Featured Only</Label>
                 <Select
-                  value={content.schools_programs_section?.show_featured_only ? "true" : "false"}
+                  value={
+                    content.schools_programs_section?.show_featured_only
+                      ? "true"
+                      : "false"
+                  }
                   onValueChange={(value) =>
-                    updateField("schools_programs_section", "show_featured_only", value === "true")
+                    updateField(
+                      "schools_programs_section",
+                      "show_featured_only",
+                      value === "true"
+                    )
                   }
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="true">Recommended Schools Only</SelectItem>
+                    <SelectItem value="true">
+                      Recommended Schools Only
+                    </SelectItem>
                     <SelectItem value="false">All Schools</SelectItem>
                   </SelectContent>
                 </Select>
@@ -729,7 +996,9 @@ export default function AdminHomeEditor() {
               </div>
             </div>
             <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-2">Section Configuration</h4>
+              <h4 className="font-semibold text-blue-900 mb-2">
+                Section Configuration
+              </h4>
               <div className="text-sm text-blue-700 space-y-1">
                 <div>• Title and subtitle are fully customizable</div>
                 <div>• Schools now display ratings instead of star icons</div>
@@ -752,7 +1021,9 @@ export default function AdminHomeEditor() {
               <Input
                 id="cta_title"
                 value={content.final_cta_section?.title || ""}
-                onChange={(e) => updateField("final_cta_section", "title", e.target.value)}
+                onChange={(e) =>
+                  updateField("final_cta_section", "title", e.target.value)
+                }
                 placeholder="Ready to start your journey?"
               />
             </div>
@@ -761,7 +1032,9 @@ export default function AdminHomeEditor() {
               <Input
                 id="cta_subtitle"
                 value={content.final_cta_section?.subtitle || ""}
-                onChange={(e) => updateField("final_cta_section", "subtitle", e.target.value)}
+                onChange={(e) =>
+                  updateField("final_cta_section", "subtitle", e.target.value)
+                }
                 placeholder="Join thousands of successful students"
               />
             </div>
@@ -770,7 +1043,13 @@ export default function AdminHomeEditor() {
               <Textarea
                 id="cta_description"
                 value={content.final_cta_section?.description || ""}
-                onChange={(e) => updateField("final_cta_section", "description", e.target.value)}
+                onChange={(e) =>
+                  updateField(
+                    "final_cta_section",
+                    "description",
+                    e.target.value
+                  )
+                }
                 rows={3}
               />
             </div>
@@ -778,15 +1057,31 @@ export default function AdminHomeEditor() {
               <div>
                 <Label>Primary Button Text</Label>
                 <Input
-                  value={content.final_cta_section?.primary_button_text || ""}
-                  onChange={(e) => updateField("final_cta_section", "primary_button_text", e.target.value)}
+                  value={
+                    content.final_cta_section?.primary_button_text || ""
+                  }
+                  onChange={(e) =>
+                    updateField(
+                      "final_cta_section",
+                      "primary_button_text",
+                      e.target.value
+                    )
+                  }
                 />
               </div>
               <div>
                 <Label>Primary Button URL</Label>
                 <Input
-                  value={content.final_cta_section?.primary_button_url || ""}
-                  onChange={(e) => updateField("final_cta_section", "primary_button_url", e.target.value)}
+                  value={
+                    content.final_cta_section?.primary_button_url || ""
+                  }
+                  onChange={(e) =>
+                    updateField(
+                      "final_cta_section",
+                      "primary_button_url",
+                      e.target.value
+                    )
+                  }
                 />
               </div>
             </div>
@@ -794,18 +1089,30 @@ export default function AdminHomeEditor() {
               <div>
                 <Label>Secondary Button Text</Label>
                 <Input
-                  value={content.final_cta_section?.secondary_button_text || ""}
+                  value={
+                    content.final_cta_section?.secondary_button_text || ""
+                  }
                   onChange={(e) =>
-                    updateField("final_cta_section", "secondary_button_text", e.target.value)
+                    updateField(
+                      "final_cta_section",
+                      "secondary_button_text",
+                      e.target.value
+                    )
                   }
                 />
               </div>
               <div>
                 <Label>Secondary Button URL</Label>
                 <Input
-                  value={content.final_cta_section?.secondary_button_url || ""}
+                  value={
+                    content.final_cta_section?.secondary_button_url || ""
+                  }
                   onChange={(e) =>
-                    updateField("final_cta_section", "secondary_button_url", e.target.value)
+                    updateField(
+                      "final_cta_section",
+                      "secondary_button_url",
+                      e.target.value
+                    )
                   }
                 />
               </div>

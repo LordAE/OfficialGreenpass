@@ -927,51 +927,159 @@ function Stats({ stats }) {
 /* =========================
    Features
 ========================= */
+/* ---------- Feature collage media ---------- */
+const FEATURE_COLLAGE_DEFAULT = [
+  "https://images.pexels.com/photos/1184580/pexels-photo-1184580.jpeg?auto=compress&cs=tinysrgb&w=1200&h=800&fit=crop",
+  "https://images.pexels.com/photos/819753/pexels-photo-819753.jpeg?auto=compress&cs=tinysrgb&w=1200&h=800&fit=crop",
+  "https://images.pexels.com/photos/256541/pexels-photo-256541.jpeg?auto=compress&cs=tinysrgb&w=1200&h=800&fit=crop",
+  "https://images.pexels.com/photos/207691/pexels-photo-207691.jpeg?auto=compress&cs=tinysrgb&w=1200&h=800&fit=crop",
+];
+
+function FeatureMedia({ feature }) {
+  const collage =
+    Array.isArray(feature.collage_images) && feature.collage_images.length
+      ? feature.collage_images
+      : FEATURE_COLLAGE_DEFAULT;
+
+  const hasYouTube = !!feature.youtube_url;
+  const hasVideo = !!feature.video_url;
+  const hasImage = !!feature.image_url;
+
+  // Only show collage when foreground is an IMAGE (no video / YouTube)
+  const showCollage = hasImage && !hasYouTube && !hasVideo && collage && collage.length > 0;
+
+  // Positions for overlapping photos
+  const frames = [
+    { top: "-8%", left: "-6%", width: "55%", height: "55%", transform: "rotate(-9deg)" },
+    { top: "0%", right: "-8%", width: "52%", height: "52%", transform: "rotate(8deg)" },
+    { bottom: "-10%", left: "-4%", width: "60%", height: "58%", transform: "rotate(6deg)" },
+    { bottom: "-6%", right: "-10%", width: "58%", height: "56%", transform: "rotate(-7deg)" },
+    { top: "18%", left: "12%", width: "42%", height: "50%", transform: "rotate(3deg)" },
+    { top: "18%", right: "14%", width: "44%", height: "48%", transform: "rotate(-3deg)" },
+    { bottom: "14%", left: "18%", width: "40%", height: "46%", transform: "rotate(-2deg)" },
+    { bottom: "18%", right: "18%", width: "42%", height: "44%", transform: "rotate(2deg)" },
+  ];
+
+  return (
+    <div
+      className={`relative ${
+        feature.media_position === "right" ? "lg:order-2" : "lg:order-1"
+      }`}
+    >
+      <div className="relative w-full max-w-xl mx-auto min-h-[280px] sm:min-h-[320px]">
+        {/* Collage background – only when main media is an image */}
+        {showCollage && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-0">
+            <div className="relative w-[120%] h-[120%]">
+              {collage.slice(0, 8).map((url, idx) => {
+                const frame = frames[idx % frames.length];
+                return (
+                  <div
+                    key={idx}
+                    className="absolute rounded-[28px] shadow-2xl bg-white border-[7px] border-white"
+                    style={frame}
+                  >
+                    <div className="w-full h-full rounded-2xl overflow-hidden">
+                      <img
+                        src={url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Foreground “main media” card */}
+        <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900 text-white">
+          <div className="w-full aspect-[16/9] sm:aspect-[4/3] md:aspect-[16/9] bg-black">
+            {hasYouTube ? (
+              <YouTubeEmbed url={feature.youtube_url} className="w-full h-full rounded-none" />
+            ) : hasVideo ? (
+              <video
+                className="w-full h-full object-cover"
+                src={feature.video_url}
+                controls
+                playsInline
+                preload="metadata"
+              />
+            ) : hasImage ? (
+              <img
+                src={feature.image_url}
+                alt={feature.title}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs sm:text-sm text-slate-200 px-4 text-center">
+                Upload an image or video in the Home Page editor to show it here.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Features
+========================= */
 const Features = ({ features }) => {
   const defaultFeatures = [
     {
       icon: "School",
       title: "Discover Top Schools",
-      description: "Explore thousands of programs from top institutions worldwide. Our smart filters help you find the perfect match for your academic and career goals.",
-      image_url: "",
+      description:
+        "Explore thousands of programs from top institutions worldwide. Our smart filters help you find the perfect match for your academic and career goals.",
+      image_url: "https://images.pexels.com/photos/1184580/pexels-photo-1184580.jpeg?auto=compress&cs=tinysrgb&w=1200&h=800&fit=crop",
       video_url: "",
-      link_url: createPageUrl('Schools'),
+      link_url: createPageUrl("Schools"),
       link_text: "Explore Schools",
-      media_position: 'right'
+      media_position: "right",
     },
     {
       icon: "Users",
       title: "Expert Agent Guidance",
-      description: "Connect with verified education agents who can guide you through every step, from school selection to visa paperwork.",
+      description:
+        "Connect with verified education agents who can guide you through every step, from school selection to visa paperwork.",
       youtube_url: "",
       video_url: "",
-      link_url: createPageUrl('FindAgent'),
+      link_url: createPageUrl("FindAgent"),
       link_text: "Find an Agent",
-      media_position: 'left'
+      media_position: "left",
     },
     {
       icon: "GraduationCap",
       title: "Recommended For You: University of Toronto",
-      description: "A world-renowned university in a vibrant, multicultural city.",
+      description:
+        "A world-renowned university in a vibrant, multicultural city.",
       image_url: "",
       video_url: "",
-      link_url: createPageUrl('SchoolDetails?id=university-of-toronto'),
+      link_url: createPageUrl("SchoolDetails?id=university-of-toronto"),
       link_text: "View University",
-      media_position: 'right',
+      media_position: "right",
       school_rating: 4.8,
-      show_rating: true
-    }
+      show_rating: true,
+    },
   ];
 
-  const featuresToDisplay = (features && features.length > 0) ? features : defaultFeatures;
+  const featuresToDisplay =
+    features && features.length > 0 ? features : defaultFeatures;
 
   return (
     <div className="py-20 sm:py-28 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16 sm:mb-20 space-y-4">
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Everything You Need for Your Study Abroad Journey</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
+            Everything You Need for Your Study Abroad Journey
+          </h2>
           <p className="text-lg sm:text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
-            From finding the perfect program to landing in your new country, we've got every step covered.
+            From finding the perfect program to landing in your new country,
+            we've got every step covered.
           </p>
         </div>
 
@@ -983,11 +1091,22 @@ const Features = ({ features }) => {
               delay={0.1}
               variants={{
                 hidden: { opacity: 0, y: 50 },
-                visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
+                visible: {
+                  opacity: 1,
+                  y: 0,
+                  transition: { duration: 0.6 },
+                },
               }}
               className="grid lg:grid-cols-2 gap-10 sm:gap-16 items-center"
             >
-              <div className={`space-y-6 text-center lg:text-left ${feature.media_position === 'right' ? 'lg:order-1' : 'lg:order-2'}`}>
+              {/* Text side */}
+              <div
+                className={`space-y-6 text-center lg:text-left ${
+                  feature.media_position === "right"
+                    ? "lg:order-1"
+                    : "lg:order-2"
+                }`}
+              >
                 {feature.show_rating ? (
                   <div className="inline-flex items-center justify-center bg-green-100 rounded-xl p-3">
                     <div className="flex items-center gap-2">
@@ -995,8 +1114,12 @@ const Features = ({ features }) => {
                         {[...Array(5)].map((_, i) => (
                           <Star
                             key={i}
-                            className={`w-5 h-5 ${i < Math.floor((feature.school_rating || 4.5))
-                              ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
+                            className={`w-5 h-5 ${
+                              i <
+                              Math.floor(feature.school_rating || 4.5)
+                                ? "text-yellow-400 fill-yellow-400"
+                                : "text-gray-300"
+                            }`}
                           />
                         ))}
                       </div>
@@ -1007,12 +1130,18 @@ const Features = ({ features }) => {
                   </div>
                 ) : (
                   <div className="inline-flex items-center justify-center bg-green-100 rounded-xl p-3">
-                    <IconResolver name={feature.icon} className="h-7 w-7 text-green-700" />
+                    <IconResolver
+                      name={feature.icon}
+                      className="h-7 w-7 text-green-700"
+                    />
                   </div>
                 )}
 
                 <h3 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-                  <Link to={feature.link_url || '#'} className="hover:text-green-700 transition-colors duration-200">
+                  <Link
+                    to={feature.link_url || "#"}
+                    className="hover:text-green-700 transition-colors duration-200"
+                  >
                     {feature.title}
                   </Link>
                 </h3>
@@ -1023,7 +1152,10 @@ const Features = ({ features }) => {
 
                 {feature.link_url && feature.link_text && (
                   <Link to={feature.link_url}>
-                    <Button size="lg" className="mt-4 bg-green-600 hover:bg-green-700 text-white shadow-md">
+                    <Button
+                      size="lg"
+                      className="mt-4 bg-green-600 hover:bg-green-700 text-white shadow-md"
+                    >
                       {feature.link_text}
                       <ArrowRight className="ml-2 w-5 h-5" />
                     </Button>
@@ -1031,27 +1163,8 @@ const Features = ({ features }) => {
                 )}
               </div>
 
-              <div className={`relative ${feature.media_position === 'right' ? 'lg:order-2' : 'lg:order-1'}`}>
-                <div className="bg-white p-2 rounded-2xl shadow-2xl border border-gray-100">
-                  {feature.youtube_url ? (
-                    <YouTubeEmbed url={feature.youtube_url} className="w-full h-56 sm:h-80 rounded-xl overflow-hidden" />
-                  ) : feature.video_url ? (
-                    <video
-                      className="w-full h-56 sm:h-80 rounded-xl"
-                      src={feature.video_url}
-                      controls
-                      playsInline
-                      preload="metadata"
-                    />
-                  ) : feature.image_url ? (
-                    <img src={feature.image_url} alt={feature.title} className="w-full h-auto object-cover rounded-xl" />
-                  ) : (
-                    <div className="w-full h-56 sm:h-80 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex items-center justify-center">
-                      <IconResolver name={feature.icon} className="h-16 w-16 text-slate-400" />
-                    </div>
-                  )}
-                </div>
-              </div>
+              {/* Media side with collage background */}
+              <FeatureMedia feature={feature} />
             </ReplayOnScroll>
           ))}
         </div>
@@ -1059,6 +1172,7 @@ const Features = ({ features }) => {
     </div>
   );
 };
+
 
 /* =========================
    Schools

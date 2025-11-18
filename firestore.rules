@@ -53,6 +53,13 @@ service cloud.firestore {
       );
     }
 
+    // NEW: student whose assigned_agent_id points at this agent's user_id
+    function isStudentOfAgent(resource) {
+      return signedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assigned_agent_id == resource.data.user_id;
+    }
+
     function canAccessReservation(resource) {
       return signedIn() && (
         resource.data.student_id == request.auth.uid ||
@@ -687,16 +694,41 @@ service cloud.firestore {
       allow read, update, delete: if isOwner(resource);
     }
 
+    // UPDATED: agents – allow student whose assigned_agent_id matches
     match /agents/{docId} {
-      allow read: if publiclyListable(resource) || isOwner(resource) || isAdmin();
+      // READ:
+      // - public / verified agents
+      // - the agent themself (owner)
+      // - the student whose assigned_agent_id == this agent's user_id
+      // - admin
+      allow read: if
+        publiclyListable(resource) ||
+        isOwner(resource) ||
+        isStudentOfAgent(resource) ||
+        isAdmin();
+
+      // CREATE: only the owner (agent user_id == auth uid)
       allow create: if ownerCreating();
+
+      // UPDATE/DELETE: agent (owner) or admin
       allow update, delete: if isAdmin() || isOwner(resource);
     }
 
+    // UPDATED: agent_messages – tie to from_user_id / to_user_id
     match /agent_messages/{docId} {
-      allow create: if signedIn();
-      allow read: if signedIn();
-      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      // Only the authenticated sender can create a message
+      allow create: if signedIn() &&
+                    request.resource.data.from_user_id == request.auth.uid;
+
+      // Sender, receiver or admin can read
+      allow read: if signedIn() && (
+        resource.data.from_user_id == request.auth.uid ||
+        resource.data.to_user_id == request.auth.uid ||
+        isAdmin()
+      );
+
+      // No updates/deletes for now
+      allow update, delete: if false;
     }
 
     match /bank_accounts/{docId} {

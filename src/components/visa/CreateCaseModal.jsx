@@ -1,4 +1,4 @@
-
+// src/pages/CreateCaseModal.jsx (or wherever this lives)
 import React, { useState, useEffect } from 'react';
 import {
   Dialog,
@@ -16,6 +16,9 @@ import { School } from '@/api/entities';
 import { User } from '@/api/entities';
 import { VisaPackage } from '@/api/entities';
 import { CheckCircle, FileText, Package } from 'lucide-react';
+
+// NEW: for created_date timestamp
+import { serverTimestamp } from 'firebase/firestore';
 
 export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
   const [formData, setFormData] = useState({
@@ -54,7 +57,7 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
   const getCaseTypeFromPackage = (packageName) => {
     const mapping = {
       "Student Visa Package": "Study Permit",
-      "Work Visa Package": "Work Permit", 
+      "Work Visa Package": "Work Permit",
       "PR Pathway Visa Package": "PR Pathway",
       "Family Sponsorship": "Family Sponsorship",
       "Tourist Visa Package": "Tourist Visa"
@@ -67,7 +70,7 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
     try {
       const currentUser = await User.me();
       const selectedPackage = packages.find(p => p.id === formData.package_id);
-      
+
       if (!selectedPackage) {
         alert('Please select a visa package');
         setLoading(false);
@@ -75,7 +78,7 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
       }
 
       const caseType = getCaseTypeFromPackage(selectedPackage.name);
-      
+
       // Initialize checklist from package requirements
       const checklist = selectedPackage.doc_requirements?.map(req => ({
         task: req.optional ? `${req.label} (Optional)` : req.label,
@@ -83,33 +86,46 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
         document_url: ""
       })) || [];
 
+      // Prefer assigned_agent_id, fall back to referred_by_agent_id
+      const agentId =
+        currentUser.assigned_agent_id ||
+        currentUser.referred_by_agent_id ||
+        null;
+
       const newCaseData = {
         student_id: currentUser.id,
         package_id: formData.package_id,
-        school_id: formData.school_id || null, // Ensure null if not provided
-        program_id: formData.program_id || null, // Ensure null if not provided
+        school_id: formData.school_id || null,
+        program_id: formData.program_id || null,
+        target_country: formData.target_country || null,
+
         case_type: caseType,
         status: "Application Started",
+
+        // created_date used by MyAgent query + card
+        created_date: serverTimestamp(),
+
         // Snapshot requirements and tips at case creation
         case_requirements: selectedPackage.doc_requirements || [],
         case_upload_tips: selectedPackage.upload_tips || [],
         checklist: checklist,
-        timeline: [{
-          event: "Application case created",
-          date: new Date().toISOString(),
-          actor: currentUser.full_name
-        }]
+        timeline: [
+          {
+            event: "Application case created",
+            date: new Date().toISOString(),
+            actor: currentUser.full_name || currentUser.email || currentUser.id
+          }
+        ]
       };
 
-      // Check if user has an agent
-      if (currentUser.referred_by_agent_id) {
-        newCaseData.agent_id = currentUser.referred_by_agent_id;
+      if (agentId) {
+        newCaseData.agent_id = agentId;
       }
 
       const newCase = await Case.create(newCaseData);
       onCaseCreated(newCase);
       setCreated(true);
-      
+
     } catch (error) {
       console.error("Failed to create case:", error);
       alert("Error creating case. Please try again.");
@@ -143,11 +159,14 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
                 Select a visa package and provide basic information to begin your application.
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-6 py-4">
               <div>
                 <Label htmlFor="package_id">Visa Package *</Label>
-                <Select value={formData.package_id} onValueChange={(v) => handleInputChange('package_id', v)}>
+                <Select
+                  value={formData.package_id}
+                  onValueChange={(v) => handleInputChange('package_id', v)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select visa package" />
                   </SelectTrigger>
@@ -163,7 +182,9 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
                   </SelectContent>
                 </Select>
                 {selectedPackage && (
-                  <p className="text-sm text-gray-600 mt-1">{selectedPackage.description}</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {selectedPackage.description}
+                  </p>
                 )}
               </div>
 
@@ -171,7 +192,10 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
                 <>
                   <div>
                     <Label htmlFor="school_id">Target School</Label>
-                    <Select value={formData.school_id} onValueChange={(v) => handleInputChange('school_id', v)}>
+                    <Select
+                      value={formData.school_id}
+                      onValueChange={(v) => handleInputChange('school_id', v)}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a school" />
                       </SelectTrigger>
@@ -198,7 +222,10 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
 
               <div>
                 <Label htmlFor="target_country">Target Country</Label>
-                <Select value={formData.target_country} onValueChange={(v) => handleInputChange('target_country', v)}>
+                <Select
+                  value={formData.target_country}
+                  onValueChange={(v) => handleInputChange('target_country', v)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select target country" />
                   </SelectTrigger>
@@ -213,7 +240,7 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
               </div>
             </div>
 
-            <Button 
+            <Button
               onClick={handleSubmit}
               disabled={!formData.package_id || !formData.target_country || loading}
               className="w-full bg-gradient-to-r from-emerald-600 to-blue-600 text-white"
@@ -226,7 +253,8 @@ export default function CreateCaseModal({ open, onOpenChange, onCaseCreated }) {
             <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">Application Created!</h2>
             <p className="text-gray-600 mb-6">
-              Your {getCaseTypeFromPackage(selectedPackage?.name)} application has been created. You can now upload documents and track progress.
+              Your {getCaseTypeFromPackage(selectedPackage?.name)} application has been created.
+              You can now upload documents and track progress.
             </p>
             <Button onClick={closeAndReset} className="w-full">
               View My Applications

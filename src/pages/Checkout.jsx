@@ -368,6 +368,12 @@ export default function Checkout() {
       const u = userDoc || {};
       const updates = {};
 
+      // 👇 NEW: derive agent for visa cases
+      const agentId =
+        u.assigned_agent_id ||
+        u.referred_by_agent_id ||
+        null;
+
       switch (pkg.type) {
         case "visa": {
           const purchased = Array.isArray(u.purchased_packages)
@@ -378,6 +384,7 @@ export default function Checkout() {
 
           await addDoc(collection(db, "cases"), {
             student_id: userRef.id,
+            agent_id: agentId, // 👈 NEW FIELD
             case_type: pkg.name,
             package_id: pkg.id,
             status: "Application Started",
