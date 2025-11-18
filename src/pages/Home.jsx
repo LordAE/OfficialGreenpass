@@ -142,7 +142,7 @@ const sanitizeHomeContent = (loaded = {}) => {
       image_url: '',
       video_url: '',
       background_video_url:
-        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Ffeatures%2F2%2F1762958415881-gp-hero-2.mp4?alt=media&token=9bd70db8-d77c-453d-9f55-3c31912d4bd6',
+        'https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2FGPintro.mp4?alt=media&token=bbcde9d6-a628-429f-9cff-8cad12933cba',
       poster_url: '',
       fit_mode: 'contain' // show whole video by default
     },
