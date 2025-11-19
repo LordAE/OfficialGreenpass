@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Terminal } from "lucide-react";
@@ -15,10 +21,10 @@ import { createPageUrl } from "@/utils";
  */
 export default function ReserveSeatModal(props) {
   const {
-    open,                   // preferred (current)
-    onOpenChange,           // preferred (current)
-    isOpen: isOpenProp,     // legacy
-    onClose,                // legacy
+    open,          // preferred (current)
+    onOpenChange,  // preferred (current)
+    isOpen: isOpenProp, // legacy
+    onClose,       // legacy
     program,
     school,
   } = props;
@@ -37,7 +43,10 @@ export default function ReserveSeatModal(props) {
   const [loading, setLoading] = useState(false);
 
   const depositAmount = 50;
-  const formatUSD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+  const formatUSD = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
 
   // Load/clear when modal opens/closes
   useEffect(() => {
@@ -70,13 +79,21 @@ export default function ReserveSeatModal(props) {
         student_id: currentUser.id,
         program_id: program.id || program.programId || program.program_id,
         program_name:
-          program.programTitle || program.program_title || program.title || "Program",
+          program.programTitle ||
+          program.program_title ||
+          program.title ||
+          "Program",
         school_name:
-          school?.name || program.schoolName || program.institution_name || "School",
+          school?.name ||
+          program.schoolName ||
+          program.institution_name ||
+          "School",
         amount_usd: depositAmount,
         status: "pending_payment",
         // Client-side preview; ideally server computes expiry
-        hold_expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+        hold_expires_at: new Date(
+          Date.now() + 72 * 60 * 60 * 1000
+        ).toISOString(),
       };
       const newReservation = await Reservation.create(reservationData);
       setCreatedReservation(newReservation);
@@ -99,7 +116,9 @@ export default function ReserveSeatModal(props) {
       qp.push(`reservationId=${encodeURIComponent(createdReservation.id)}`);
     }
     const qs = qp.length ? `?${qp.join("&")}` : "";
-    window.location.href = createPageUrl(`ReservationStatus${qs}`);
+
+    // 🔑 Only the page name goes through createPageUrl, so the doc id is not lower/upper-cased
+    window.location.href = createPageUrl("ReservationStatus") + qs;
   };
 
   return (
@@ -110,11 +129,16 @@ export default function ReserveSeatModal(props) {
           <DialogDescription>
             Secure a seat for{" "}
             <span className="font-semibold">
-              {program?.programTitle || program?.program_title || program?.title}
+              {program?.programTitle ||
+                program?.program_title ||
+                program?.title}
             </span>{" "}
             at{" "}
             <span className="font-semibold">
-              {school?.name || program?.schoolName || program?.institution_name || "School"}
+              {school?.name ||
+                program?.schoolName ||
+                program?.institution_name ||
+                "School"}
             </span>
             .
           </DialogDescription>
@@ -130,13 +154,15 @@ export default function ReserveSeatModal(props) {
         {!paymentStep && (
           <div className="space-y-4">
             <div className="rounded-lg border p-4">
-              <div className="text-sm text-muted-foreground mb-1">Deposit Amount</div>
+              <div className="text-sm text-muted-foreground mb-1">
+                Deposit Amount
+              </div>
               <div className="text-2xl font-bold text-green-600">
                 {formatUSD.format(depositAmount)}
               </div>
               <div className="text-xs text-muted-foreground mt-2">
-                This deposit holds your seat for 72 hours while we confirm details. It is credited
-                towards your package.
+                This deposit holds your seat for 72 hours while we confirm
+                details. It is credited towards your package.
               </div>
             </div>
 
@@ -144,16 +170,24 @@ export default function ReserveSeatModal(props) {
               <div className="text-sm text-muted-foreground">
                 Program:{" "}
                 <span className="font-medium text-foreground">
-                  {program?.programTitle || program?.program_title || program?.title}
+                  {program?.programTitle ||
+                    program?.program_title ||
+                    program?.title}
                 </span>
                 <br />
                 School:{" "}
                 <span className="font-medium text-foreground">
-                  {school?.name || program?.schoolName || program?.institution_name || "School"}
+                  {school?.name ||
+                    program?.schoolName ||
+                    program?.institution_name ||
+                    "School"}
                 </span>
               </div>
 
-              <Button onClick={handleReserve} disabled={loading || !currentUser || !program}>
+              <Button
+                onClick={handleReserve}
+                disabled={loading || !currentUser || !program}
+              >
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reserving…
@@ -179,28 +213,78 @@ export default function ReserveSeatModal(props) {
         {paymentStep && createdReservation && (
           <div className="space-y-4">
             <div className="rounded-lg border p-4">
-              <div className="text-sm text-muted-foreground mb-1">Reservation Created</div>
+              <div className="text-sm text-muted-foreground mb-1">
+                Reservation Created
+              </div>
               <div className="text-sm">
                 Please complete the payment to confirm your seat for{" "}
                 <span className="font-medium">
-                  {program?.programTitle || program?.program_title || program?.title}
+                  {program?.programTitle ||
+                    program?.program_title ||
+                    program?.title}
                 </span>
                 .
               </div>
             </div>
 
+            {/* SharedPaymentGateway wired with correct props */}
             <SharedPaymentGateway
               amountUSD={depositAmount}
-              relatedEntityId={createdReservation.id}
-              relatedEntityType="reservation"
-              onPaymentSuccess={handlePaymentSuccess}
-              paymentReference={`Seat reservation for ${
-                program?.programTitle || program?.program_title || "Program"
+              itemDescription={`Seat reservation for ${
+                program?.programTitle ||
+                program?.program_title ||
+                program?.title ||
+                "Program"
+              } at ${
+                school?.name ||
+                program?.schoolName ||
+                program?.institution_name ||
+                "School"
               }`}
+              payerName={
+                currentUser?.full_name ||
+                currentUser?.displayName ||
+                currentUser?.name ||
+                currentUser?.email ||
+                "Student"
+              }
+              payerEmail={currentUser?.email || ""}
+              onProcessing={() => setLoading(true)}
+              onDoneProcessing={() => setLoading(false)}
+              onError={(err) => {
+                console.error("[ReserveSeatModal] payment error:", err);
+                setError(
+                  "Payment failed or was cancelled. Please try again or use a different method."
+                );
+              }}
+              onCardPaymentSuccess={async (
+                _provider,
+                _transactionId,
+                _extra
+              ) => {
+                // OPTIONAL: mark as paid in Firestore
+                try {
+                  if (createdReservation?.id) {
+                    await Reservation.update(createdReservation.id, {
+                      status: "paid",
+                      paid_at: new Date().toISOString(),
+                    });
+                  }
+                } catch (e) {
+                  console.error(
+                    "[ReserveSeatModal] failed to update reservation as paid:",
+                    e
+                  );
+                }
+
+                // Redirect to Reservation Status page
+                handlePaymentSuccess();
+              }}
             />
 
             <div className="text-xs text-muted-foreground">
-              After payment, you’ll be redirected to your Reservation Status page.
+              After payment, you’ll be redirected to your Reservation Status
+              page.
             </div>
           </div>
         )}

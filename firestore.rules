@@ -681,6 +681,26 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || isOwner(resource);
     }
 
+    // ---------- Tutoring sessions ----------
+    // PascalCase collection
+    match /TutoringSession/{docId} {
+      // Create: tutor or student involved in the session (or admin)
+      allow create: if signedIn() && canWriteSession(request.resource);
+
+      // Read: only admin, the tutor, or the student
+      allow read: if signedIn() && canReadSession(resource);
+
+      // Update/Delete: admin, tutor, or student
+      allow update, delete: if signedIn() && canWriteSession(resource);
+    }
+
+    // lowercase alias
+    match /tutoring_sessions/{docId} {
+      allow create: if signedIn() && canWriteSession(request.resource);
+      allow read: if signedIn() && canReadSession(resource);
+      allow update, delete: if signedIn() && canWriteSession(resource);
+    }
+
     match /wallets/{docId} {
       allow create: if ownerCreating();
       allow read, update, delete: if isOwner(resource);
