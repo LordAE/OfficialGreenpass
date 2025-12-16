@@ -1047,7 +1047,7 @@ const Features = ({ features }) => {
       description:
         "Connect with verified education agents who can guide you through every step, from school selection to visa paperwork.",
       youtube_url: "",
-      video_url: "",
+      video_url: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Ffeatures%2F7321283997035.mp4?alt=media&token=443fea42-59fa-4fb4-8c4c-1089927f8695",
       link_url: createPageUrl("FindAgent"),
       link_text: "Find an Agent",
       media_position: "left",
@@ -1058,7 +1058,7 @@ const Features = ({ features }) => {
       description:
         "A world-renowned university in a vibrant, multicultural city.",
       image_url: "",
-      video_url: "",
+      video_url: "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/home%2Ffeatures%2FThis%20is%20U%20of%20T.%20-%20University%20of%20Toronto%20(720p%2C%20h264).mp4?alt=media&token=3bbeb128-4945-466f-aba5-70c0c7d4c98c",
       link_url: createPageUrl("SchoolDetails?id=university-of-toronto"),
       link_text: "View University",
       media_position: "right",
