@@ -1,5 +1,5 @@
 // src/pages/Onboarding.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,9 @@ import {
   Check,
   ArrowLeft,
   LogOut,
-  BadgeCheck
+  BadgeCheck,
+  CreditCard,
+  ShieldCheck
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -35,9 +37,10 @@ const STEPS = {
   CHOOSE_ROLE: 'choose_role',
   BASIC_INFO: 'basic_info',
   ROLE_SPECIFIC: 'role_specific',
+  SUBSCRIPTION: 'subscription',
   COMPLETE: 'complete'
 };
-const STEP_ORDER = [STEPS.CHOOSE_ROLE, STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.COMPLETE];
+const STEP_ORDER = [STEPS.CHOOSE_ROLE, STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.SUBSCRIPTION, STEPS.COMPLETE];
 
 const ROLE_OPTIONS = [
   { type: 'user',   title: 'Student', subtitle: 'I want to study abroad',
@@ -82,46 +85,64 @@ function buildUserDefaults({ email, full_name = '' }) {
     profile_picture: '',
     is_verified: false,
     onboarding_completed: false,
-    onboarding_step: 'choose_role',
+    onboarding_step: STEPS.CHOOSE_ROLE,
     selected_role: 'user',
-    kyc_document_id: '',
-    kyc_document_url: '',
-    assigned_agent_id: '',
-    referred_by_agent_id: '',
-    purchased_packages: [],
-    purchased_tutor_packages: [],
-    session_credits: 0,
-    schoolId: '',
-    programId: '',
-    enrollment_date: null,
-    agent_reassignment_request: { requested_at: null, reason: '', new_agent_id: '', status: 'pending' },
-    settings: {
-      language: 'en',
-      timezone: 'Asia/Ho_Chi_Minh',
-      currency: 'USD',
-      notification_preferences: {
-        email_notifications: true,
-        sms_notifications: false,
-        application_updates: true,
-        marketing_emails: false,
-        session_reminders: true,
-      },
-    },
-    package_assignment: { package_id: '', assigned_at: null, expires_at: null },
-    is_guest_created: false,
+
+    // subscription fields
+    subscription_active: false,
+    subscription_status: 'none', // none | skipped | active
+    subscription_provider: 'paypal',
+    subscription_plan: '',
+    subscription_amount: 0,
+    subscription_currency: 'USD',
+
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
   };
 }
 
 const VALID_ROLES = ['user', 'agent', 'tutor', 'school', 'vendor'];
-const LOCKABLE_ROLES = ['agent', 'tutor', 'school', 'vendor']; // lock vendor too
 const DEFAULT_ROLE = 'user';
 
 const normalizeRole = (r) => {
   const v = (r || '').toString().trim().toLowerCase();
   return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
 };
+
+// 🔐 Subscription prices (USD/year)
+// (Student: “Free now → $19/year” – we still offer pay-now + skip)
+const SUBSCRIPTION_PRICING = {
+  user:  { label: 'Student', amount: 19, currency: 'USD' },
+  tutor: { label: 'Tutor', amount: 29, currency: 'USD' },
+  agent: { label: 'Agent', amount: 29, currency: 'USD' },
+  school:{ label: 'School', amount: 299, currency: 'USD' },
+  vendor:{ label: 'Vendor', amount: 29, currency: 'USD' }, // adjust if you want
+};
+
+function loadPayPalScript({ clientId, currency = 'USD' }) {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') return reject(new Error('No window'));
+    if (window.paypal) return resolve(true);
+
+    const existing = document.querySelector('script[data-paypal-sdk="true"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(true));
+      existing.addEventListener('error', reject);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=${encodeURIComponent(currency)}&intent=capture&components=buttons`;
+    script.async = true;
+    script.defer = true;
+    script.dataset.paypalSdk = 'true';
+    script.setAttribute('data-paypal-sdk', 'true');
+
+    script.onload = () => resolve(true);
+    script.onerror = (e) => reject(e);
+    document.body.appendChild(script);
+  });
+}
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -133,17 +154,34 @@ export default function Onboarding() {
     return normalizeRole(raw);
   }, [params]);
 
+  // 🔒 Explicit lock flag from Schools flow (recommended)
+  const urlLock = useMemo(() => {
+    const v = (params.get('lock') || params.get('locked') || '').toString();
+    return v === '1' || v.toLowerCase() === 'true';
+  }, [params]);
+
   const sessionRole = useMemo(
     () => normalizeRole(typeof window !== 'undefined' ? sessionStorage.getItem('onboarding_role') : null),
     []
   );
 
-  const roleHintFromEntry = useMemo(
-    () => (urlRole !== DEFAULT_ROLE ? urlRole : (sessionRole !== DEFAULT_ROLE ? sessionRole : DEFAULT_ROLE)),
-    [urlRole, sessionRole]
-  );
+  const sessionLock = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('onboarding_role_locked') === '1';
+  }, []);
 
-  const roleLockedFromEntry = useMemo(() => LOCKABLE_ROLES.includes(roleHintFromEntry), [roleHintFromEntry]);
+  // If lock is true, role is locked EVEN for student/user (fix requested)
+  const roleHintFromEntry = useMemo(() => {
+    // if URL role exists, prefer it
+    if (urlRole) return urlRole;
+    if (sessionRole) return sessionRole;
+    return DEFAULT_ROLE;
+  }, [urlRole, sessionRole]);
+
+  const roleLockedFromEntry = useMemo(() => {
+    // Only lock if this came from role-select flow (lock flag), not normal Welcome signup
+    return Boolean(urlLock || sessionLock);
+  }, [urlLock, sessionLock]);
 
   const [currentStep, setCurrentStep] = useState(STEPS.CHOOSE_ROLE);
   const [selectedRole, setSelectedRole] = useState(null);
@@ -154,14 +192,24 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // PayPal state
+  const paypalContainerRef = useRef(null);
+  const [paypalReady, setPaypalReady] = useState(false);
+  const [paypalError, setPaypalError] = useState('');
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+
+  const PAYPAL_CLIENT_ID = (import.meta?.env?.VITE_PAYPAL_CLIENT_ID || '').trim();
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
         navigate(createPageUrl('Welcome'), { replace: true });
         return;
       }
+
       const ref = doc(db, 'users', fbUser.uid);
       const snap = await getDoc(ref);
+
       if (!snap.exists()) {
         await setDoc(ref, buildUserDefaults({
           email: fbUser.email || '',
@@ -173,13 +221,16 @@ export default function Onboarding() {
       const data = finalSnap.data() || {};
       setProfile(data);
 
-      // Resolve effective role: URL/session > profile.selected_role > profile.user_type > user
       const roleFromProfile = normalizeRole(data.selected_role || data.user_type || DEFAULT_ROLE);
-      const effectiveRole = roleHintFromEntry !== DEFAULT_ROLE ? roleHintFromEntry : roleFromProfile;
 
-      // If we arrived with a lockable role and user hasn't progressed, lock role & skip choose step
+      // If role was locked from entry, force it; otherwise allow profile role
+      const effectiveRole = roleLockedFromEntry ? normalizeRole(roleHintFromEntry) : roleFromProfile;
+
+      // Determine next step
       let nextStep = data.onboarding_completed ? STEPS.COMPLETE : (data.onboarding_step || STEPS.CHOOSE_ROLE);
-      if (roleLockedFromEntry && (nextStep === STEPS.CHOOSE_ROLE)) {
+
+      // ✅ If locked role AND we are still on role choosing step, skip role picking
+      if (roleLockedFromEntry && nextStep === STEPS.CHOOSE_ROLE) {
         nextStep = STEPS.BASIC_INFO;
         await updateDoc(ref, {
           selected_role: effectiveRole,
@@ -191,30 +242,43 @@ export default function Onboarding() {
       setSelectedRole(effectiveRole);
       setCurrentStep(nextStep);
 
-      // Pre-fill form data from profile
       setFormData({
         full_name: data.full_name || fbUser.displayName || '',
         phone: data.phone || '',
         country: data.country || '',
         email: data.email || fbUser.email || '',
+
         company_name: data.agent_profile?.company_name || '',
         business_license_mst: data.agent_profile?.business_license_mst || '',
         year_established: data.agent_profile?.year_established || '',
-        paypal_email: data.agent_profile?.paypal_email || data.tutor_profile?.paypal_email || data.vendor_profile?.paypal_email || '',
+
+        paypal_email:
+          data.agent_profile?.paypal_email ||
+          data.tutor_profile?.paypal_email ||
+          data.vendor_profile?.paypal_email ||
+          '',
+
         specializations: arrayToCSV(data.tutor_profile?.specializations),
         experience_years: data.tutor_profile?.experience_years || '',
         hourly_rate: data.tutor_profile?.hourly_rate || '',
         bio: data.tutor_profile?.bio || '',
+
         school_name: data.school_profile?.school_name || '',
         location: data.school_profile?.location || '',
         website: data.school_profile?.website || '',
         type: data.school_profile?.type || '',
         about: data.school_profile?.about || '',
+
         business_name: data.vendor_profile?.business_name || '',
         service_categories: data.vendor_profile?.service_categories || [],
       });
 
       if (data.onboarding_completed) {
+        // clear lock flags once finished
+        try {
+          sessionStorage.removeItem('onboarding_role_locked');
+          sessionStorage.removeItem('onboarding_role');
+        } catch {}
         navigate(createPageUrl('Dashboard'), { replace: true });
         return;
       }
@@ -222,21 +286,23 @@ export default function Onboarding() {
       setProfileLoading(false);
       setAuthChecked(true);
     });
+
     return () => unsub();
   }, [navigate, roleHintFromEntry, roleLockedFromEntry]);
 
   const getStepProgress = () => {
     const map = {
-      [STEPS.CHOOSE_ROLE]: 25,
-      [STEPS.BASIC_INFO]: 50,
-      [STEPS.ROLE_SPECIFIC]: 75,
+      [STEPS.CHOOSE_ROLE]: 20,
+      [STEPS.BASIC_INFO]: 40,
+      [STEPS.ROLE_SPECIFIC]: 60,
+      [STEPS.SUBSCRIPTION]: 80,
       [STEPS.COMPLETE]: 100,
     };
     return map[currentStep] || 0;
   };
 
   const handleRoleSelect = async (roleType) => {
-    // If entry is locked, ignore manual switching
+    // If entry is locked, ignore switching
     if (roleLockedFromEntry) return;
     setSelectedRole(roleType);
     setCurrentStep(STEPS.BASIC_INFO);
@@ -284,30 +350,26 @@ export default function Onboarding() {
   };
 
   const handleBack = async () => {
-    // If role is locked from entry (agent/tutor/school/vendor), do not go back to Choose Role
-    let next;
-    if (currentStep === STEPS.ROLE_SPECIFIC) next = STEPS.BASIC_INFO;
-    else if (currentStep === STEPS.BASIC_INFO) next = roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE;
-    else next = STEPS.CHOOSE_ROLE;
+    let next = STEPS.CHOOSE_ROLE;
 
-    if (next === currentStep) return; // nothing to do
+    if (currentStep === STEPS.COMPLETE) next = STEPS.SUBSCRIPTION;
+    else if (currentStep === STEPS.SUBSCRIPTION) next = STEPS.ROLE_SPECIFIC;
+    else if (currentStep === STEPS.ROLE_SPECIFIC) next = STEPS.BASIC_INFO;
+    else if (currentStep === STEPS.BASIC_INFO) next = roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE;
+
+    if (next === currentStep) return;
 
     setCurrentStep(next);
     if (auth.currentUser) {
       const ref = doc(db, 'users', auth.currentUser.uid);
-      await updateDoc(ref, {
-        onboarding_step: next,
-        updated_at: serverTimestamp(),
-      });
+      await updateDoc(ref, { onboarding_step: next, updated_at: serverTimestamp() });
     }
   };
 
   /**
-   * ✅ Complete onboarding:
-   * - Update /users/{uid} with user_type + userType + profile fields
-   * - Seed role collection with verification_status: "pending"
+   * Step 1: Save role-specific info, then go to subscription step
    */
-  const handleCompleteOnboarding = async () => {
+  const handleRoleSpecificSubmitGoSubscription = async () => {
     if (!auth.currentUser || !selectedRole || !validateRoleSpecificInfo()) return;
     setSaving(true);
     try {
@@ -319,19 +381,16 @@ export default function Onboarding() {
         full_name: formData.full_name || '',
         phone: formData.phone || '',
         country: formData.country || '',
-        onboarding_completed: true,
-        onboarding_step: STEPS.COMPLETE,
+        onboarding_step: STEPS.SUBSCRIPTION,
         updated_at: serverTimestamp(),
       };
 
-      if (selectedRole === 'agent')  updates.user_type = 'agent';
-      if (selectedRole === 'tutor')  updates.user_type = 'tutor';
-      if (selectedRole === 'school') updates.user_type = 'school';
-      if (selectedRole === 'vendor') updates.user_type = 'vendor';
-      if (selectedRole === 'user')   updates.user_type = profile?.user_type || 'user';
-      // keep camelCase in sync for backward compatibility
-      updates.userType = updates.user_type;
+      // user_type sync
+      updates.user_type = selectedRole;
+      updates.userType = selectedRole;
+      updates.role = selectedRole;
 
+      // role profiles
       if (selectedRole === 'agent') {
         updates.agent_profile = {
           company_name: formData.company_name || '',
@@ -366,14 +425,56 @@ export default function Onboarding() {
         };
       }
 
-      // 1) Upsert the user profile
+      await updateDoc(ref, updates);
+      setCurrentStep(STEPS.SUBSCRIPTION);
+    } catch (e) {
+      console.error('Error saving role-specific info:', e);
+      alert('An error occurred while saving. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /**
+   * Finalize onboarding (after subscription decision)
+   * - subscription_active true/false
+   * - seed role collection with verification_status: pending
+   */
+  const finalizeOnboarding = async ({ subscriptionActive, paypalOrderId = '', paypalDetails = null, skipped = false }) => {
+    if (!auth.currentUser || !selectedRole) return;
+    setSaving(true);
+    try {
+      const uid = auth.currentUser.uid;
+      const ref = doc(db, 'users', uid);
+
+      const plan = SUBSCRIPTION_PRICING[selectedRole] || SUBSCRIPTION_PRICING.user;
+
+      const updates = {
+        onboarding_completed: true,
+        onboarding_step: STEPS.COMPLETE,
+        updated_at: serverTimestamp(),
+
+        subscription_active: Boolean(subscriptionActive),
+        subscription_status: subscriptionActive ? 'active' : (skipped ? 'skipped' : 'none'),
+        subscription_provider: 'paypal',
+        subscription_plan: `${selectedRole}_yearly`,
+        subscription_amount: Number(plan.amount) || 0,
+        subscription_currency: plan.currency || 'USD',
+
+        paypal_order_id: paypalOrderId || '',
+        paypal_capture: paypalDetails ? paypalDetails : null,
+        subscribed_at: subscriptionActive ? serverTimestamp() : null,
+      };
+
       await updateDoc(ref, updates);
 
-      // 2) Seed the role collection with PENDING verification (→ appears in Admin Verifications)
+      // Seed role collection as PENDING (appears in Admin Verifications)
       const now = serverTimestamp();
-
       try {
-        if (selectedRole === 'agent' && updates.agent_profile) {
+        const profileSnap = await getDoc(ref);
+        const data = profileSnap.data() || {};
+
+        if (selectedRole === 'agent' && data.agent_profile) {
           const existing = await Agent.filter({ user_id: uid }, { limit: 1 });
           if (!existing.length) {
             await Agent.create({
@@ -383,12 +484,12 @@ export default function Onboarding() {
               referral_code: `AG${Date.now().toString().slice(-6)}`,
               created_at: now,
               updated_at: now,
-              ...updates.agent_profile,
+              ...data.agent_profile,
             });
           }
         }
 
-        if (selectedRole === 'tutor' && updates.tutor_profile) {
+        if (selectedRole === 'tutor' && data.tutor_profile) {
           const existing = await Tutor.filter({ user_id: uid }, { limit: 1 });
           if (!existing.length) {
             await Tutor.create({
@@ -399,12 +500,12 @@ export default function Onboarding() {
               total_students: 0,
               created_at: now,
               updated_at: now,
-              ...updates.tutor_profile,
+              ...data.tutor_profile,
             });
           }
         }
 
-        if (selectedRole === 'school' && updates.school_profile) {
+        if (selectedRole === 'school' && data.school_profile) {
           const existing = await SchoolProfile.filter({ user_id: uid }, { limit: 1 });
           if (!existing.length) {
             await SchoolProfile.create({
@@ -412,12 +513,12 @@ export default function Onboarding() {
               verification_status: 'pending',
               created_at: now,
               updated_at: now,
-              ...updates.school_profile,
+              ...data.school_profile,
             });
           }
         }
 
-        if (selectedRole === 'vendor' && updates.vendor_profile) {
+        if (selectedRole === 'vendor' && data.vendor_profile) {
           const existing = await Vendor.filter({ user_id: uid }, { limit: 1 });
           if (!existing.length) {
             await Vendor.create({
@@ -425,7 +526,7 @@ export default function Onboarding() {
               verification_status: 'pending',
               created_at: now,
               updated_at: now,
-              ...updates.vendor_profile,
+              ...data.vendor_profile,
             });
           }
         }
@@ -434,14 +535,89 @@ export default function Onboarding() {
       }
 
       setCurrentStep(STEPS.COMPLETE);
+
+      // clear lock flags once finished
+      try {
+        sessionStorage.removeItem('onboarding_role_locked');
+        sessionStorage.removeItem('onboarding_role');
+      } catch {}
+
       setTimeout(() => navigate(createPageUrl('Dashboard'), { replace: true }), 1200);
     } catch (e) {
-      console.error('Error completing onboarding:', e);
+      console.error('Error finalizing onboarding:', e);
       alert('An error occurred. Please try again.');
     } finally {
       setSaving(false);
     }
   };
+
+  // 🧾 PayPal button render during subscription step
+  useEffect(() => {
+    const run = async () => {
+      if (currentStep !== STEPS.SUBSCRIPTION) return;
+      setPaypalError('');
+      setPaypalReady(false);
+
+      if (!PAYPAL_CLIENT_ID) {
+        setPaypalError('PayPal is not configured (missing VITE_PAYPAL_CLIENT_ID). You can skip for now.');
+        return;
+      }
+
+      const plan = SUBSCRIPTION_PRICING[selectedRole] || SUBSCRIPTION_PRICING.user;
+      const amountValue = Number(plan.amount || 0).toFixed(2);
+
+      try {
+        await loadPayPalScript({ clientId: PAYPAL_CLIENT_ID, currency: plan.currency || 'USD' });
+
+        if (!paypalContainerRef.current) return;
+        paypalContainerRef.current.innerHTML = '';
+
+        const buttons = window.paypal.Buttons({
+          createOrder: (data, actions) => {
+            return actions.order.create({
+              purchase_units: [
+                {
+                  description: `GreenPass Subscription (${plan.label}) - Yearly`,
+                  amount: { value: amountValue, currency_code: plan.currency || 'USD' },
+                },
+              ],
+            });
+          },
+          onApprove: async (data, actions) => {
+            try {
+              setSubmittingPayment(true);
+              const details = await actions.order.capture();
+              await finalizeOnboarding({
+                subscriptionActive: true,
+                paypalOrderId: data?.orderID || '',
+                paypalDetails: details || null,
+                skipped: false,
+              });
+            } catch (e) {
+              console.error(e);
+              setPaypalError('Payment was approved but capture failed. Please try again.');
+            } finally {
+              setSubmittingPayment(false);
+            }
+          },
+          onCancel: () => setPaypalError('Payment cancelled. You can try again or skip for now.'),
+          onError: (err) => {
+            console.error(err);
+            setPaypalError('PayPal error occurred. Please try again or skip for now.');
+          },
+        });
+
+        buttons.render(paypalContainerRef.current);
+        setPaypalReady(true);
+      } catch (e) {
+        console.error(e);
+        setPaypalError('Failed to load PayPal. You can skip for now.');
+      }
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, selectedRole, PAYPAL_CLIENT_ID]);
 
   // 🔓 Logout from onboarding
   const handleLogout = async () => {
@@ -458,16 +634,12 @@ export default function Onboarding() {
   };
 
   const RoleLockedPill = ({ role }) => {
-    if (!LOCKABLE_ROLES.includes(role)) return null;
-    const icon =
-      role === 'agent'  ? <Briefcase className="w-4 h-4" /> :
-      role === 'tutor'  ? <BookOpen className="w-4 h-4" /> :
-      role === 'school' ? <Building className="w-4 h-4" /> :
-                          <Store className="w-4 h-4" />; // vendor
-    const label = role.charAt(0).toUpperCase() + role.slice(1);
+    if (!roleLockedFromEntry) return null;
+    const label = role?.charAt(0).toUpperCase() + role?.slice(1);
     return (
       <div className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm bg-white/70">
-        {icon} Signing up as <span className="font-semibold">{label}</span>
+        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+        Role selected: <span className="font-semibold">{label}</span>
         <BadgeCheck className="w-4 h-4 text-emerald-600" />
       </div>
     );
@@ -488,7 +660,7 @@ export default function Onboarding() {
               ${roleLockedFromEntry ? 'opacity-60 pointer-events-none' : 'hover:border-green-500'}
             `}
             onClick={() => handleRoleSelect(role.type)}
-            title={roleLockedFromEntry ? 'Role is locked from entry page' : `Sign up as ${role.title}`}
+            title={roleLockedFromEntry ? 'Role already selected from previous step' : `Sign up as ${role.title}`}
           >
             <CardContent className="p-6">
               <div className="text-center">
@@ -530,31 +702,54 @@ export default function Onboarding() {
             <RoleLockedPill role={selectedRole} />
           </div>
         </div>
+
         <div className="space-y-6">
           <div>
             <Label htmlFor="full_name">Full Name *</Label>
-            <Input id="full_name" value={formData.full_name || ''} onChange={(e) => setFormData((p)=>({...p, full_name: e.target.value}))} placeholder="Enter your full name" className="mt-1" />
+            <Input
+              id="full_name"
+              value={formData.full_name || ''}
+              onChange={(e) => setFormData((p)=>({...p, full_name: e.target.value}))}
+              placeholder="Enter your full name"
+              className="mt-1"
+            />
           </div>
+
           <div>
             <Label htmlFor="email">Email Address</Label>
             <Input id="email" value={formData.email || ''} disabled className="mt-1 bg-gray-100" />
             <p className="text-xs text-gray-500 mt-1">This is your login email and cannot be changed</p>
           </div>
+
           <div>
             <Label htmlFor="phone">Phone Number *</Label>
-            <Input id="phone" value={formData.phone || ''} onChange={(e) => setFormData((p)=>({...p, phone: e.target.value}))} placeholder="Enter your phone number" className="mt-1" />
+            <Input
+              id="phone"
+              value={formData.phone || ''}
+              onChange={(e) => setFormData((p)=>({...p, phone: e.target.value}))}
+              placeholder="Enter your phone number"
+              className="mt-1"
+            />
           </div>
+
           <div>
             <Label htmlFor="country">Country *</Label>
-            <Input id="country" value={formData.country || ''} onChange={(e) => setFormData((p)=>({...p, country: e.target.value}))} placeholder="Enter your country" className="mt-1" />
+            <Input
+              id="country"
+              value={formData.country || ''}
+              onChange={(e) => setFormData((p)=>({...p, country: e.target.value}))}
+              placeholder="Enter your country"
+              className="mt-1"
+            />
           </div>
+
           <div className="flex gap-3 pt-4">
             <Button
               variant="outline"
               onClick={handleBack}
               className="flex-1"
               disabled={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO}
-              title={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO ? 'Role locked by entry page' : 'Back'}
+              title={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO ? 'Role locked by entry flow' : 'Back'}
             >
               <ArrowLeft className="w-4 h-4 mr-2" /> Back
             </Button>
@@ -576,7 +771,7 @@ export default function Onboarding() {
             {selectedRoleData?.icon}
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your {selectedRoleData?.title} Profile</h2>
-          <p className="text-gray-600">Just a few more details to get started</p>
+          <p className="text-gray-600">Just a few more details to continue</p>
           <div className="mt-3">
             <RoleLockedPill role={selectedRole} />
           </div>
@@ -694,7 +889,7 @@ export default function Onboarding() {
             <Check className="w-16 h-16 text-green-500 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">You're All Set!</h3>
             <p className="text-gray-600">
-              As a student, you can start exploring programs, connecting with agents, and planning your study abroad journey.
+              Next step: subscription (optional). You can subscribe now or skip for later.
             </p>
           </div>
         )}
@@ -704,32 +899,130 @@ export default function Onboarding() {
             variant="outline"
             onClick={handleBack}
             className="flex-1"
-            disabled={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO}
-            title={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO ? 'Role locked by entry page' : 'Back'}
           >
             <ArrowLeft className="w-4 h-4 mr-2" /> Back
           </Button>
-          <Button onClick={handleCompleteOnboarding} disabled={saving || !validateRoleSpecificInfo()} className="flex-1">
+
+          <Button
+            onClick={handleRoleSpecificSubmitGoSubscription}
+            disabled={saving || !validateRoleSpecificInfo()}
+            className="flex-1"
+          >
             {saving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Setting up...
+                Saving...
               </>
             ) : (
               <>
-                Complete Setup
-                <Check className="w-4 h-4 ml-2" />
+                Continue
+                <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
           </Button>
         </div>
 
-        {/* Soft escape for users who don't want to continue */}
         <div className="text-center mt-4">
           <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-600 inline-flex items-center gap-1">
             <LogOut className="w-4 h-4" /> Log out instead
           </button>
         </div>
+      </div>
+    );
+  };
+
+  const renderSubscription = () => {
+    const plan = SUBSCRIPTION_PRICING[selectedRole] || SUBSCRIPTION_PRICING.user;
+
+    return (
+      <div className="max-w-md mx-auto">
+        <div className="text-center mb-6">
+          <div className="bg-emerald-600 text-white p-3 rounded-full mb-4 mx-auto w-fit">
+            <CreditCard className="w-6 h-6" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Subscription</h2>
+          <p className="text-gray-600">
+            Subscribe now or skip for later. We’ll store your choice.
+          </p>
+          <div className="mt-3">
+            <RoleLockedPill role={selectedRole} />
+          </div>
+        </div>
+
+        <Card className="border shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm text-gray-500">Plan</div>
+                <div className="text-lg font-semibold text-gray-900">{plan.label} — Yearly</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-500">Price</div>
+                <div className="text-xl font-bold text-gray-900">${plan.amount}/{`year`}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 text-sm text-gray-600">
+              {selectedRole === 'user' ? (
+                <div className="rounded-md bg-blue-50 border border-blue-200 p-3">
+                  Student access is free for now, but subscription unlocks premium access after limits.
+                </div>
+              ) : (
+                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3">
+                  Subscription unlocks your full {plan.label.toLowerCase()} features.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4">
+              {paypalError && (
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-3">
+                  {paypalError}
+                </div>
+              )}
+
+              <div className="rounded-lg border p-3">
+                <div className="text-sm font-semibold text-gray-900 mb-2">Pay with PayPal</div>
+
+                {/* PayPal Buttons mount here */}
+                <div ref={paypalContainerRef} />
+
+                {!paypalReady && !paypalError && (
+                  <div className="mt-2 text-sm text-gray-500 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading PayPal...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={handleBack}
+                disabled={saving || submittingPayment}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+
+              <Button
+                className="flex-1"
+                variant="secondary"
+                onClick={() => finalizeOnboarding({ subscriptionActive: false, skipped: true })}
+                disabled={saving || submittingPayment}
+                title="Skip subscription for now"
+              >
+                Skip for now
+              </Button>
+            </div>
+
+            <p className="mt-3 text-xs text-gray-500">
+              Your choice will be saved as <b>subscription_active: true/false</b> in Firestore.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   };
@@ -793,6 +1086,7 @@ export default function Onboarding() {
             {currentStep === STEPS.CHOOSE_ROLE && renderChooseRole()}
             {currentStep === STEPS.BASIC_INFO && renderBasicInfo()}
             {currentStep === STEPS.ROLE_SPECIFIC && renderRoleSpecific()}
+            {currentStep === STEPS.SUBSCRIPTION && renderSubscription()}
             {currentStep === STEPS.COMPLETE && renderComplete()}
           </CardContent>
         </Card>

@@ -326,12 +326,12 @@ const buildQuickLinks = () => [
     icon: BookOpen,
     description: getText("guidesForStudents"),
   },
-  {
+  /*{
     title: getText("ourTeam"),
     href: createPageUrl("OurTeam"),
     icon: Users,
     description: getText("meetTheTeam"),
-  },
+  },*/
 ];
 
 /* ---------- Desktop hover dropdown for Explore (unchanged) ---------- */
@@ -910,7 +910,7 @@ const Footer = ({ getCompanyName }) => {
       column_title: "Company",
       links: [
         { text: "About Us", url: createPageUrl("About") },
-        { text: "Our Team", url: createPageUrl("OurTeam") },
+        /*{ text: "Our Team", url: createPageUrl("OurTeam") },*/
         { text: "News and Highlights", url: createPageUrl("Blog") },
         { text: "Partnerships", url: createPageUrl("Partnership") },
       ],
@@ -1242,11 +1242,11 @@ function buildDesktopNav(currentUser, hasReservation, latestReservationId) {
           url: createPageUrl("AdminFAQ"),
           icon: MessageSquare,
         },
-        {
+        /*{
           title: getText("ourTeamEditor"),
           url: createPageUrl("AdminOurTeamEditor"),
           icon: Users,
-        },
+        },*/
         {
           title: "Brand Settings",
           url: createPageUrl("AdminBrandSettings"),
@@ -1598,11 +1598,11 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
             url: createPageUrl("AdminFAQ"),
             icon: MessageSquare,
           },
-          {
+          /*{
             title: getText("ourTeamEditor"),
             url: createPageUrl("AdminOurTeamEditor"),
             icon: Users,
-          },
+          },*/
           {
             title: "Brand Settings",
             url: createPageUrl("AdminBrandSettings"),
