@@ -12,37 +12,86 @@ import {
   Globe,
   Loader2,
   Award,
+  Users,
   Mail,
-  Lock,
-  User as UserIcon,
+  LogIn,
+  UserPlus,
   Eye,
   EyeOff,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 import ProvinceSelector from "../components/ProvinceSelector";
 import CountrySelector from "@/components/CountrySelector";
 import { getProvinceLabel } from "../components/utils/CanadianProvinces";
 import _ from "lodash";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-
 // 🔥 Firebase
-import { auth, db } from "@/firebase";
+import { db, auth } from "@/firebase";
+import { collection, getDocs, query, where, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import {
-  GoogleAuthProvider,
-  OAuthProvider,
-  signInWithPopup,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  fetchSignInMethodsForEmail,
   updateProfile,
-  onAuthStateChanged,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+
+// shadcn dialog
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const PAGE_SIZE = 15;
+
+/* -----------------------------
+   Country flag helpers (use IMAGE flags for reliability)
+   ----------------------------- */
+const isIso2 = (code) => /^[A-Z]{2}$/.test((code || "").trim().toUpperCase());
+
+const codeToFlagEmoji = (code) => {
+  const cc = (code || "").trim().toUpperCase();
+  if (!isIso2(cc)) return "";
+  return String.fromCodePoint(...[...cc].map((c) => 127397 + c.charCodeAt(0)));
+};
+
+const flagPngUrl = (code) => {
+  const cc = (code || "").trim().toUpperCase();
+  if (!isIso2(cc)) return "";
+  return `https://flagcdn.com/w40/${cc.toLowerCase()}.png`;
+};
+
+function CountryFlag({ code, className = "" }) {
+  const cc = (code || "").trim().toUpperCase();
+  const [imgOk, setImgOk] = useState(true);
+
+  const url = useMemo(() => flagPngUrl(cc), [cc]);
+  const emoji = useMemo(() => codeToFlagEmoji(cc), [cc]);
+
+  if (!isIso2(cc)) return null;
+
+  if (!url || !imgOk) {
+    return emoji ? (
+      <span className={["text-base leading-none", className].join(" ")} title={cc}>
+        {emoji}
+      </span>
+    ) : null;
+  }
+
+  return (
+    <img
+      src={url}
+      alt={`${cc} flag`}
+      className={["h-4 w-6 rounded-sm border object-cover", className].join(" ")}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setImgOk(false)}
+    />
+  );
+}
 
 /* -----------------------------
    Helpers: name normalization
@@ -57,108 +106,19 @@ const normalize = (s = "") =>
     .trim();
 
 /* -----------------------------
-   Role helpers (aligned with Welcome.jsx)
+   Tabs
    ----------------------------- */
-const VALID_ROLES = ["agent", "tutor", "school", "vendor"]; // Welcome.jsx list
-const DEFAULT_ROLE = "user";
-
-function normalizeRole(r) {
-  const v = (r || "").toString().trim().toLowerCase();
-  return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
-}
-
-function buildUserDoc({ email, full_name = "", userType = DEFAULT_ROLE, signupEntryRole = DEFAULT_ROLE }) {
-  return {
-    role: userType,
-    userType,
-    user_type: userType,
-    signup_entry_role: signupEntryRole,
-    email,
-    full_name,
-    phone: "",
-    country: "",
-    address: { street: "", ward: "", district: "", province: "", postal_code: "" },
-    profile_picture: "",
-    is_verified: false,
-    onboarding_completed: false,
-    kyc_document_id: "",
-    kyc_document_url: "",
-    assigned_agent_id: "",
-    referred_by_agent_id: "",
-    purchased_packages: [],
-    purchased_tutor_packages: [],
-    session_credits: 0,
-    schoolId: "",
-    programId: "",
-    enrollment_date: null,
-    agent_reassignment_request: { requested_at: null, reason: "", new_agent_id: "", status: "pending" },
-    settings: {
-      language: "en",
-      timezone: "Asia/Ho_Chi_Minh",
-      currency: "USD",
-      notification_preferences: {
-        email_notifications: true,
-        sms_notifications: false,
-        application_updates: true,
-        marketing_emails: false,
-        session_reminders: true,
-      },
-    },
-    package_assignment: { package_id: "", assigned_at: null, expires_at: null },
-    is_guest_created: false,
-    created_at: serverTimestamp(),
-    updated_at: serverTimestamp(),
-  };
-}
-
-async function routeAfterAuth(navigate, fbUser, entryRole, nextPage) {
-  const roleToUse = normalizeRole(entryRole);
-  const ref = doc(db, "users", fbUser.uid);
-  const snap = await getDoc(ref);
-
-  if (!snap.exists()) {
-    await setDoc(
-      ref,
-      buildUserDoc({
-        email: fbUser.email || "",
-        full_name: fbUser.displayName || "",
-        userType: roleToUse,
-        signupEntryRole: roleToUse,
-      }),
-      { merge: true }
-    );
-
-    const qp = new URLSearchParams();
-    qp.set("role", roleToUse);
-    qp.set("lock", "1");
-    if (nextPage) qp.set("next", nextPage);
-    return navigate(`${createPageUrl("Onboarding")}?${qp.toString()}`);
-  }
-
-  const profile = snap.data();
-  if (!profile?.onboarding_completed) {
-    const qp = new URLSearchParams();
-    qp.set("role", normalizeRole(profile?.user_type || roleToUse));
-    qp.set("lock", "1");
-    if (nextPage) qp.set("next", nextPage);
-    return navigate(`${createPageUrl("Onboarding")}?${qp.toString()}`);
-  }
-
-  return navigate(createPageUrl(nextPage || "Dashboard"));
-}
+const BROWSE_TABS = [
+  { key: "school", label: "School" },
+  { key: "agent", label: "Agent" },
+  { key: "tutor", label: "Tutor" },
+  { key: "user", label: "User" },
+];
 
 /* -----------------------------
-   Helpers: stable target id
+   Left list row (schools/institutions)
    ----------------------------- */
-function getTargetId(item) {
-  return item?.id || item?.school_id || item?.institution_id || item?.school_key || null;
-}
-
-/* -----------------------------
-   Left list row (master)
-   - Updated: lock overlay for non-users
-   ----------------------------- */
-const SchoolListRow = ({ item, isSelected, locked, onSelect, onLockedClick }) => {
+const SchoolListRow = ({ item, isSelected, onSelect }) => {
   const name = item.name || item.school_name || item.institution_name || "Unknown";
   const logo =
     item.logoUrl ||
@@ -166,17 +126,12 @@ const SchoolListRow = ({ item, isSelected, locked, onSelect, onLockedClick }) =>
     item.institution_logo_url ||
     "https://images.unsplash.com/photo-1562774053-701939374585?w=800&h=600&fit=crop&q=80";
 
-  const handleClick = () => {
-    if (locked) return onLockedClick?.();
-    onSelect?.();
-  };
-
   return (
     <button
       type="button"
-      onClick={handleClick}
+      onClick={onSelect}
       className={[
-        "w-full text-left rounded-lg border p-3 transition relative group",
+        "w-full text-left rounded-lg border p-3 transition",
         "focus:outline-none focus:ring-2 focus:ring-green-400",
         isSelected ? "border-green-400 bg-green-50" : "border-gray-200 bg-white hover:bg-gray-50",
       ].join(" ")}
@@ -205,87 +160,33 @@ const SchoolListRow = ({ item, isSelected, locked, onSelect, onLockedClick }) =>
           </div>
         </div>
       </div>
-
-      {/* Lock overlay (non-users) */}
-      {locked && (
-        <div
-          className={[
-            "absolute inset-0 rounded-lg",
-            "bg-white/70 backdrop-blur-[1px]",
-            "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-            "transition flex items-center justify-center",
-          ].join(" ")}
-          aria-hidden="true"
-        >
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <Lock className="w-4 h-4" />
-            Please sign in to view details
-          </div>
-        </div>
-      )}
     </button>
   );
 };
 
 /* -----------------------------
-   Right details panel (detail)
-   Updated: locked mode for non-users
+   Right details panel (schools/institutions)
+   - Main button: Contact Us
+   - Toggle link: View programs + / Hide programs -
+   - Program rows are clickable (calls onProgramClick)
    ----------------------------- */
-const SchoolDetailsPanel = ({ item, locked, onRequireAuth, onViewDetails }) => {
+const SchoolDetailsPanel = ({ item, onContact, programs = [], onProgramClick }) => {
+  const [showPrograms, setShowPrograms] = useState(false);
+
+  useEffect(() => {
+    setShowPrograms(false);
+  }, [item?.id, item?.school_key, item?.school_id, item?.institution_id]);
+
   if (!item) {
     return (
       <Card className="h-full">
-        <CardContent className="p-6 text-gray-600">
-          {locked ? "Sign in to view school details and programs." : "Select a school from the list to see details."}
-        </CardContent>
+        <CardContent className="p-6 text-gray-600">Select a school from the list to see details.</CardContent>
       </Card>
     );
   }
 
-  const targetId = getTargetId(item);
   const name = item.name || item.school_name || item.institution_name || "Unknown";
 
-  // Locked view (non-user): list-only policy
-  if (locked) {
-    return (
-      <Card className="h-full flex flex-col">
-        <CardContent className="p-6 flex-1 flex flex-col">
-          <div className="flex items-start gap-3">
-            <div className="mt-1">
-              <Lock className="w-5 h-5 text-gray-700" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-xl font-bold text-gray-900">Sign in to view full school details</h2>
-              <p className="mt-1 text-sm text-gray-600">
-                You can browse the list publicly, but profiles and programs require an account.
-              </p>
-
-              <div className="mt-4 rounded-lg border bg-gray-50 p-4 text-sm text-gray-700">
-                <div className="font-semibold text-gray-900 mb-1">Selected:</div>
-                <div className="truncate">{name}</div>
-              </div>
-
-              <div className="mt-6">
-                <Button className="w-full h-11 text-base" onClick={() => onRequireAuth?.(targetId)}>
-                  Continue (Sign in / Register)
-                </Button>
-                <p className="mt-2 text-xs text-gray-500 text-center">
-                  You’ll be asked to choose: <span className="font-medium">Student, Agent</span> or{" "}
-                  <span className="font-medium">Tutor</span>.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-auto pt-6 text-xs text-gray-500">
-            Tip: Students typically connect to schools through an Agent or GP Team (based on your account setup).
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Signed-in full panel (existing UI)
   const banner =
     item.logoUrl ||
     item.school_image_url ||
@@ -295,6 +196,20 @@ const SchoolDetailsPanel = ({ item, locked, onRequireAuth, onViewDetails }) => {
   const city = item.city || item.school_city || "—";
   const province = getProvinceLabel(item.province || item.school_province) || "—";
   const country = item.country || item.school_country || "—";
+
+  const list = Array.isArray(programs) ? programs : [];
+  const hasPrograms = list.length > 0;
+
+  const getProgramTitle = (p) =>
+    p?.program_title || p?.programTitle || p?.title || p?.name || "Untitled program";
+
+  const getProgramMeta = (p) => {
+    const level = p?.program_level || p?.level || p?.programLevel;
+    const duration = p?.duration || p?.program_duration;
+    const intake = p?.next_intake || p?.intake || p?.nextIntake;
+    const parts = [level, duration, intake].filter(Boolean);
+    return parts.join(" • ");
+  };
 
   return (
     <Card className="h-full flex flex-col overflow-hidden">
@@ -333,9 +248,20 @@ const SchoolDetailsPanel = ({ item, locked, onRequireAuth, onViewDetails }) => {
             </div>
 
             <div className="mt-4">
-              <Button className="w-full h-11 text-base" onClick={() => onViewDetails?.(targetId)}>
-                View Programs
+              <Button className="w-full h-11 text-base" onClick={() => onContact?.(item)}>
+                <Mail className="w-4 h-4 mr-2" />
+                Contact Us
               </Button>
+
+              <button
+                type="button"
+                className="mt-3 text-sm text-blue-600 underline hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setShowPrograms((v) => !v)}
+                disabled={!hasPrograms}
+                title={!hasPrograms ? "No programs available for this school yet." : undefined}
+              >
+                {showPrograms ? "Hide programs -" : "View programs +"}
+              </button>
             </div>
           </div>
 
@@ -345,32 +271,33 @@ const SchoolDetailsPanel = ({ item, locked, onRequireAuth, onViewDetails }) => {
           </div>
         </div>
 
-        <div className="mt-6 border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 font-semibold text-gray-900">Basic information</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2">
-            <div className="px-4 py-3 border-t text-sm">
-              <span className="text-gray-500">Category: </span>
-              <span className="font-medium">
-                {item.isInstitution ? "Institution" : item.institution_type || "—"}
-              </span>
+        {showPrograms && (
+          <div className="mt-5 border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
+              <span>Programs</span>
+              <Badge variant="secondary">{list.length}</Badge>
             </div>
 
-            <div className="px-4 py-3 border-t sm:border-l text-sm">
-              <span className="text-gray-500">Type: </span>
-              <span className="font-medium">{item.isInstitution ? (item.isPublic ? "Public" : "Private") : "—"}</span>
-            </div>
-
-            <div className="px-4 py-3 border-t text-sm">
-              <span className="text-gray-500">Country: </span>
-              <span className="font-medium">{country}</span>
-            </div>
-
-            <div className="px-4 py-3 border-t sm:border-l text-sm">
-              <span className="text-gray-500">Province: </span>
-              <span className="font-medium">{province}</span>
+            <div className="max-h-72 overflow-auto divide-y">
+              {list.map((p, idx) => {
+                const title = getProgramTitle(p);
+                const meta = getProgramMeta(p);
+                return (
+                  <button
+                    key={p?.id || p?.program_id || `${title}-${idx}`}
+                    type="button"
+                    onClick={() => onProgramClick?.(p, item)}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-400"
+                  >
+                    <div className="text-sm font-medium text-gray-900">{title}</div>
+                    {meta ? <div className="text-xs text-gray-500 mt-1">{meta}</div> : null}
+                    <div className="text-xs text-blue-600 underline mt-2">Open</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </div>
+        )}
 
         {item.about && (
           <div className="mt-6">
@@ -395,369 +322,194 @@ const SchoolDetailsPanel = ({ item, locked, onRequireAuth, onViewDetails }) => {
 };
 
 /* -----------------------------
-   Inline Login Dialog (no navigation)
+   User directory UI (FLAG IMAGE)
    ----------------------------- */
-function LoginDialog({ open, onOpenChange, entryRole, nextPage }) {
-  const navigate = useNavigate();
+const UserListRow = ({ user, isSelected, onSelect }) => {
+  const name = user.full_name || user.name || "Unnamed";
+  const country = user.country || "—";
+  const countryCode = (user.country_code || user.countryCode || "").trim().toUpperCase();
 
-  const [mode, setMode] = useState("signin");
-  const [busy, setBusy] = useState(false);
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  // signup fields
-  const [fullName, setFullName] = useState("");
-  const [confirm, setConfirm] = useState("");
-
-  const [showSigninPw, setShowSigninPw] = useState(false);
-  const [showPw, setShowPw] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  const [errorMsg, setErrorMsg] = useState("");
-
-  // reset dialog state when closed
-  useEffect(() => {
-    if (!open) {
-      setMode("signin");
-      setBusy(false);
-      setEmail("");
-      setPassword("");
-      setFullName("");
-      setConfirm("");
-      setShowSigninPw(false);
-      setShowPw(false);
-      setShowConfirm(false);
-      setErrorMsg("");
-    }
-  }, [open]);
-
-  const safeClose = useCallback(() => {
-    onOpenChange(false);
-  }, [onOpenChange]);
-
-  const handleLoginGoogle = async () => {
-    try {
-      setBusy(true);
-      setErrorMsg("");
-      const provider = new GoogleAuthProvider();
-      const cred = await signInWithPopup(auth, provider);
-      safeClose();
-      await routeAfterAuth(navigate, cred.user, entryRole, nextPage);
-    } catch (err) {
-      if (err?.code !== "auth/popup-closed-by-user") {
-        setErrorMsg(err?.code ? `Firebase: ${err.code}` : err?.message || "Google sign-in failed");
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleLoginApple = async () => {
-    try {
-      setBusy(true);
-      setErrorMsg("");
-      const appleProvider = new OAuthProvider("apple.com");
-      const cred = await signInWithPopup(auth, appleProvider);
-      safeClose();
-      await routeAfterAuth(navigate, cred.user, entryRole, nextPage);
-    } catch (err) {
-      if (err?.code !== "auth/popup-closed-by-user") {
-        setErrorMsg(err?.code ? `Firebase: ${err.code}` : err?.message || "Apple sign-in failed");
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleSignInEmail = async () => {
-    const em = email.trim().toLowerCase();
-    if (!em) return setErrorMsg("Please enter your email.");
-    if (!password) return setErrorMsg("Please enter your password.");
-
-    try {
-      setBusy(true);
-      setErrorMsg("");
-      const cred = await signInWithEmailAndPassword(auth, em, password);
-      safeClose();
-      await routeAfterAuth(navigate, cred.user, entryRole, nextPage);
-    } catch (err) {
-      setErrorMsg(err?.code ? `Firebase: ${err.code}` : err?.message || "Sign-in failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleSignUpEmail = async () => {
-    const em = email.trim().toLowerCase();
-    if (!fullName.trim()) return setErrorMsg("Please enter your full name.");
-    if (!em) return setErrorMsg("Please enter your email.");
-    if (!password) return setErrorMsg("Please create a password.");
-    if (password !== confirm) return setErrorMsg("Passwords do not match.");
-
-    try {
-      setBusy(true);
-      setErrorMsg("");
-
-      // If email exists, force sign-in instead
-      const methods = await fetchSignInMethodsForEmail(auth, em);
-      if (methods.length > 0) {
-        setMode("signin");
-        return setErrorMsg("This email is already registered. Please sign in instead.");
-      }
-
-      const cred = await createUserWithEmailAndPassword(auth, em, password);
-      await updateProfile(cred.user, { displayName: fullName.trim() });
-
-      safeClose();
-      await routeAfterAuth(navigate, cred.user, entryRole, nextPage);
-    } catch (err) {
-      setErrorMsg(err?.code ? `Firebase: ${err.code}` : err?.message || "Sign-up failed");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const photo =
+    user.profile_picture ||
+    user.photoURL ||
+    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" + encodeURIComponent(name);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-auto">
-        <DialogHeader>
-          <DialogTitle>{mode === "signin" ? "Sign in to continue" : "Create your account"}</DialogTitle>
-          <DialogDescription>
-            Role selected: <span className="font-medium">{entryRole === "user" ? "Student" : entryRole}</span>
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Tabs */}
-        <div className="grid grid-cols-2 p-1 rounded-xl bg-gray-100 text-sm">
-          <button
-            type="button"
-            className={`py-2 rounded-lg transition ${
-              mode === "signin" ? "bg-white shadow font-semibold" : "text-gray-600"
-            }`}
-            onClick={() => setMode("signin")}
-            disabled={busy}
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            className={`py-2 rounded-lg transition ${
-              mode === "signup" ? "bg-white shadow font-semibold" : "text-gray-600"
-            }`}
-            onClick={() => setMode("signup")}
-            disabled={busy}
-          >
-            Sign up
-          </button>
-        </div>
-
-        {/* Social */}
-        <div className="space-y-3 mt-4">
-          <Button variant="outline" className="w-full h-12 text-base" onClick={handleLoginGoogle} disabled={busy}>
-            Continue with Google
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full h-12 text-base bg-black text-white hover:bg-gray-800 hover:text-white"
-            onClick={handleLoginApple}
-            disabled={busy}
-          >
-             Continue with Apple
-          </Button>
-        </div>
-
-        <div className="relative my-4">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-300" />
+    <button
+      type="button"
+      onClick={onSelect}
+      className={[
+        "w-full text-left rounded-lg border p-3 transition",
+        "focus:outline-none focus:ring-2 focus:ring-green-400",
+        isSelected ? "border-green-400 bg-green-50" : "border-gray-200 bg-white hover:bg-gray-50",
+      ].join(" ")}
+    >
+      <div className="flex gap-3 items-center">
+        <img src={photo} alt={name} className="h-12 w-12 rounded-full object-cover border" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h4 className="font-semibold text-gray-900 truncate">{name}</h4>
+            <Badge variant="secondary" className="shrink-0 capitalize">
+              {user.user_type || user.userType || user.role || user.selected_role || "user"}
+            </Badge>
           </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-white px-2 text-gray-500">or continue with email</span>
+
+          <div className="mt-1 flex items-center text-sm text-gray-600">
+            <MapPin className="w-4 h-4 mr-1 shrink-0" />
+            <span className="truncate flex items-center gap-2">
+              <CountryFlag code={countryCode} />
+              <span className="truncate">{country}</span>
+              {countryCode ? <span className="text-xs text-gray-400">({countryCode})</span> : null}
+            </span>
           </div>
         </div>
-
-        {errorMsg && (
-          <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3">{errorMsg}</div>
-        )}
-
-        {/* Forms */}
-        {mode === "signin" ? (
-          <div className="space-y-4">
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                type="email"
-                placeholder="Email address"
-                className="pl-10 h-12"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                type={showSigninPw ? "text" : "password"}
-                placeholder="Password"
-                className="pl-10 pr-10 h-12"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button
-                type="button"
-                aria-label={showSigninPw ? "Hide password" : "Show password"}
-                aria-pressed={showSigninPw}
-                onClick={() => setShowSigninPw((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
-              >
-                {showSigninPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              </button>
-            </div>
-
-            <Button className="w-full h-12 text-base" onClick={handleSignInEmail} disabled={busy}>
-              {busy ? "Signing in..." : "Sign in"}
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="relative">
-              <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                type="text"
-                placeholder="Full name"
-                className="pl-10 h-12"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-              />
-            </div>
-
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                type="email"
-                placeholder="Email address"
-                className="pl-10 h-12"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                type={showPw ? "text" : "password"}
-                placeholder="Create a password"
-                className="pl-10 pr-10 h-12"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button
-                type="button"
-                aria-label={showPw ? "Hide password" : "Show password"}
-                aria-pressed={showPw}
-                onClick={() => setShowPw((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
-              >
-                {showPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              </button>
-            </div>
-
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                type={showConfirm ? "text" : "password"}
-                placeholder="Confirm password"
-                className="pl-10 pr-10 h-12"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-              <button
-                type="button"
-                aria-label={showConfirm ? "Hide confirm password" : "Show confirm password"}
-                aria-pressed={showConfirm}
-                onClick={() => setShowConfirm((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
-              >
-                {showConfirm ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              </button>
-            </div>
-
-            <Button className="w-full h-12 text-base" onClick={handleSignUpEmail} disabled={busy}>
-              {busy ? "Creating..." : "Create account"}
-            </Button>
-          </div>
-        )}
-
-        <div className="pt-2">
-          <Button variant="ghost" className="w-full" onClick={safeClose} disabled={busy}>
-            Cancel
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </button>
   );
-}
+};
+
+const UserDetailsPanel = ({ user }) => {
+  if (!user) {
+    return (
+      <Card className="h-full">
+        <CardContent className="p-6 text-gray-600">Select a user from the list to see details.</CardContent>
+      </Card>
+    );
+  }
+
+  const name = user.full_name || user.name || "Unnamed";
+  const role = user.user_type || user.userType || user.role || user.selected_role || "user";
+
+  const country = user.country || "—";
+  const countryCode = (user.country_code || user.countryCode || "").trim().toUpperCase();
+
+  const photo =
+    user.profile_picture ||
+    user.photoURL ||
+    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" + encodeURIComponent(name);
+
+  // Optional banner/cover fields if you have them; otherwise fallback
+  const banner =
+    user.cover_photo ||
+    user.coverPhoto ||
+    user.banner ||
+    "https://images.unsplash.com/photo-1526498460520-4c246339dccb?w=1600&h=600&fit=crop&q=80";
+
+  return (
+    <Card className="h-full flex flex-col overflow-hidden">
+      {/* Banner */}
+      <div className="relative shrink-0 h-44 bg-gradient-to-br from-gray-900 to-gray-700">
+        <img src={banner} alt="" className="w-full h-full object-cover opacity-90" />
+
+        {/* soft dark overlay */}
+        <div className="absolute inset-0 bg-black/35" />
+
+        {/* Profile circle (overlapping) */}
+        <div className="absolute left-1/2 -translate-x-1/2 -bottom-10">
+          <div className="h-24 w-24 rounded-full bg-white p-1 shadow-lg">
+            <img
+              src={photo}
+              alt={name}
+              className="h-full w-full rounded-full object-cover border"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <CardContent className="flex-1 overflow-auto pt-14 pb-6">
+        {/* Flag BELOW profile pic */}
+        <div className="flex flex-col items-center text-center">
+          <div className="flex items-center gap-2">
+            <CountryFlag code={countryCode} className="h-5 w-7" />
+            <span className="text-sm text-gray-600">{country}</span>
+            {countryCode ? <span className="text-xs text-gray-400">({countryCode})</span> : null}
+          </div>
+
+          {/* Name BELOW flag */}
+          <h2 className="mt-2 text-2xl font-bold text-gray-900">{name}</h2>
+
+          <Badge variant="secondary" className="mt-2 capitalize">
+            {role === "user" ? "Student / User" : role}
+          </Badge>
+        </div>
+
+        {/* Optional info section (keep if you want) */}
+        <div className="mt-6 border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 font-semibold text-gray-900">Basic information</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2">
+            <div className="px-4 py-3 border-t text-sm">
+              <span className="text-gray-500">Email: </span>
+              <span className="font-medium">{user.email || "—"}</span>
+            </div>
+            <div className="px-4 py-3 border-t sm:border-l text-sm">
+              <span className="text-gray-500">Phone: </span>
+              <span className="font-medium">{user.phone || user.phone_number || "—"}</span>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 
 export default function Schools() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
+  const [browseTab, setBrowseTab] = useState("school");
+
+  // Schools data
   const [allSchools, setAllSchools] = useState([]);
   const [allInstitutions, setAllInstitutions] = useState([]);
   const [filteredSchools, setFilteredSchools] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingSchools, setLoadingSchools] = useState(true);
 
+  // User directory data
+  const [allUsers, setAllUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Common filters
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCountry, setSelectedCountry] = useState("all");
+
+  // School filters
   const [selectedProvince, setSelectedProvince] = useState("all");
   const [selectedCity, setSelectedCity] = useState("all");
   const [selectedType, setSelectedType] = useState("all");
 
-  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
-
   const [selectedKey, setSelectedKey] = useState(null);
 
-  // dialogs
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  // Auth state
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const [pendingSchoolId, setPendingSchoolId] = useState(null);
-  const [chosenRole, setChosenRole] = useState("user"); // student default for generic flows
+  // ✅ In-page Auth modal (no route navigation)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [authStep, setAuthStep] = useState("choice"); // "choice" | "login" | "role" | "signup"
+  const [pendingTargetUrl, setPendingTargetUrl] = useState("");
 
-  // auth
-  const [fbUser, setFbUser] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [fbProfile, setFbProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
 
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginShowPw, setLoginShowPw] = useState(false);
+
+  const [signupRole, setSignupRole] = useState("user"); // user | agent | tutor (NO school)
+  const [signupName, setSignupName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupPassword2, setSignupPassword2] = useState("");
+  const [signupShowPw, setSignupShowPw] = useState(false);
+
+  // Watch auth
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setFbUser(u || null);
-      setAuthReady(true);
-    });
+    const unsub = onAuthStateChanged(auth, (u) => setCurrentUser(u || null));
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!fbUser) {
-        setFbProfile(null);
-        return;
-      }
-      try {
-        const snap = await getDoc(doc(db, "users", fbUser.uid));
-        if (!cancelled) setFbProfile(snap.exists() ? snap.data() : null);
-      } catch {
-        if (!cancelled) setFbProfile(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [fbUser]);
-
-  const isSignedIn = !!fbUser;
-  const locked = authReady ? !isSignedIn : true;
 
   // read initial page from URL
   useEffect(() => {
@@ -777,8 +529,11 @@ export default function Schools() {
     [searchParams, setSearchParams]
   );
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  /* -----------------------------
+     Load schools + institutions
+   ----------------------------- */
+  const loadSchoolData = useCallback(async () => {
+    setLoadingSchools(true);
     try {
       const [schoolsData, institutionsData] = await Promise.all([
         School.list("-created_date", 2000),
@@ -791,14 +546,63 @@ export default function Schools() {
       setAllSchools([]);
       setAllInstitutions([]);
     } finally {
-      setLoading(false);
+      setLoadingSchools(false);
     }
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadSchoolData();
+  }, [loadSchoolData]);
 
+  /* -----------------------------
+     Load users for directory
+   ----------------------------- */
+  const fetchUsersForRole = useCallback(async (role) => {
+    setLoadingUsers(true);
+    try {
+      const usersRef = collection(db, "users");
+
+      const qs = [
+        query(usersRef, where("user_type", "==", role)),
+        query(usersRef, where("userType", "==", role)),
+        query(usersRef, where("role", "==", role)),
+        query(usersRef, where("selected_role", "==", role)),
+      ];
+
+      const snaps = await Promise.all(qs.map((q1) => getDocs(q1)));
+      const byId = new Map();
+
+      snaps.forEach((snap) => {
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() || {};
+          byId.set(docSnap.id, { id: docSnap.id, ...d });
+        });
+      });
+
+      setAllUsers(Array.from(byId.values()));
+    } catch (e) {
+      console.error("Error loading users:", e);
+      setAllUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (browseTab === "school") return;
+    fetchUsersForRole(browseTab);
+  }, [browseTab, fetchUsersForRole]);
+
+  /* -----------------------------
+     Programs grouped by school key
+   ----------------------------- */
+  const programsBySchoolKey = useMemo(() => {
+    return _.groupBy(allSchools || [], (s) => s.school_name || s.institution_name || "Unknown School");
+  }, [allSchools]);
+
+  /* -----------------------------
+     Merge schools + institutions
+   ----------------------------- */
   const institutionsByName = useMemo(() => {
     return Object.fromEntries((allInstitutions || []).map((inst) => [normalize(inst.name), inst]));
   }, [allInstitutions]);
@@ -851,27 +655,27 @@ export default function Schools() {
     return [...schoolCards, ...institutionCards];
   }, [allSchools, allInstitutions, institutionsByName]);
 
-  const countryOptions = useMemo(() => {
+  const schoolCountryOptions = useMemo(() => {
     const fromData = mergedSchools.map((s) => s.country || s.school_country).filter(Boolean);
     const priority = ["Australia", "Germany", "Ireland", "United Kingdom", "United States", "New Zealand", "Canada"];
     return Array.from(new Set([...fromData, ...priority]));
   }, [mergedSchools]);
+
+  const userCountryOptions = useMemo(() => {
+    const fromData = (allUsers || []).map((u) => u.country).filter(Boolean);
+    return Array.from(new Set(fromData));
+  }, [allUsers]);
 
   const handleSearchChange = useCallback((e) => {
     e.preventDefault();
     setSearchTerm(e.target.value);
   }, []);
 
-  const handleCountryChange = useCallback(
-    (value) => {
-      setSelectedCountry(value);
-      if (value !== selectedCountry) {
-        setSelectedProvince("all");
-        setSelectedCity("all");
-      }
-    },
-    [selectedCountry]
-  );
+  const handleCountryChange = useCallback((value) => {
+    setSelectedCountry(value);
+    setSelectedProvince("all");
+    setSelectedCity("all");
+  }, []);
 
   const handleProvinceChange = useCallback(
     (value) => {
@@ -881,13 +685,26 @@ export default function Schools() {
     [selectedProvince]
   );
 
-  // Reset to page 1 whenever filters/search change
   useEffect(() => {
     updatePage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, selectedCountry, selectedProvince, selectedCity, selectedType, mergedSchools.length]);
+  }, [
+    browseTab,
+    searchTerm,
+    selectedCountry,
+    selectedProvince,
+    selectedCity,
+    selectedType,
+    mergedSchools.length,
+    allUsers.length,
+  ]);
 
+  /* -----------------------------
+     Filter schools
+   ----------------------------- */
   useEffect(() => {
+    if (browseTab !== "school") return;
+
     let filtered = mergedSchools;
 
     if (searchTerm) {
@@ -912,9 +729,39 @@ export default function Schools() {
     }
 
     setFilteredSchools(filtered);
-  }, [mergedSchools, searchTerm, selectedCountry, selectedProvince, selectedCity, selectedType]);
+  }, [browseTab, mergedSchools, searchTerm, selectedCountry, selectedProvince, selectedCity, selectedType]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredSchools.length / PAGE_SIZE));
+  /* -----------------------------
+     Filter users (directory)
+   ----------------------------- */
+  useEffect(() => {
+    if (browseTab === "school") return;
+
+    let filtered = allUsers;
+
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      filtered = filtered.filter((u) => {
+        const name = (u.full_name || u.name || "").toLowerCase();
+        const email = (u.email || "").toLowerCase();
+        const phone = (u.phone || "").toLowerCase();
+        const country = (u.country || "").toLowerCase();
+        return name.includes(q) || email.includes(q) || phone.includes(q) || country.includes(q);
+      });
+    }
+
+    if (selectedCountry !== "all") {
+      filtered = filtered.filter((u) => (u.country || "") === selectedCountry);
+    }
+
+    setFilteredUsers(filtered);
+  }, [browseTab, allUsers, searchTerm, selectedCountry]);
+
+  const isSchoolTab = browseTab === "school";
+  const loading = isSchoolTab ? loadingSchools : loadingUsers;
+
+  const totalCount = isSchoolTab ? filteredSchools.length : filteredUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   useEffect(() => {
     if (page > totalPages) updatePage(totalPages);
@@ -922,26 +769,37 @@ export default function Schools() {
   }, [page, totalPages, updatePage]);
 
   const startIndex = (page - 1) * PAGE_SIZE;
-  const endIndex = Math.min(startIndex + PAGE_SIZE, filteredSchools.length);
-  const pagedSchools = filteredSchools.slice(startIndex, endIndex);
+  const endIndex = Math.min(startIndex + PAGE_SIZE, totalCount);
+
+  const pagedItems = useMemo(() => {
+    const src = isSchoolTab ? filteredSchools : filteredUsers;
+    return src.slice(startIndex, endIndex);
+  }, [isSchoolTab, filteredSchools, filteredUsers, startIndex, endIndex]);
 
   useEffect(() => {
-    if (!pagedSchools.length) {
+    if (!pagedItems.length) {
       setSelectedKey(null);
       return;
     }
     if (!selectedKey) {
-      setSelectedKey(pagedSchools[0].school_key || pagedSchools[0].id);
+      setSelectedKey(pagedItems[0].school_key || pagedItems[0].id);
       return;
     }
-    const stillOnPage = pagedSchools.some((s) => (s.school_key || s.id) === selectedKey);
-    if (!stillOnPage) setSelectedKey(pagedSchools[0].school_key || pagedSchools[0].id);
-  }, [pagedSchools, selectedKey]);
+    const stillOnPage = pagedItems.some((s) => (s.school_key || s.id) === selectedKey);
+    if (!stillOnPage) setSelectedKey(pagedItems[0].school_key || pagedItems[0].id);
+  }, [pagedItems, selectedKey]);
 
   const selectedItem = useMemo(() => {
     if (!selectedKey) return null;
-    return filteredSchools.find((s) => (s.school_key || s.id) === selectedKey) || null;
-  }, [filteredSchools, selectedKey]);
+    const src = isSchoolTab ? (filteredSchools || []) : (filteredUsers || []);
+    return src.find((s) => (s.school_key || s.id) === selectedKey) || null;
+  }, [isSchoolTab, filteredSchools, filteredUsers, selectedKey]);
+
+  const selectedPrograms = useMemo(() => {
+    if (!isSchoolTab || !selectedItem) return [];
+    const k = selectedItem.school_key || selectedItem.name || selectedItem.school_name || selectedItem.institution_name;
+    return programsBySchoolKey[k] || [];
+  }, [isSchoolTab, selectedItem, programsBySchoolKey]);
 
   const getPageNumbers = (current, total) => {
     const pages = [];
@@ -972,60 +830,137 @@ export default function Schools() {
     setSelectedType("all");
   }, []);
 
-  /* -----------------------------
-     Non-user gating: open role prompt
-     Schools page rule: Agent or Tutor only
-   ----------------------------- */
-  const openRoleDialog = useCallback((schoolId) => {
-    setPendingSchoolId(schoolId || null);
-    setRoleDialogOpen(true);
+  const onContactSchool = useCallback((schoolItem) => {
+    const name = schoolItem?.name || schoolItem?.school_name || schoolItem?.institution_name || "School";
+
+    const email =
+      schoolItem?.contact_email ||
+      schoolItem?.contactEmail ||
+      schoolItem?.admissions_email ||
+      schoolItem?.international_email ||
+      schoolItem?.email;
+
+    if (email) {
+      const subject = encodeURIComponent(`Inquiry: ${name}`);
+      window.location.href = `mailto:${email}?subject=${subject}`;
+      return;
+    }
+
+    window.location.href = `/contact?school=${encodeURIComponent(name)}`;
   }, []);
 
-  const chooseRoleAndShowLogin = useCallback((role) => {
-    setChosenRole(role);
+  const resetAuthForm = useCallback(() => {
+    setAuthError("");
+    setAuthLoading(false);
 
-    // lock role for onboarding so user won't be asked again
+    setLoginEmail("");
+    setLoginPassword("");
+    setLoginShowPw(false);
+
+    setSignupRole("user");
+    setSignupName("");
+    setSignupEmail("");
+    setSignupPassword("");
+    setSignupPassword2("");
+    setSignupShowPw(false);
+  }, []);
+
+  const openAuthDialog = useCallback((targetUrl) => {
+    setPendingTargetUrl(targetUrl || "");
+    setAuthStep("choice");
+    resetAuthForm();
+    setAuthDialogOpen(true);
+  }, [resetAuthForm]);
+
+  const afterAuthSuccess = useCallback(() => {
+    setAuthDialogOpen(false);
+    setAuthStep("choice");
+    setAuthError("");
+    setAuthLoading(false);
+    if (pendingTargetUrl) navigate(pendingTargetUrl);
+  }, [navigate, pendingTargetUrl]);
+
+  const handleLogin = useCallback(async () => {
+    setAuthError("");
+    setAuthLoading(true);
     try {
-      sessionStorage.setItem("onboarding_role", role);
-      sessionStorage.setItem("onboarding_role_locked", "1");
-    } catch {}
+      const email = (loginEmail || "").trim();
+      if (!email || !loginPassword) throw new Error("Please enter your email and password.");
+      await signInWithEmailAndPassword(auth, email, loginPassword);
+      afterAuthSuccess();
+    } catch (e) {
+      setAuthError(e?.message || "Login failed. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [afterAuthSuccess, loginEmail, loginPassword]);
 
-    setRoleDialogOpen(false);
-    setLoginDialogOpen(true);
-  }, []);
+  const handleSignup = useCallback(async () => {
+    setAuthError("");
+    setAuthLoading(true);
+    try {
+      const email = (signupEmail || "").trim();
+      const name = (signupName || "").trim();
 
-  /* -----------------------------
-     Signed-in users: go directly (still respects onboarding via routeAfterAuth)
-   ----------------------------- */
-  const goToSchoolDetails = useCallback(
-    async (schoolId) => {
-      const target = schoolId ? String(schoolId) : "";
-      if (!target) return;
+      if (!signupRole) throw new Error("Please select a role.");
+      if (!email) throw new Error("Please enter your email.");
+      if (!signupPassword) throw new Error("Please enter a password.");
+      if (signupPassword.length < 6) throw new Error("Password must be at least 6 characters.");
+      if (signupPassword !== signupPassword2) throw new Error("Passwords do not match.");
 
-      const next = `SchoolDetails?id=${encodeURIComponent(target)}`;
+      const cred = await createUserWithEmailAndPassword(auth, email, signupPassword);
 
-      // Not signed in -> role dialog
-      if (!auth.currentUser) {
-        openRoleDialog(target);
+      if (name) {
+        await updateProfile(cred.user, { displayName: name });
+      }
+
+      // Create/merge user doc in Firestore (users collection)
+      await setDoc(
+        doc(db, "users", cred.user.uid),
+        {
+          uid: cred.user.uid,
+          email,
+          full_name: name || "",
+          // store role in multiple fields for compatibility with your existing queries
+          user_type: signupRole,
+          userType: signupRole,
+          role: signupRole,
+          selected_role: signupRole,
+          created_at: serverTimestamp(),
+          createdAt: Date.now(),
+        },
+        { merge: true }
+      );
+
+      afterAuthSuccess();
+    } catch (e) {
+      setAuthError(e?.message || "Sign up failed. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [afterAuthSuccess, signupEmail, signupName, signupPassword, signupPassword2, signupRole]);
+
+  // When a user clicks a program:
+  // - if logged in: open program details
+  // - if not: open the in-page auth dialog
+  const onProgramClick = useCallback(
+    (program, schoolItem) => {
+      const programId = program?.id || program?.program_id || "";
+      const url = programId
+        ? `/programdetails?id=${encodeURIComponent(String(programId))}`
+        : `/schooldetails?school=${encodeURIComponent(
+            schoolItem?.school_key || schoolItem?.name || schoolItem?.school_name || schoolItem?.institution_name || ""
+          )}`;
+
+      if (currentUser) {
+        navigate(url);
         return;
       }
 
-      // Signed in -> ensure onboarding/doc, then go
-      try {
-        const roleHint = normalizeRole(fbProfile?.user_type || fbProfile?.role || "user");
-        await routeAfterAuth(navigate, auth.currentUser, roleHint, next);
-      } catch (e) {
-        navigate(createPageUrl(next));
-      }
+      openAuthDialog(url);
     },
-    [navigate, fbProfile, openRoleDialog]
+    [currentUser, navigate, openAuthDialog]
   );
-
-  // This is where login should go after auth
-  const nextPage = useMemo(() => {
-    const id = pendingSchoolId ? encodeURIComponent(pendingSchoolId) : "";
-    return `SchoolDetails?id=${id}`;
-  }, [pendingSchoolId]);
 
   if (loading) {
     return (
@@ -1039,88 +974,403 @@ export default function Schools() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
+      {/* ✅ In-page Login / Signup prompt (NO navigation) */}
+      <Dialog
+        open={authDialogOpen}
+        onOpenChange={(v) => {
+          setAuthDialogOpen(v);
+          if (!v) {
+            setAuthStep("choice");
+            setPendingTargetUrl("");
+            resetAuthForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Sign in required</DialogTitle>
+            <DialogDescription>
+              You need to log in to view program details. If you don’t have an account yet, create one by choosing a role.
+            </DialogDescription>
+          </DialogHeader>
+
+          {authError ? (
+            <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+              {authError}
+            </div>
+          ) : null}
+
+          {/* CHOICE */}
+          {authStep === "choice" ? (
+            <div className="mt-4 space-y-3">
+              <Button className="w-full h-11" onClick={() => setAuthStep("login")} disabled={authLoading}>
+                <LogIn className="w-4 h-4 mr-2" />
+                Log in
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-11"
+                onClick={() => setAuthStep("role")}
+                disabled={authLoading}
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Create an account
+              </Button>
+
+              <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                Cancel
+              </Button>
+            </div>
+          ) : null}
+
+          {/* LOGIN */}
+          {authStep === "login" ? (
+            <div className="mt-4 space-y-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Email</label>
+                <Input
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  type="email"
+                  className="h-11"
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Password</label>
+                <div className="relative">
+                  <Input
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    type={loginShowPw ? "text" : "password"}
+                    className="h-11 pr-10"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-500 hover:text-gray-700"
+                    onClick={() => setLoginShowPw((v) => !v)}
+                    aria-label={loginShowPw ? "Hide password" : "Show password"}
+                  >
+                    {loginShowPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <Button className="w-full h-11" onClick={handleLogin} disabled={authLoading}>
+                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
+                Log in
+              </Button>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="w-full" onClick={() => setAuthStep("choice")} disabled={authLoading}>
+                  Back
+                </Button>
+                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                  Cancel
+                </Button>
+              </div>
+
+              <div className="text-sm text-gray-600 text-center">
+                No account yet?{" "}
+                <button
+                  type="button"
+                  className="text-blue-600 underline hover:text-blue-700"
+                  onClick={() => setAuthStep("role")}
+                  disabled={authLoading}
+                >
+                  Create one
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ROLE SELECT (NO SCHOOL ROLE) */}
+          {authStep === "role" ? (
+            <div className="mt-4 space-y-3">
+              <div className="text-sm font-medium text-gray-900">Select your role</div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Button
+                  variant={signupRole === "user" ? "default" : "outline"}
+                  className="h-11"
+                  onClick={() => setSignupRole("user")}
+                  disabled={authLoading}
+                >
+                  Student
+                </Button>
+                <Button
+                  variant={signupRole === "agent" ? "default" : "outline"}
+                  className="h-11"
+                  onClick={() => setSignupRole("agent")}
+                  disabled={authLoading}
+                >
+                  Agent
+                </Button>
+                <Button
+                  variant={signupRole === "tutor" ? "default" : "outline"}
+                  className="h-11"
+                  onClick={() => setSignupRole("tutor")}
+                  disabled={authLoading}
+                >
+                  Tutor
+                </Button>
+              </div>
+
+              <Button className="w-full h-11" onClick={() => setAuthStep("signup")} disabled={authLoading}>
+                Continue
+              </Button>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="w-full" onClick={() => setAuthStep("choice")} disabled={authLoading}>
+                  Back
+                </Button>
+                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* SIGNUP */}
+          {authStep === "signup" ? (
+            <div className="mt-4 space-y-3">
+              <div className="text-sm text-gray-600">
+                Creating account as:{" "}
+                <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Full name</label>
+                <Input
+                  value={signupName}
+                  onChange={(e) => setSignupName(e.target.value)}
+                  placeholder="Your name"
+                  className="h-11"
+                  autoComplete="name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Email</label>
+                <Input
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  type="email"
+                  className="h-11"
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Password</label>
+                <div className="relative">
+                  <Input
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    placeholder="Create a password"
+                    type={signupShowPw ? "text" : "password"}
+                    className="h-11 pr-10"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-500 hover:text-gray-700"
+                    onClick={() => setSignupShowPw((v) => !v)}
+                    aria-label={signupShowPw ? "Hide password" : "Show password"}
+                  >
+                    {signupShowPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Confirm password</label>
+                <Input
+                  value={signupPassword2}
+                  onChange={(e) => setSignupPassword2(e.target.value)}
+                  placeholder="Confirm your password"
+                  type={signupShowPw ? "text" : "password"}
+                  className="h-11"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <Button className="w-full h-11" onClick={handleSignup} disabled={authLoading}>
+                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                Create account
+              </Button>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="w-full" onClick={() => setAuthStep("role")} disabled={authLoading}>
+                  Back
+                </Button>
+                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                  Cancel
+                </Button>
+              </div>
+
+              <div className="text-sm text-gray-600 text-center">
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  className="text-blue-600 underline hover:text-blue-700"
+                  onClick={() => setAuthStep("login")}
+                  disabled={authLoading}
+                >
+                  Log in
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         <div className="mb-8 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-4">
-            Discover Schools & Institutions
+            {browseTab === "school"
+              ? "Browse Schools & Institutions"
+              : `Browse ${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)} Directory`}
           </h1>
+
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-            Browse publicly, then sign in to view profiles and programs.
+            {browseTab === "school"
+              ? "Explore schools and institutions, then expand to view programs and contact options."
+              : "Explore our public directory and connect with verified profiles by country and search."}
           </p>
         </div>
 
-        {/* Filters */}
-        <Card className="mb-8">
-          <CardContent className="p-6">
-            <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                <div className="sm:col-span-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <Input
-                      type="text"
-                      placeholder="Search schools, institutions, programs..."
-                      value={searchTerm}
-                      onChange={handleSearchChange}
-                      className="pl-10 h-11 text-base"
-                    />
+
+        {/* Filters + Tabs */}
+        <div className="relative mb-8">
+          {/* ✅ Roles OUTSIDE the box, clumped top-right */}
+          <div className="absolute -top-4 right-4 z-10 flex items-center gap-2">
+            {BROWSE_TABS.map((t) => (
+              <Button
+                key={t.key}
+                type="button"
+                variant={browseTab === t.key ? "default" : "outline"}
+                size="sm"
+                className="h-8 px-3"
+                onClick={() => {
+                  setBrowseTab(t.key);
+                  setSelectedCountry("all");
+                  setSearchTerm("");
+                }}
+              >
+                {t.label}
+              </Button>
+            ))}
+          </div>
+
+          <Card>
+            <CardContent className="p-6">
+              <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+                {/* ✅ Remove the old roles block from here */}
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-sm text-gray-600 flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    <span>
+                      Browse: <span className="font-semibold capitalize">{browseTab}</span>
+                    </span>
                   </div>
+
+                  {/* Keep right side empty or put something else if you want */}
+                  <div />
                 </div>
 
-                <CountrySelector
-                  value={selectedCountry}
-                  onChange={handleCountryChange}
-                  options={countryOptions}
-                  includeAll
-                  allLabel="All Countries"
-                  placeholder="All Countries"
-                  className="h-11"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="sm:col-span-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                      <Input
+                        type="text"
+                        placeholder={
+                          isSchoolTab
+                            ? "Search schools, institutions, programs..."
+                            : `Search ${browseTab}s by name, email, phone, country...`
+                        }
+                        value={searchTerm}
+                        onChange={handleSearchChange}
+                        className="pl-10 h-11 text-base"
+                      />
+                    </div>
+                  </div>
 
-                <ProvinceSelector
-                  value={selectedProvince}
-                  onValueChange={handleProvinceChange}
-                  placeholder="All Provinces"
-                  includeAll={true}
-                  includeInternational={true}
-                  className="h-11"
-                />
+                  <CountrySelector
+                    value={selectedCountry}
+                    onChange={handleCountryChange}
+                    options={isSchoolTab ? schoolCountryOptions : userCountryOptions}
+                    includeAll
+                    allLabel="All Countries"
+                    placeholder="All Countries"
+                    className="h-11"
+                  />
 
-                <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="All Types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="institution">Institutions Only</SelectItem>
-                    <SelectItem value="program">Programs Only</SelectItem>
-                    <SelectItem value="university">Universities</SelectItem>
-                    <SelectItem value="college">Colleges</SelectItem>
-                    <SelectItem value="institute">Institutes</SelectItem>
-                    <SelectItem value="language school">Language Schools</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  {filteredSchools.length > 0 ? (
+                  {isSchoolTab ? (
                     <>
-                      Showing <span className="font-medium">{startIndex + 1}</span>–<span className="font-medium">{endIndex}</span>{" "}
-                      of <span className="font-medium">{filteredSchools.length}</span> schools & institutions
+                      <ProvinceSelector
+                        value={selectedProvince}
+                        onValueChange={handleProvinceChange}
+                        placeholder="All Provinces"
+                        includeAll={true}
+                        includeInternational={true}
+                        className="h-11"
+                      />
+
+                      <Select value={selectedType} onValueChange={setSelectedType}>
+                        <SelectTrigger className="h-11">
+                          <SelectValue placeholder="All Types" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Types</SelectItem>
+                          <SelectItem value="institution">Institutions Only</SelectItem>
+                          <SelectItem value="program">Programs Only</SelectItem>
+                          <SelectItem value="university">Universities</SelectItem>
+                          <SelectItem value="college">Colleges</SelectItem>
+                          <SelectItem value="institute">Institutes</SelectItem>
+                          <SelectItem value="language school">Language Schools</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </>
                   ) : (
-                    <>Showing 0 of {mergedSchools.length} schools & institutions</>
+                    <>
+                      <div className="hidden lg:block" />
+                      <div className="hidden lg:block" />
+                    </>
                   )}
                 </div>
 
-                <Button type="button" variant="outline" onClick={clearAllFilters} className="text-sm">
-                  Clear All Filters
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    {totalCount > 0 ? (
+                      <>
+                        Showing <span className="font-medium">{startIndex + 1}</span>–<span className="font-medium">{endIndex}</span>{" "}
+                        of <span className="font-medium">{totalCount}</span>{" "}
+                        {isSchoolTab ? "schools & institutions" : `${browseTab}s`}
+                        {isSchoolTab ? (
+                          <> ({allSchools.length} programs, {allInstitutions.length} institutions)</>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>Showing 0 {isSchoolTab ? "schools & institutions" : `${browseTab}s`}</>
+                    )}
+                  </div>
+
+                  <Button type="button" variant="outline" onClick={clearAllFilters} className="text-sm">
+                    Clear All Filters
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Split layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1129,30 +1379,35 @@ export default function Schools() {
             <Card className="h-[70vh] flex flex-col">
               <CardContent className="p-4 h-full flex flex-col min-h-0">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900">Schools & Institutions</h3>
-                  <Badge variant="secondary">{filteredSchools.length}</Badge>
+                  <h3 className="font-semibold text-gray-900">
+                    {isSchoolTab ? "Schools & Institutions" : `${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)}s`}
+                  </h3>
+                  <Badge variant="secondary">{totalCount}</Badge>
                 </div>
 
                 <div className="flex-1 min-h-0 overflow-auto space-y-3 pr-1">
-                  {pagedSchools.map((item) => {
+                  {pagedItems.map((item) => {
                     const key = item.school_key || item.id;
-                    const targetId = getTargetId(item);
-
-                    return (
+                    return isSchoolTab ? (
                       <SchoolListRow
                         key={key}
                         item={item}
                         isSelected={key === selectedKey}
-                        locked={locked}
                         onSelect={() => setSelectedKey(key)}
-                        onLockedClick={() => openRoleDialog(targetId)}
+                      />
+                    ) : (
+                      <UserListRow
+                        key={key}
+                        user={item}
+                        isSelected={key === selectedKey}
+                        onSelect={() => setSelectedKey(key)}
                       />
                     );
                   })}
                 </div>
 
                 {/* Pagination */}
-                {filteredSchools.length > 0 && totalPages > 1 && (
+                {totalCount > 0 && totalPages > 1 && (
                   <div className="pt-4 flex items-center justify-center gap-2 flex-wrap">
                     <Button
                       type="button"
@@ -1201,83 +1456,34 @@ export default function Schools() {
           {/* RIGHT DETAILS */}
           <div className="lg:col-span-7 min-h-0">
             <div className="h-[70vh] min-h-0">
-              <SchoolDetailsPanel
-                item={selectedItem}
-                locked={locked}
-                onRequireAuth={(id) => openRoleDialog(id)}
-                onViewDetails={(id) => goToSchoolDetails(id)}
-              />
+              {isSchoolTab ? (
+                <SchoolDetailsPanel
+                  item={selectedItem}
+                  programs={selectedPrograms}
+                  onContact={onContactSchool}
+                  onProgramClick={onProgramClick}
+                />
+              ) : (
+                <UserDetailsPanel user={selectedItem} />
+              )}
             </div>
           </div>
         </div>
 
         {/* Empty state */}
-        {filteredSchools.length === 0 && (
+        {totalCount === 0 && (
           <div className="text-center py-12">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No schools or institutions found</h3>
-            <p className="text-gray-600 mb-4">Try adjusting your search criteria or clear filters to see all available options.</p>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              No {isSchoolTab ? "schools or institutions" : `${browseTab}s`} found
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Try adjusting your search criteria or clear filters to see all available options.
+            </p>
             <Button type="button" onClick={clearAllFilters} variant="outline">
               Clear All Filters
             </Button>
           </div>
         )}
-
-        {/* Role picker dialog (Schools page rule: Agent or Tutor only) */}
-        {/* Role picker dialog (now includes Student) */}
-        <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Continue to view this school</DialogTitle>
-              <DialogDescription>
-                Choose how you’re joining GreenPass. This helps us route you to the right onboarding.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="grid gap-3 mt-2">
-              {/* Student/Parent */}
-              <Button
-                onClick={() => chooseRoleAndShowLogin("user")} // student role in your system
-                variant="outline"
-                className="w-full h-11"
-              >
-                I’m a Student / Parent
-              </Button>
-
-              {/* Agent */}
-              <Button onClick={() => chooseRoleAndShowLogin("agent")} className="w-full h-11">
-                I’m an Agent
-              </Button>
-
-              {/* Tutor */}
-              <Button onClick={() => chooseRoleAndShowLogin("tutor")} variant="outline" className="w-full h-11">
-                I’m a Tutor
-              </Button>
-
-              <div className="pt-1 text-center text-sm text-gray-600">
-                Already a member?{" "}
-                <button
-                  type="button"
-                  className="font-semibold text-blue-600 hover:underline"
-                  onClick={() => {
-                    setChosenRole("user"); // role not used for existing members
-                    setRoleDialogOpen(false);
-                    setLoginDialogOpen(true);
-                  }}
-                >
-                  Sign in
-                </button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Login dialog (inline, no navigation to Welcome page) */}
-        <LoginDialog
-          open={loginDialogOpen}
-          onOpenChange={setLoginDialogOpen}
-          entryRole={chosenRole}
-          nextPage={nextPage}
-        />
       </div>
     </div>
   );

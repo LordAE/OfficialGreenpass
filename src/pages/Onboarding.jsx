@@ -7,6 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from "@/components/ui/command";
+
 import {
   Loader2,
   User as UserIcon,
@@ -20,8 +30,10 @@ import {
   LogOut,
   BadgeCheck,
   CreditCard,
-  ShieldCheck
+  ShieldCheck,
+  ChevronsUpDown
 } from 'lucide-react';
+
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
@@ -43,26 +55,36 @@ const STEPS = {
 const STEP_ORDER = [STEPS.CHOOSE_ROLE, STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.SUBSCRIPTION, STEPS.COMPLETE];
 
 const ROLE_OPTIONS = [
-  { type: 'user',   title: 'Student', subtitle: 'I want to study abroad',
+  {
+    type: 'user', title: 'Student', subtitle: 'I want to study abroad',
     description: 'Find schools, get visa help, connect with tutors, and manage your study abroad journey',
     icon: <UserIcon className="w-8 h-8" />, color: 'bg-blue-500',
-    benefits: ['Access to thousands of programs','Free counselor matching','Visa application support','Test prep resources'] },
-  { type: 'agent',  title: 'Education Agent', subtitle: 'I help students study abroad',
+    benefits: ['Access to thousands of programs', 'Free counselor matching', 'Visa application support', 'Test prep resources']
+  },
+  {
+    type: 'agent', title: 'Education Agent', subtitle: 'I help students study abroad',
     description: 'Connect with students, manage applications, earn commissions, and grow your agency',
     icon: <Briefcase className="w-8 h-8" />, color: 'bg-purple-500',
-    benefits: ['Student referral system','Commission tracking','Case management tools','Marketing support'] },
-  { type: 'tutor',  title: 'Tutor', subtitle: 'I teach test prep & languages',
+    benefits: ['Student referral system', 'Commission tracking', 'Case management tools', 'Marketing support']
+  },
+  {
+    type: 'tutor', title: 'Tutor', subtitle: 'I teach test prep & languages',
     description: 'Offer tutoring services, manage sessions, earn income teaching students',
     icon: <BookOpen className="w-8 h-8" />, color: 'bg-green-500',
-    benefits: ['Online session platform','Student matching','Payment processing','Schedule management'] },
-  { type: 'school', title: 'Educational Institution', subtitle: 'I represent a school/college',
+    benefits: ['Online session platform', 'Student matching', 'Payment processing', 'Schedule management']
+  },
+  {
+    type: 'school', title: 'Educational Institution', subtitle: 'I represent a school/college',
     description: 'Promote programs, connect with students, manage applications and enrollments',
     icon: <Building className="w-8 h-8" />, color: 'bg-indigo-500',
-    benefits: ['Program listings','Student inquiries','Application management','Marketing tools'] },
-  { type: 'vendor', title: 'Service Provider', subtitle: 'I offer student services',
+    benefits: ['Program listings', 'Student inquiries', 'Application management', 'Marketing tools']
+  },
+  {
+    type: 'vendor', title: 'Service Provider', subtitle: 'I offer student services',
     description: 'Provide services like transport, SIM cards, accommodation to international students',
     icon: <Store className="w-8 h-8" />, color: 'bg-orange-500',
-    benefits: ['Service marketplace','Order management','Payment processing','Customer reviews'] },
+    benefits: ['Service marketplace', 'Order management', 'Payment processing', 'Customer reviews']
+  },
 ];
 
 // ✅ Helpers to handle CSV ↔ array safely
@@ -71,6 +93,174 @@ const csvToArray = (s) =>
 
 const arrayToCSV = (v) =>
   Array.isArray(v) ? v.join(', ') : (typeof v === 'string' ? v : '');
+
+// 🌍 Country helpers (flags as images + all countries via Intl, with API fallback)
+const flagUrlFromCode = (code) => {
+  const cc = (code || '').toString().trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) return '';
+  // small flags; you can change w20 to w40, etc.
+  return `https://flagcdn.com/w20/${cc}.png`;
+};
+
+const getAllCountriesIntl = () => {
+  try {
+    if (typeof Intl === "undefined") return [];
+    if (!Intl.supportedValuesOf) return [];
+
+    const codes = Intl.supportedValuesOf("region") || [];
+    const dn = Intl.DisplayNames ? new Intl.DisplayNames(["en"], { type: "region" }) : null;
+
+    return codes
+      .filter((code) => /^[A-Z]{2}$/.test(code))
+      .map((code) => ({
+        code,
+        name: dn?.of(code) || code,
+        flagUrl: flagUrlFromCode(code),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+};
+
+async function getAllCountriesFallback() {
+  // REST Countries fallback (no dependency)
+  const res = await fetch("https://restcountries.com/v3.1/all?fields=name,cca2");
+  const json = await res.json();
+
+  return (json || [])
+    .filter((x) => x?.cca2 && /^[A-Z]{2}$/.test(x.cca2))
+    .map((x) => ({
+      code: x.cca2,
+      name: x?.name?.common || x.cca2,
+      flagUrl: flagUrlFromCode(x.cca2),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function CountrySelect({ valueCode, valueName, onChange }) {
+  const [open, setOpen] = React.useState(false);
+  const [countries, setCountries] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const intlList = getAllCountriesIntl();
+        if (alive && intlList.length) {
+          setCountries(intlList);
+          return;
+        }
+
+        const apiList = await getAllCountriesFallback();
+        if (alive) setCountries(apiList);
+      } catch (e) {
+        console.error("Country list load failed:", e);
+        if (alive) setCountries([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { alive = false; };
+  }, []);
+
+  const selected = React.useMemo(() => {
+    const byCode =
+      valueCode && countries.find((c) => c.code === valueCode.toUpperCase());
+    if (byCode) return byCode;
+
+    const n = (valueName || "").trim().toLowerCase();
+    if (!n) return null;
+
+    return (
+      countries.find((c) => c.name.toLowerCase() === n) ||
+      countries.find((c) => c.name.toLowerCase().startsWith(n)) ||
+      null
+    );
+  }, [countries, valueCode, valueName]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className="w-full justify-between mt-1">
+          <span className="flex items-center gap-2 truncate">
+            {selected ? (
+              <>
+                {selected.flagUrl ? (
+                  <img
+                    src={selected.flagUrl}
+                    alt={`${selected.name} flag`}
+                    width={20}
+                    height={15}
+                    className="rounded-[2px] border"
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  />
+                ) : null}
+                <span className="truncate">{selected.name}</span>
+              </>
+            ) : (
+              <span className="text-gray-500">Select your country</span>
+            )}
+          </span>
+          <ChevronsUpDown className="h-4 w-4 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-0"
+        align="start"
+      >
+        <Command>
+          <CommandInput placeholder="Search country..." />
+          <CommandList className="max-h-72">
+            {loading && (
+              <div className="p-3 text-sm text-gray-500 flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading countries...
+              </div>
+            )}
+
+            {!loading && <CommandEmpty>No country found.</CommandEmpty>}
+
+            <CommandGroup>
+              {countries.map((c) => (
+                <CommandItem
+                  key={c.code}
+                  value={`${c.name} ${c.code}`}
+                  onSelect={() => {
+                    onChange(c);
+                    setOpen(false);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  {c.flagUrl ? (
+                    <img
+                      src={c.flagUrl}
+                      alt={`${c.name} flag`}
+                      width={20}
+                      height={15}
+                      className="rounded-[2px] border"
+                      loading="lazy"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  ) : null}
+                  <span className="flex-1">{c.name}</span>
+                  <span className="text-xs text-gray-500">{c.code}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function buildUserDefaults({ email, full_name = '' }) {
   return {
@@ -81,6 +271,7 @@ function buildUserDefaults({ email, full_name = '' }) {
     userType: 'user',
     phone: '',
     country: '',
+    country_code: '', // ✅ added
     address: { street: '', ward: '', district: '', province: '', postal_code: '' },
     profile_picture: '',
     is_verified: false,
@@ -110,13 +301,12 @@ const normalizeRole = (r) => {
 };
 
 // 🔐 Subscription prices (USD/year)
-// (Student: “Free now → $19/year” – we still offer pay-now + skip)
 const SUBSCRIPTION_PRICING = {
-  user:  { label: 'Student', amount: 19, currency: 'USD' },
+  user: { label: 'Student', amount: 19, currency: 'USD' },
   tutor: { label: 'Tutor', amount: 29, currency: 'USD' },
   agent: { label: 'Agent', amount: 29, currency: 'USD' },
-  school:{ label: 'School', amount: 299, currency: 'USD' },
-  vendor:{ label: 'Vendor', amount: 29, currency: 'USD' }, // adjust if you want
+  school: { label: 'School', amount: 299, currency: 'USD' },
+  vendor: { label: 'Vendor', amount: 29, currency: 'USD' },
 };
 
 function loadPayPalScript({ clientId, currency = 'USD' }) {
@@ -170,16 +360,14 @@ export default function Onboarding() {
     return sessionStorage.getItem('onboarding_role_locked') === '1';
   }, []);
 
-  // If lock is true, role is locked EVEN for student/user (fix requested)
+  // If lock is true, role is locked EVEN for student/user
   const roleHintFromEntry = useMemo(() => {
-    // if URL role exists, prefer it
     if (urlRole) return urlRole;
     if (sessionRole) return sessionRole;
     return DEFAULT_ROLE;
   }, [urlRole, sessionRole]);
 
   const roleLockedFromEntry = useMemo(() => {
-    // Only lock if this came from role-select flow (lock flag), not normal Welcome signup
     return Boolean(urlLock || sessionLock);
   }, [urlLock, sessionLock]);
 
@@ -246,6 +434,7 @@ export default function Onboarding() {
         full_name: data.full_name || fbUser.displayName || '',
         phone: data.phone || '',
         country: data.country || '',
+        country_code: data.country_code || '',
         email: data.email || fbUser.email || '',
 
         company_name: data.agent_profile?.company_name || '',
@@ -274,11 +463,10 @@ export default function Onboarding() {
       });
 
       if (data.onboarding_completed) {
-        // clear lock flags once finished
         try {
           sessionStorage.removeItem('onboarding_role_locked');
           sessionStorage.removeItem('onboarding_role');
-        } catch {}
+        } catch { }
         navigate(createPageUrl('Dashboard'), { replace: true });
         return;
       }
@@ -302,7 +490,6 @@ export default function Onboarding() {
   };
 
   const handleRoleSelect = async (roleType) => {
-    // If entry is locked, ignore switching
     if (roleLockedFromEntry) return;
     setSelectedRole(roleType);
     setCurrentStep(STEPS.BASIC_INFO);
@@ -344,6 +531,7 @@ export default function Onboarding() {
         full_name: formData.full_name || '',
         phone: formData.phone || '',
         country: formData.country || '',
+        country_code: formData.country_code || '',
         updated_at: serverTimestamp(),
       });
     }
@@ -381,6 +569,7 @@ export default function Onboarding() {
         full_name: formData.full_name || '',
         phone: formData.phone || '',
         country: formData.country || '',
+        country_code: formData.country_code || '',
         onboarding_step: STEPS.SUBSCRIPTION,
         updated_at: serverTimestamp(),
       };
@@ -536,11 +725,10 @@ export default function Onboarding() {
 
       setCurrentStep(STEPS.COMPLETE);
 
-      // clear lock flags once finished
       try {
         sessionStorage.removeItem('onboarding_role_locked');
         sessionStorage.removeItem('onboarding_role');
-      } catch {}
+      } catch { }
 
       setTimeout(() => navigate(createPageUrl('Dashboard'), { replace: true }), 1200);
     } catch (e) {
@@ -709,7 +897,7 @@ export default function Onboarding() {
             <Input
               id="full_name"
               value={formData.full_name || ''}
-              onChange={(e) => setFormData((p)=>({...p, full_name: e.target.value}))}
+              onChange={(e) => setFormData((p) => ({ ...p, full_name: e.target.value }))}
               placeholder="Enter your full name"
               className="mt-1"
             />
@@ -726,21 +914,27 @@ export default function Onboarding() {
             <Input
               id="phone"
               value={formData.phone || ''}
-              onChange={(e) => setFormData((p)=>({...p, phone: e.target.value}))}
+              onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
               placeholder="Enter your phone number"
               className="mt-1"
             />
           </div>
 
+          {/* ✅ Country dropdown with flags */}
           <div>
-            <Label htmlFor="country">Country *</Label>
-            <Input
-              id="country"
-              value={formData.country || ''}
-              onChange={(e) => setFormData((p)=>({...p, country: e.target.value}))}
-              placeholder="Enter your country"
-              className="mt-1"
+            <Label>Country *</Label>
+            <CountrySelect
+              valueCode={formData.country_code || ""}
+              valueName={formData.country || ""}
+              onChange={(c) =>
+                setFormData((p) => ({
+                  ...p,
+                  country: c.name,
+                  country_code: c.code,
+                }))
+              }
             />
+            <p className="text-xs text-gray-500 mt-1">Search and select your country (with flag).</p>
           </div>
 
           <div className="flex gap-3 pt-4">
@@ -781,16 +975,16 @@ export default function Onboarding() {
         {selectedRole === 'agent' && (
           <div className="space-y-6">
             <div><Label htmlFor="company_name">Company Name *</Label>
-              <Input id="company_name" value={formData.company_name || ''} onChange={(e) => setFormData((p)=>({...p, company_name: e.target.value}))} placeholder="Your education consultancy name" className="mt-1" />
+              <Input id="company_name" value={formData.company_name || ''} onChange={(e) => setFormData((p) => ({ ...p, company_name: e.target.value }))} placeholder="Your education consultancy name" className="mt-1" />
             </div>
             <div><Label htmlFor="business_license_mst">Business License (MST) *</Label>
-              <Input id="business_license_mst" value={formData.business_license_mst || ''} onChange={(e) => setFormData((p)=>({...p, business_license_mst: e.target.value}))} placeholder="Enter your business license number" className="mt-1" />
+              <Input id="business_license_mst" value={formData.business_license_mst || ''} onChange={(e) => setFormData((p) => ({ ...p, business_license_mst: e.target.value }))} placeholder="Enter your business license number" className="mt-1" />
             </div>
             <div><Label htmlFor="year_established">Year Established</Label>
-              <Input id="year_established" type="number" value={formData.year_established || ''} onChange={(e) => setFormData((p)=>({...p, year_established: e.target.value}))} placeholder="2020" className="mt-1" />
+              <Input id="year_established" type="number" value={formData.year_established || ''} onChange={(e) => setFormData((p) => ({ ...p, year_established: e.target.value }))} placeholder="2020" className="mt-1" />
             </div>
             <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
+              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))} placeholder="payouts@example.com" className="mt-1" />
               <p className="text-xs text-gray-500 mt-1">Required for commission payouts</p>
             </div>
           </div>
@@ -800,20 +994,20 @@ export default function Onboarding() {
         {selectedRole === 'tutor' && (
           <div className="space-y-6">
             <div><Label htmlFor="specializations">Specializations *</Label>
-              <Input id="specializations" value={formData.specializations || ''} onChange={(e) => setFormData((p)=>({...p, specializations: e.target.value}))} placeholder="IELTS, TOEFL, General English" className="mt-1" />
+              <Input id="specializations" value={formData.specializations || ''} onChange={(e) => setFormData((p) => ({ ...p, specializations: e.target.value }))} placeholder="IELTS, TOEFL, General English" className="mt-1" />
               <p className="text-xs text-gray-500 mt-1">Separate multiple specializations with commas</p>
             </div>
             <div><Label htmlFor="experience_years">Years of Experience *</Label>
-              <Input id="experience_years" type="number" value={formData.experience_years || ''} onChange={(e) => setFormData((p)=>({...p, experience_years: e.target.value}))} placeholder="5" className="mt-1" />
+              <Input id="experience_years" type="number" value={formData.experience_years || ''} onChange={(e) => setFormData((p) => ({ ...p, experience_years: e.target.value }))} placeholder="5" className="mt-1" />
             </div>
             <div><Label htmlFor="hourly_rate">Hourly Rate (USD) *</Label>
-              <Input id="hourly_rate" type="number" step="0.01" value={formData.hourly_rate || ''} onChange={(e) => setFormData((p)=>({...p, hourly_rate: e.target.value}))} placeholder="25.00" className="mt-1" />
+              <Input id="hourly_rate" type="number" step="0.01" value={formData.hourly_rate || ''} onChange={(e) => setFormData((p) => ({ ...p, hourly_rate: e.target.value }))} placeholder="25.00" className="mt-1" />
             </div>
             <div><Label htmlFor="bio">Professional Bio</Label>
-              <Textarea id="bio" value={formData.bio || ''} onChange={(e) => setFormData((p)=>({...p, bio: e.target.value}))} placeholder="Tell students about your teaching experience and approach..." className="mt-1" rows={3} />
+              <Textarea id="bio" value={formData.bio || ''} onChange={(e) => setFormData((p) => ({ ...p, bio: e.target.value }))} placeholder="Tell students about your teaching experience and approach..." className="mt-1" rows={3} />
             </div>
             <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
+              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))} placeholder="payouts@example.com" className="mt-1" />
               <p className="text-xs text-gray-500 mt-1">Required for session payouts</p>
             </div>
           </div>
@@ -823,10 +1017,10 @@ export default function Onboarding() {
         {selectedRole === 'school' && (
           <div className="space-y-6">
             <div><Label htmlFor="school_name">Institution Name *</Label>
-              <Input id="school_name" value={formData.school_name || ''} onChange={(e) => setFormData((p)=>({...p, school_name: e.target.value}))} placeholder="e.g., University of Toronto" className="mt-1" />
+              <Input id="school_name" value={formData.school_name || ''} onChange={(e) => setFormData((p) => ({ ...p, school_name: e.target.value }))} placeholder="e.g., University of Toronto" className="mt-1" />
             </div>
             <div><Label htmlFor="type">School Type *</Label>
-              <Select value={formData.type || ''} onValueChange={(v) => setFormData((p)=>({...p, type: v}))}>
+              <Select value={formData.type || ''} onValueChange={(v) => setFormData((p) => ({ ...p, type: v }))}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select institution type" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="High School">High School</SelectItem>
@@ -839,13 +1033,13 @@ export default function Onboarding() {
               </Select>
             </div>
             <div><Label htmlFor="location">City/Location *</Label>
-              <Input id="location" value={formData.location || ''} onChange={(e) => setFormData((p)=>({...p, location: e.target.value}))} placeholder="e.g., Toronto, ON" className="mt-1" />
+              <Input id="location" value={formData.location || ''} onChange={(e) => setFormData((p) => ({ ...p, location: e.target.value }))} placeholder="e.g., Toronto, ON" className="mt-1" />
             </div>
             <div><Label htmlFor="website">Official Website *</Label>
-              <Input id="website" type="url" value={formData.website || ''} onChange={(e) => setFormData((p)=>({...p, website: e.target.value}))} placeholder="https://www.university.edu" className="mt-1" />
+              <Input id="website" type="url" value={formData.website || ''} onChange={(e) => setFormData((p) => ({ ...p, website: e.target.value }))} placeholder="https://www.university.edu" className="mt-1" />
             </div>
             <div><Label htmlFor="about">About Your Institution</Label>
-              <Textarea id="about" value={formData.about || ''} onChange={(e) => setFormData((p)=>({...p, about: e.target.value}))} placeholder="Brief description of your institution..." className="mt-1" rows={3} />
+              <Textarea id="about" value={formData.about || ''} onChange={(e) => setFormData((p) => ({ ...p, about: e.target.value }))} placeholder="Brief description of your institution..." className="mt-1" rows={3} />
             </div>
           </div>
         )}
@@ -854,12 +1048,12 @@ export default function Onboarding() {
         {selectedRole === 'vendor' && (
           <div className="space-y-6">
             <div><Label htmlFor="business_name">Business Name *</Label>
-              <Input id="business_name" value={formData.business_name || ''} onChange={(e) => setFormData((p)=>({...p, business_name: e.target.value}))} placeholder="Your business name" className="mt-1" />
+              <Input id="business_name" value={formData.business_name || ''} onChange={(e) => setFormData((p) => ({ ...p, business_name: e.target.value }))} placeholder="Your business name" className="mt-1" />
             </div>
             <div>
               <Label>Service Categories *</Label>
               <div className="grid grid-cols-2 gap-3 mt-2">
-                {["Transport","SIM Card","Banking","Accommodation","Delivery","Tours"].map(category => (
+                {["Transport", "SIM Card", "Banking", "Accommodation", "Delivery", "Tours"].map(category => (
                   <div key={category} className="flex items-center space-x-2">
                     <input
                       type="checkbox"
@@ -878,7 +1072,7 @@ export default function Onboarding() {
               </div>
             </div>
             <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p)=>({...p, paypal_email: e.target.value}))} placeholder="payouts@example.com" className="mt-1" />
+              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))} placeholder="payouts@example.com" className="mt-1" />
               <p className="text-xs text-gray-500 mt-1">Required for service payouts</p>
             </div>
           </div>
