@@ -3,7 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import Layout from "@/pages/Layout.jsx";
 import Home from "@/pages/Home";
 import Welcome from "@/pages/Welcome.jsx";
-import Schools from "@/pages/Schools";
+import Directory from "@/pages/Directory";
 import ProgramsPage from "@/pages/Programs";
 import Dashboard from "@/pages/Dashboard";
 import ComparePrograms from "@/pages/ComparePrograms";
@@ -120,7 +120,7 @@ export default function App() {
         <Route path="welcome" element={<Welcome />} />
 
         {/* Public site */}
-        <Route path="schools" element={<Schools />} />
+        <Route path="directory" element={<Directory />} />
         <Route path="programs" element={<ProgramsPage />} />
         <Route path="compareprograms" element={<ComparePrograms />} />
         <Route path="programsDetail" element={<ProgramDetail />} />

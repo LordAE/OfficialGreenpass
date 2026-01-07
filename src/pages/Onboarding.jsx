@@ -1,5 +1,5 @@
 // src/pages/Onboarding.jsx
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
-  CommandList
+  CommandList,
 } from "@/components/ui/command";
 
 import {
@@ -31,74 +31,98 @@ import {
   BadgeCheck,
   CreditCard,
   ShieldCheck,
-  ChevronsUpDown
-} from 'lucide-react';
+  ChevronsUpDown,
+} from "lucide-react";
 
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
+import { useNavigate, useLocation } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 
 // 🔥 Firebase
-import { auth, db } from '@/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from "@/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 
 // 🔧 Firestore entities (for creating the first role record after onboarding)
-import { Agent, Tutor, SchoolProfile, Vendor } from '@/api/entities';
+import { Agent, Tutor, SchoolProfile, Vendor } from "@/api/entities";
 
 const STEPS = {
-  CHOOSE_ROLE: 'choose_role',
-  BASIC_INFO: 'basic_info',
-  ROLE_SPECIFIC: 'role_specific',
-  SUBSCRIPTION: 'subscription',
-  COMPLETE: 'complete'
+  CHOOSE_ROLE: "choose_role",
+  BASIC_INFO: "basic_info",
+  ROLE_SPECIFIC: "role_specific",
+  SUBSCRIPTION: "subscription",
+  COMPLETE: "complete",
 };
-const STEP_ORDER = [STEPS.CHOOSE_ROLE, STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.SUBSCRIPTION, STEPS.COMPLETE];
+const STEP_ORDER = [
+  STEPS.CHOOSE_ROLE,
+  STEPS.BASIC_INFO,
+  STEPS.ROLE_SPECIFIC,
+  STEPS.SUBSCRIPTION,
+  STEPS.COMPLETE,
+];
 
 const ROLE_OPTIONS = [
   {
-    type: 'user', title: 'Student', subtitle: 'I want to study abroad',
-    description: 'Find schools, get visa help, connect with tutors, and manage your study abroad journey',
-    icon: <UserIcon className="w-8 h-8" />, color: 'bg-blue-500',
-    benefits: ['Access to thousands of programs', 'Free counselor matching', 'Visa application support', 'Test prep resources']
+    type: "user",
+    title: "Student",
+    subtitle: "I want to study abroad",
+    description:
+      "Find schools, get visa help, connect with tutors, and manage your study abroad journey",
+    icon: <UserIcon className="w-8 h-8" />,
+    color: "bg-blue-500",
+    benefits: [
+      "Access to thousands of programs",
+      "Free counselor matching",
+      "Visa application support",
+      "Test prep resources",
+    ],
   },
   {
-    type: 'agent', title: 'Education Agent', subtitle: 'I help students study abroad',
-    description: 'Connect with students, manage applications, earn commissions, and grow your agency',
-    icon: <Briefcase className="w-8 h-8" />, color: 'bg-purple-500',
-    benefits: ['Student referral system', 'Commission tracking', 'Case management tools', 'Marketing support']
+    type: "agent",
+    title: "Education Agent",
+    subtitle: "I help students study abroad",
+    description:
+      "Connect with students, manage applications, earn commissions, and grow your agency",
+    icon: <Briefcase className="w-8 h-8" />,
+    color: "bg-purple-500",
+    benefits: ["Student referral system", "Commission tracking", "Case management tools", "Marketing support"],
   },
   {
-    type: 'tutor', title: 'Tutor', subtitle: 'I teach test prep & languages',
-    description: 'Offer tutoring services, manage sessions, earn income teaching students',
-    icon: <BookOpen className="w-8 h-8" />, color: 'bg-green-500',
-    benefits: ['Online session platform', 'Student matching', 'Payment processing', 'Schedule management']
+    type: "tutor",
+    title: "Tutor",
+    subtitle: "I teach test prep & languages",
+    description: "Offer tutoring services, manage sessions, earn income teaching students",
+    icon: <BookOpen className="w-8 h-8" />,
+    color: "bg-green-500",
+    benefits: ["Online session platform", "Student matching", "Payment processing", "Schedule management"],
   },
   {
-    type: 'school', title: 'Educational Institution', subtitle: 'I represent a school/college',
-    description: 'Promote programs, connect with students, manage applications and enrollments',
-    icon: <Building className="w-8 h-8" />, color: 'bg-indigo-500',
-    benefits: ['Program listings', 'Student inquiries', 'Application management', 'Marketing tools']
+    type: "school",
+    title: "Educational Institution",
+    subtitle: "I represent a school/college",
+    description: "Promote programs, connect with students, manage applications and enrollments",
+    icon: <Building className="w-8 h-8" />,
+    color: "bg-indigo-500",
+    benefits: ["Program listings", "Student inquiries", "Application management", "Marketing tools"],
   },
   {
-    type: 'vendor', title: 'Service Provider', subtitle: 'I offer student services',
-    description: 'Provide services like transport, SIM cards, accommodation to international students',
-    icon: <Store className="w-8 h-8" />, color: 'bg-orange-500',
-    benefits: ['Service marketplace', 'Order management', 'Payment processing', 'Customer reviews']
+    type: "vendor",
+    title: "Service Provider",
+    subtitle: "I offer student services",
+    description: "Provide services like transport, SIM cards, accommodation to international students",
+    icon: <Store className="w-8 h-8" />,
+    color: "bg-orange-500",
+    benefits: ["Service marketplace", "Order management", "Payment processing", "Customer reviews"],
   },
 ];
 
 // ✅ Helpers to handle CSV ↔ array safely
-const csvToArray = (s) =>
-  (s || '').split(',').map(x => x.trim()).filter(Boolean);
-
-const arrayToCSV = (v) =>
-  Array.isArray(v) ? v.join(', ') : (typeof v === 'string' ? v : '');
+const csvToArray = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
+const arrayToCSV = (v) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
 
 // 🌍 Country helpers (flags as images + all countries via Intl, with API fallback)
 const flagUrlFromCode = (code) => {
-  const cc = (code || '').toString().trim().toLowerCase();
-  if (!/^[a-z]{2}$/.test(cc)) return '';
-  // small flags; you can change w20 to w40, etc.
+  const cc = (code || "").toString().trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) return "";
   return `https://flagcdn.com/w20/${cc}.png`;
 };
 
@@ -124,7 +148,6 @@ const getAllCountriesIntl = () => {
 };
 
 async function getAllCountriesFallback() {
-  // REST Countries fallback (no dependency)
   const res = await fetch("https://restcountries.com/v3.1/all?fields=name,cca2");
   const json = await res.json();
 
@@ -166,12 +189,13 @@ function CountrySelect({ valueCode, valueName, onChange }) {
     };
 
     load();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const selected = React.useMemo(() => {
-    const byCode =
-      valueCode && countries.find((c) => c.code === valueCode.toUpperCase());
+    const byCode = valueCode && countries.find((c) => c.code === valueCode.toUpperCase());
     if (byCode) return byCode;
 
     const n = (valueName || "").trim().toLowerCase();
@@ -199,7 +223,9 @@ function CountrySelect({ valueCode, valueName, onChange }) {
                     height={15}
                     className="rounded-[2px] border"
                     loading="lazy"
-                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
                   />
                 ) : null}
                 <span className="truncate">{selected.name}</span>
@@ -212,10 +238,7 @@ function CountrySelect({ valueCode, valueName, onChange }) {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
-        align="start"
-      >
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search country..." />
           <CommandList className="max-h-72">
@@ -247,7 +270,9 @@ function CountrySelect({ valueCode, valueName, onChange }) {
                       height={15}
                       className="rounded-[2px] border"
                       loading="lazy"
-                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
                     />
                   ) : null}
                   <span className="flex-1">{c.name}</span>
@@ -262,71 +287,103 @@ function CountrySelect({ valueCode, valueName, onChange }) {
   );
 }
 
-function buildUserDefaults({ email, full_name = '' }) {
+// ✅ FIX: DO NOT define this component inside Onboarding()
+// Defining it inside causes a new component type on every render, which remounts the textarea and steals focus.
+const BiographyField = React.memo(function BiographyField({
+  label = "Biography / Description",
+  value = "",
+  onChange,
+}) {
+  return (
+    <div>
+      <Label htmlFor="bio">{label}</Label>
+      <Textarea
+        id="bio"
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder="Write a short bio/description that will be shown on your public profile..."
+        className="mt-1"
+        rows={4}
+      />
+      <p className="text-xs text-gray-500 mt-1">Optional, but recommended for better profile visibility.</p>
+    </div>
+  );
+});
+
+const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor"];
+const DEFAULT_ROLE = "user";
+
+const normalizeRole = (r) => {
+  const v = (r || "").toString().trim().toLowerCase();
+  return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
+};
+
+function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
+  const finalRole = normalizeRole(role);
+
   return {
-    role: 'user',
+    role: finalRole,
     email,
     full_name,
-    user_type: 'user',
-    userType: 'user',
-    phone: '',
-    country: '',
-    country_code: '', // ✅ added
-    address: { street: '', ward: '', district: '', province: '', postal_code: '' },
-    profile_picture: '',
+    user_type: finalRole,
+    userType: finalRole,
+    phone: "",
+    country: "",
+    country_code: "",
+
+    // ✅ universal biography/description field for directory display
+    bio: "",
+
+    address: { street: "", ward: "", district: "", province: "", postal_code: "" },
+    profile_picture: "",
     is_verified: false,
     onboarding_completed: false,
     onboarding_step: STEPS.CHOOSE_ROLE,
-    selected_role: 'user',
+    selected_role: finalRole,
 
     // subscription fields
     subscription_active: false,
-    subscription_status: 'none', // none | skipped | active
-    subscription_provider: 'paypal',
-    subscription_plan: '',
+    subscription_status: "none", // none | skipped | active
+    subscription_provider: "paypal",
+    subscription_plan: "",
     subscription_amount: 0,
-    subscription_currency: 'USD',
+    subscription_currency: "USD",
 
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
   };
 }
 
-const VALID_ROLES = ['user', 'agent', 'tutor', 'school', 'vendor'];
-const DEFAULT_ROLE = 'user';
-
-const normalizeRole = (r) => {
-  const v = (r || '').toString().trim().toLowerCase();
-  return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
-};
-
 // 🔐 Subscription prices (USD/year)
 const SUBSCRIPTION_PRICING = {
-  user: { label: 'Student', amount: 19, currency: 'USD' },
-  tutor: { label: 'Tutor', amount: 29, currency: 'USD' },
-  agent: { label: 'Agent', amount: 29, currency: 'USD' },
-  school: { label: 'School', amount: 299, currency: 'USD' },
-  vendor: { label: 'Vendor', amount: 29, currency: 'USD' },
+  user: { label: "Student", amount: 19, currency: "USD" },
+  tutor: { label: "Tutor", amount: 29, currency: "USD" },
+  agent: { label: "Agent", amount: 29, currency: "USD" },
+  school: { label: "School", amount: 299, currency: "USD" },
+  vendor: { label: "Vendor", amount: 29, currency: "USD" },
 };
 
-function loadPayPalScript({ clientId, currency = 'USD' }) {
+function loadPayPalScript({ clientId, currency = "USD" }) {
   return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined') return reject(new Error('No window'));
+    if (typeof window === "undefined") return reject(new Error("No window"));
     if (window.paypal) return resolve(true);
 
     const existing = document.querySelector('script[data-paypal-sdk="true"]');
     if (existing) {
-      existing.addEventListener('load', () => resolve(true));
-      existing.addEventListener('error', reject);
+      existing.addEventListener("load", () => resolve(true));
+      existing.addEventListener("error", reject);
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=${encodeURIComponent(currency)}&intent=capture&components=buttons`;
+    const script = document.createElement("script");
+    script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(
+      clientId
+    )}&currency=${encodeURIComponent(currency)}&intent=capture&components=buttons`;
     script.async = true;
     script.defer = true;
-    script.dataset.paypalSdk = 'true';
-    script.setAttribute('data-paypal-sdk', 'true');
+    script.type = "text/javascript";
+    script.dataset.paypalSdk = "true";
+    script.setAttribute("data-paypal-sdk", "true");
 
     script.onload = () => resolve(true);
     script.onerror = (e) => reject(e);
@@ -336,40 +393,69 @@ function loadPayPalScript({ clientId, currency = 'USD' }) {
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
 
-  // Role hints (priority: URL > session > profile) with legacy fallbacks
-  const urlRole = useMemo(() => {
-    const raw = params.get('role') ?? params.get('userType') ?? params.get('as');
-    return normalizeRole(raw);
+  // ✅ FIX: stable search params (prevents effect re-run on typing)
+  const location = useLocation();
+  const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+
+  /**
+   * ✅ FIX: DO NOT auto-default urlRole/sessionRole to "user" when not provided.
+   * We only treat role as "preselected" if it actually exists in URL/sessionStorage.
+   */
+  const urlRoleRaw = useMemo(() => {
+    const raw = params.get("role") ?? params.get("userType") ?? params.get("as");
+    return raw && String(raw).trim() ? String(raw).trim() : null;
   }, [params]);
 
-  // 🔒 Explicit lock flag from Schools flow (recommended)
+  const urlRole = useMemo(() => (urlRoleRaw ? normalizeRole(urlRoleRaw) : null), [urlRoleRaw]);
+
+  // 🔒 Explicit lock flag from URL
   const urlLock = useMemo(() => {
-    const v = (params.get('lock') || params.get('locked') || '').toString();
-    return v === '1' || v.toLowerCase() === 'true';
+    const v = (params.get("lock") || params.get("locked") || "").toString();
+    return v === "1" || v.toLowerCase() === "true";
   }, [params]);
 
-  const sessionRole = useMemo(
-    () => normalizeRole(typeof window !== 'undefined' ? sessionStorage.getItem('onboarding_role') : null),
-    []
-  );
-
-  const sessionLock = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    return sessionStorage.getItem('onboarding_role_locked') === '1';
+  const sessionRoleRaw = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const v = sessionStorage.getItem("onboarding_role");
+    return v && String(v).trim() ? String(v).trim() : null;
   }, []);
 
-  // If lock is true, role is locked EVEN for student/user
+  const sessionRole = useMemo(() => (sessionRoleRaw ? normalizeRole(sessionRoleRaw) : null), [sessionRoleRaw]);
+
+  const sessionLock = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return sessionStorage.getItem("onboarding_role_locked") === "1";
+  }, []);
+
+  // If role was provided via URL/session, we consider it "preselected"
+  const rolePreselected = useMemo(() => Boolean(urlRole || sessionRole), [urlRole, sessionRole]);
+
+  // Role hint (priority: URL > session > default)
   const roleHintFromEntry = useMemo(() => {
     if (urlRole) return urlRole;
     if (sessionRole) return sessionRole;
     return DEFAULT_ROLE;
   }, [urlRole, sessionRole]);
 
+  /**
+   * ✅ FIX: If role is preselected (URL/session), lock it automatically
+   * so user will NOT see "Choose Role" again.
+   */
   const roleLockedFromEntry = useMemo(() => {
-    return Boolean(urlLock || sessionLock);
-  }, [urlLock, sessionLock]);
+    return Boolean(urlLock || sessionLock || rolePreselected);
+  }, [urlLock, sessionLock, rolePreselected]);
+
+  // ✅ FIX: refs so auth effect doesn't depend on roleHintFromEntry/roleLockedFromEntry
+  const roleHintRef = useRef(roleHintFromEntry);
+  const roleLockedRef = useRef(roleLockedFromEntry);
+  useEffect(() => {
+    roleHintRef.current = roleHintFromEntry;
+    roleLockedRef.current = roleLockedFromEntry;
+  }, [roleHintFromEntry, roleLockedFromEntry]);
+
+  // ✅ FIX: prevents Firestore init from overwriting user typing
+  const formDirtyRef = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(STEPS.CHOOSE_ROLE);
   const [selectedRole, setSelectedRole] = useState(null);
@@ -383,46 +469,75 @@ export default function Onboarding() {
   // PayPal state
   const paypalContainerRef = useRef(null);
   const [paypalReady, setPaypalReady] = useState(false);
-  const [paypalError, setPaypalError] = useState('');
+  const [paypalError, setPaypalError] = useState("");
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
-  const PAYPAL_CLIENT_ID = (import.meta?.env?.VITE_PAYPAL_CLIENT_ID || '').trim();
+  const PAYPAL_CLIENT_ID = (import.meta?.env?.VITE_PAYPAL_CLIENT_ID || "").trim();
 
+  // ✅ FIX: subscribe once (only depends on navigate)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
-        navigate(createPageUrl('Welcome'), { replace: true });
+        navigate(createPageUrl("Welcome"), { replace: true });
         return;
       }
 
-      const ref = doc(db, 'users', fbUser.uid);
+      const entryRoleHint = roleHintRef.current;
+      const entryRoleLocked = roleLockedRef.current;
+
+      const ref = doc(db, "users", fbUser.uid);
       const snap = await getDoc(ref);
 
+      // ✅ If doc missing, create defaults that respect entry role hint
       if (!snap.exists()) {
-        await setDoc(ref, buildUserDefaults({
-          email: fbUser.email || '',
-          full_name: fbUser.displayName || '',
-        }));
+        await setDoc(
+          ref,
+          buildUserDefaults({
+            email: fbUser.email || "",
+            full_name: fbUser.displayName || "",
+            role: entryRoleHint,
+          })
+        );
       }
 
       const finalSnap = await getDoc(ref);
       const data = finalSnap.data() || {};
       setProfile(data);
 
-      const roleFromProfile = normalizeRole(data.selected_role || data.user_type || DEFAULT_ROLE);
+      const roleFromProfile = normalizeRole(
+        data.selected_role || data.user_type || data.userType || data.role || DEFAULT_ROLE
+      );
 
-      // If role was locked from entry, force it; otherwise allow profile role
-      const effectiveRole = roleLockedFromEntry ? normalizeRole(roleHintFromEntry) : roleFromProfile;
+      // If role is locked from entry, force it; otherwise allow profile role
+      const effectiveRole = entryRoleLocked ? normalizeRole(entryRoleHint) : roleFromProfile;
 
       // Determine next step
-      let nextStep = data.onboarding_completed ? STEPS.COMPLETE : (data.onboarding_step || STEPS.CHOOSE_ROLE);
+      let nextStep = data.onboarding_completed ? STEPS.COMPLETE : data.onboarding_step || STEPS.CHOOSE_ROLE;
 
-      // ✅ If locked role AND we are still on role choosing step, skip role picking
-      if (roleLockedFromEntry && nextStep === STEPS.CHOOSE_ROLE) {
+      // ✅ Only update Firestore if necessary (prevents extra churn)
+      const needsRoleSync =
+        entryRoleLocked &&
+        (data.selected_role !== effectiveRole ||
+          data.user_type !== effectiveRole ||
+          data.userType !== effectiveRole ||
+          data.role !== effectiveRole);
+
+      if (entryRoleLocked && nextStep === STEPS.CHOOSE_ROLE) {
         nextStep = STEPS.BASIC_INFO;
         await updateDoc(ref, {
           selected_role: effectiveRole,
+          user_type: effectiveRole,
+          userType: effectiveRole,
+          role: effectiveRole,
           onboarding_step: STEPS.BASIC_INFO,
+          updated_at: serverTimestamp(),
+        });
+      } else if (needsRoleSync) {
+        await updateDoc(ref, {
+          selected_role: effectiveRole,
+          user_type: effectiveRole,
+          userType: effectiveRole,
+          role: effectiveRole,
           updated_at: serverTimestamp(),
         });
       }
@@ -430,44 +545,59 @@ export default function Onboarding() {
       setSelectedRole(effectiveRole);
       setCurrentStep(nextStep);
 
-      setFormData({
-        full_name: data.full_name || fbUser.displayName || '',
-        phone: data.phone || '',
-        country: data.country || '',
-        country_code: data.country_code || '',
-        email: data.email || fbUser.email || '',
+      // ✅ universal bio mapped for ALL roles
+      const resolvedBio =
+        data.bio ||
+        data.agent_profile?.bio ||
+        data.tutor_profile?.bio ||
+        data.school_profile?.bio ||
+        data.vendor_profile?.bio ||
+        "";
 
-        company_name: data.agent_profile?.company_name || '',
-        business_license_mst: data.agent_profile?.business_license_mst || '',
-        year_established: data.agent_profile?.year_established || '',
+      // ✅ IMPORTANT: don't overwrite the user's typing if they've started editing
+      setFormData((prev) => {
+        if (formDirtyRef.current) return prev;
 
-        paypal_email:
-          data.agent_profile?.paypal_email ||
-          data.tutor_profile?.paypal_email ||
-          data.vendor_profile?.paypal_email ||
-          '',
+        return {
+          full_name: data.full_name || fbUser.displayName || "",
+          phone: data.phone || "",
+          country: data.country || "",
+          country_code: data.country_code || "",
+          email: data.email || fbUser.email || "",
 
-        specializations: arrayToCSV(data.tutor_profile?.specializations),
-        experience_years: data.tutor_profile?.experience_years || '',
-        hourly_rate: data.tutor_profile?.hourly_rate || '',
-        bio: data.tutor_profile?.bio || '',
+          bio: resolvedBio,
 
-        school_name: data.school_profile?.school_name || '',
-        location: data.school_profile?.location || '',
-        website: data.school_profile?.website || '',
-        type: data.school_profile?.type || '',
-        about: data.school_profile?.about || '',
+          company_name: data.agent_profile?.company_name || "",
+          business_license_mst: data.agent_profile?.business_license_mst || "",
+          year_established: data.agent_profile?.year_established || "",
 
-        business_name: data.vendor_profile?.business_name || '',
-        service_categories: data.vendor_profile?.service_categories || [],
+          paypal_email:
+            data.agent_profile?.paypal_email ||
+            data.tutor_profile?.paypal_email ||
+            data.vendor_profile?.paypal_email ||
+            "",
+
+          specializations: arrayToCSV(data.tutor_profile?.specializations),
+          experience_years: data.tutor_profile?.experience_years || "",
+          hourly_rate: data.tutor_profile?.hourly_rate || "",
+
+          school_name: data.school_profile?.school_name || "",
+          location: data.school_profile?.location || "",
+          website: data.school_profile?.website || "",
+          type: data.school_profile?.type || "",
+          about: data.school_profile?.about || "",
+
+          business_name: data.vendor_profile?.business_name || "",
+          service_categories: data.vendor_profile?.service_categories || [],
+        };
       });
 
       if (data.onboarding_completed) {
         try {
-          sessionStorage.removeItem('onboarding_role_locked');
-          sessionStorage.removeItem('onboarding_role');
-        } catch { }
-        navigate(createPageUrl('Dashboard'), { replace: true });
+          sessionStorage.removeItem("onboarding_role_locked");
+          sessionStorage.removeItem("onboarding_role");
+        } catch {}
+        navigate(createPageUrl("Dashboard"), { replace: true });
         return;
       }
 
@@ -476,7 +606,7 @@ export default function Onboarding() {
     });
 
     return () => unsub();
-  }, [navigate, roleHintFromEntry, roleLockedFromEntry]);
+  }, [navigate]);
 
   const getStepProgress = () => {
     const map = {
@@ -494,9 +624,12 @@ export default function Onboarding() {
     setSelectedRole(roleType);
     setCurrentStep(STEPS.BASIC_INFO);
     if (auth.currentUser) {
-      const ref = doc(db, 'users', auth.currentUser.uid);
+      const ref = doc(db, "users", auth.currentUser.uid);
       await updateDoc(ref, {
         selected_role: roleType,
+        user_type: roleType,
+        userType: roleType,
+        role: roleType,
         onboarding_step: STEPS.BASIC_INFO,
         updated_at: serverTimestamp(),
       });
@@ -506,18 +639,17 @@ export default function Onboarding() {
   const validateBasicInfo = () => !!(formData.full_name && formData.phone && formData.country);
 
   const validateRoleSpecificInfo = () => {
-    if (selectedRole === 'user') return true;
-    if (selectedRole === 'agent')
-      return formData.company_name && formData.business_license_mst && formData.paypal_email;
-    if (selectedRole === 'tutor')
-      return csvToArray(formData.specializations).length > 0
-        && !!formData.experience_years
-        && !!formData.hourly_rate
-        && !!formData.paypal_email;
-    if (selectedRole === 'school')
-      return formData.school_name && formData.location && formData.website && formData.type;
-    if (selectedRole === 'vendor')
-      return formData.business_name && (formData.service_categories?.length > 0) && formData.paypal_email;
+    if (selectedRole === "user") return true; // bio is optional
+    if (selectedRole === "agent") return formData.company_name && formData.business_license_mst && formData.paypal_email;
+    if (selectedRole === "tutor")
+      return (
+        csvToArray(formData.specializations).length > 0 &&
+        !!formData.experience_years &&
+        !!formData.hourly_rate &&
+        !!formData.paypal_email
+      );
+    if (selectedRole === "school") return formData.school_name && formData.location && formData.website && formData.type;
+    if (selectedRole === "vendor") return formData.business_name && formData.service_categories?.length > 0 && formData.paypal_email;
     return false;
   };
 
@@ -525,13 +657,13 @@ export default function Onboarding() {
     if (!selectedRole || !validateBasicInfo()) return;
     setCurrentStep(STEPS.ROLE_SPECIFIC);
     if (auth.currentUser) {
-      const ref = doc(db, 'users', auth.currentUser.uid);
+      const ref = doc(db, "users", auth.currentUser.uid);
       await updateDoc(ref, {
         onboarding_step: STEPS.ROLE_SPECIFIC,
-        full_name: formData.full_name || '',
-        phone: formData.phone || '',
-        country: formData.country || '',
-        country_code: formData.country_code || '',
+        full_name: formData.full_name || "",
+        phone: formData.phone || "",
+        country: formData.country || "",
+        country_code: formData.country_code || "",
         updated_at: serverTimestamp(),
       });
     }
@@ -549,7 +681,7 @@ export default function Onboarding() {
 
     setCurrentStep(next);
     if (auth.currentUser) {
-      const ref = doc(db, 'users', auth.currentUser.uid);
+      const ref = doc(db, "users", auth.currentUser.uid);
       await updateDoc(ref, { onboarding_step: next, updated_at: serverTimestamp() });
     }
   };
@@ -562,14 +694,18 @@ export default function Onboarding() {
     setSaving(true);
     try {
       const uid = auth.currentUser.uid;
-      const ref = doc(db, 'users', uid);
+      const ref = doc(db, "users", uid);
 
       const updates = {
         selected_role: selectedRole,
-        full_name: formData.full_name || '',
-        phone: formData.phone || '',
-        country: formData.country || '',
-        country_code: formData.country_code || '',
+        full_name: formData.full_name || "",
+        phone: formData.phone || "",
+        country: formData.country || "",
+        country_code: formData.country_code || "",
+
+        // ✅ save bio for ALL roles at root for easy directory display
+        bio: formData.bio || "",
+
         onboarding_step: STEPS.SUBSCRIPTION,
         updated_at: serverTimestamp(),
       };
@@ -580,45 +716,51 @@ export default function Onboarding() {
       updates.role = selectedRole;
 
       // role profiles
-      if (selectedRole === 'agent') {
+      if (selectedRole === "agent") {
         updates.agent_profile = {
-          company_name: formData.company_name || '',
-          business_license_mst: formData.business_license_mst || '',
-          year_established: formData.year_established || '',
-          paypal_email: formData.paypal_email || '',
+          company_name: formData.company_name || "",
+          business_license_mst: formData.business_license_mst || "",
+          year_established: formData.year_established || "",
+          paypal_email: formData.paypal_email || "",
+          bio: formData.bio || "",
         };
       }
-      if (selectedRole === 'tutor') {
+
+      if (selectedRole === "tutor") {
         updates.tutor_profile = {
           specializations: csvToArray(formData.specializations),
           experience_years: Number(formData.experience_years) || 0,
           hourly_rate: Number(formData.hourly_rate) || 0,
-          bio: formData.bio || '',
-          paypal_email: formData.paypal_email || '',
+          paypal_email: formData.paypal_email || "",
+          bio: formData.bio || "",
         };
       }
-      if (selectedRole === 'school') {
+
+      if (selectedRole === "school") {
         updates.school_profile = {
-          school_name: formData.school_name || '',
-          location: formData.location || '',
-          website: formData.website || '',
-          type: formData.type || '',
-          about: formData.about || '',
+          school_name: formData.school_name || "",
+          location: formData.location || "",
+          website: formData.website || "",
+          type: formData.type || "",
+          about: formData.about || "",
+          bio: formData.bio || "",
         };
       }
-      if (selectedRole === 'vendor') {
+
+      if (selectedRole === "vendor") {
         updates.vendor_profile = {
-          business_name: formData.business_name || '',
+          business_name: formData.business_name || "",
           service_categories: formData.service_categories || [],
-          paypal_email: formData.paypal_email || '',
+          paypal_email: formData.paypal_email || "",
+          bio: formData.bio || "",
         };
       }
 
       await updateDoc(ref, updates);
       setCurrentStep(STEPS.SUBSCRIPTION);
     } catch (e) {
-      console.error('Error saving role-specific info:', e);
-      alert('An error occurred while saving. Please try again.');
+      console.error("Error saving role-specific info:", e);
+      alert("An error occurred while saving. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -629,12 +771,12 @@ export default function Onboarding() {
    * - subscription_active true/false
    * - seed role collection with verification_status: pending
    */
-  const finalizeOnboarding = async ({ subscriptionActive, paypalOrderId = '', paypalDetails = null, skipped = false }) => {
+  const finalizeOnboarding = async ({ subscriptionActive, paypalOrderId = "", paypalDetails = null, skipped = false }) => {
     if (!auth.currentUser || !selectedRole) return;
     setSaving(true);
     try {
       const uid = auth.currentUser.uid;
-      const ref = doc(db, 'users', uid);
+      const ref = doc(db, "users", uid);
 
       const plan = SUBSCRIPTION_PRICING[selectedRole] || SUBSCRIPTION_PRICING.user;
 
@@ -644,13 +786,13 @@ export default function Onboarding() {
         updated_at: serverTimestamp(),
 
         subscription_active: Boolean(subscriptionActive),
-        subscription_status: subscriptionActive ? 'active' : (skipped ? 'skipped' : 'none'),
-        subscription_provider: 'paypal',
+        subscription_status: subscriptionActive ? "active" : skipped ? "skipped" : "none",
+        subscription_provider: "paypal",
         subscription_plan: `${selectedRole}_yearly`,
         subscription_amount: Number(plan.amount) || 0,
-        subscription_currency: plan.currency || 'USD',
+        subscription_currency: plan.currency || "USD",
 
-        paypal_order_id: paypalOrderId || '',
+        paypal_order_id: paypalOrderId || "",
         paypal_capture: paypalDetails ? paypalDetails : null,
         subscribed_at: subscriptionActive ? serverTimestamp() : null,
       };
@@ -663,12 +805,12 @@ export default function Onboarding() {
         const profileSnap = await getDoc(ref);
         const data = profileSnap.data() || {};
 
-        if (selectedRole === 'agent' && data.agent_profile) {
+        if (selectedRole === "agent" && data.agent_profile) {
           const existing = await Agent.filter({ user_id: uid }, { limit: 1 });
           if (!existing.length) {
             await Agent.create({
               user_id: uid,
-              verification_status: 'pending',
+              verification_status: "pending",
               is_visible: false,
               referral_code: `AG${Date.now().toString().slice(-6)}`,
               created_at: now,
@@ -678,12 +820,12 @@ export default function Onboarding() {
           }
         }
 
-        if (selectedRole === 'tutor' && data.tutor_profile) {
+        if (selectedRole === "tutor" && data.tutor_profile) {
           const existing = await Tutor.filter({ user_id: uid }, { limit: 1 });
           if (!existing.length) {
             await Tutor.create({
               user_id: uid,
-              verification_status: 'pending',
+              verification_status: "pending",
               is_visible: false,
               rating: 0,
               total_students: 0,
@@ -694,12 +836,12 @@ export default function Onboarding() {
           }
         }
 
-        if (selectedRole === 'school' && data.school_profile) {
+        if (selectedRole === "school" && data.school_profile) {
           const existing = await SchoolProfile.filter({ user_id: uid }, { limit: 1 });
           if (!existing.length) {
             await SchoolProfile.create({
               user_id: uid,
-              verification_status: 'pending',
+              verification_status: "pending",
               created_at: now,
               updated_at: now,
               ...data.school_profile,
@@ -707,12 +849,12 @@ export default function Onboarding() {
           }
         }
 
-        if (selectedRole === 'vendor' && data.vendor_profile) {
+        if (selectedRole === "vendor" && data.vendor_profile) {
           const existing = await Vendor.filter({ user_id: uid }, { limit: 1 });
           if (!existing.length) {
             await Vendor.create({
               user_id: uid,
-              verification_status: 'pending',
+              verification_status: "pending",
               created_at: now,
               updated_at: now,
               ...data.vendor_profile,
@@ -720,20 +862,20 @@ export default function Onboarding() {
           }
         }
       } catch (e) {
-        console.warn('Seeding role collection failed (non-fatal):', e);
+        console.warn("Seeding role collection failed (non-fatal):", e);
       }
 
       setCurrentStep(STEPS.COMPLETE);
 
       try {
-        sessionStorage.removeItem('onboarding_role_locked');
-        sessionStorage.removeItem('onboarding_role');
-      } catch { }
+        sessionStorage.removeItem("onboarding_role_locked");
+        sessionStorage.removeItem("onboarding_role");
+      } catch {}
 
-      setTimeout(() => navigate(createPageUrl('Dashboard'), { replace: true }), 1200);
+      setTimeout(() => navigate(createPageUrl("Dashboard"), { replace: true }), 1200);
     } catch (e) {
-      console.error('Error finalizing onboarding:', e);
-      alert('An error occurred. Please try again.');
+      console.error("Error finalizing onboarding:", e);
+      alert("An error occurred. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -743,11 +885,11 @@ export default function Onboarding() {
   useEffect(() => {
     const run = async () => {
       if (currentStep !== STEPS.SUBSCRIPTION) return;
-      setPaypalError('');
+      setPaypalError("");
       setPaypalReady(false);
 
       if (!PAYPAL_CLIENT_ID) {
-        setPaypalError('PayPal is not configured (missing VITE_PAYPAL_CLIENT_ID). You can skip for now.');
+        setPaypalError("PayPal is not configured (missing VITE_PAYPAL_CLIENT_ID). You can skip for now.");
         return;
       }
 
@@ -755,10 +897,10 @@ export default function Onboarding() {
       const amountValue = Number(plan.amount || 0).toFixed(2);
 
       try {
-        await loadPayPalScript({ clientId: PAYPAL_CLIENT_ID, currency: plan.currency || 'USD' });
+        await loadPayPalScript({ clientId: PAYPAL_CLIENT_ID, currency: plan.currency || "USD" });
 
         if (!paypalContainerRef.current) return;
-        paypalContainerRef.current.innerHTML = '';
+        paypalContainerRef.current.innerHTML = "";
 
         const buttons = window.paypal.Buttons({
           createOrder: (data, actions) => {
@@ -766,7 +908,7 @@ export default function Onboarding() {
               purchase_units: [
                 {
                   description: `GreenPass Subscription (${plan.label}) - Yearly`,
-                  amount: { value: amountValue, currency_code: plan.currency || 'USD' },
+                  amount: { value: amountValue, currency_code: plan.currency || "USD" },
                 },
               ],
             });
@@ -777,21 +919,21 @@ export default function Onboarding() {
               const details = await actions.order.capture();
               await finalizeOnboarding({
                 subscriptionActive: true,
-                paypalOrderId: data?.orderID || '',
+                paypalOrderId: data?.orderID || "",
                 paypalDetails: details || null,
                 skipped: false,
               });
             } catch (e) {
               console.error(e);
-              setPaypalError('Payment was approved but capture failed. Please try again.');
+              setPaypalError("Payment was approved but capture failed. Please try again.");
             } finally {
               setSubmittingPayment(false);
             }
           },
-          onCancel: () => setPaypalError('Payment cancelled. You can try again or skip for now.'),
+          onCancel: () => setPaypalError("Payment cancelled. You can try again or skip for now."),
           onError: (err) => {
             console.error(err);
-            setPaypalError('PayPal error occurred. Please try again or skip for now.');
+            setPaypalError("PayPal error occurred. Please try again or skip for now.");
           },
         });
 
@@ -799,7 +941,7 @@ export default function Onboarding() {
         setPaypalReady(true);
       } catch (e) {
         console.error(e);
-        setPaypalError('Failed to load PayPal. You can skip for now.');
+        setPaypalError("Failed to load PayPal. You can skip for now.");
       }
     };
 
@@ -816,7 +958,7 @@ export default function Onboarding() {
     } catch (e) {
       // ignore
     } finally {
-      navigate(createPageUrl('Welcome'), { replace: true });
+      navigate(createPageUrl("Welcome"), { replace: true });
       setLoggingOut(false);
     }
   };
@@ -839,16 +981,19 @@ export default function Onboarding() {
       <div className="mb-8">
         <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Welcome to GreenPass!</h1>
         <p className="text-lg text-gray-600">Choose your role to get started with your personalized experience</p>
+        <div className="mt-3">
+          <RoleLockedPill role={selectedRole} />
+        </div>
       </div>
       <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {ROLE_OPTIONS.map((role) => (
           <Card
             key={role.type}
             className={`cursor-pointer transition-all duration-300 border-2 hover:shadow-xl hover:scale-105 group
-              ${roleLockedFromEntry ? 'opacity-60 pointer-events-none' : 'hover:border-green-500'}
+              ${roleLockedFromEntry ? "opacity-60 pointer-events-none" : "hover:border-green-500"}
             `}
             onClick={() => handleRoleSelect(role.type)}
-            title={roleLockedFromEntry ? 'Role already selected from previous step' : `Sign up as ${role.title}`}
+            title={roleLockedFromEntry ? "Role already selected from previous step" : `Sign up as ${role.title}`}
           >
             <CardContent className="p-6">
               <div className="text-center">
@@ -875,7 +1020,7 @@ export default function Onboarding() {
   );
 
   const renderBasicInfo = () => {
-    const selectedRoleData = ROLE_OPTIONS.find(r => r.type === selectedRole) || ROLE_OPTIONS[0];
+    const selectedRoleData = ROLE_OPTIONS.find((r) => r.type === selectedRole) || ROLE_OPTIONS[0];
     return (
       <div className="max-w-md mx-auto">
         <div className="text-center mb-8">
@@ -883,9 +1028,7 @@ export default function Onboarding() {
             {selectedRoleData?.icon}
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Basic Information</h2>
-          <p className="text-gray-600">
-            Setting up your {selectedRoleData?.title} profile
-          </p>
+          <p className="text-gray-600">Setting up your {selectedRoleData?.title} profile</p>
           <div className="mt-3">
             <RoleLockedPill role={selectedRole} />
           </div>
@@ -896,7 +1039,7 @@ export default function Onboarding() {
             <Label htmlFor="full_name">Full Name *</Label>
             <Input
               id="full_name"
-              value={formData.full_name || ''}
+              value={formData.full_name || ""}
               onChange={(e) => setFormData((p) => ({ ...p, full_name: e.target.value }))}
               placeholder="Enter your full name"
               className="mt-1"
@@ -905,7 +1048,7 @@ export default function Onboarding() {
 
           <div>
             <Label htmlFor="email">Email Address</Label>
-            <Input id="email" value={formData.email || ''} disabled className="mt-1 bg-gray-100" />
+            <Input id="email" value={formData.email || ""} disabled className="mt-1 bg-gray-100" />
             <p className="text-xs text-gray-500 mt-1">This is your login email and cannot be changed</p>
           </div>
 
@@ -913,7 +1056,7 @@ export default function Onboarding() {
             <Label htmlFor="phone">Phone Number *</Label>
             <Input
               id="phone"
-              value={formData.phone || ''}
+              value={formData.phone || ""}
               onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
               placeholder="Enter your phone number"
               className="mt-1"
@@ -943,7 +1086,7 @@ export default function Onboarding() {
               onClick={handleBack}
               className="flex-1"
               disabled={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO}
-              title={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO ? 'Role locked by entry flow' : 'Back'}
+              title={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO ? "Role locked by entry flow" : "Back"}
             >
               <ArrowLeft className="w-4 h-4 mr-2" /> Back
             </Button>
@@ -957,7 +1100,7 @@ export default function Onboarding() {
   };
 
   const renderRoleSpecific = () => {
-    const selectedRoleData = ROLE_OPTIONS.find(r => r.type === selectedRole);
+    const selectedRoleData = ROLE_OPTIONS.find((r) => r.type === selectedRole);
     return (
       <div className="max-w-md mx-auto">
         <div className="text-center mb-8">
@@ -972,56 +1115,150 @@ export default function Onboarding() {
         </div>
 
         {/* Agent */}
-        {selectedRole === 'agent' && (
+        {selectedRole === "agent" && (
           <div className="space-y-6">
-            <div><Label htmlFor="company_name">Company Name *</Label>
-              <Input id="company_name" value={formData.company_name || ''} onChange={(e) => setFormData((p) => ({ ...p, company_name: e.target.value }))} placeholder="Your education consultancy name" className="mt-1" />
+            <div>
+              <Label htmlFor="company_name">Company Name *</Label>
+              <Input
+                id="company_name"
+                value={formData.company_name || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, company_name: e.target.value }))}
+                placeholder="Your education consultancy name"
+                className="mt-1"
+              />
             </div>
-            <div><Label htmlFor="business_license_mst">Business License (MST) *</Label>
-              <Input id="business_license_mst" value={formData.business_license_mst || ''} onChange={(e) => setFormData((p) => ({ ...p, business_license_mst: e.target.value }))} placeholder="Enter your business license number" className="mt-1" />
+
+            <div>
+              <Label htmlFor="business_license_mst">Business License (MST) *</Label>
+              <Input
+                id="business_license_mst"
+                value={formData.business_license_mst || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, business_license_mst: e.target.value }))}
+                placeholder="Enter your business license number"
+                className="mt-1"
+              />
             </div>
-            <div><Label htmlFor="year_established">Year Established</Label>
-              <Input id="year_established" type="number" value={formData.year_established || ''} onChange={(e) => setFormData((p) => ({ ...p, year_established: e.target.value }))} placeholder="2020" className="mt-1" />
+
+            <div>
+              <Label htmlFor="year_established">Year Established</Label>
+              <Input
+                id="year_established"
+                type="number"
+                value={formData.year_established || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, year_established: e.target.value }))}
+                placeholder="2020"
+                className="mt-1"
+              />
             </div>
-            <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))} placeholder="payouts@example.com" className="mt-1" />
+
+            <div>
+              <Label htmlFor="paypal_email">PayPal Email *</Label>
+              <Input
+                id="paypal_email"
+                type="email"
+                value={formData.paypal_email || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))}
+                placeholder="payouts@example.com"
+                className="mt-1"
+              />
               <p className="text-xs text-gray-500 mt-1">Required for commission payouts</p>
             </div>
+
+            <BiographyField
+              label="Agency Biography / Description"
+              value={formData.bio || ""}
+              onChange={(val) => {
+                formDirtyRef.current = true;
+                setFormData((p) => ({ ...p, bio: val }));
+              }}
+            />
           </div>
         )}
 
         {/* Tutor */}
-        {selectedRole === 'tutor' && (
+        {selectedRole === "tutor" && (
           <div className="space-y-6">
-            <div><Label htmlFor="specializations">Specializations *</Label>
-              <Input id="specializations" value={formData.specializations || ''} onChange={(e) => setFormData((p) => ({ ...p, specializations: e.target.value }))} placeholder="IELTS, TOEFL, General English" className="mt-1" />
+            <div>
+              <Label htmlFor="specializations">Specializations *</Label>
+              <Input
+                id="specializations"
+                value={formData.specializations || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, specializations: e.target.value }))}
+                placeholder="IELTS, TOEFL, General English"
+                className="mt-1"
+              />
               <p className="text-xs text-gray-500 mt-1">Separate multiple specializations with commas</p>
             </div>
-            <div><Label htmlFor="experience_years">Years of Experience *</Label>
-              <Input id="experience_years" type="number" value={formData.experience_years || ''} onChange={(e) => setFormData((p) => ({ ...p, experience_years: e.target.value }))} placeholder="5" className="mt-1" />
+
+            <div>
+              <Label htmlFor="experience_years">Years of Experience *</Label>
+              <Input
+                id="experience_years"
+                type="number"
+                value={formData.experience_years || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, experience_years: e.target.value }))}
+                placeholder="5"
+                className="mt-1"
+              />
             </div>
-            <div><Label htmlFor="hourly_rate">Hourly Rate (USD) *</Label>
-              <Input id="hourly_rate" type="number" step="0.01" value={formData.hourly_rate || ''} onChange={(e) => setFormData((p) => ({ ...p, hourly_rate: e.target.value }))} placeholder="25.00" className="mt-1" />
+
+            <div>
+              <Label htmlFor="hourly_rate">Hourly Rate (USD) *</Label>
+              <Input
+                id="hourly_rate"
+                type="number"
+                step="0.01"
+                value={formData.hourly_rate || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, hourly_rate: e.target.value }))}
+                placeholder="25.00"
+                className="mt-1"
+              />
             </div>
-            <div><Label htmlFor="bio">Professional Bio</Label>
-              <Textarea id="bio" value={formData.bio || ''} onChange={(e) => setFormData((p) => ({ ...p, bio: e.target.value }))} placeholder="Tell students about your teaching experience and approach..." className="mt-1" rows={3} />
-            </div>
-            <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))} placeholder="payouts@example.com" className="mt-1" />
+
+            <BiographyField
+              label="Tutor Biography / Description"
+              value={formData.bio || ""}
+              onChange={(val) => {
+                formDirtyRef.current = true;
+                setFormData((p) => ({ ...p, bio: val }));
+              }}
+            />
+
+            <div>
+              <Label htmlFor="paypal_email">PayPal Email *</Label>
+              <Input
+                id="paypal_email"
+                type="email"
+                value={formData.paypal_email || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))}
+                placeholder="payouts@example.com"
+                className="mt-1"
+              />
               <p className="text-xs text-gray-500 mt-1">Required for session payouts</p>
             </div>
           </div>
         )}
 
         {/* School */}
-        {selectedRole === 'school' && (
+        {selectedRole === "school" && (
           <div className="space-y-6">
-            <div><Label htmlFor="school_name">Institution Name *</Label>
-              <Input id="school_name" value={formData.school_name || ''} onChange={(e) => setFormData((p) => ({ ...p, school_name: e.target.value }))} placeholder="e.g., University of Toronto" className="mt-1" />
+            <div>
+              <Label htmlFor="school_name">Institution Name *</Label>
+              <Input
+                id="school_name"
+                value={formData.school_name || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, school_name: e.target.value }))}
+                placeholder="e.g., University of Toronto"
+                className="mt-1"
+              />
             </div>
-            <div><Label htmlFor="type">School Type *</Label>
-              <Select value={formData.type || ''} onValueChange={(v) => setFormData((p) => ({ ...p, type: v }))}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select institution type" /></SelectTrigger>
+
+            <div>
+              <Label htmlFor="type">School Type *</Label>
+              <Select value={formData.type || ""} onValueChange={(v) => setFormData((p) => ({ ...p, type: v }))}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select institution type" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="High School">High School</SelectItem>
                   <SelectItem value="College">College</SelectItem>
@@ -1032,28 +1269,71 @@ export default function Onboarding() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label htmlFor="location">City/Location *</Label>
-              <Input id="location" value={formData.location || ''} onChange={(e) => setFormData((p) => ({ ...p, location: e.target.value }))} placeholder="e.g., Toronto, ON" className="mt-1" />
+
+            <div>
+              <Label htmlFor="location">City/Location *</Label>
+              <Input
+                id="location"
+                value={formData.location || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, location: e.target.value }))}
+                placeholder="e.g., Toronto, ON"
+                className="mt-1"
+              />
             </div>
-            <div><Label htmlFor="website">Official Website *</Label>
-              <Input id="website" type="url" value={formData.website || ''} onChange={(e) => setFormData((p) => ({ ...p, website: e.target.value }))} placeholder="https://www.university.edu" className="mt-1" />
+
+            <div>
+              <Label htmlFor="website">Official Website *</Label>
+              <Input
+                id="website"
+                type="url"
+                value={formData.website || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, website: e.target.value }))}
+                placeholder="https://www.university.edu"
+                className="mt-1"
+              />
             </div>
-            <div><Label htmlFor="about">About Your Institution</Label>
-              <Textarea id="about" value={formData.about || ''} onChange={(e) => setFormData((p) => ({ ...p, about: e.target.value }))} placeholder="Brief description of your institution..." className="mt-1" rows={3} />
+
+            <div>
+              <Label htmlFor="about">About Your Institution</Label>
+              <Textarea
+                id="about"
+                value={formData.about || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, about: e.target.value }))}
+                placeholder="Brief description of your institution..."
+                className="mt-1"
+                rows={3}
+              />
             </div>
+
+            <BiographyField
+              label="Profile Biography / Description"
+              value={formData.bio || ""}
+              onChange={(val) => {
+                formDirtyRef.current = true;
+                setFormData((p) => ({ ...p, bio: val }));
+              }}
+            />
           </div>
         )}
 
         {/* Vendor */}
-        {selectedRole === 'vendor' && (
+        {selectedRole === "vendor" && (
           <div className="space-y-6">
-            <div><Label htmlFor="business_name">Business Name *</Label>
-              <Input id="business_name" value={formData.business_name || ''} onChange={(e) => setFormData((p) => ({ ...p, business_name: e.target.value }))} placeholder="Your business name" className="mt-1" />
+            <div>
+              <Label htmlFor="business_name">Business Name *</Label>
+              <Input
+                id="business_name"
+                value={formData.business_name || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, business_name: e.target.value }))}
+                placeholder="Your business name"
+                className="mt-1"
+              />
             </div>
+
             <div>
               <Label>Service Categories *</Label>
               <div className="grid grid-cols-2 gap-3 mt-2">
-                {["Transport", "SIM Card", "Banking", "Accommodation", "Delivery", "Tours"].map(category => (
+                {["Transport", "SIM Card", "Banking", "Accommodation", "Delivery", "Tours"].map((category) => (
                   <div key={category} className="flex items-center space-x-2">
                     <input
                       type="checkbox"
@@ -1061,47 +1341,69 @@ export default function Onboarding() {
                       checked={formData.service_categories?.includes(category) || false}
                       onChange={(e) => {
                         const cur = formData.service_categories || [];
-                        const updated = e.target.checked ? [...cur, category] : cur.filter(c => c !== category);
+                        const updated = e.target.checked ? [...cur, category] : cur.filter((c) => c !== category);
                         setFormData((p) => ({ ...p, service_categories: updated }));
                       }}
                       className="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                     />
-                    <label htmlFor={`category-${category}`} className="text-sm text-gray-700">{category}</label>
+                    <label htmlFor={`category-${category}`} className="text-sm text-gray-700">
+                      {category}
+                    </label>
                   </div>
                 ))}
               </div>
             </div>
-            <div><Label htmlFor="paypal_email">PayPal Email *</Label>
-              <Input id="paypal_email" type="email" value={formData.paypal_email || ''} onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))} placeholder="payouts@example.com" className="mt-1" />
+
+            <div>
+              <Label htmlFor="paypal_email">PayPal Email *</Label>
+              <Input
+                id="paypal_email"
+                type="email"
+                value={formData.paypal_email || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, paypal_email: e.target.value }))}
+                placeholder="payouts@example.com"
+                className="mt-1"
+              />
               <p className="text-xs text-gray-500 mt-1">Required for service payouts</p>
             </div>
+
+            <BiographyField
+              label="Business Biography / Description"
+              value={formData.bio || ""}
+              onChange={(val) => {
+                formDirtyRef.current = true;
+                setFormData((p) => ({ ...p, bio: val }));
+              }}
+            />
           </div>
         )}
 
-        {selectedRole === 'user' && (
-          <div className="text-center py-8">
-            <Check className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">You're All Set!</h3>
-            <p className="text-gray-600">
-              Next step: subscription (optional). You can subscribe now or skip for later.
-            </p>
+        {/* User */}
+        {selectedRole === "user" && (
+          <div className="space-y-6">
+            <div className="text-center py-2">
+              <Check className="w-12 h-12 text-green-500 mx-auto mb-2" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">You're Almost Done!</h3>
+              <p className="text-gray-600">Add a short bio (optional), then continue to subscription (optional).</p>
+            </div>
+
+            <BiographyField
+              label="Student Biography / Description"
+              value={formData.bio || ""}
+              onChange={(val) => {
+                formDirtyRef.current = true;
+                setFormData((p) => ({ ...p, bio: val }));
+              }}
+            />
           </div>
         )}
 
         <div className="flex gap-3 pt-4">
-          <Button
-            variant="outline"
-            onClick={handleBack}
-            className="flex-1"
-          >
+          <Button variant="outline" onClick={handleBack} className="flex-1">
             <ArrowLeft className="w-4 h-4 mr-2" /> Back
           </Button>
 
-          <Button
-            onClick={handleRoleSpecificSubmitGoSubscription}
-            disabled={saving || !validateRoleSpecificInfo()}
-            className="flex-1"
-          >
+          <Button onClick={handleRoleSpecificSubmitGoSubscription} disabled={saving || !validateRoleSpecificInfo()} className="flex-1">
             {saving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1135,9 +1437,7 @@ export default function Onboarding() {
             <CreditCard className="w-6 h-6" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Subscription</h2>
-          <p className="text-gray-600">
-            Subscribe now or skip for later. We’ll store your choice.
-          </p>
+          <p className="text-gray-600">Subscribe now or skip for later. We’ll store your choice.</p>
           <div className="mt-3">
             <RoleLockedPill role={selectedRole} />
           </div>
@@ -1152,12 +1452,12 @@ export default function Onboarding() {
               </div>
               <div className="text-right">
                 <div className="text-sm text-gray-500">Price</div>
-                <div className="text-xl font-bold text-gray-900">${plan.amount}/{`year`}</div>
+                <div className="text-xl font-bold text-gray-900">${plan.amount}/year</div>
               </div>
             </div>
 
             <div className="mt-4 text-sm text-gray-600">
-              {selectedRole === 'user' ? (
+              {selectedRole === "user" ? (
                 <div className="rounded-md bg-blue-50 border border-blue-200 p-3">
                   Student access is free for now, but subscription unlocks premium access after limits.
                 </div>
@@ -1170,9 +1470,7 @@ export default function Onboarding() {
 
             <div className="mt-4">
               {paypalError && (
-                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-3">
-                  {paypalError}
-                </div>
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-3">{paypalError}</div>
               )}
 
               <div className="rounded-lg border p-3">
@@ -1191,12 +1489,7 @@ export default function Onboarding() {
             </div>
 
             <div className="mt-4 flex gap-3">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={handleBack}
-                disabled={saving || submittingPayment}
-              >
+              <Button variant="outline" className="flex-1" onClick={handleBack} disabled={saving || submittingPayment}>
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
               </Button>

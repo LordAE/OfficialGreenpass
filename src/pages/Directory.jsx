@@ -18,6 +18,10 @@ import {
   UserPlus,
   Eye,
   EyeOff,
+  ChevronLeft,
+  ChevronRight,
+  Chrome,
+  Apple,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -28,12 +32,27 @@ import _ from "lodash";
 
 // 🔥 Firebase
 import { db, auth } from "@/firebase";
-import { collection, getDocs, query, where, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  setDoc,
+  serverTimestamp,
+  getDoc,
+} from "firebase/firestore";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  getAdditionalUserInfo,
+  signOut,
+  deleteUser,
 } from "firebase/auth";
 
 // shadcn dialog
@@ -165,17 +184,73 @@ const SchoolListRow = ({ item, isSelected, onSelect }) => {
 };
 
 /* -----------------------------
-   Right details panel (schools/institutions)
-   - Main button: Contact Us
-   - Toggle link: View programs + / Hide programs -
-   - Program rows are clickable (calls onProgramClick)
+   Carousel helpers
    ----------------------------- */
-const SchoolDetailsPanel = ({ item, onContact, programs = [], onProgramClick }) => {
+const asArray = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+
+const uniqStrings = (arr) => {
+  const seen = new Set();
+  const out = [];
+  for (const x of arr) {
+    const s = typeof x === "string" ? x.trim() : "";
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+};
+
+const getSchoolImageList = (item) => {
+  const fallback =
+    "https://images.unsplash.com/photo-1562774053-701939374585?w=1200&h=600&fit=crop&q=80";
+
+  if (!item) return [fallback];
+
+  const candidates = [
+    item.bannerUrl,
+    item.banner,
+    item.cover_photo,
+    item.coverPhoto,
+    item.school_image_url,
+    item.institution_logo_url,
+    item.logoUrl,
+
+    ...asArray(item.images),
+    ...asArray(item.imageUrls),
+    ...asArray(item.photos),
+    ...asArray(item.gallery),
+    ...asArray(item.gallery_images),
+    ...asArray(item.school_images),
+    ...asArray(item.campus_images),
+  ];
+
+  const list = uniqStrings(candidates);
+  return list.length ? list : [fallback];
+};
+
+/* -----------------------------
+   Right details panel (schools/institutions)
+   ----------------------------- */
+const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClick }) => {
   const [showPrograms, setShowPrograms] = useState(false);
+  const [imgIndex, setImgIndex] = useState(0);
+
+  const images = useMemo(() => getSchoolImageList(item), [item]);
+  const hasMany = images.length > 1;
 
   useEffect(() => {
     setShowPrograms(false);
+    setImgIndex(0);
   }, [item?.id, item?.school_key, item?.school_id, item?.institution_id]);
+
+  const goPrev = useCallback(() => {
+    setImgIndex((i) => (i - 1 + images.length) % images.length);
+  }, [images.length]);
+
+  const goNext = useCallback(() => {
+    setImgIndex((i) => (i + 1) % images.length);
+  }, [images.length]);
 
   if (!item) {
     return (
@@ -186,12 +261,6 @@ const SchoolDetailsPanel = ({ item, onContact, programs = [], onProgramClick }) 
   }
 
   const name = item.name || item.school_name || item.institution_name || "Unknown";
-
-  const banner =
-    item.logoUrl ||
-    item.school_image_url ||
-    item.institution_logo_url ||
-    "https://images.unsplash.com/photo-1562774053-701939374585?w=1200&h=600&fit=crop&q=80";
 
   const city = item.city || item.school_city || "—";
   const province = getProvinceLabel(item.province || item.school_province) || "—";
@@ -213,109 +282,154 @@ const SchoolDetailsPanel = ({ item, onContact, programs = [], onProgramClick }) 
 
   return (
     <Card className="h-full flex flex-col overflow-hidden">
-      <div className="shrink-0 aspect-[16/7] bg-gradient-to-br from-blue-100 to-green-100 relative">
-        <img src={banner} alt={name} className="w-full h-full object-cover" />
-        <div className="absolute top-4 left-4 flex gap-2">
-          {item.isDLI && (
-            <Badge className="bg-green-600 text-white">
-              <Award className="w-3 h-3 mr-1" />
-              DLI
-            </Badge>
-          )}
-          {item.isFeatured && (
-            <Badge className="bg-yellow-500 text-white">
-              <Star className="w-3 h-3 mr-1" />
-              Featured
-            </Badge>
-          )}
-        </div>
-      </div>
+      <CardContent className="p-0 flex-1 min-h-0 overflow-auto">
+        <div className="relative h-56 bg-gradient-to-br from-blue-100 to-green-100">
+          <img
+            src={images[imgIndex]}
+            alt={name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
 
-      <CardContent className="p-6 flex-1 min-h-0 overflow-auto">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <Badge variant="secondary" className="mb-2">
-              {item.isInstitution ? "Institution" : item.institution_type || "School"}
-            </Badge>
+          <div className="absolute top-4 left-4 flex gap-2">
+            {item.isDLI && (
+              <Badge className="bg-green-600 text-white">
+                <Award className="w-3 h-3 mr-1" />
+                DLI
+              </Badge>
+            )}
+            {item.isFeatured && (
+              <Badge className="bg-yellow-500 text-white">
+                <Star className="w-3 h-3 mr-1" />
+                Featured
+              </Badge>
+            )}
+          </div>
 
-            <h2 className="text-2xl font-bold text-gray-900">{name}</h2>
-
-            <div className="mt-2 flex items-center text-gray-600">
-              <MapPin className="w-4 h-4 mr-1" />
-              <span className="text-sm">
-                {city}, {province}, {country}
-              </span>
-            </div>
-
-            <div className="mt-4">
-              <Button className="w-full h-11 text-base" onClick={() => onContact?.(item)}>
-                <Mail className="w-4 h-4 mr-2" />
-                Contact Us
-              </Button>
+          {hasMany ? (
+            <>
+              <button
+                type="button"
+                onClick={goPrev}
+                className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-black/45 text-white flex items-center justify-center hover:bg-black/60 focus:outline-none focus:ring-2 focus:ring-white"
+                aria-label="Previous image"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
 
               <button
                 type="button"
-                className="mt-3 text-sm text-blue-600 underline hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => setShowPrograms((v) => !v)}
-                disabled={!hasPrograms}
-                title={!hasPrograms ? "No programs available for this school yet." : undefined}
+                onClick={goNext}
+                className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-black/45 text-white flex items-center justify-center hover:bg-black/60 focus:outline-none focus:ring-2 focus:ring-white"
+                aria-label="Next image"
               >
-                {showPrograms ? "Hide programs -" : "View programs +"}
+                <ChevronRight className="w-5 h-5" />
               </button>
-            </div>
-          </div>
 
-          <div className="text-right shrink-0">
-            <p className="text-sm text-gray-500">Programs</p>
-            <p className="text-2xl font-bold text-blue-600">{item.programCount || 0}+</p>
-          </div>
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
+                {images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setImgIndex(idx)}
+                    className={[
+                      "h-2 w-2 rounded-full transition",
+                      idx === imgIndex ? "bg-white" : "bg-white/50 hover:bg-white/80",
+                    ].join(" ")}
+                    aria-label={`Go to image ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          ) : null}
         </div>
 
-        {showPrograms && (
-          <div className="mt-5 border rounded-lg overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
-              <span>Programs</span>
-              <Badge variant="secondary">{list.length}</Badge>
+        <div className="p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <Badge variant="secondary" className="mb-2">
+                {item.isInstitution ? "Institution" : item.institution_type || "School"}
+              </Badge>
+
+              <h2 className="text-2xl font-bold text-gray-900">{name}</h2>
+
+              <div className="mt-2 flex items-center text-gray-600">
+                <MapPin className="w-4 h-4 mr-1" />
+                <span className="text-sm">
+                  {city}, {province}, {country}
+                </span>
+              </div>
+
+              <div className="mt-4">
+                <Button className="w-full h-11 text-base" onClick={() => onContactClick?.(item)}>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Contact Us
+                </Button>
+
+                <button
+                  type="button"
+                  className="mt-3 text-sm text-blue-600 underline hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setShowPrograms((v) => !v)}
+                  disabled={!hasPrograms}
+                  title={!hasPrograms ? "No programs available for this school yet." : undefined}
+                >
+                  {showPrograms ? "Hide programs -" : "View programs +"}
+                </button>
+              </div>
             </div>
 
-            <div className="max-h-72 overflow-auto divide-y">
-              {list.map((p, idx) => {
-                const title = getProgramTitle(p);
-                const meta = getProgramMeta(p);
-                return (
-                  <button
-                    key={p?.id || p?.program_id || `${title}-${idx}`}
-                    type="button"
-                    onClick={() => onProgramClick?.(p, item)}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-400"
-                  >
-                    <div className="text-sm font-medium text-gray-900">{title}</div>
-                    {meta ? <div className="text-xs text-gray-500 mt-1">{meta}</div> : null}
-                    <div className="text-xs text-blue-600 underline mt-2">Open</div>
-                  </button>
-                );
-              })}
+            <div className="text-right shrink-0">
+              <p className="text-sm text-gray-500">Programs</p>
+              <p className="text-2xl font-bold text-blue-600">{item.programCount || 0}+</p>
             </div>
           </div>
-        )}
 
-        {item.about && (
-          <div className="mt-6">
-            <h3 className="font-semibold text-gray-900 mb-2">Overview</h3>
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{item.about}</p>
-          </div>
-        )}
+          {showPrograms && (
+            <div className="mt-5 border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
+                <span>Programs</span>
+                <Badge variant="secondary">{list.length}</Badge>
+              </div>
 
-        {item.website && (
-          <div className="mt-6">
-            <a href={item.website} target="_blank" rel="noopener noreferrer" className="block">
-              <Button variant="outline" className="w-full h-11 text-base">
-                <Globe className="w-4 h-4 mr-2" />
-                Visit Website
-              </Button>
-            </a>
-          </div>
-        )}
+              <div className="max-h-72 overflow-auto divide-y">
+                {list.map((p, idx) => {
+                  const title = getProgramTitle(p);
+                  const meta = getProgramMeta(p);
+                  return (
+                    <button
+                      key={p?.id || p?.program_id || `${title}-${idx}`}
+                      type="button"
+                      onClick={() => onProgramClick?.(p, item)}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-400"
+                    >
+                      <div className="text-sm font-medium text-gray-900">{title}</div>
+                      {meta ? <div className="text-xs text-gray-500 mt-1">{meta}</div> : null}
+                      <div className="text-xs text-blue-600 underline mt-2">Open</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {item.about && (
+            <div className="mt-6">
+              <h3 className="font-semibold text-gray-900 mb-2">Overview</h3>
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{item.about}</p>
+            </div>
+          )}
+
+          {item.website && (
+            <div className="mt-6">
+              <a href={item.website} target="_blank" rel="noopener noreferrer" className="block">
+                <Button variant="outline" className="w-full h-11 text-base">
+                  <Globe className="w-4 h-4 mr-2" />
+                  Visit Website
+                </Button>
+              </a>
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -368,11 +482,16 @@ const UserListRow = ({ user, isSelected, onSelect }) => {
   );
 };
 
-const UserDetailsPanel = ({ user }) => {
+/* -----------------------------
+   ✅ UserDetailsPanel
+   ----------------------------- */
+const UserDetailsPanel = ({ user, onMessageClick }) => {
   if (!user) {
     return (
       <Card className="h-full">
-        <CardContent className="p-6 text-gray-600">Select a user from the list to see details.</CardContent>
+        <CardContent className="p-6 text-gray-600">
+          Select a user from the list to see details.
+        </CardContent>
       </Card>
     );
   }
@@ -388,45 +507,49 @@ const UserDetailsPanel = ({ user }) => {
     user.photoURL ||
     "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" + encodeURIComponent(name);
 
-  // Optional banner/cover fields if you have them; otherwise fallback
   const banner =
     user.cover_photo ||
     user.coverPhoto ||
     user.banner ||
     "https://images.unsplash.com/photo-1526498460520-4c246339dccb?w=1600&h=600&fit=crop&q=80";
 
+  const bio =
+    user.biography ||
+    user.bio ||
+    user.description ||
+    user.about ||
+    user.summary ||
+    user.profile_description ||
+    "";
+
   return (
     <Card className="h-full flex flex-col overflow-hidden">
-      {/* Banner */}
       <div className="relative shrink-0 h-44 bg-gradient-to-br from-gray-900 to-gray-700">
         <img src={banner} alt="" className="w-full h-full object-cover opacity-90" />
-
-        {/* soft dark overlay */}
         <div className="absolute inset-0 bg-black/35" />
 
-        {/* Profile circle (overlapping) */}
         <div className="absolute left-1/2 -translate-x-1/2 -bottom-10">
-          <div className="h-24 w-24 rounded-full bg-white p-1 shadow-lg">
-            <img
-              src={photo}
-              alt={name}
-              className="h-full w-full rounded-full object-cover border"
-            />
+          <div className="relative h-24 w-24 rounded-full bg-white p-1 shadow-lg">
+            <img src={photo} alt={name} className="h-full w-full rounded-full object-cover border" />
+
+            {countryCode ? (
+              <div className="absolute -bottom-1 -right-1">
+                <div className="h-7 w-7 rounded-full bg-white shadow border flex items-center justify-center">
+                  <CountryFlag code={countryCode} className="h-4 w-6" />
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
-      {/* Content */}
       <CardContent className="flex-1 overflow-auto pt-14 pb-6">
-        {/* Flag BELOW profile pic */}
         <div className="flex flex-col items-center text-center">
-          <div className="flex items-center gap-2">
-            <CountryFlag code={countryCode} className="h-5 w-7" />
-            <span className="text-sm text-gray-600">{country}</span>
-            {countryCode ? <span className="text-xs text-gray-400">({countryCode})</span> : null}
+          <div className="text-sm text-gray-600">
+            {country}
+            {countryCode ? <span className="text-xs text-gray-400"> ({countryCode})</span> : null}
           </div>
 
-          {/* Name BELOW flag */}
           <h2 className="mt-2 text-2xl font-bold text-gray-900">{name}</h2>
 
           <Badge variant="secondary" className="mt-2 capitalize">
@@ -434,19 +557,21 @@ const UserDetailsPanel = ({ user }) => {
           </Badge>
         </div>
 
-        {/* Optional info section (keep if you want) */}
-        <div className="mt-6 border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 font-semibold text-gray-900">Basic information</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2">
-            <div className="px-4 py-3 border-t text-sm">
-              <span className="text-gray-500">Email: </span>
-              <span className="font-medium">{user.email || "—"}</span>
-            </div>
-            <div className="px-4 py-3 border-t sm:border-l text-sm">
-              <span className="text-gray-500">Phone: </span>
-              <span className="font-medium">{user.phone || user.phone_number || "—"}</span>
-            </div>
-          </div>
+        <div className="mt-6">
+          <h3 className="font-semibold text-gray-900 mb-2">Biography</h3>
+          {bio ? (
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{bio}</p>
+          ) : (
+            <p className="text-sm text-gray-500 italic">No biography provided yet.</p>
+          )}
+        </div>
+
+        {/* ✅ Message Us bottom-right */}
+        <div className="mt-6 flex justify-end">
+          <Button className="h-11" onClick={() => onMessageClick?.(user)}>
+            <Mail className="w-4 h-4 mr-2" />
+            Message Us
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -454,7 +579,7 @@ const UserDetailsPanel = ({ user }) => {
 };
 
 
-export default function Schools() {
+export default function Directory() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -486,10 +611,16 @@ export default function Schools() {
   // Auth state
   const [currentUser, setCurrentUser] = useState(null);
 
-  // ✅ In-page Auth modal (no route navigation)
+  // ✅ In-page Auth modal
+  // Steps:
+  // choice -> login OR role -> signup_method -> signup_email OR oauth_finish
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
-  const [authStep, setAuthStep] = useState("choice"); // "choice" | "login" | "role" | "signup"
-  const [pendingTargetUrl, setPendingTargetUrl] = useState("");
+  const [forceStudentSignup, setForceStudentSignup] = useState(false);
+
+  const [authStep, setAuthStep] = useState("choice"); // "choice" | "login" | "role" | "signup_method" | "signup_email" | "oauth_finish"
+
+  // ✅ Pending post-auth action
+  const [pendingAction, setPendingAction] = useState(null);
 
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -498,25 +629,39 @@ export default function Schools() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginShowPw, setLoginShowPw] = useState(false);
 
+  // ✅ Signup role selected FIRST
   const [signupRole, setSignupRole] = useState("user"); // user | agent | tutor (NO school)
+
+  // Email signup fields
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupPassword2, setSignupPassword2] = useState("");
   const [signupShowPw, setSignupShowPw] = useState(false);
 
-  // Watch auth
+  // ✅ OAuth temporary state (Google/Apple)
+  const [oauthUser, setOauthUser] = useState(null); // { uid, email, full_name }
+  const [oauthName, setOauthName] = useState("");
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setCurrentUser(u || null));
     return () => unsub();
   }, []);
 
-  // read initial page from URL
   useEffect(() => {
     const p = parseInt(searchParams.get("page") || "1", 10);
     setPage(Number.isFinite(p) && p > 0 ? p : 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!authDialogOpen) return;
+    if (forceStudentSignup && authStep === "role") {
+      setSignupRole("user");
+      setAuthStep("signup_method");
+    }
+  }, [authDialogOpen, forceStudentSignup, authStep]);
+
 
   const updatePage = useCallback(
     (nextPage) => {
@@ -849,6 +994,23 @@ export default function Schools() {
     window.location.href = `/contact?school=${encodeURIComponent(name)}`;
   }, []);
 
+  const onMessageProfile = useCallback((profileUser, roleKey) => {
+    const name = profileUser?.full_name || profileUser?.name || "Support";
+    const email =
+      profileUser?.email || profileUser?.contact_email || profileUser?.contactEmail;
+
+    if (email) {
+      const subject = encodeURIComponent(`Message: ${name}`);
+      window.location.href = `mailto:${email}?subject=${subject}`;
+      return;
+    }
+
+    window.location.href = `/contact?to=${encodeURIComponent(name)}&role=${encodeURIComponent(
+      String(roleKey || "")
+    )}&uid=${encodeURIComponent(String(profileUser?.id || ""))}`;
+  }, []);
+
+
   const resetAuthForm = useCallback(() => {
     setAuthError("");
     setAuthLoading(false);
@@ -858,27 +1020,87 @@ export default function Schools() {
     setLoginShowPw(false);
 
     setSignupRole("user");
+
     setSignupName("");
     setSignupEmail("");
     setSignupPassword("");
     setSignupPassword2("");
     setSignupShowPw(false);
+
+    setOauthUser(null);
+    setOauthName("");
   }, []);
 
-  const openAuthDialog = useCallback((targetUrl) => {
-    setPendingTargetUrl(targetUrl || "");
-    setAuthStep("choice");
-    resetAuthForm();
-    setAuthDialogOpen(true);
-  }, [resetAuthForm]);
+    const openAuthDialog = useCallback(
+    (action, options = {}) => {
+      const forceStudent = !!options.forceStudent;
 
-  const afterAuthSuccess = useCallback(() => {
-    setAuthDialogOpen(false);
-    setAuthStep("choice");
-    setAuthError("");
-    setAuthLoading(false);
-    if (pendingTargetUrl) navigate(pendingTargetUrl);
-  }, [navigate, pendingTargetUrl]);
+      setPendingAction(action || null);
+      setAuthStep("choice");
+      resetAuthForm();
+
+      setForceStudentSignup(forceStudent);
+      if (forceStudent) setSignupRole("user"); // auto student
+
+      setAuthDialogOpen(true);
+    },
+    [resetAuthForm]
+  );
+
+
+  /**
+   * ✅ afterAuthSuccess
+   * - If onboardingRole provided => redirect to onboarding (new signup)
+   * - Else, resume pendingAction
+   */
+  const afterAuthSuccess = useCallback(
+    (opts = {}) => {
+      const onboardingRole = opts?.onboardingRole;
+
+      setAuthDialogOpen(false);
+      setAuthStep("choice");
+      setAuthError("");
+      setAuthLoading(false);
+
+      // ✅ ALWAYS send NEW signups to onboarding
+      if (onboardingRole) {
+        navigate(`/onboarding?role=${encodeURIComponent(String(onboardingRole))}`, { replace: true });
+        setPendingAction(null);
+        return;
+      }
+
+      if (pendingAction?.type === "navigate" && pendingAction?.url) {
+        navigate(pendingAction.url);
+      } else if (pendingAction?.type === "contact" && pendingAction?.schoolItem) {
+        onContactSchool(pendingAction.schoolItem);
+      } else if (pendingAction?.type === "message_profile" && pendingAction?.profile) {
+        onMessageProfile(pendingAction.profile, pendingAction.roleKey);
+      }
+
+
+      setPendingAction(null);
+    },
+    [navigate, onContactSchool, pendingAction]
+  );
+    const onMessageClick = useCallback(
+    (profileUser) => {
+      if (!profileUser) return;
+
+      if (currentUser) {
+        onMessageProfile(profileUser, browseTab);
+        return;
+      }
+
+      const forceStudent = browseTab === "tutor" || browseTab === "agent";
+
+      openAuthDialog(
+        { type: "message_profile", profile: profileUser, roleKey: browseTab },
+        { forceStudent }
+      );
+    },
+    [browseTab, currentUser, onMessageProfile, openAuthDialog]
+  );
+
 
   const handleLogin = useCallback(async () => {
     setAuthError("");
@@ -895,7 +1117,7 @@ export default function Schools() {
     }
   }, [afterAuthSuccess, loginEmail, loginPassword]);
 
-  const handleSignup = useCallback(async () => {
+  const handleSignupEmail = useCallback(async () => {
     setAuthError("");
     setAuthLoading(true);
     try {
@@ -914,14 +1136,12 @@ export default function Schools() {
         await updateProfile(cred.user, { displayName: name });
       }
 
-      // Create/merge user doc in Firestore (users collection)
       await setDoc(
         doc(db, "users", cred.user.uid),
         {
           uid: cred.user.uid,
           email,
           full_name: name || "",
-          // store role in multiple fields for compatibility with your existing queries
           user_type: signupRole,
           userType: signupRole,
           role: signupRole,
@@ -932,7 +1152,8 @@ export default function Schools() {
         { merge: true }
       );
 
-      afterAuthSuccess();
+      // ✅ email signup => onboarding
+      afterAuthSuccess({ onboardingRole: signupRole });
     } catch (e) {
       setAuthError(e?.message || "Sign up failed. Please try again.");
     } finally {
@@ -940,9 +1161,218 @@ export default function Schools() {
     }
   }, [afterAuthSuccess, signupEmail, signupName, signupPassword, signupPassword2, signupRole]);
 
-  // When a user clicks a program:
-  // - if logged in: open program details
-  // - if not: open the in-page auth dialog
+  /* -----------------------------
+     ✅ OAuth helpers
+   ----------------------------- */
+  const detectRoleFromUserDoc = (data) =>
+    data?.user_type || data?.userType || data?.role || data?.selected_role || "";
+
+  const ensureBasicUserDoc = useCallback(async (fbUser) => {
+    if (!fbUser?.uid) return;
+    const ref = doc(db, "users", fbUser.uid);
+    await setDoc(
+      ref,
+      {
+        uid: fbUser.uid,
+        email: fbUser.email || "",
+        full_name: fbUser.displayName || "",
+        updated_at: serverTimestamp(),
+        createdAt: Date.now(),
+      },
+      { merge: true }
+    );
+  }, []);
+
+  const isValidRole = (r) => ["user", "agent", "tutor"].includes(String(r || "").toLowerCase().trim());
+
+  /**
+   * ✅ OAuth Sign In
+   * intent:
+   *  - "login": if user not found in Firestore => show "no account exists" and cleanup
+   *  - "signup": role already chosen (signupRole); auto-redirect to onboarding after signup
+   */
+  const handleOAuthSignIn = useCallback(
+    async (providerKey, intent = "login") => {
+      setAuthError("");
+      setAuthLoading(true);
+
+      try {
+        let provider = null;
+
+        if (providerKey === "google") {
+          provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: "select_account" });
+        } else if (providerKey === "apple") {
+          provider = new OAuthProvider("apple.com");
+          provider.addScope("email");
+          provider.addScope("name");
+        } else {
+          throw new Error("Unsupported provider.");
+        }
+
+        // ✅ If intent is signup, validate role BEFORE opening popup
+        if (intent === "signup") {
+          const role = String(signupRole || "").toLowerCase().trim();
+          if (!isValidRole(role)) {
+            setAuthError("Please select a valid role (Student, Agent, or Tutor).");
+            setAuthStep("role");
+            return;
+          }
+        }
+
+        const res = await signInWithPopup(auth, provider);
+        const fbUser = res?.user;
+        if (!fbUser?.uid) throw new Error("Authentication failed. Please try again.");
+
+        const info = getAdditionalUserInfo(res);
+        const isNewUser = !!info?.isNewUser;
+
+        const userRef = doc(db, "users", fbUser.uid);
+        const snap = await getDoc(userRef);
+        const existsInDb = snap.exists();
+        const existing = existsInDb ? (snap.data() || {}) : null;
+        const roleInDoc = detectRoleFromUserDoc(existing || {});
+
+        // ✅ LOGIN intent: must exist in Firestore users collection
+        if (intent === "login") {
+          if (!existsInDb || isNewUser) {
+            // If firebase created a brand-new auth user but we don't have a DB doc, cleanup
+            try {
+              if (isNewUser) await deleteUser(fbUser);
+            } catch {}
+            try {
+              await signOut(auth);
+            } catch {}
+
+            setAuthError("No account exists for this Google/Apple email. Please sign up first.");
+            if (forceStudentSignup) {
+              setSignupRole("user");
+              setAuthStep("signup_method");
+            } else {
+              setAuthStep("role");
+            }
+            return;
+          }
+
+          afterAuthSuccess(); // resumes pendingAction (intended for login)
+          return;
+        }
+
+        // ✅ SIGNUP intent
+        const role = String(signupRole || "").toLowerCase().trim();
+
+        // If account already exists with a role, block signup and send them to login
+        if (existsInDb && roleInDoc) {
+          try {
+            await signOut(auth);
+          } catch {}
+          setAuthError("This Google/Apple account already has an account. Please log in instead.");
+          setAuthStep("login");
+          return;
+        }
+
+        // Make sure a doc exists (at least basic)
+        await ensureBasicUserDoc(fbUser);
+
+        // Try to auto-complete signup immediately:
+        // - If provider gave a name (Google usually does), we can write role now and go onboarding.
+        // - If name is missing (common on Apple after first time), go to oauth_finish to collect it.
+        const fullName = (fbUser.displayName || existing?.full_name || "").trim();
+        const email = (fbUser.email || existing?.email || "").trim();
+
+        if (fullName) {
+          await setDoc(
+            doc(db, "users", fbUser.uid),
+            {
+              uid: fbUser.uid,
+              email,
+              full_name: fullName,
+
+              user_type: role,
+              userType: role,
+              role,
+              selected_role: role,
+
+              updated_at: serverTimestamp(),
+              created_at: serverTimestamp(),
+              createdAt: Date.now(),
+            },
+            { merge: true }
+          );
+
+          // ✅ OAuth signup (auto) => onboarding
+          afterAuthSuccess({ onboardingRole: role });
+          return;
+        }
+
+        // Otherwise, ask for name then onboarding
+        setOauthUser({
+          uid: fbUser.uid,
+          email,
+          full_name: fullName,
+        });
+        setOauthName(fullName);
+        setAuthStep("oauth_finish");
+      } catch (e) {
+        console.error(e);
+        setAuthError(e?.message || "OAuth sign in failed. Please try again.");
+      } finally {
+        setAuthLoading(false);
+      }
+    },
+    [afterAuthSuccess, ensureBasicUserDoc, signupRole]
+  );
+
+  const handleOAuthComplete = useCallback(async () => {
+    setAuthError("");
+    setAuthLoading(true);
+
+    try {
+      if (!oauthUser?.uid) throw new Error("Missing user session. Please try again.");
+
+      const role = String(signupRole).toLowerCase().trim();
+      if (!["user", "agent", "tutor"].includes(role)) {
+        throw new Error("Invalid role. Please choose Student, Agent, or Tutor.");
+      }
+
+      const name = (oauthName || "").trim();
+      if (!name) throw new Error("Please enter your full name to continue.");
+
+      // optional update displayName if missing
+      if (auth.currentUser?.uid === oauthUser.uid && name && !auth.currentUser.displayName) {
+        try {
+          await updateProfile(auth.currentUser, { displayName: name });
+        } catch {}
+      }
+
+      await setDoc(
+        doc(db, "users", oauthUser.uid),
+        {
+          uid: oauthUser.uid,
+          email: oauthUser.email || auth.currentUser?.email || "",
+          full_name: name || oauthUser.full_name || auth.currentUser?.displayName || "",
+
+          user_type: role,
+          userType: role,
+          role: role,
+          selected_role: role,
+
+          updated_at: serverTimestamp(),
+          created_at: serverTimestamp(),
+          createdAt: Date.now(),
+        },
+        { merge: true }
+      );
+
+      // ✅ OAuth signup => onboarding
+      afterAuthSuccess({ onboardingRole: role });
+    } catch (e) {
+      setAuthError(e?.message || "Could not finish setup. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [afterAuthSuccess, oauthName, oauthUser, signupRole]);
+
   const onProgramClick = useCallback(
     (program, schoolItem) => {
       const programId = program?.id || program?.program_id || "";
@@ -957,9 +1387,20 @@ export default function Schools() {
         return;
       }
 
-      openAuthDialog(url);
+      openAuthDialog({ type: "navigate", url });
     },
     [currentUser, navigate, openAuthDialog]
+  );
+
+  const onContactClick = useCallback(
+    (schoolItem) => {
+      if (currentUser) {
+        onContactSchool(schoolItem);
+        return;
+      }
+      openAuthDialog({ type: "contact", schoolItem });
+    },
+    [currentUser, onContactSchool, openAuthDialog]
   );
 
   if (loading) {
@@ -974,23 +1415,25 @@ export default function Schools() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
-      {/* ✅ In-page Login / Signup prompt (NO navigation) */}
+      {/* ✅ In-page Login / Signup prompt */}
       <Dialog
         open={authDialogOpen}
         onOpenChange={(v) => {
           setAuthDialogOpen(v);
           if (!v) {
             setAuthStep("choice");
-            setPendingTargetUrl("");
+            setPendingAction(null);
+            setForceStudentSignup(false);
             resetAuthForm();
           }
         }}
+
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Sign in required</DialogTitle>
             <DialogDescription>
-              You need to log in to view program details. If you don’t have an account yet, create one by choosing a role.
+              You need to log in to continue. You can use email/password, or sign in with Google / Apple.
             </DialogDescription>
           </DialogHeader>
 
@@ -1003,15 +1446,55 @@ export default function Schools() {
           {/* CHOICE */}
           {authStep === "choice" ? (
             <div className="mt-4 space-y-3">
-              <Button className="w-full h-11" onClick={() => setAuthStep("login")} disabled={authLoading}>
-                <LogIn className="w-4 h-4 mr-2" />
-                Log in
+              <Button
+                className="w-full h-11"
+                onClick={() => handleOAuthSignIn("google", "login")}
+                disabled={authLoading}
+              >
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Chrome className="w-4 h-4 mr-2" />
+                )}
+                Log in with Google
               </Button>
 
               <Button
                 variant="outline"
                 className="w-full h-11"
-                onClick={() => setAuthStep("role")}
+                onClick={() => handleOAuthSignIn("apple", "login")}
+                disabled={authLoading}
+              >
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Apple className="w-4 h-4 mr-2" />
+                )}
+                Log in with Apple
+              </Button>
+
+              <div className="flex items-center gap-3 my-2">
+                <div className="h-px bg-gray-200 flex-1" />
+                <div className="text-xs text-gray-500">or</div>
+                <div className="h-px bg-gray-200 flex-1" />
+              </div>
+
+              <Button className="w-full h-11" onClick={() => setAuthStep("login")} disabled={authLoading}>
+                <LogIn className="w-4 h-4 mr-2" />
+                Log in with email
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-11"
+                onClick={() => {
+                  if (forceStudentSignup) {
+                    setSignupRole("user");
+                    setAuthStep("signup_method");
+                  } else {
+                    setAuthStep("role");
+                  }
+                }}
                 disabled={authLoading}
               >
                 <UserPlus className="w-4 h-4 mr-2" />
@@ -1027,6 +1510,40 @@ export default function Schools() {
           {/* LOGIN */}
           {authStep === "login" ? (
             <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button
+                  className="h-11"
+                  onClick={() => handleOAuthSignIn("google", "login")}
+                  disabled={authLoading}
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Chrome className="w-4 h-4 mr-2" />
+                  )}
+                  Google
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-11"
+                  onClick={() => handleOAuthSignIn("apple", "login")}
+                  disabled={authLoading}
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Apple className="w-4 h-4 mr-2" />
+                  )}
+                  Apple
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-3 my-1">
+                <div className="h-px bg-gray-200 flex-1" />
+                <div className="text-xs text-gray-500">or email</div>
+                <div className="h-px bg-gray-200 flex-1" />
+              </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Email</label>
                 <Input
@@ -1089,7 +1606,7 @@ export default function Schools() {
             </div>
           ) : null}
 
-          {/* ROLE SELECT (NO SCHOOL ROLE) */}
+          {/* ✅ ROLE SELECT (FIRST STEP FOR SIGNUP) */}
           {authStep === "role" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm font-medium text-gray-900">Select your role</div>
@@ -1121,7 +1638,7 @@ export default function Schools() {
                 </Button>
               </div>
 
-              <Button className="w-full h-11" onClick={() => setAuthStep("signup")} disabled={authLoading}>
+              <Button className="w-full h-11" onClick={() => setAuthStep("signup_method")} disabled={authLoading}>
                 Continue
               </Button>
 
@@ -1136,8 +1653,57 @@ export default function Schools() {
             </div>
           ) : null}
 
-          {/* SIGNUP */}
-          {authStep === "signup" ? (
+          {/* ✅ SIGNUP METHOD (SECOND STEP) */}
+          {authStep === "signup_method" ? (
+            <div className="mt-4 space-y-3">
+              <div className="text-sm text-gray-600">
+                Creating account as:{" "}
+                <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+              </div>
+
+              <Button
+                className="w-full h-11"
+                onClick={() => handleOAuthSignIn("google", "signup")}
+                disabled={authLoading}
+              >
+                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Chrome className="w-4 h-4 mr-2" />}
+                Sign up with Google
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-11"
+                onClick={() => handleOAuthSignIn("apple", "signup")}
+                disabled={authLoading}
+              >
+                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Apple className="w-4 h-4 mr-2" />}
+                Sign up with Apple
+              </Button>
+
+              <div className="flex items-center gap-3 my-2">
+                <div className="h-px bg-gray-200 flex-1" />
+                <div className="text-xs text-gray-500">or</div>
+                <div className="h-px bg-gray-200 flex-1" />
+              </div>
+
+              <Button className="w-full h-11" onClick={() => setAuthStep("signup_email")} disabled={authLoading}>
+                <Mail className="w-4 h-4 mr-2" />
+                Sign up with Email
+              </Button>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="w-full" onClick={() => setAuthStep("role")} disabled={authLoading}>
+                  Back
+                </Button>
+                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ✅ SIGNUP EMAIL FORM (THIRD STEP) */}
+          {authStep === "signup_email" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
                 Creating account as:{" "}
@@ -1201,13 +1767,13 @@ export default function Schools() {
                 />
               </div>
 
-              <Button className="w-full h-11" onClick={handleSignup} disabled={authLoading}>
+              <Button className="w-full h-11" onClick={handleSignupEmail} disabled={authLoading}>
                 {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
                 Create account
               </Button>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="w-full" onClick={() => setAuthStep("role")} disabled={authLoading}>
+                <Button variant="outline" className="w-full" onClick={() => setAuthStep("signup_method")} disabled={authLoading}>
                   Back
                 </Button>
                 <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
@@ -1228,9 +1794,49 @@ export default function Schools() {
               </div>
             </div>
           ) : null}
+
+          {/* ✅ OAUTH FINISH (CONFIRM NAME THEN ONBOARDING) */}
+          {authStep === "oauth_finish" ? (
+            <div className="mt-4 space-y-3">
+              <div className="text-sm text-gray-600">
+                Creating account as:{" "}
+                <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Full name</label>
+                <Input
+                  value={oauthName}
+                  onChange={(e) => setOauthName(e.target.value)}
+                  placeholder="Your name"
+                  className="h-11"
+                  autoComplete="name"
+                  disabled={authLoading}
+                />
+                <p className="text-xs text-gray-500">
+                  Apple may not provide your name every time — you can type it here.
+                </p>
+              </div>
+
+              <Button className="w-full h-11" onClick={handleOAuthComplete} disabled={authLoading}>
+                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Continue to onboarding
+              </Button>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="w-full" onClick={() => setAuthStep("signup_method")} disabled={authLoading}>
+                  Back
+                </Button>
+                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
+      {/* --- REST OF YOUR PAGE UI BELOW (UNCHANGED) --- */}
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         <div className="mb-8 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-4">
@@ -1246,18 +1852,18 @@ export default function Schools() {
           </p>
         </div>
 
-
         {/* Filters + Tabs */}
         <div className="relative mb-8">
-          {/* ✅ Roles OUTSIDE the box, clumped top-right */}
-          <div className="absolute -top-4 right-4 z-10 flex items-center gap-2">
+          <div className="absolute -top-6 right-4 z-10 flex items-center gap-2">
             {BROWSE_TABS.map((t) => (
               <Button
                 key={t.key}
                 type="button"
                 variant={browseTab === t.key ? "default" : "outline"}
-                size="sm"
-                className="h-8 px-3"
+                className={[
+                  "h-10 px-5 text-base rounded-xl shadow-sm",
+                  browseTab === t.key ? "shadow" : "",
+                ].join(" ")}
                 onClick={() => {
                   setBrowseTab(t.key);
                   setSelectedCountry("all");
@@ -1272,7 +1878,6 @@ export default function Schools() {
           <Card>
             <CardContent className="p-6">
               <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-                {/* ✅ Remove the old roles block from here */}
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="text-sm text-gray-600 flex items-center gap-2">
                     <Users className="w-4 h-4" />
@@ -1280,8 +1885,6 @@ export default function Schools() {
                       Browse: <span className="font-semibold capitalize">{browseTab}</span>
                     </span>
                   </div>
-
-                  {/* Keep right side empty or put something else if you want */}
                   <div />
                 </div>
 
@@ -1292,9 +1895,9 @@ export default function Schools() {
                       <Input
                         type="text"
                         placeholder={
-                          isSchoolTab
+                          browseTab === "school"
                             ? "Search schools, institutions, programs..."
-                            : `Search ${browseTab}s by name, email, phone, country...`
+                            : `Search ${browseTab}s by name, country...`
                         }
                         value={searchTerm}
                         onChange={handleSearchChange}
@@ -1306,14 +1909,14 @@ export default function Schools() {
                   <CountrySelector
                     value={selectedCountry}
                     onChange={handleCountryChange}
-                    options={isSchoolTab ? schoolCountryOptions : userCountryOptions}
+                    options={browseTab === "school" ? schoolCountryOptions : userCountryOptions}
                     includeAll
                     allLabel="All Countries"
                     placeholder="All Countries"
                     className="h-11"
                   />
 
-                  {isSchoolTab ? (
+                  {browseTab === "school" ? (
                     <>
                       <ProvinceSelector
                         value={selectedProvince}
@@ -1353,13 +1956,13 @@ export default function Schools() {
                       <>
                         Showing <span className="font-medium">{startIndex + 1}</span>–<span className="font-medium">{endIndex}</span>{" "}
                         of <span className="font-medium">{totalCount}</span>{" "}
-                        {isSchoolTab ? "schools & institutions" : `${browseTab}s`}
-                        {isSchoolTab ? (
+                        {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}
+                        {browseTab === "school" ? (
                           <> ({allSchools.length} programs, {allInstitutions.length} institutions)</>
                         ) : null}
                       </>
                     ) : (
-                      <>Showing 0 {isSchoolTab ? "schools & institutions" : `${browseTab}s`}</>
+                      <>Showing 0 {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}</>
                     )}
                   </div>
 
@@ -1380,7 +1983,9 @@ export default function Schools() {
               <CardContent className="p-4 h-full flex flex-col min-h-0">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900">
-                    {isSchoolTab ? "Schools & Institutions" : `${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)}s`}
+                    {browseTab === "school"
+                      ? "Schools & Institutions"
+                      : `${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)}s`}
                   </h3>
                   <Badge variant="secondary">{totalCount}</Badge>
                 </div>
@@ -1388,7 +1993,7 @@ export default function Schools() {
                 <div className="flex-1 min-h-0 overflow-auto space-y-3 pr-1">
                   {pagedItems.map((item) => {
                     const key = item.school_key || item.id;
-                    return isSchoolTab ? (
+                    return browseTab === "school" ? (
                       <SchoolListRow
                         key={key}
                         item={item}
@@ -1456,15 +2061,15 @@ export default function Schools() {
           {/* RIGHT DETAILS */}
           <div className="lg:col-span-7 min-h-0">
             <div className="h-[70vh] min-h-0">
-              {isSchoolTab ? (
+              {browseTab === "school" ? (
                 <SchoolDetailsPanel
                   item={selectedItem}
                   programs={selectedPrograms}
-                  onContact={onContactSchool}
+                  onContactClick={onContactClick}
                   onProgramClick={onProgramClick}
                 />
               ) : (
-                <UserDetailsPanel user={selectedItem} />
+                <UserDetailsPanel user={selectedItem} onMessageClick={onMessageClick} />
               )}
             </div>
           </div>
@@ -1474,7 +2079,7 @@ export default function Schools() {
         {totalCount === 0 && (
           <div className="text-center py-12">
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No {isSchoolTab ? "schools or institutions" : `${browseTab}s`} found
+              No {browseTab === "school" ? "schools or institutions" : `${browseTab}s`} found
             </h3>
             <p className="text-gray-600 mb-4">
               Try adjusting your search criteria or clear filters to see all available options.

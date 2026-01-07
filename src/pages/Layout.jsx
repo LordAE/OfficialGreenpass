@@ -262,7 +262,7 @@ const iconByPlatform = (platform = "") => {
 const buildExploreForStudents = () => [
   {
     title: getText("findSchoolsPrograms"),
-    href: createPageUrl("Schools"),
+    href: createPageUrl("Directory"),
     icon: Search,
     description: getText("searchTopSchools"),
   },
@@ -578,7 +578,7 @@ function CountriesMegaMenu() {
                 </ul>
 
                 <Link
-                  to={createPageUrl("Schools")}
+                  to={createPageUrl("Directory")}
                   className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-semibold text-pink-700 hover:bg-pink-100 whitespace-nowrap"
                 >
                   Explore all countries
@@ -894,7 +894,7 @@ const Footer = ({ getCompanyName }) => {
     {
       column_title: "Solutions",
       links: [
-        { text: "Find Schools", url: createPageUrl("Schools") },
+        { text: "Find Schools", url: createPageUrl("Directory") },
         { text: "Visa Help", url: createPageUrl("VisaRequests") },
       ],
     },
@@ -1024,7 +1024,7 @@ function buildDesktopNav(currentUser, hasReservation, latestReservationId) {
         ...baseItems,
         {
           title: getText("discoverSchools"),
-          url: createPageUrl("Schools"),
+          url: createPageUrl("Directory"),
           icon: School,
         },
         {
@@ -1299,7 +1299,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
         },
         {
           title: getText("discoverSchoolsShort"),
-          url: createPageUrl("Schools"),
+          url: createPageUrl("Directory"),
           icon: School,
         },
         {
@@ -1665,7 +1665,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
           },
           {
             title: getText("discoverSchoolsShort"),
-            url: createPageUrl("Schools"),
+            url: createPageUrl("Directory"),
             icon: School,
           },
           {

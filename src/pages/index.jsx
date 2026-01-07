@@ -4,7 +4,7 @@ import Dashboard from "@/pages/Dashboard";
 
 import Onboarding from "@/pages/Onboarding";
 
-import Schools from "@/pages/Schools";
+import Schools from "@/pages/Directory";
 
 import ReservationStatus from "@/pages/ReservationStatus";
 
