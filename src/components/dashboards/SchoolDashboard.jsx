@@ -1,13 +1,65 @@
 // src/pages/SchoolDashboard.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { School, Reservation, User } from '@/api/entities';
-import { Building, Users, BookOpen, DollarSign, TrendingUp, Calendar, ArrowRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
-import { format } from 'date-fns';
+import { School, Reservation, User } from "@/api/entities";
+import {
+  Building,
+  Users,
+  BookOpen,
+  DollarSign,
+  TrendingUp,
+  Calendar,
+  ArrowRight,
+  CreditCard,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { format } from "date-fns";
+
+/* ✅ Uses your REAL user doc fields:
+   - subscription_active (boolean)
+   - subscription_status (string e.g. "skipped", "active")
+*/
+function isSubscribedUser(u) {
+  if (!u) return false;
+  if (u.subscription_active === true) return true;
+
+  const status = String(u.subscription_status || "").toLowerCase().trim();
+  const ok = new Set(["active", "paid", "trialing"]);
+  return ok.has(status);
+}
+
+const SubscribeBanner = ({ to, user }) => {
+  const status = String(user?.subscription_status || "").toLowerCase().trim();
+  const message =
+    status === "skipped"
+      ? "You skipped subscription. Subscribe to unlock full school features, leads, and visibility."
+      : status === "expired"
+      ? "Your subscription expired. Renew to regain full school features, leads, and visibility."
+      : "You’re not subscribed yet. Subscribe to unlock full school features, leads, and visibility.";
+
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5">
+          <CreditCard className="w-5 h-5 text-red-600" />
+        </div>
+        <div>
+          <p className="font-semibold text-red-800">Subscription required</p>
+          <p className="text-sm text-red-700">{message}</p>
+        </div>
+      </div>
+
+      <Link to={to}>
+        <Button className="bg-red-600 hover:bg-red-700 w-full sm:w-auto">
+          Subscribe Now
+        </Button>
+      </Link>
+    </div>
+  );
+};
 
 const StatCard = ({ title, value, icon, to, color = "text-blue-600" }) => (
   <Card className="hover:shadow-lg transition-shadow">
@@ -61,6 +113,12 @@ export default function SchoolDashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [permError, setPermError] = useState(false);
 
+  // ✅ subscription based on your user doc fields
+  const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
+
+  // ✅ change this if your actual page name is different
+  const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
+
   useEffect(() => {
     if (!ownerId) return;
 
@@ -91,7 +149,6 @@ export default function SchoolDashboard({ user }) {
         try {
           reservations = await Reservation.filter({ school_id: s.id });
         } catch (e) {
-          // If rules block us, show a friendly note on the page
           console.error("Reservations read error:", e);
           setPermError(true);
           reservations = [];
@@ -107,37 +164,43 @@ export default function SchoolDashboard({ user }) {
 
         // Try to enrich with student names, but ignore failures
         try {
-          const studentIds = [...new Set(recent.map(r => r.student_id).filter(Boolean))];
+          const studentIds = [...new Set(recent.map((r) => r.student_id).filter(Boolean))];
           if (studentIds.length) {
-            // Your entity helper may support "in" queries; if not, do nothing.
             const users = await User.filter({ id: { $in: studentIds } });
-            const map = Object.fromEntries(users.map(u => [u.id, u]));
-            recent.forEach(r => { r.student = map[r.student_id]; });
+            const map = Object.fromEntries(users.map((u) => [u.id, u]));
+            recent.forEach((r) => {
+              r.student = map[r.student_id];
+            });
           }
         } catch (e) {
-          // Not fatal; we can still render using contact_name / student_name
           console.warn("User lookup skipped:", e);
         }
 
-        const confirmed = reservations.filter(r => r.status === 'confirmed');
+        const confirmed = reservations.filter((r) => r.status === "confirmed");
         if (cancelled) return;
+
         setRecentLeads(recent);
         setStats({
           totalPrograms: programs.length,
           totalLeads: reservations.length,
           confirmedReservations: confirmed.length,
-          totalRevenue: confirmed.reduce((sum, r) => sum + (r.amount_usd ?? r.amount ?? 0), 0),
+          totalRevenue: confirmed.reduce(
+            (sum, r) => sum + (r.amount_usd ?? r.amount ?? 0),
+            0
+          ),
           availableSeats,
         });
       } catch (e) {
         console.error("Error loading dashboard data:", e);
-        if (e?.code === 'permission-denied') setPermError(true);
+        if (e?.code === "permission-denied") setPermError(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [ownerId]);
 
   if (loading) {
@@ -146,7 +209,7 @@ export default function SchoolDashboard({ user }) {
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-gray-200 rounded w-1/4"></div>
           <div className="grid md:grid-cols-4 gap-6">
-            {[1,2,3,4].map(i => (
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-32 bg-gray-200 rounded"></div>
             ))}
           </div>
@@ -159,22 +222,27 @@ export default function SchoolDashboard({ user }) {
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">School Dashboard</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            School Dashboard
+          </h1>
           <p className="text-gray-600 mt-1 text-sm sm:text-base">
-            Welcome to {school?.name || 'your school'}
+            Welcome to {school?.name || "your school"}
           </p>
         </div>
         <Badge
-          variant={school?.verification_status === 'verified' ? 'default' : 'secondary'}
+          variant={school?.verification_status === "verified" ? "default" : "secondary"}
           className={`self-start sm:self-center ${
-            school?.verification_status === 'verified'
-              ? 'bg-green-100 text-green-800'
-              : 'bg-yellow-100 text-yellow-800'
+            school?.verification_status === "verified"
+              ? "bg-green-100 text-green-800"
+              : "bg-yellow-100 text-yellow-800"
           }`}
         >
-          {school?.verification_status || 'pending'}
+          {school?.verification_status || "pending"}
         </Badge>
       </div>
+
+      {/* ✅ Subscribe signage (only if NOT subscribed) */}
+      {!isSubscribed && <SubscribeBanner to={subscribeUrl} user={user} />}
 
       {permError && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-800">
@@ -188,28 +256,28 @@ export default function SchoolDashboard({ user }) {
           title="Programs"
           value={stats.totalPrograms}
           icon={<BookOpen className="h-6 w-6 text-blue-200" />}
-          to={createPageUrl('SchoolPrograms')}
+          to={createPageUrl("SchoolPrograms")}
           color="text-blue-600"
         />
         <StatCard
           title="Leads"
           value={stats.totalLeads}
           icon={<Users className="h-6 w-6 text-green-200" />}
-          to={createPageUrl('SchoolLeads')}
+          to={createPageUrl("SchoolLeads")}
           color="text-green-600"
         />
         <StatCard
           title="Reservations"
           value={stats.confirmedReservations}
           icon={<Calendar className="h-6 w-6 text-purple-200" />}
-          to={createPageUrl('SchoolLeads')}
+          to={createPageUrl("SchoolLeads")}
           color="text-purple-600"
         />
         <StatCard
           title="Open Seats"
           value={stats.availableSeats}
           icon={<TrendingUp className="h-6 w-6 text-orange-200" />}
-          to={createPageUrl('SchoolPrograms')}
+          to={createPageUrl("SchoolPrograms")}
           color="text-orange-600"
         />
         <StatCard
@@ -230,23 +298,31 @@ export default function SchoolDashboard({ user }) {
               <div className="space-y-3">
                 {recentLeads.map((lead) => {
                   const created = lead.created_at || lead.created_date;
-                  const when = created ? format(new Date(created), 'MMM dd, yyyy') : '';
+                  const when = created ? format(new Date(created), "MMM dd, yyyy") : "";
                   const name =
-                    lead.student?.full_name || lead.contact_name || lead.student_name || 'Unknown Student';
+                    lead.student?.full_name ||
+                    lead.contact_name ||
+                    lead.student_name ||
+                    "Unknown Student";
+
                   return (
-                    <div key={lead.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div
+                      key={lead.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
                       <div>
                         <p className="font-medium">{name}</p>
                         <p className="text-sm text-gray-600">{lead.program_name}</p>
                         {when && <p className="text-xs text-gray-500">{when}</p>}
                       </div>
-                      <Badge variant={lead.status === 'confirmed' ? 'default' : 'secondary'}>
-                        {lead.status || 'pending'}
+                      <Badge variant={lead.status === "confirmed" ? "default" : "secondary"}>
+                        {lead.status || "pending"}
                       </Badge>
                     </div>
                   );
                 })}
-                <Link to={createPageUrl('SchoolLeads')}>
+
+                <Link to={createPageUrl("SchoolLeads")}>
                   <Button variant="outline" className="w-full">
                     View All Leads <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
@@ -270,19 +346,19 @@ export default function SchoolDashboard({ user }) {
             <QuickLink
               title="Manage Programs"
               description="Add, edit, or remove academic programs"
-              to={createPageUrl('SchoolPrograms')}
+              to={createPageUrl("SchoolPrograms")}
               icon={<BookOpen className="w-5 h-5 text-blue-500" />}
             />
             <QuickLink
               title="Update Profile"
               description="Edit school information and media"
-              to={createPageUrl('SchoolProfile')}
+              to={createPageUrl("SchoolProfile")}
               icon={<Building className="w-5 h-5 text-purple-500" />}
             />
             <QuickLink
               title="View Leads"
               description="See all student inquiries and reservations"
-              to={createPageUrl('SchoolLeads')}
+              to={createPageUrl("SchoolLeads")}
               icon={<Users className="w-5 h-5 text-green-500" />}
             />
           </CardContent>

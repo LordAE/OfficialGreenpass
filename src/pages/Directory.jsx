@@ -32,16 +32,7 @@ import _ from "lodash";
 
 // 🔥 Firebase
 import { db, auth } from "@/firebase";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  doc,
-  setDoc,
-  serverTimestamp,
-  getDoc,
-} from "firebase/firestore";
+import { collection, getDocs, query, where, doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -56,13 +47,7 @@ import {
 } from "firebase/auth";
 
 // shadcn dialog
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const PAGE_SIZE = 15;
 
@@ -202,9 +187,7 @@ const uniqStrings = (arr) => {
 };
 
 const getSchoolImageList = (item) => {
-  const fallback =
-    "https://images.unsplash.com/photo-1562774053-701939374585?w=1200&h=600&fit=crop&q=80";
-
+  const fallback = "https://images.unsplash.com/photo-1562774053-701939374585?w=1200&h=600&fit=crop&q=80";
   if (!item) return [fallback];
 
   const candidates = [
@@ -269,8 +252,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
   const list = Array.isArray(programs) ? programs : [];
   const hasPrograms = list.length > 0;
 
-  const getProgramTitle = (p) =>
-    p?.program_title || p?.programTitle || p?.title || p?.name || "Untitled program";
+  const getProgramTitle = (p) => p?.program_title || p?.programTitle || p?.title || p?.name || "Untitled program";
 
   const getProgramMeta = (p) => {
     const level = p?.program_level || p?.level || p?.programLevel;
@@ -284,12 +266,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
     <Card className="h-full flex flex-col overflow-hidden">
       <CardContent className="p-0 flex-1 min-h-0 overflow-auto">
         <div className="relative h-56 bg-gradient-to-br from-blue-100 to-green-100">
-          <img
-            src={images[imgIndex]}
-            alt={name}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <img src={images[imgIndex]} alt={name} className="w-full h-full object-cover" loading="lazy" />
 
           <div className="absolute top-4 left-4 flex gap-2">
             {item.isDLI && (
@@ -332,10 +309,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
                     key={idx}
                     type="button"
                     onClick={() => setImgIndex(idx)}
-                    className={[
-                      "h-2 w-2 rounded-full transition",
-                      idx === imgIndex ? "bg-white" : "bg-white/50 hover:bg-white/80",
-                    ].join(" ")}
+                    className={["h-2 w-2 rounded-full transition", idx === imgIndex ? "bg-white" : "bg-white/50 hover:bg-white/80"].join(" ")}
                     aria-label={`Go to image ${idx + 1}`}
                   />
                 ))}
@@ -489,9 +463,7 @@ const UserDetailsPanel = ({ user, onMessageClick }) => {
   if (!user) {
     return (
       <Card className="h-full">
-        <CardContent className="p-6 text-gray-600">
-          Select a user from the list to see details.
-        </CardContent>
+        <CardContent className="p-6 text-gray-600">Select a user from the list to see details.</CardContent>
       </Card>
     );
   }
@@ -513,14 +485,7 @@ const UserDetailsPanel = ({ user, onMessageClick }) => {
     user.banner ||
     "https://images.unsplash.com/photo-1526498460520-4c246339dccb?w=1600&h=600&fit=crop&q=80";
 
-  const bio =
-    user.biography ||
-    user.bio ||
-    user.description ||
-    user.about ||
-    user.summary ||
-    user.profile_description ||
-    "";
+  const bio = user.biography || user.bio || user.description || user.about || user.summary || user.profile_description || "";
 
   return (
     <Card className="h-full flex flex-col overflow-hidden">
@@ -578,7 +543,6 @@ const UserDetailsPanel = ({ user, onMessageClick }) => {
   );
 };
 
-
 export default function Directory() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -610,6 +574,9 @@ export default function Directory() {
 
   // Auth state
   const [currentUser, setCurrentUser] = useState(null);
+
+  // ✅ current user's role (used to hide same-role tab)
+  const [currentUserRole, setCurrentUserRole] = useState("");
 
   // ✅ In-page Auth modal
   // Steps:
@@ -643,10 +610,62 @@ export default function Directory() {
   const [oauthUser, setOauthUser] = useState(null); // { uid, email, full_name }
   const [oauthName, setOauthName] = useState("");
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setCurrentUser(u || null));
-    return () => unsub();
+  // role normalization helpers
+  const normalizeRole = useCallback((r) => {
+    const v = String(r || "").toLowerCase().trim();
+    if (v === "student") return "user";
+    if (v === "users") return "user";
+    if (v === "tutors") return "tutor";
+    if (v === "agents") return "agent";
+    if (["user", "agent", "tutor"].includes(v)) return v;
+    return "";
   }, []);
+
+  const detectRoleFromUserDoc = useCallback(
+    (data) => normalizeRole(data?.user_type || data?.userType || data?.role || data?.selected_role || ""),
+    [normalizeRole]
+  );
+
+  // ✅ auth + role fetch
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setCurrentUser(u || null);
+
+      if (!u?.uid) {
+        setCurrentUserRole("");
+        return;
+      }
+
+      try {
+        const snap = await getDoc(doc(db, "users", u.uid));
+        const data = snap.exists() ? snap.data() : {};
+        setCurrentUserRole(detectRoleFromUserDoc(data) || "");
+      } catch (e) {
+        console.error("Failed to load user role:", e);
+        setCurrentUserRole("");
+      }
+    });
+
+    return () => unsub();
+  }, [detectRoleFromUserDoc]);
+
+  // ✅ tabs visible: if logged in, hide the same role tab
+  const visibleTabs = useMemo(() => {
+    const role = normalizeRole(currentUserRole);
+    // Always keep school tab; hide only the user's own role tab
+    return BROWSE_TABS.filter((t) => t.key === "school" || !role || t.key !== role);
+  }, [currentUserRole, normalizeRole]);
+
+  // ✅ if user is currently on a hidden tab, move them to school
+  useEffect(() => {
+    const role = normalizeRole(currentUserRole);
+    if (!role) return;
+    if (browseTab === role) {
+      setBrowseTab("school");
+      setSelectedCountry("all");
+      setSearchTerm("");
+    }
+  }, [browseTab, currentUserRole, normalizeRole]);
 
   useEffect(() => {
     const p = parseInt(searchParams.get("page") || "1", 10);
@@ -661,7 +680,6 @@ export default function Directory() {
       setAuthStep("signup_method");
     }
   }, [authDialogOpen, forceStudentSignup, authStep]);
-
 
   const updatePage = useCallback(
     (nextPage) => {
@@ -996,8 +1014,7 @@ export default function Directory() {
 
   const onMessageProfile = useCallback((profileUser, roleKey) => {
     const name = profileUser?.full_name || profileUser?.name || "Support";
-    const email =
-      profileUser?.email || profileUser?.contact_email || profileUser?.contactEmail;
+    const email = profileUser?.email || profileUser?.contact_email || profileUser?.contactEmail;
 
     if (email) {
       const subject = encodeURIComponent(`Message: ${name}`);
@@ -1005,11 +1022,10 @@ export default function Directory() {
       return;
     }
 
-    window.location.href = `/contact?to=${encodeURIComponent(name)}&role=${encodeURIComponent(
-      String(roleKey || "")
-    )}&uid=${encodeURIComponent(String(profileUser?.id || ""))}`;
+    window.location.href = `/contact?to=${encodeURIComponent(name)}&role=${encodeURIComponent(String(roleKey || ""))}&uid=${encodeURIComponent(
+      String(profileUser?.id || "")
+    )}`;
   }, []);
-
 
   const resetAuthForm = useCallback(() => {
     setAuthError("");
@@ -1031,7 +1047,7 @@ export default function Directory() {
     setOauthName("");
   }, []);
 
-    const openAuthDialog = useCallback(
+  const openAuthDialog = useCallback(
     (action, options = {}) => {
       const forceStudent = !!options.forceStudent;
 
@@ -1046,7 +1062,6 @@ export default function Directory() {
     },
     [resetAuthForm]
   );
-
 
   /**
    * ✅ afterAuthSuccess
@@ -1077,12 +1092,12 @@ export default function Directory() {
         onMessageProfile(pendingAction.profile, pendingAction.roleKey);
       }
 
-
       setPendingAction(null);
     },
-    [navigate, onContactSchool, pendingAction]
+    [navigate, onContactSchool, onMessageProfile, pendingAction]
   );
-    const onMessageClick = useCallback(
+
+  const onMessageClick = useCallback(
     (profileUser) => {
       if (!profileUser) return;
 
@@ -1093,14 +1108,10 @@ export default function Directory() {
 
       const forceStudent = browseTab === "tutor" || browseTab === "agent";
 
-      openAuthDialog(
-        { type: "message_profile", profile: profileUser, roleKey: browseTab },
-        { forceStudent }
-      );
+      openAuthDialog({ type: "message_profile", profile: profileUser, roleKey: browseTab }, { forceStudent });
     },
     [browseTab, currentUser, onMessageProfile, openAuthDialog]
   );
-
 
   const handleLogin = useCallback(async () => {
     setAuthError("");
@@ -1164,9 +1175,6 @@ export default function Directory() {
   /* -----------------------------
      ✅ OAuth helpers
    ----------------------------- */
-  const detectRoleFromUserDoc = (data) =>
-    data?.user_type || data?.userType || data?.role || data?.selected_role || "";
-
   const ensureBasicUserDoc = useCallback(async (fbUser) => {
     if (!fbUser?.uid) return;
     const ref = doc(db, "users", fbUser.uid);
@@ -1230,7 +1238,7 @@ export default function Directory() {
         const userRef = doc(db, "users", fbUser.uid);
         const snap = await getDoc(userRef);
         const existsInDb = snap.exists();
-        const existing = existsInDb ? (snap.data() || {}) : null;
+        const existing = existsInDb ? snap.data() || {} : null;
         const roleInDoc = detectRoleFromUserDoc(existing || {});
 
         // ✅ LOGIN intent: must exist in Firestore users collection
@@ -1274,9 +1282,6 @@ export default function Directory() {
         // Make sure a doc exists (at least basic)
         await ensureBasicUserDoc(fbUser);
 
-        // Try to auto-complete signup immediately:
-        // - If provider gave a name (Google usually does), we can write role now and go onboarding.
-        // - If name is missing (common on Apple after first time), go to oauth_finish to collect it.
         const fullName = (fbUser.displayName || existing?.full_name || "").trim();
         const email = (fbUser.email || existing?.email || "").trim();
 
@@ -1320,7 +1325,7 @@ export default function Directory() {
         setAuthLoading(false);
       }
     },
-    [afterAuthSuccess, ensureBasicUserDoc, signupRole]
+    [afterAuthSuccess, detectRoleFromUserDoc, ensureBasicUserDoc, forceStudentSignup, signupRole]
   );
 
   const handleOAuthComplete = useCallback(async () => {
@@ -1427,49 +1432,27 @@ export default function Directory() {
             resetAuthForm();
           }
         }}
-
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Sign in required</DialogTitle>
-            <DialogDescription>
-              You need to log in to continue. You can use email/password, or sign in with Google / Apple.
-            </DialogDescription>
+            <DialogDescription>You need to log in to continue. You can use email/password, or sign in with Google / Apple.</DialogDescription>
           </DialogHeader>
 
           {authError ? (
-            <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-              {authError}
-            </div>
+            <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{authError}</div>
           ) : null}
 
           {/* CHOICE */}
           {authStep === "choice" ? (
             <div className="mt-4 space-y-3">
-              <Button
-                className="w-full h-11"
-                onClick={() => handleOAuthSignIn("google", "login")}
-                disabled={authLoading}
-              >
-                {authLoading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Chrome className="w-4 h-4 mr-2" />
-                )}
+              <Button className="w-full h-11" onClick={() => handleOAuthSignIn("google", "login")} disabled={authLoading}>
+                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Chrome className="w-4 h-4 mr-2" />}
                 Log in with Google
               </Button>
 
-              <Button
-                variant="outline"
-                className="w-full h-11"
-                onClick={() => handleOAuthSignIn("apple", "login")}
-                disabled={authLoading}
-              >
-                {authLoading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Apple className="w-4 h-4 mr-2" />
-                )}
+              <Button variant="outline" className="w-full h-11" onClick={() => handleOAuthSignIn("apple", "login")} disabled={authLoading}>
+                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Apple className="w-4 h-4 mr-2" />}
                 Log in with Apple
               </Button>
 
@@ -1511,29 +1494,12 @@ export default function Directory() {
           {authStep === "login" ? (
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Button
-                  className="h-11"
-                  onClick={() => handleOAuthSignIn("google", "login")}
-                  disabled={authLoading}
-                >
-                  {authLoading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Chrome className="w-4 h-4 mr-2" />
-                  )}
+                <Button className="h-11" onClick={() => handleOAuthSignIn("google", "login")} disabled={authLoading}>
+                  {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Chrome className="w-4 h-4 mr-2" />}
                   Google
                 </Button>
-                <Button
-                  variant="outline"
-                  className="h-11"
-                  onClick={() => handleOAuthSignIn("apple", "login")}
-                  disabled={authLoading}
-                >
-                  {authLoading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Apple className="w-4 h-4 mr-2" />
-                  )}
+                <Button variant="outline" className="h-11" onClick={() => handleOAuthSignIn("apple", "login")} disabled={authLoading}>
+                  {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Apple className="w-4 h-4 mr-2" />}
                   Apple
                 </Button>
               </div>
@@ -1594,12 +1560,7 @@ export default function Directory() {
 
               <div className="text-sm text-gray-600 text-center">
                 No account yet?{" "}
-                <button
-                  type="button"
-                  className="text-blue-600 underline hover:text-blue-700"
-                  onClick={() => setAuthStep("role")}
-                  disabled={authLoading}
-                >
+                <button type="button" className="text-blue-600 underline hover:text-blue-700" onClick={() => setAuthStep("role")} disabled={authLoading}>
                   Create one
                 </button>
               </div>
@@ -1612,28 +1573,13 @@ export default function Directory() {
               <div className="text-sm font-medium text-gray-900">Select your role</div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <Button
-                  variant={signupRole === "user" ? "default" : "outline"}
-                  className="h-11"
-                  onClick={() => setSignupRole("user")}
-                  disabled={authLoading}
-                >
+                <Button variant={signupRole === "user" ? "default" : "outline"} className="h-11" onClick={() => setSignupRole("user")} disabled={authLoading}>
                   Student
                 </Button>
-                <Button
-                  variant={signupRole === "agent" ? "default" : "outline"}
-                  className="h-11"
-                  onClick={() => setSignupRole("agent")}
-                  disabled={authLoading}
-                >
+                <Button variant={signupRole === "agent" ? "default" : "outline"} className="h-11" onClick={() => setSignupRole("agent")} disabled={authLoading}>
                   Agent
                 </Button>
-                <Button
-                  variant={signupRole === "tutor" ? "default" : "outline"}
-                  className="h-11"
-                  onClick={() => setSignupRole("tutor")}
-                  disabled={authLoading}
-                >
+                <Button variant={signupRole === "tutor" ? "default" : "outline"} className="h-11" onClick={() => setSignupRole("tutor")} disabled={authLoading}>
                   Tutor
                 </Button>
               </div>
@@ -1657,25 +1603,15 @@ export default function Directory() {
           {authStep === "signup_method" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
-                Creating account as:{" "}
-                <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+                Creating account as: <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
               </div>
 
-              <Button
-                className="w-full h-11"
-                onClick={() => handleOAuthSignIn("google", "signup")}
-                disabled={authLoading}
-              >
+              <Button className="w-full h-11" onClick={() => handleOAuthSignIn("google", "signup")} disabled={authLoading}>
                 {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Chrome className="w-4 h-4 mr-2" />}
                 Sign up with Google
               </Button>
 
-              <Button
-                variant="outline"
-                className="w-full h-11"
-                onClick={() => handleOAuthSignIn("apple", "signup")}
-                disabled={authLoading}
-              >
+              <Button variant="outline" className="w-full h-11" onClick={() => handleOAuthSignIn("apple", "signup")} disabled={authLoading}>
                 {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Apple className="w-4 h-4 mr-2" />}
                 Sign up with Apple
               </Button>
@@ -1706,31 +1642,17 @@ export default function Directory() {
           {authStep === "signup_email" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
-                Creating account as:{" "}
-                <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+                Creating account as: <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Full name</label>
-                <Input
-                  value={signupName}
-                  onChange={(e) => setSignupName(e.target.value)}
-                  placeholder="Your name"
-                  className="h-11"
-                  autoComplete="name"
-                />
+                <Input value={signupName} onChange={(e) => setSignupName(e.target.value)} placeholder="Your name" className="h-11" autoComplete="name" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Email</label>
-                <Input
-                  value={signupEmail}
-                  onChange={(e) => setSignupEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  type="email"
-                  className="h-11"
-                  autoComplete="email"
-                />
+                <Input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} placeholder="you@example.com" type="email" className="h-11" autoComplete="email" />
               </div>
 
               <div className="space-y-2">
@@ -1783,12 +1705,7 @@ export default function Directory() {
 
               <div className="text-sm text-gray-600 text-center">
                 Already have an account?{" "}
-                <button
-                  type="button"
-                  className="text-blue-600 underline hover:text-blue-700"
-                  onClick={() => setAuthStep("login")}
-                  disabled={authLoading}
-                >
+                <button type="button" className="text-blue-600 underline hover:text-blue-700" onClick={() => setAuthStep("login")} disabled={authLoading}>
                   Log in
                 </button>
               </div>
@@ -1799,23 +1716,13 @@ export default function Directory() {
           {authStep === "oauth_finish" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
-                Creating account as:{" "}
-                <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+                Creating account as: <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Full name</label>
-                <Input
-                  value={oauthName}
-                  onChange={(e) => setOauthName(e.target.value)}
-                  placeholder="Your name"
-                  className="h-11"
-                  autoComplete="name"
-                  disabled={authLoading}
-                />
-                <p className="text-xs text-gray-500">
-                  Apple may not provide your name every time — you can type it here.
-                </p>
+                <Input value={oauthName} onChange={(e) => setOauthName(e.target.value)} placeholder="Your name" className="h-11" autoComplete="name" disabled={authLoading} />
+                <p className="text-xs text-gray-500">Apple may not provide your name every time — you can type it here.</p>
               </div>
 
               <Button className="w-full h-11" onClick={handleOAuthComplete} disabled={authLoading}>
@@ -1855,15 +1762,12 @@ export default function Directory() {
         {/* Filters + Tabs */}
         <div className="relative mb-8">
           <div className="absolute -top-6 right-4 z-10 flex items-center gap-2">
-            {BROWSE_TABS.map((t) => (
+            {visibleTabs.map((t) => (
               <Button
                 key={t.key}
                 type="button"
                 variant={browseTab === t.key ? "default" : "outline"}
-                className={[
-                  "h-10 px-5 text-base rounded-xl shadow-sm",
-                  browseTab === t.key ? "shadow" : "",
-                ].join(" ")}
+                className={["h-10 px-5 text-base rounded-xl shadow-sm", browseTab === t.key ? "shadow" : ""].join(" ")}
                 onClick={() => {
                   setBrowseTab(t.key);
                   setSelectedCountry("all");
@@ -1894,11 +1798,7 @@ export default function Directory() {
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                       <Input
                         type="text"
-                        placeholder={
-                          browseTab === "school"
-                            ? "Search schools, institutions, programs..."
-                            : `Search ${browseTab}s by name, country...`
-                        }
+                        placeholder={browseTab === "school" ? "Search schools, institutions, programs..." : `Search ${browseTab}s by name, country...`}
                         value={searchTerm}
                         onChange={handleSearchChange}
                         className="pl-10 h-11 text-base"
@@ -1954,12 +1854,9 @@ export default function Directory() {
                   <div className="text-sm text-gray-600">
                     {totalCount > 0 ? (
                       <>
-                        Showing <span className="font-medium">{startIndex + 1}</span>–<span className="font-medium">{endIndex}</span>{" "}
-                        of <span className="font-medium">{totalCount}</span>{" "}
-                        {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}
-                        {browseTab === "school" ? (
-                          <> ({allSchools.length} programs, {allInstitutions.length} institutions)</>
-                        ) : null}
+                        Showing <span className="font-medium">{startIndex + 1}</span>–<span className="font-medium">{endIndex}</span> of{" "}
+                        <span className="font-medium">{totalCount}</span> {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}
+                        {browseTab === "school" ? <> ({allSchools.length} programs, {allInstitutions.length} institutions)</> : null}
                       </>
                     ) : (
                       <>Showing 0 {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}</>
@@ -1983,9 +1880,7 @@ export default function Directory() {
               <CardContent className="p-4 h-full flex flex-col min-h-0">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900">
-                    {browseTab === "school"
-                      ? "Schools & Institutions"
-                      : `${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)}s`}
+                    {browseTab === "school" ? "Schools & Institutions" : `${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)}s`}
                   </h3>
                   <Badge variant="secondary">{totalCount}</Badge>
                 </div>
@@ -1994,19 +1889,9 @@ export default function Directory() {
                   {pagedItems.map((item) => {
                     const key = item.school_key || item.id;
                     return browseTab === "school" ? (
-                      <SchoolListRow
-                        key={key}
-                        item={item}
-                        isSelected={key === selectedKey}
-                        onSelect={() => setSelectedKey(key)}
-                      />
+                      <SchoolListRow key={key} item={item} isSelected={key === selectedKey} onSelect={() => setSelectedKey(key)} />
                     ) : (
-                      <UserListRow
-                        key={key}
-                        user={item}
-                        isSelected={key === selectedKey}
-                        onSelect={() => setSelectedKey(key)}
-                      />
+                      <UserListRow key={key} user={item} isSelected={key === selectedKey} onSelect={() => setSelectedKey(key)} />
                     );
                   })}
                 </div>
@@ -2014,13 +1899,7 @@ export default function Directory() {
                 {/* Pagination */}
                 {totalCount > 0 && totalPages > 1 && (
                   <div className="pt-4 flex items-center justify-center gap-2 flex-wrap">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updatePage(Math.max(1, page - 1))}
-                      disabled={page === 1}
-                    >
+                    <Button type="button" variant="outline" size="sm" onClick={() => updatePage(Math.max(1, page - 1))} disabled={page === 1}>
                       Prev
                     </Button>
 
@@ -2043,13 +1922,7 @@ export default function Directory() {
                       )
                     )}
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updatePage(Math.min(totalPages, page + 1))}
-                      disabled={page === totalPages}
-                    >
+                    <Button type="button" variant="outline" size="sm" onClick={() => updatePage(Math.min(totalPages, page + 1))} disabled={page === totalPages}>
                       Next
                     </Button>
                   </div>
@@ -2062,12 +1935,7 @@ export default function Directory() {
           <div className="lg:col-span-7 min-h-0">
             <div className="h-[70vh] min-h-0">
               {browseTab === "school" ? (
-                <SchoolDetailsPanel
-                  item={selectedItem}
-                  programs={selectedPrograms}
-                  onContactClick={onContactClick}
-                  onProgramClick={onProgramClick}
-                />
+                <SchoolDetailsPanel item={selectedItem} programs={selectedPrograms} onContactClick={onContactClick} onProgramClick={onProgramClick} />
               ) : (
                 <UserDetailsPanel user={selectedItem} onMessageClick={onMessageClick} />
               )}
@@ -2078,12 +1946,8 @@ export default function Directory() {
         {/* Empty state */}
         {totalCount === 0 && (
           <div className="text-center py-12">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No {browseTab === "school" ? "schools or institutions" : `${browseTab}s`} found
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Try adjusting your search criteria or clear filters to see all available options.
-            </p>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No {browseTab === "school" ? "schools or institutions" : `${browseTab}s`} found</h3>
+            <p className="text-gray-600 mb-4">Try adjusting your search criteria or clear filters to see all available options.</p>
             <Button type="button" onClick={clearAllFilters} variant="outline">
               Clear All Filters
             </Button>

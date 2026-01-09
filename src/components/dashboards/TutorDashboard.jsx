@@ -1,16 +1,67 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { TutoringSession } from '@/api/entities';
-import { Wallet } from '@/api/entities';
-import { User } from '@/api/entities';
-import { Tutor } from '@/api/entities';
-import { Calendar, Users, BarChart3, Clock, ArrowRight, DollarSign, BookOpen, Star, TrendingUp } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
-import { format } from 'date-fns';
+import { TutoringSession } from "@/api/entities";
+import { Wallet } from "@/api/entities";
+import { Tutor } from "@/api/entities";
+import {
+  Calendar,
+  Users,
+  Clock,
+  ArrowRight,
+  DollarSign,
+  BookOpen,
+  Star,
+  TrendingUp,
+  CreditCard,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { format } from "date-fns";
+
+/* ✅ SUBSCRIPTION LOGIC (based on your real user doc fields)
+   - subscription_active (boolean)
+   - subscription_status (string e.g. "skipped", "active")
+*/
+function isSubscribedUser(u) {
+  if (!u) return false;
+  if (u.subscription_active === true) return true;
+
+  const status = String(u.subscription_status || "").toLowerCase().trim();
+  const ok = new Set(["active", "paid", "trialing"]);
+  return ok.has(status);
+}
+
+const SubscribeBanner = ({ to, user }) => {
+  const status = String(user?.subscription_status || "").toLowerCase().trim();
+  const message =
+    status === "skipped"
+      ? "You skipped subscription. Subscribe to unlock full tutor features, visibility, and payouts."
+      : status === "expired"
+      ? "Your subscription expired. Renew to regain full tutor features, visibility, and payouts."
+      : "You’re not subscribed yet. Subscribe to unlock full tutor features, visibility, and payouts.";
+
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5">
+          <CreditCard className="w-5 h-5 text-red-600" />
+        </div>
+        <div>
+          <p className="font-semibold text-red-800">Subscription required</p>
+          <p className="text-sm text-red-700">{message}</p>
+        </div>
+      </div>
+
+      <Link to={to}>
+        <Button className="bg-red-600 hover:bg-red-700 w-full sm:w-auto">
+          Subscribe Now
+        </Button>
+      </Link>
+    </div>
+  );
+};
 
 const StatCard = ({ title, value, icon, to, color = "text-blue-600" }) => (
   <Card className="hover:shadow-lg transition-shadow">
@@ -50,6 +101,8 @@ const QuickLink = ({ title, description, to, icon }) => (
 );
 
 export default function TutorDashboard({ user }) {
+  const userId = user?.id || user?.uid || user?.user_id;
+
   const [stats, setStats] = useState({
     totalSessions: 0,
     upcomingSessions: 0,
@@ -57,40 +110,53 @@ export default function TutorDashboard({ user }) {
     totalEarnings: 0,
     totalStudents: 0,
     averageRating: 0,
-    availableBalance: 0
+    availableBalance: 0,
   });
   const [upcomingSessions, setUpcomingSessions] = useState([]);
   const [tutorProfile, setTutorProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // ✅ subscription based on your user doc fields
+  const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
+  // ✅ change this if your actual page name is different
+  const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
+
   useEffect(() => {
+    if (!userId) return;
+
     const loadDashboardData = async () => {
       try {
         const [sessions, wallet, tutorData] = await Promise.all([
-          TutoringSession.filter({ tutor_id: user.id }, '-scheduled_date'),
-          Wallet.filter({ user_id: user.id }),
-          Tutor.filter({ user_id: user.id })
+          TutoringSession.filter({ tutor_id: userId }, "-scheduled_date"),
+          Wallet.filter({ user_id: userId }),
+          Tutor.filter({ user_id: userId }),
         ]);
 
         const now = new Date();
-        const upcoming = sessions.filter(s => 
-          s.status === 'scheduled' && new Date(s.scheduled_date) > now
-        ).slice(0, 5);
-        
-        const uniqueStudents = [...new Set(sessions.map(s => s.student_id))];
-        const completedWithRating = sessions.filter(s => s.status === 'completed' && s.student_rating);
-        const avgRating = completedWithRating.length > 0 
-          ? completedWithRating.reduce((sum, s) => sum + s.student_rating, 0) / completedWithRating.length 
-          : 0;
+        const upcoming = sessions
+          .filter((s) => s.status === "scheduled" && new Date(s.scheduled_date) > now)
+          .slice(0, 5);
+
+        const uniqueStudents = [...new Set(sessions.map((s) => s.student_id).filter(Boolean))];
+        const completedWithRating = sessions.filter(
+          (s) => s.status === "completed" && s.student_rating
+        );
+        const avgRating =
+          completedWithRating.length > 0
+            ? completedWithRating.reduce((sum, s) => sum + s.student_rating, 0) /
+              completedWithRating.length
+            : 0;
 
         setStats({
           totalSessions: sessions.length,
-          upcomingSessions: sessions.filter(s => s.status === 'scheduled' && new Date(s.scheduled_date) > now).length,
-          completedSessions: sessions.filter(s => s.status === 'completed').length,
+          upcomingSessions: sessions.filter(
+            (s) => s.status === "scheduled" && new Date(s.scheduled_date) > now
+          ).length,
+          completedSessions: sessions.filter((s) => s.status === "completed").length,
           totalEarnings: wallet.length > 0 ? wallet[0].total_earned || 0 : 0,
           totalStudents: uniqueStudents.length,
           averageRating: avgRating,
-          availableBalance: wallet.length > 0 ? wallet[0].balance_usd || 0 : 0
+          availableBalance: wallet.length > 0 ? wallet[0].balance_usd || 0 : 0,
         });
 
         setUpcomingSessions(upcoming);
@@ -101,9 +167,9 @@ export default function TutorDashboard({ user }) {
         setLoading(false);
       }
     };
-    
+
     loadDashboardData();
-  }, [user.id]);
+  }, [userId]);
 
   if (loading) {
     return (
@@ -111,7 +177,7 @@ export default function TutorDashboard({ user }) {
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-gray-200 rounded w-1/4"></div>
           <div className="grid md:grid-cols-4 gap-6">
-            {[1,2,3,4].map(i => (
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-32 bg-gray-200 rounded"></div>
             ))}
           </div>
@@ -125,13 +191,20 @@ export default function TutorDashboard({ user }) {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Tutor Dashboard</h1>
-          <p className="text-gray-600 mt-1 text-sm sm:text-base">Welcome back, {user.full_name}</p>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">
+            Welcome back, {user?.full_name || "Tutor"}
+          </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-center">
-          <Badge variant={tutorProfile?.verification_status === 'verified' ? 'default' : 'secondary'} className={
-            tutorProfile?.verification_status === 'verified' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-          }>
-            {tutorProfile?.verification_status || 'pending'}
+          <Badge
+            variant={tutorProfile?.verification_status === "verified" ? "default" : "secondary"}
+            className={
+              tutorProfile?.verification_status === "verified"
+                ? "bg-green-100 text-green-800"
+                : "bg-yellow-100 text-yellow-800"
+            }
+          >
+            {tutorProfile?.verification_status || "pending"}
           </Badge>
           {stats.averageRating > 0 && (
             <Badge variant="outline" className="flex items-center gap-1">
@@ -141,34 +214,37 @@ export default function TutorDashboard({ user }) {
           )}
         </div>
       </div>
-      
+
+      {/* ✅ Subscribe signage (only if NOT subscribed) */}
+      {!isSubscribed && <SubscribeBanner to={subscribeUrl} user={user} />}
+
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard 
-          title="Total Sessions" 
-          value={stats.totalSessions} 
-          icon={<Calendar className="h-6 w-6 text-purple-200" />} 
-          to={createPageUrl('TutorSessions')}
+        <StatCard
+          title="Total Sessions"
+          value={stats.totalSessions}
+          icon={<Calendar className="h-6 w-6 text-purple-200" />}
+          to={createPageUrl("TutorSessions")}
           color="text-purple-600"
         />
-        <StatCard 
-          title="Students" 
-          value={stats.totalStudents} 
-          icon={<Users className="h-6 w-6 text-blue-200" />} 
-          to={createPageUrl('TutorStudents')}
+        <StatCard
+          title="Students"
+          value={stats.totalStudents}
+          icon={<Users className="h-6 w-6 text-blue-200" />}
+          to={createPageUrl("TutorStudents")}
           color="text-blue-600"
         />
-        <StatCard 
-          title="Total Earnings" 
-          value={`$${stats.totalEarnings.toFixed(2)}`} 
-          icon={<DollarSign className="h-6 w-6 text-green-200" />} 
-          to={createPageUrl('TutorEarnings')}
+        <StatCard
+          title="Total Earnings"
+          value={`$${Number(stats.totalEarnings || 0).toFixed(2)}`}
+          icon={<DollarSign className="h-6 w-6 text-green-200" />}
+          to={createPageUrl("TutorEarnings")}
           color="text-green-600"
         />
-        <StatCard 
-          title="Available" 
-          value={`$${stats.availableBalance.toFixed(2)}`} 
-          icon={<TrendingUp className="h-6 w-6 text-emerald-200" />} 
-          to={createPageUrl('TutorEarnings')}
+        <StatCard
+          title="Available"
+          value={`$${Number(stats.availableBalance || 0).toFixed(2)}`}
+          icon={<TrendingUp className="h-6 w-6 text-emerald-200" />}
+          to={createPageUrl("TutorEarnings")}
           color="text-emerald-600"
         />
       </div>
@@ -181,17 +257,24 @@ export default function TutorDashboard({ user }) {
           <CardContent>
             {upcomingSessions.length > 0 ? (
               <div className="space-y-3">
-                {upcomingSessions.map(session => (
-                  <div key={session.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                {upcomingSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  >
                     <div>
                       <p className="font-medium">{session.subject}</p>
-                      <p className="text-sm text-gray-600">{format(new Date(session.scheduled_date), 'MMM dd, h:mm a')}</p>
-                      <p className="text-xs text-gray-500">{session.duration} min • ${session.price}</p>
+                      <p className="text-sm text-gray-600">
+                        {format(new Date(session.scheduled_date), "MMM dd, h:mm a")}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {session.duration} min • ${session.price}
+                      </p>
                     </div>
                     <Badge>Scheduled</Badge>
                   </div>
                 ))}
-                <Link to={createPageUrl('TutorSessions')}>
+                <Link to={createPageUrl("TutorSessions")}>
                   <Button variant="outline" className="w-full">
                     View All Sessions <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
@@ -201,7 +284,9 @@ export default function TutorDashboard({ user }) {
               <div className="text-center py-6">
                 <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                 <p className="text-gray-600">No upcoming sessions</p>
-                <p className="text-sm text-gray-500">Sessions will appear here when students book</p>
+                <p className="text-sm text-gray-500">
+                  Sessions will appear here when students book
+                </p>
               </div>
             )}
           </CardContent>
@@ -215,25 +300,25 @@ export default function TutorDashboard({ user }) {
             <QuickLink
               title="Set Availability"
               description="Update your teaching schedule"
-              to={createPageUrl('TutorAvailability')}
+              to={createPageUrl("TutorAvailability")}
               icon={<Clock className="w-5 h-5 text-purple-500" />}
             />
             <QuickLink
               title="View Earnings"
               description="Check your balance and request payouts"
-              to={createPageUrl('TutorEarnings')}
+              to={createPageUrl("TutorEarnings")}
               icon={<DollarSign className="w-5 h-5 text-green-500" />}
             />
             <QuickLink
               title="My Students"
               description="See all your current and past students"
-              to={createPageUrl('TutorStudents')}
+              to={createPageUrl("TutorStudents")}
               icon={<Users className="w-5 h-5 text-blue-500" />}
             />
             <QuickLink
               title="Update Profile"
               description="Edit your professional profile"
-              to={createPageUrl('Profile')}
+              to={createPageUrl("Profile")}
               icon={<BookOpen className="w-5 h-5 text-orange-500" />}
             />
           </CardContent>
@@ -249,10 +334,14 @@ export default function TutorDashboard({ user }) {
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
               <Calendar className="w-8 h-8 text-purple-600 shrink-0" />
               <div className="flex-grow">
-                <h3 className="font-semibold">You have {stats.upcomingSessions} upcoming sessions</h3>
-                <p className="text-gray-600 text-sm">Prepare your materials and check your connection.</p>
+                <h3 className="font-semibold">
+                  You have {stats.upcomingSessions} upcoming sessions
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Prepare your materials and check your connection.
+                </p>
               </div>
-              <Link to={createPageUrl('TutorSessions')} className="w-full sm:w-auto">
+              <Link to={createPageUrl("TutorSessions")} className="w-full sm:w-auto">
                 <Button className="w-full sm:w-auto">View Sessions</Button>
               </Link>
             </div>

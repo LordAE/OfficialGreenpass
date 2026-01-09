@@ -94,6 +94,8 @@ import StudyIreland from "@/pages/countries/StudyIreland";
 import StudyGermany from "@/pages/countries/StudyGermany";
 import StudyUnitedKingdom from "@/pages/countries/StudyUnitedKingdom";
 import StudyUnitedStates from "@/pages/countries/StudyUnitedStates";
+import Messages from "@/pages/Messages";
+
 
 // --- Safe import of createPageUrl (with fallback if not exported) ---
 import * as Utils from "@/utils";
@@ -118,6 +120,8 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="home" element={<Home />} />
         <Route path="welcome" element={<Welcome />} />
+        <Route path="messages" element={<Messages />} />
+
 
         {/* Public site */}
         <Route path="directory" element={<Directory />} />

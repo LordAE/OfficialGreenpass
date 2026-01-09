@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Case, TutoringSession, Reservation } from '@/api/entities';
+import { Case, TutoringSession, Reservation } from "@/api/entities";
 import {
   GraduationCap,
   BookOpen,
@@ -14,35 +14,36 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-} from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
-import { format } from 'date-fns';
+  CreditCard,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { format } from "date-fns";
 
-import ProfileCompletionBanner from '../profile/ProfileCompletionBanner';
-import ActionBlocker from '../profile/ActionBlocker';
-import { getProfileCompletionData } from '../profile/ProfileCompletionBanner';
+import ProfileCompletionBanner from "../profile/ProfileCompletionBanner";
+import ActionBlocker from "../profile/ActionBlocker";
+import { getProfileCompletionData } from "../profile/ProfileCompletionBanner";
 
 /* -------------------- SAFE HELPERS (date & arrays) -------------------- */
 const toValidDate = (v) => {
   // Firestore Timestamp?
-  if (v && typeof v === 'object') {
-    if (typeof v.toDate === 'function') {
+  if (v && typeof v === "object") {
+    if (typeof v.toDate === "function") {
       const d = v.toDate();
       return isNaN(d?.getTime()) ? null : d;
     }
-    if (typeof v.seconds === 'number') {
+    if (typeof v.seconds === "number") {
       const d = new Date(v.seconds * 1000);
       return isNaN(d?.getTime()) ? null : d;
     }
   }
   // number (epoch ms or seconds)
-  if (typeof v === 'number') {
+  if (typeof v === "number") {
     const d = new Date(v > 1e12 ? v : v * 1000);
     return isNaN(d?.getTime()) ? null : d;
   }
   // string (ISO or epoch-in-string)
-  if (typeof v === 'string') {
+  if (typeof v === "string") {
     const s = v.trim();
     if (!s) return null;
     if (/^\d+$/.test(s)) {
@@ -56,9 +57,9 @@ const toValidDate = (v) => {
   return null;
 };
 
-const fmt = (v, fmtStr = 'MMM dd, h:mm a') => {
+const fmt = (v, fmtStr = "MMM dd, h:mm a") => {
   const d = toValidDate(v);
-  if (!d) return '—';
+  if (!d) return "—";
   try {
     return format(d, fmtStr);
   } catch {
@@ -68,6 +69,49 @@ const fmt = (v, fmtStr = 'MMM dd, h:mm a') => {
 
 const arr = (x) => (Array.isArray(x) ? x : x ? [x] : []);
 /* --------------------------------------------------------------------- */
+
+/* ✅ SUBSCRIPTION LOGIC (based on your real user doc fields)
+   - subscription_active (boolean)
+   - subscription_status (string e.g. "skipped", "active")
+*/
+function isSubscribedUser(u) {
+  if (!u) return false;
+  if (u.subscription_active === true) return true;
+
+  const status = String(u.subscription_status || "").toLowerCase().trim();
+  const ok = new Set(["active", "paid", "trialing"]);
+  return ok.has(status);
+}
+
+const SubscribeBanner = ({ to, user }) => {
+  const status = String(user?.subscription_status || "").toLowerCase().trim();
+  const message =
+    status === "skipped"
+      ? "You skipped subscription. Subscribe to unlock full student features and premium access."
+      : status === "expired"
+      ? "Your subscription expired. Renew to regain full student features and premium access."
+      : "You’re not subscribed yet. Subscribe to unlock full student features and premium access.";
+
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5">
+          <CreditCard className="w-5 h-5 text-red-600" />
+        </div>
+        <div>
+          <p className="font-semibold text-red-800">Subscription required</p>
+          <p className="text-sm text-red-700">{message}</p>
+        </div>
+      </div>
+
+      <Link to={to}>
+        <Button className="bg-red-600 hover:bg-red-700 w-full sm:w-auto">
+          Subscribe Now
+        </Button>
+      </Link>
+    </div>
+  );
+};
 
 const StatCard = ({ title, value, icon, to, color = "text-blue-600", subtitle }) => (
   <Card className="hover:shadow-lg transition-shadow">
@@ -122,6 +166,11 @@ export default function StudentDashboard({ user }) {
   const [hasAgent, setHasAgent] = useState(false);
   const [profileCompletion, setProfileCompletion] = useState({ isComplete: true });
 
+  // ✅ subscription based on your user doc fields
+  const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
+  // ✅ change this if your actual page name is different
+  const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
+
   useEffect(() => {
     let alive = true;
 
@@ -135,12 +184,13 @@ export default function StudentDashboard({ user }) {
       }
 
       try {
-        const [sessions, casesByStudent, casesByUser, userReservations] = await Promise.all([
-          TutoringSession.filter({ student_id: userId }),
-          Case.filter({ student_id: userId }),
-          Case.filter({ user_id: userId }),
-          Reservation.filter({ student_id: userId }),
-        ]);
+        const [sessions, casesByStudent, casesByUser, userReservations] =
+          await Promise.all([
+            TutoringSession.filter({ student_id: userId }),
+            Case.filter({ student_id: userId }),
+            Case.filter({ user_id: userId }),
+            Reservation.filter({ student_id: userId }),
+          ]);
 
         const completion = getProfileCompletionData(user, null);
         if (!alive) return;
@@ -148,7 +198,7 @@ export default function StudentDashboard({ user }) {
 
         const now = Date.now();
         const upcoming = arr(sessions)
-          .filter((s) => s?.status === 'scheduled')
+          .filter((s) => s?.status === "scheduled")
           .filter((s) => {
             const d = toValidDate(s?.scheduled_date);
             return d ? d.getTime() > now : false;
@@ -202,7 +252,7 @@ export default function StudentDashboard({ user }) {
   const getVisaProgress = (caseData) => {
     const list = arr(caseData?.checklist);
     if (list.length === 0) return 0;
-    const completed = list.filter((item) => item?.status === 'verified').length;
+    const completed = list.filter((item) => item?.status === "verified").length;
     return (completed / list.length) * 100;
   };
 
@@ -211,23 +261,26 @@ export default function StudentDashboard({ user }) {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Welcome, {user?.full_name?.split(' ')[0] || 'Student'}
+            Welcome, {user?.full_name?.split(" ")[0] || "Student"}
           </h1>
           <p className="text-gray-600 mt-1 text-sm sm:text-base">
             Your study abroad journey dashboard
           </p>
         </div>
         <Badge
-          variant={user?.onboarding_completed ? 'default' : 'secondary'}
+          variant={user?.onboarding_completed ? "default" : "secondary"}
           className={`self-start sm:self-center ${
             user?.onboarding_completed
-              ? 'bg-green-100 text-green-800'
-              : 'bg-yellow-100 text-yellow-800'
+              ? "bg-green-100 text-green-800"
+              : "bg-yellow-100 text-yellow-800"
           }`}
         >
-          {user?.onboarding_completed ? 'Verified' : 'Pending Verification'}
+          {user?.onboarding_completed ? "Verified" : "Pending Verification"}
         </Badge>
       </div>
+
+      {/* ✅ Subscribe signage (only if NOT subscribed) */}
+      {!isSubscribed && <SubscribeBanner to={subscribeUrl} user={user} />}
 
       {/* Profile Completion Banner */}
       <ProfileCompletionBanner user={user} relatedEntity={null} />
@@ -237,7 +290,7 @@ export default function StudentDashboard({ user }) {
           title="Tutoring"
           value={stats.totalSessions}
           icon={<BookOpen className="h-6 w-6 text-purple-200" />}
-          to={createPageUrl('MySessions')}
+          to={createPageUrl("MySessions")}
           color="text-purple-600"
           subtitle={`${stats.sessionCredits} credits`}
         />
@@ -245,7 +298,7 @@ export default function StudentDashboard({ user }) {
           title="Applications"
           value={stats.schoolReservations}
           icon={<GraduationCap className="h-6 w-6 text-blue-200" />}
-          to={createPageUrl('Schools')}
+          to={createPageUrl("Schools")}
           color="text-blue-600"
           subtitle="School reservations"
         />
@@ -253,14 +306,14 @@ export default function StudentDashboard({ user }) {
           title="Visa Cases"
           value={stats.visaApplications}
           icon={<FileText className="h-6 w-6 text-emerald-200" />}
-          to={createPageUrl('VisaRequests')}
+          to={createPageUrl("VisaRequests")}
           color="text-emerald-600"
         />
         <StatCard
           title="Upcoming"
           value={stats.upcomingSessions}
           icon={<Calendar className="h-6 w-6 text-orange-200" />}
-          to={createPageUrl('MySessions')}
+          to={createPageUrl("MySessions")}
           color="text-orange-600"
           subtitle="Sessions"
         />
@@ -289,15 +342,13 @@ export default function StudentDashboard({ user }) {
                       className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                     >
                       <div>
-                        <p className="font-medium">{session?.subject || 'Session'}</p>
-                        <p className="text-sm text-gray-600">
-                          {fmt(session?.scheduled_date)}
-                        </p>
+                        <p className="font-medium">{session?.subject || "Session"}</p>
+                        <p className="text-sm text-gray-600">{fmt(session?.scheduled_date)}</p>
                       </div>
-                      <Badge variant="outline">{session?.duration ?? '—'} min</Badge>
+                      <Badge variant="outline">{session?.duration ?? "—"} min</Badge>
                     </div>
                   ))}
-                  <Link to={createPageUrl('MySessions')}>
+                  <Link to={createPageUrl("MySessions")}>
                     <Button variant="outline" className="w-full mt-2">
                       View All <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
@@ -307,7 +358,7 @@ export default function StudentDashboard({ user }) {
                 <div className="text-center py-6">
                   <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                   <p className="text-gray-600">No upcoming sessions</p>
-                  <Link to={createPageUrl('Tutors')}>
+                  <Link to={createPageUrl("Tutors")}>
                     <Button size="sm" className="mt-2">
                       Find a Tutor
                     </Button>
@@ -334,26 +385,20 @@ export default function StudentDashboard({ user }) {
                   return (
                     <div key={caseData?.id || Math.random()} className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium">
-                          {caseData?.case_type || 'Visa Case'}
-                        </p>
+                        <p className="font-medium">{caseData?.case_type || "Visa Case"}</p>
                         <Badge
-                          variant={
-                            caseData?.status === 'Approved' ? 'default' : 'secondary'
-                          }
+                          variant={caseData?.status === "Approved" ? "default" : "secondary"}
                           className="text-xs"
                         >
-                          {caseData?.status || '—'}
+                          {caseData?.status || "—"}
                         </Badge>
                       </div>
                       <Progress value={progress} className="h-2" />
-                      <p className="text-xs text-gray-500">
-                        {Math.round(progress)}% complete
-                      </p>
+                      <p className="text-xs text-gray-500">{Math.round(progress)}% complete</p>
                     </div>
                   );
                 })}
-                <Link to={createPageUrl('VisaRequests')}>
+                <Link to={createPageUrl("VisaRequests")}>
                   <Button variant="outline" className="w-full">
                     View All <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
@@ -363,7 +408,7 @@ export default function StudentDashboard({ user }) {
               <div className="text-center py-6">
                 <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                 <p className="text-gray-600">No visa applications</p>
-                <Link to={createPageUrl('VisaPackages')}>
+                <Link to={createPageUrl("VisaPackages")}>
                   <Button variant="outline" size="sm" className="mt-2">
                     Explore Packages
                   </Button>
@@ -387,34 +432,35 @@ export default function StudentDashboard({ user }) {
               <QuickLink
                 title="Find Schools"
                 description="Discover programs that match your goals"
-                to={createPageUrl('Schools')}
+                to={createPageUrl("Schools")}
                 icon={<GraduationCap className="w-5 h-5 text-blue-500" />}
               />
               <QuickLink
                 title="Book Tutoring"
                 description="Get help with test preparation"
-                to={createPageUrl('Tutors')}
+                to={createPageUrl("Tutors")}
                 icon={<BookOpen className="w-5 h-5 text-purple-500" />}
               />
               <QuickLink
                 title="Apply for Visa"
                 description="Get professional visa assistance"
-                to={createPageUrl('VisaPackages')}
+                to={createPageUrl("VisaPackages")}
                 icon={<FileText className="w-5 h-5 text-emerald-500" />}
               />
             </ActionBlocker>
+
             {hasAgent ? (
               <QuickLink
                 title="Contact My Agent"
                 description="Speak with your assigned agent"
-                to={createPageUrl('MyAgent')}
+                to={createPageUrl("MyAgent")}
                 icon={<Users className="w-5 h-5 text-orange-500" />}
               />
             ) : (
               <QuickLink
                 title="Find an Agent"
                 description="Get expert guidance"
-                to={createPageUrl('FindAgent')}
+                to={createPageUrl("FindAgent")}
                 icon={<Users className="w-5 h-5 text-orange-500" />}
               />
             )}
@@ -436,22 +482,18 @@ export default function StudentDashboard({ user }) {
                   className="p-4 border rounded-lg bg-white"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium">
-                      {reservation?.school_name || 'School'}
-                    </h4>
+                    <h4 className="font-medium">{reservation?.school_name || "School"}</h4>
                     <Badge
-                      variant={
-                        reservation?.status === 'confirmed' ? 'default' : 'secondary'
-                      }
+                      variant={reservation?.status === "confirmed" ? "default" : "secondary"}
                     >
-                      {reservation?.status || '—'}
+                      {reservation?.status || "—"}
                     </Badge>
                   </div>
                   <p className="text-sm text-gray-600 mb-2">
-                    {reservation?.program_name || '—'}
+                    {reservation?.program_name || "—"}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {fmt(reservation?.created_date, 'MMM dd, yyyy')}
+                    {fmt(reservation?.created_date, "MMM dd, yyyy")}
                   </p>
                 </div>
               ))}
@@ -461,52 +503,47 @@ export default function StudentDashboard({ user }) {
       )}
 
       {/* Next Steps Guidance */}
-      {Array.isArray(user?.purchased_packages) &&
-        user.purchased_packages.length === 0 && (
-          <Card className="border-l-4 border-l-blue-500">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <AlertCircle className="w-6 h-6 text-blue-500 mt-1" />
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-2">
-                    Ready to start your journey?
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    Complete these steps to make the most of GreenPass:
-                  </p>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                      <span className="text-sm">Account created</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
-                      <span className="text-sm text-gray-600">
-                        Choose a visa package
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
-                      <span className="text-sm text-gray-600">
-                        Reserve school programs
-                      </span>
-                    </div>
+      {Array.isArray(user?.purchased_packages) && user.purchased_packages.length === 0 && (
+        <Card className="border-l-4 border-l-blue-500">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <AlertCircle className="w-6 h-6 text-blue-500 mt-1" />
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-2">
+                  Ready to start your journey?
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Complete these steps to make the most of GreenPass:
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <span className="text-sm">Account created</span>
                   </div>
-                  <div className="flex gap-2 mt-4">
-                    <Link to={createPageUrl('VisaPackages')}>
-                      <Button size="sm">Explore Visa Packages</Button>
-                    </Link>
-                    <Link to={createPageUrl('Schools')}>
-                      <Button variant="outline" size="sm">
-                        Browse Schools
-                      </Button>
-                    </Link>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
+                    <span className="text-sm text-gray-600">Choose a visa package</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
+                    <span className="text-sm text-gray-600">Reserve school programs</span>
                   </div>
                 </div>
+                <div className="flex gap-2 mt-4">
+                  <Link to={createPageUrl("VisaPackages")}>
+                    <Button size="sm">Explore Visa Packages</Button>
+                  </Link>
+                  <Link to={createPageUrl("Schools")}>
+                    <Button variant="outline" size="sm">
+                      Browse Schools
+                    </Button>
+                  </Link>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -191,6 +191,65 @@ service cloud.firestore {
     function canReadSession(res) { return isAdmin() || isTutorOfSession(res) || isStudentOfSession(res); }
     function canWriteSession(res) { return isAdmin() || isTutorOfSession(res) || isStudentOfSession(res); }
 
+    // ===========================
+    // Messaging System (NO AI BOT)
+    // ===========================
+
+    // A conversation doc is accessible only to its participants (and admins).
+    function isConversationParticipant(convRes) {
+      return signedIn() &&
+        (convRes.data.participants is list) &&
+        convRes.data.participants.hasAny([request.auth.uid]);
+    }
+
+    // messaging settings doc (optional)
+    match /messaging_settings/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // New messaging conversations collection used by the app (plural)
+    match /conversations/{docId} {
+      // create: must include caller uid in participants
+      allow create: if signedIn() &&
+        (request.resource.data.participants is list) &&
+        request.resource.data.participants.hasAny([request.auth.uid]);
+
+      // read/update: participant or admin
+      allow read: if isAdmin() || isConversationParticipant(resource);
+      allow update: if isAdmin() || isConversationParticipant(resource);
+
+      // delete disabled (safety)
+      allow delete: if false;
+    }
+
+    // Messages collection used by the app (plural)
+    match /messages/{docId} {
+      // create: sender must be caller and must be participant of conversation_id
+      allow create: if signedIn() &&
+        (request.resource.data.sender_id == request.auth.uid) &&
+        (request.resource.data.conversation_id is string) &&
+        exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id)) &&
+        get(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id))
+          .data.participants.hasAny([request.auth.uid]);
+
+      // read: allowed if caller is participant of the parent conversation
+      allow read: if signedIn() &&
+        (resource.data.conversation_id is string) &&
+        exists(/databases/$(database)/documents/conversations/$(resource.data.conversation_id)) &&
+        get(/databases/$(database)/documents/conversations/$(resource.data.conversation_id))
+          .data.participants.hasAny([request.auth.uid]);
+
+      // no edits or deletes to preserve logs for investigations
+      allow update, delete: if false;
+    }
+
+    // Reports: students can create; only admins can read/update/delete
+    match /reports/{docId} {
+      allow create: if signedIn() && request.resource.data.reporter_id == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
     // ── Collections ─────────────────────────────────
 
     match /AboutPageContent/{docId} { allow read, write: if isAdmin(); }
@@ -225,13 +284,11 @@ service cloud.firestore {
 
     // ---------- Case (PascalCase) ----------
     match /Case/{docId} {
-      // student or user can create their own case
       allow create: if signedIn() && (
         request.resource.data.student_id == request.auth.uid ||
         request.resource.data.user_id == request.auth.uid
       );
 
-      // student, owner (user_id) or admin can read/update/delete
       allow read, update, delete: if signedIn() && (
         resource.data.student_id == request.auth.uid ||
         resource.data.user_id == request.auth.uid ||
@@ -266,6 +323,8 @@ service cloud.firestore {
 
     match /ContactPageContent/{docId} { allow read, write: if isAdmin(); }
 
+    // NOTE: This is your legacy "Conversation" entity (PascalCase).
+    // It remains as-is; your new messaging system uses /conversations (plural).
     match /Conversation/{docId} {
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
       allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
@@ -334,13 +393,11 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // old MarketplaceOrder collection (PascalCase)
     match /MarketplaceOrder/{docId} {
       allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
       allow get, update, delete: if signedIn() && (
         resource.data.student_id == request.auth.uid || isAdmin()
       );
-      // list queries (like admin dashboards)
       allow list: if signedIn() && isAdmin();
     }
 
@@ -409,7 +466,6 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // Student RSVPs
     match /StudentRSVP/{docId} {
       allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
@@ -431,11 +487,8 @@ service cloud.firestore {
       allow read, update, delete: if isOwner(resource);
     }
 
-    // Vendor (PascalCase) and vendors (lowercase)
     match /Vendor/{docId} {
-      // single-doc reads
       allow get: if publiclyListable(resource) || isOwner(resource) || isAdmin();
-      // list / query reads (like MarketplaceAdmin)
       allow list: if signedIn() && isAdmin();
 
       allow create: if ownerCreating();
@@ -450,7 +503,6 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || isOwner(resource);
     }
 
-    // ---------- VisaDocument (all possible collection names) ----------
     match /VisaDocument/{docId} {
       allow create: if ownerCreating();
       allow read, update, delete: if isOwner(resource) || isAdmin();
@@ -520,6 +572,7 @@ service cloud.firestore {
     match /contact_page_content/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /contact_page_contents/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /contacts/{docId} { allow create: if true; allow read, update, delete: if isAdmin(); }
+
     match /posts/{docId} {
       allow create: if signedIn();
       allow read: if
@@ -529,13 +582,13 @@ service cloud.firestore {
         isAdmin();
       allow update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
+
     match /events/{docId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
     match /faqs/{docId} { allow read: if true; allow write: if false; }
 
-    // Program collections
     match /Program/{docId} {
       allow read: if true;
       allow create: if isAdmin() || validProgramCreate();
@@ -555,11 +608,9 @@ service cloud.firestore {
       allow delete: if isAdmin() || validProgramUpdate();
     }
 
-    // ---------- SCHOOLS (program docs live here) ----------
     match /schools/{docId} {
       allow read: if true;
 
-      // Owner or Admin can create; when owner creates, it must reference a school they own.
       allow create: if signedIn() && (
         isAdmin() ||
         (request.resource.data.user_id == request.auth.uid &&
@@ -567,7 +618,6 @@ service cloud.firestore {
          ownsSchoolId(request.resource.data.school_id))
       );
 
-      // Admin can update/delete anything; owner may update only their own, and school_id cannot change.
       allow update: if signedIn() && (
         isAdmin() ||
         (
@@ -584,9 +634,10 @@ service cloud.firestore {
       );
     }
 
+    // ✅ PUBLIC read for guests (WARNING: exposes full user docs)
     match /users/{docId} {
+      allow read: if true;
       allow create: if signedIn();
-      allow read: if signedIn();
       allow update, delete: if signedIn() && (
         docId == request.auth.uid ||
         resource.data.user_id == request.auth.uid ||
@@ -594,28 +645,20 @@ service cloud.firestore {
       );
     }
 
-    // ---------- school_profiles (now fully manageable) ----------
     match /school_profiles/{uid} {
-      // Read if admin, or if this doc belongs to the caller (by id or by user_id)
       allow read: if isAdmin() ||
                   (signedIn() && (
                     uid == request.auth.uid ||
                     (resource != null && resource.data.user_id == request.auth.uid)
                   ));
 
-      // Create if admin OR caller sets user_id to their own UID (docId no longer required to equal uid)
       allow create: if signedIn() && (isAdmin() || request.resource.data.user_id == request.auth.uid);
-
-      // Update/Delete if admin OR the stored doc belongs to the caller
       allow update, delete: if signedIn() && (isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
     }
 
-    // ---------- services (used by MarketplaceAdmin) ----------
     match /services/{docId} {
       allow create: if signedIn();
-      // any signed-in user can read; safe for admin dashboards
       allow read: if signedIn();
-      // owner or admin can modify
       allow update, delete: if signedIn() && (
         resource.data.user_id == request.auth.uid || isAdmin()
       );
@@ -627,14 +670,9 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // ---------- institutions (now fully manageable) ----------
     match /institutions/{docId} {
       allow read: if true;
-
-      // Create if admin OR owner is setting user_id to self
       allow create: if signedIn() && (isAdmin() || request.resource.data.user_id == request.auth.uid);
-
-      // Update/Delete if admin OR owner
       allow update, delete: if signedIn() && (isAdmin() || resource.data.user_id == request.auth.uid);
     }
     match /Institutions/{docId} { allow read: if true; allow write: if isAdmin(); }
@@ -652,25 +690,18 @@ service cloud.firestore {
       allow delete: if isAdmin() || (signedIn() && resource.data.student_id == request.auth.uid);
     }
 
-    // ---------- marketplace orders (used by MarketplaceAdmin) ----------
     match /marketplace_orders/{docId} {
       allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-
-      // single-doc reads & updates
       allow get, update, delete: if signedIn() && (
         resource.data.student_id == request.auth.uid || isAdmin()
       );
-
-      // list / query for admin dashboard
       allow list: if signedIn() && isAdmin();
     }
     match /marketplaceOrders/{docId} {
       allow create: if signedIn() && request.resource.data.student_id == request.auth.uid;
-
       allow get, update, delete: if signedIn() && (
         resource.data.student_id == request.auth.uid || isAdmin()
       );
-
       allow list: if signedIn() && isAdmin();
     }
 
@@ -681,20 +712,12 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || isOwner(resource);
     }
 
-    // ---------- Tutoring sessions ----------
-    // PascalCase collection
     match /TutoringSession/{docId} {
-      // Create: tutor or student involved in the session (or admin)
       allow create: if signedIn() && canWriteSession(request.resource);
-
-      // Read: only admin, the tutor, or the student
       allow read: if signedIn() && canReadSession(resource);
-
-      // Update/Delete: admin, tutor, or student
       allow update, delete: if signedIn() && canWriteSession(resource);
     }
 
-    // lowercase alias
     match /tutoring_sessions/{docId} {
       allow create: if signedIn() && canWriteSession(request.resource);
       allow read: if signedIn() && canReadSession(resource);
@@ -714,40 +737,27 @@ service cloud.firestore {
       allow read, update, delete: if isOwner(resource);
     }
 
-    // UPDATED: agents – allow student whose assigned_agent_id matches
     match /agents/{docId} {
-      // READ:
-      // - public / verified agents
-      // - the agent themself (owner)
-      // - the student whose assigned_agent_id == this agent's user_id
-      // - admin
       allow read: if
         publiclyListable(resource) ||
         isOwner(resource) ||
         isStudentOfAgent(resource) ||
         isAdmin();
 
-      // CREATE: only the owner (agent user_id == auth uid)
       allow create: if ownerCreating();
-
-      // UPDATE/DELETE: agent (owner) or admin
       allow update, delete: if isAdmin() || isOwner(resource);
     }
 
-    // UPDATED: agent_messages – tie to from_user_id / to_user_id
     match /agent_messages/{docId} {
-      // Only the authenticated sender can create a message
       allow create: if signedIn() &&
                     request.resource.data.from_user_id == request.auth.uid;
 
-      // Sender, receiver or admin can read
       allow read: if signedIn() && (
         resource.data.from_user_id == request.auth.uid ||
         resource.data.to_user_id == request.auth.uid ||
         isAdmin()
       );
 
-      // No updates/deletes for now
       allow update, delete: if false;
     }
 
