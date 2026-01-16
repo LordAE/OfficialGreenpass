@@ -9,10 +9,10 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -34,12 +34,11 @@ export function normalizeRole(r) {
 
 export async function getUserDoc(uid) {
   if (!uid) return null;
-  // "support" is special
   if (uid === "support") return { id: "support", full_name: "Support", role: "support" };
 
   const ref = doc(db, "users", uid);
   const snap = await getDoc(ref);
-  if (!snap.exists()) return { id: uid }; // don’t crash UI
+  if (!snap.exists()) return { id: uid };
   return { id: snap.id, ...snap.data() };
 }
 
@@ -73,8 +72,60 @@ export async function listMessages(conversationId) {
 }
 
 /**
+ * ✅ REALTIME: listen to my conversations (inbox list)
+ * Returns: unsubscribe()
+ */
+export function listenToMyConversations(myUid, callback) {
+  if (!myUid) return () => {};
+
+  const q = query(
+    collection(db, "conversations"),
+    where("participants", "array-contains", myUid),
+    orderBy("last_message_at", "desc"),
+    limit(50)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      callback(list, null);
+    },
+    (err) => {
+      console.error("listenToMyConversations error:", err);
+      callback([], err);
+    }
+  );
+}
+
+/**
+ * ✅ REALTIME: listen to messages within a conversation
+ * Returns: unsubscribe()
+ */
+export function listenToMessages(conversationId, callback) {
+  if (!conversationId) return () => {};
+
+  const q = query(
+    collection(db, "conversations", conversationId, "messages"),
+    orderBy("created_at", "asc"),
+    limit(300)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      callback(msgs, null);
+    },
+    (err) => {
+      console.error("listenToMessages error:", err);
+      callback([], err);
+    }
+  );
+}
+
+/**
  * ✅ Creates a conversation if it doesn't exist yet.
- * This is the “first time chat” fix.
  */
 export async function ensureConversation({
   meId,
@@ -89,7 +140,6 @@ export async function ensureConversation({
   const meR = normalizeRole(meRole);
   const toR = normalizeRole(targetRole || "support");
 
-  // hard block here too (frontend)
   if ((meR === "user" || meR === "student") && toR === "school") {
     targetId = "support";
     targetRole = "support";
@@ -97,30 +147,19 @@ export async function ensureConversation({
 
   const pkey = pairKey(meId, targetId);
 
-  // Find existing conversation by pair_key
-  const q = query(
-    collection(db, "conversations"),
-    where("pair_key", "==", pkey),
-    limit(1)
-  );
+  const q = query(collection(db, "conversations"), where("pair_key", "==", pkey), limit(1));
   const snap = await getDocs(q);
+
   if (!snap.empty) {
     const d = snap.docs[0];
     return { id: d.id, ...d.data() };
   }
 
-  // Create new conversation
   const docData = {
     pair_key: pkey,
     participants: [meId, targetId],
-    participants_map: {
-      [meId]: true,
-      [targetId]: true,
-    },
-    roles: {
-      [meId]: meR,
-      [targetId]: toR,
-    },
+    participants_map: { [meId]: true, [targetId]: true },
+    roles: { [meId]: meR, [targetId]: toR },
     created_by: meId,
     source,
     created_at: serverTimestamp(),
@@ -133,22 +172,15 @@ export async function ensureConversation({
   return { id: ref.id, ...docData };
 }
 
-export async function sendMessage({
-  conversationId,
-  conversationDoc,
-  senderId,
-  text,
-}) {
+export async function sendMessage({ conversationId, conversationDoc, senderId, text }) {
   if (!conversationId) throw new Error("Missing conversationId");
   if (!senderId) throw new Error("Missing senderId");
   const t = String(text || "").trim();
   if (!t) return;
 
-  // Resolve recipient (other participant)
   const parts = conversationDoc?.participants || [];
   const toUserId = parts.find((x) => x !== senderId) || "support";
 
-  // Write message
   await addDoc(collection(db, "conversations", conversationId, "messages"), {
     conversation_id: conversationId,
     sender_id: senderId,
@@ -157,7 +189,6 @@ export async function sendMessage({
     created_at: serverTimestamp(),
   });
 
-  // Update conversation metadata
   await updateDoc(doc(db, "conversations", conversationId), {
     last_message_at: serverTimestamp(),
     last_message_text: t,

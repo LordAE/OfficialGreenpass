@@ -12,10 +12,10 @@ import { Loader2, Send, MessageSquare } from "lucide-react";
 import {
   ensureConversation,
   getUserDoc,
-  listMessages,
-  listMyConversations,
   normalizeRole,
   sendMessage,
+  listenToMessages,
+  listenToMyConversations,
 } from "@/api/messaging";
 
 function displayName(u) {
@@ -35,7 +35,6 @@ export default function Messages() {
   const location = useLocation();
   const [params] = useSearchParams();
 
-  // Directory passes these
   const to = params.get("to") || "";
   const toRole = normalizeRole(params.get("role") || "");
 
@@ -48,9 +47,7 @@ export default function Messages() {
   const [conversations, setConversations] = useState([]);
   const [selectedConv, setSelectedConv] = useState(null);
 
-  // Cache user docs for peers so inbox can show names
-  const [peerCache, setPeerCache] = useState({}); // { uid: userDoc }
-
+  const [peerCache, setPeerCache] = useState({});
   const [peerDoc, setPeerDoc] = useState(null);
 
   const [msgsLoading, setMsgsLoading] = useState(false);
@@ -58,6 +55,12 @@ export default function Messages() {
 
   const [text, setText] = useState("");
   const endRef = useRef(null);
+
+  const msgsUnsubRef = useRef(null);
+  const convoUnsubRef = useRef(null);
+
+  // Optional: smart autoscroll (only scroll if user is near bottom)
+  const listRef = useRef(null);
 
   const myRole = useMemo(() => {
     return normalizeRole(meDoc?.user_type || meDoc?.selected_role || meDoc?.role || "user");
@@ -71,29 +74,18 @@ export default function Messages() {
     });
   }, []);
 
-  const refreshConversations = useCallback(
-    async (uid) => {
-      try {
-        setErrorText("");
-        const list = await listMyConversations(uid);
-        setConversations(list || []);
-        return list || [];
-      } catch (e) {
-        console.error("refreshConversations error:", e);
-        setErrorText(e?.message || "Failed to load conversations.");
-        setConversations([]);
-        return [];
-      }
-    },
-    []
-  );
-
   // Auth bootstrap
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setMe(u || null);
 
       if (!u) {
+        if (msgsUnsubRef.current) msgsUnsubRef.current();
+        msgsUnsubRef.current = null;
+
+        if (convoUnsubRef.current) convoUnsubRef.current();
+        convoUnsubRef.current = null;
+
         setMeDoc(null);
         setSelectedConv(null);
         setConversations([]);
@@ -104,8 +96,8 @@ export default function Messages() {
       }
 
       try {
-        const doc = await getUserDoc(u.uid);
-        setMeDoc(doc || null);
+        const docu = await getUserDoc(u.uid);
+        setMeDoc(docu || null);
       } catch (e) {
         console.error("getUserDoc error:", e);
         setMeDoc(null);
@@ -117,41 +109,60 @@ export default function Messages() {
     return () => unsub();
   }, []);
 
-  // Load conversations once logged in
+  // Realtime inbox
   useEffect(() => {
     if (!me?.uid) return;
-    (async () => {
-      const list = await refreshConversations(me.uid);
 
-      // Warm peer cache so inbox has names instead of just IDs
+    if (convoUnsubRef.current) convoUnsubRef.current();
+
+    convoUnsubRef.current = listenToMyConversations(me.uid, async (list, err) => {
+      if (err) {
+        setErrorText(err?.message || "Failed to listen to conversations.");
+        setConversations([]);
+        return;
+      }
+
+      setErrorText("");
+      setConversations(list || []);
+
+      // keep selected conversation fresh
+      if (selectedConv?.id) {
+        const updated = (list || []).find((c) => c.id === selectedConv.id);
+        if (updated) setSelectedConv(updated);
+      }
+
+      // warm cache
       const others = new Set();
-      for (const c of list) {
+      for (const c of list || []) {
         const parts = Array.isArray(c?.participants) ? c.participants : [];
         const otherId = parts.find((x) => x && x !== me.uid);
         if (otherId) others.add(otherId);
       }
 
-      const ids = Array.from(others).filter((x) => x !== "support");
+      const ids = Array.from(others).filter((x) => x && x !== "support");
       if (ids.length) {
         await Promise.all(
           ids.map(async (uid) => {
             try {
+              if (peerCache?.[uid]) return;
               const udoc = await getUserDoc(uid);
               if (udoc) safeSetPeerCache(uid, udoc);
-            } catch (e) {
+            } catch {
               // ignore
             }
           })
         );
       }
-    })();
-  }, [me?.uid, refreshConversations, safeSetPeerCache]);
+    });
 
-  /**
-   * ✅ FIRST-TIME CHAT HANDLING:
-   * If opened with ?to=... we ensure the conversation exists,
-   * refresh inbox immediately, then auto-select it.
-   */
+    return () => {
+      if (convoUnsubRef.current) convoUnsubRef.current();
+      convoUnsubRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.uid, selectedConv?.id, safeSetPeerCache]);
+
+  // First-time chat via ?to=
   useEffect(() => {
     if (!me?.uid || !meDoc) return;
     if (!to) return;
@@ -160,7 +171,6 @@ export default function Messages() {
       try {
         setErrorText("");
 
-        // ✅ Enforce: student/user cannot message schools (route to support convo)
         if ((myRole === "user" || myRole === "student") && toRole === "school") {
           const conv = await ensureConversation({
             meId: me.uid,
@@ -170,17 +180,13 @@ export default function Messages() {
             source: "blocked_school_message",
           });
 
-          // Refresh inbox so the new convo appears immediately
-          const list = await refreshConversations(me.uid);
-          const latest = list.find((c) => c.id === conv.id) || conv;
-          setSelectedConv(latest);
-
-          setPeerDoc({ id: "support", full_name: "Support" });
-          safeSetPeerCache("support", { id: "support", full_name: "Support" });
+          setSelectedConv(conv);
+          const support = { id: "support", full_name: "Support" };
+          setPeerDoc(support);
+          safeSetPeerCache("support", support);
           return;
         }
 
-        // Normal direct convo
         const conv = await ensureConversation({
           meId: me.uid,
           meRole: myRole,
@@ -189,21 +195,18 @@ export default function Messages() {
           source: location?.state?.source || "directory",
         });
 
-        // Refresh inbox so convo is listed even before first message
-        const list = await refreshConversations(me.uid);
-        const latest = list.find((c) => c.id === conv.id) || conv;
-        setSelectedConv(latest);
+        setSelectedConv(conv);
 
-        // Load peer doc right away for header
         if (to && to !== "support") {
-          const u = await getUserDoc(to);
-          if (u) {
-            setPeerDoc(u);
-            safeSetPeerCache(to, u);
+          const udoc = await getUserDoc(to);
+          if (udoc) {
+            setPeerDoc(udoc);
+            safeSetPeerCache(to, udoc);
           }
         } else {
-          setPeerDoc({ id: "support", full_name: "Support" });
-          safeSetPeerCache("support", { id: "support", full_name: "Support" });
+          const support = { id: "support", full_name: "Support" };
+          setPeerDoc(support);
+          safeSetPeerCache("support", support);
         }
       } catch (e) {
         console.error("ensure/open conversation error:", e);
@@ -213,16 +216,18 @@ export default function Messages() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.uid, meDoc, to, toRole, myRole]);
 
-  // When conversation selected: load peer + messages
+  // Selected conversation -> realtime messages
   useEffect(() => {
     if (!me?.uid || !selectedConv?.id) return;
+
+    if (msgsUnsubRef.current) msgsUnsubRef.current();
+    msgsUnsubRef.current = null;
 
     (async () => {
       setMsgsLoading(true);
       try {
         setErrorText("");
 
-        // Determine peer
         const participants = Array.isArray(selectedConv?.participants) ? selectedConv.participants : [];
         const otherId = participants.find((x) => x && x !== me.uid) || "support";
 
@@ -233,33 +238,74 @@ export default function Messages() {
         } else if (peerCache[otherId]) {
           setPeerDoc(peerCache[otherId]);
         } else {
-          const u = await getUserDoc(otherId);
-          if (u) {
-            setPeerDoc(u);
-            safeSetPeerCache(otherId, u);
+          const udoc = await getUserDoc(otherId);
+          if (udoc) {
+            setPeerDoc(udoc);
+            safeSetPeerCache(otherId, udoc);
           } else {
             setPeerDoc({ id: otherId, full_name: "Unknown" });
           }
         }
 
-        // Load messages
-        const list = await listMessages(selectedConv.id);
-        setMessages(list || []);
+        msgsUnsubRef.current = listenToMessages(selectedConv.id, (msgs, err) => {
+          if (err) {
+            setErrorText(err?.message || "Failed to listen to messages.");
+            setMessages([]);
+            setMsgsLoading(false);
+            return;
+          }
+          setMessages(msgs || []);
+          setMsgsLoading(false);
+        });
       } catch (e) {
         console.error("load messages error:", e);
         setErrorText(e?.message || "Failed to load messages.");
         setMessages([]);
-      } finally {
         setMsgsLoading(false);
       }
     })();
+
+    return () => {
+      if (msgsUnsubRef.current) msgsUnsubRef.current();
+      msgsUnsubRef.current = null;
+    };
   }, [me?.uid, selectedConv?.id, peerCache, safeSetPeerCache]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages?.length, msgsLoading]);
+  // ✅ Smart auto-scroll (only if user is near bottom)
+const didOpenConvRef = useRef(false);
+const prevMsgCountRef = useRef(0);
 
-  const handlePickConversation = useCallback(async (conv) => {
+useEffect(() => {
+  const el = listRef.current;
+  if (!el) return;
+
+  const currentCount = messages?.length || 0;
+
+  // When you switch/open a conversation:
+  // record count and SKIP auto-scroll once
+  if (!didOpenConvRef.current) {
+    didOpenConvRef.current = true;
+    prevMsgCountRef.current = currentCount;
+    return;
+  }
+
+  // Only react to NEW messages (count increased)
+  const added = currentCount > prevMsgCountRef.current;
+  prevMsgCountRef.current = currentCount;
+  if (!added) return;
+
+  // Only scroll if user is already near bottom
+  const threshold = 140;
+  const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+  const isNearBottom = distanceFromBottom < threshold;
+
+  if (isNearBottom) {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }
+}, [messages?.length]);
+
+
+  const handlePickConversation = useCallback((conv) => {
     setSelectedConv(conv);
   }, []);
 
@@ -280,18 +326,12 @@ export default function Messages() {
         text: t,
       });
 
-      // Refresh messages + inbox ordering/preview
-      const list = await listMessages(selectedConv.id);
-      setMessages(list || []);
-
-      const updated = await refreshConversations(me.uid);
-      const latest = updated.find((c) => c.id === selectedConv.id);
-      if (latest) setSelectedConv(latest);
+      // ✅ No manual refresh. Listener updates automatically.
     } catch (e) {
       console.error("send message error:", e);
       setErrorText(e?.message || "Failed to send message.");
     }
-  }, [me?.uid, refreshConversations, selectedConv, text]);
+  }, [me?.uid, selectedConv, text]);
 
   if (loading) {
     return (
@@ -352,7 +392,10 @@ export default function Messages() {
                       ? { id: "support", full_name: "Support" }
                       : peerCache[otherId];
 
-                  const title = displayName(otherDoc) || (otherId === "support" ? "Support" : `Chat (${otherId.slice(0, 6)}…)`);
+                  const title =
+                    displayName(otherDoc) ||
+                    (otherId === "support" ? "Support" : `Chat (${otherId.slice(0, 6)}…)`);
+
                   const isActive = selectedConv?.id === c.id;
 
                   return (
@@ -377,11 +420,7 @@ export default function Messages() {
         <Card className="md:col-span-8 h-[75vh] overflow-hidden flex flex-col">
           <CardHeader className="border-b">
             <div className="flex items-center gap-3">
-              <img
-                src={peerAvatar}
-                alt={peerName}
-                className="h-10 w-10 rounded-full object-cover"
-              />
+              <img src={peerAvatar} alt={peerName} className="h-10 w-10 rounded-full object-cover" />
               <div>
                 <div className="font-semibold text-gray-900">{peerName}</div>
                 <div className="text-xs text-gray-600 capitalize">
@@ -391,7 +430,7 @@ export default function Messages() {
             </div>
           </CardHeader>
 
-          <CardContent className="flex-1 overflow-auto p-4 bg-white">
+          <CardContent ref={listRef} className="flex-1 overflow-auto p-4 bg-white">
             {!selectedConv ? (
               <div className="text-sm text-gray-600">Select a conversation to start chatting.</div>
             ) : msgsLoading ? (

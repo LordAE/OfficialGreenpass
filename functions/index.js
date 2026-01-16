@@ -1,244 +1,216 @@
-const admin = require("firebase-admin");
-const cors = require("cors")({ origin: true });
-const crypto = require("crypto");
-const OpenAI = require("openai");
+// src/api/messaging.js
+import { db } from "@/firebase";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 
-const { onRequest } = require("firebase-functions/v2/https");
-const { defineSecret } = require("firebase-functions/params");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+export const MESSAGE_CATEGORIES = {
+  AGENT_TUTOR: "agent_tutor",
+  VENDOR: "vendor",
+  SUPPORT: "support",
+};
 
-admin.initializeApp();
-
-function pickFirst(obj, keys = []) {
-  for (const k of keys) {
-    const v = obj?.[k];
-    if (typeof v === "string" && v.trim()) return v.trim();
-  }
-  return "";
+export function normalizeRole(r) {
+  const v = String(r || "").toLowerCase().trim();
+  if (v === "student" || v === "users") return "user";
+  if (v === "tutors") return "tutor";
+  if (v === "agents") return "agent";
+  if (v === "schools") return "school";
+  return v || "user";
 }
 
-function notifyUser(uid, payload) {
-  if (!uid) return Promise.resolve();
+export async function getUserDoc(uid) {
+  if (!uid) return null;
+  // "support" is special
+  if (uid === "support") return { id: "support", full_name: "Support", role: "support" };
 
-  const ref = admin
-    .firestore()
-    .collection("users")
-    .doc(uid)
-    .collection("notifications")
-    .doc();
+  const ref = doc(db, "users", uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return { id: uid }; // don’t crash UI
+  return { id: snap.id, ...snap.data() };
+}
 
-  return ref.set({
-    type: payload.type || "system",
-    title: payload.title || "",
-    body: payload.body || "",
-    link: payload.link || "",
-    data: payload.data || {},
-    seen: false,
-    readAt: null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+function pairKey(a, b) {
+  const x = String(a || "");
+  const y = String(b || "");
+  return [x, y].sort().join("__");
+}
+
+export async function listMyConversations(myUid) {
+  if (!myUid) return [];
+  const q = query(
+    collection(db, "conversations"),
+    where("participants", "array-contains", myUid),
+    orderBy("last_message_at", "desc"),
+    limit(50)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function listMessages(conversationId) {
+  if (!conversationId) return [];
+  const q = query(
+    collection(db, "conversations", conversationId, "messages"),
+    orderBy("created_at", "asc"),
+    limit(200)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/**
+ * ✅ REALTIME: listen to my conversations
+ * Returns unsubscribe()
+ */
+export function listenToMyConversations(myUid, callback) {
+  if (!myUid) return () => {};
+  const q = query(
+    collection(db, "conversations"),
+    where("participants", "array-contains", myUid),
+    orderBy("last_message_at", "desc"),
+    limit(50)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      callback(list);
+    },
+    (err) => {
+      console.error("listenToMyConversations error:", err);
+      callback([], err);
+    }
+  );
+}
+
+/**
+ * ✅ REALTIME: listen to messages inside a conversation
+ * Returns unsubscribe()
+ */
+export function listenToMessages(conversationId, callback) {
+  if (!conversationId) return () => {};
+
+  const q = query(
+    collection(db, "conversations", conversationId, "messages"),
+    orderBy("created_at", "asc"),
+    limit(300)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      callback(msgs);
+    },
+    (err) => {
+      console.error("listenToMessages error:", err);
+      callback([], err);
+    }
+  );
+}
+
+/**
+ * ✅ Creates a conversation if it doesn't exist yet.
+ * This is the “first time chat” fix.
+ */
+export async function ensureConversation({
+  meId,
+  meRole,
+  targetId,
+  targetRole,
+  source = "app",
+}) {
+  if (!meId) throw new Error("Missing meId");
+  if (!targetId) throw new Error("Missing targetId");
+
+  const meR = normalizeRole(meRole);
+  const toR = normalizeRole(targetRole || "support");
+
+  // hard block here too (frontend)
+  if ((meR === "user" || meR === "student") && toR === "school") {
+    targetId = "support";
+    targetRole = "support";
+  }
+
+  const pkey = pairKey(meId, targetId);
+
+  // Find existing conversation by pair_key
+  const q = query(
+    collection(db, "conversations"),
+    where("pair_key", "==", pkey),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    const d = snap.docs[0];
+    return { id: d.id, ...d.data() };
+  }
+
+  // Create new conversation
+  const docData = {
+    pair_key: pkey,
+    participants: [meId, targetId],
+    participants_map: {
+      [meId]: true,
+      [targetId]: true,
+    },
+    roles: {
+      [meId]: meR,
+      [targetId]: toR,
+    },
+    created_by: meId,
+    source,
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+    last_message_at: null,
+    last_message_text: "",
+  };
+
+  const ref = await addDoc(collection(db, "conversations"), docData);
+  return { id: ref.id, ...docData };
+}
+
+export async function sendMessage({
+  conversationId,
+  conversationDoc,
+  senderId,
+  text,
+}) {
+  if (!conversationId) throw new Error("Missing conversationId");
+  if (!senderId) throw new Error("Missing senderId");
+  const t = String(text || "").trim();
+  if (!t) return;
+
+  // Resolve recipient (other participant)
+  const parts = conversationDoc?.participants || [];
+  const toUserId = parts.find((x) => x !== senderId) || "support";
+
+  // Write message
+  await addDoc(collection(db, "conversations", conversationId, "messages"), {
+    conversation_id: conversationId,
+    sender_id: senderId,
+    to_user_id: toUserId,
+    text: t,
+    created_at: serverTimestamp(),
+  });
+
+  // Update conversation metadata
+  await updateDoc(doc(db, "conversations", conversationId), {
+    last_message_at: serverTimestamp(),
+    last_message_text: t,
+    updated_at: serverTimestamp(),
   });
 }
-
-const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
-
-function hashKey(text, targetLang) {
-  return crypto.createHash("sha256").update(`${targetLang}||${text}`).digest("hex");
-}
-
-exports.api = onRequest(
-  { secrets: [OPENAI_API_KEY] },
-  async (req, res) => {
-    cors(req, res, async () => {
-      try {
-        const { text, targetLang } = req.body || {};
-
-        if (!text || !targetLang) {
-          return res.status(400).json({ error: "Missing text or targetLang" });
-        }
-
-        if (typeof text !== "string" || text.length > 4000) {
-          return res.status(400).json({ error: "Text too long (max 4000 chars)" });
-        }
-
-        const key = hashKey(text, targetLang);
-        const docRef = admin.firestore().collection("translations_public").doc(key);
-        const cached = await docRef.get();
-
-        if (cached.exists) {
-          return res.json({ translatedText: cached.data().translatedText, cached: true });
-        }
-
-        // ✅ Create OpenAI client INSIDE the handler using the secret
-        const openai = new OpenAI({ apiKey: OPENAI_API_KEY.value() });
-
-        const prompt = `Translate the following text to ${targetLang}. Keep URLs, emails, and names unchanged. Return only the translation.\n\n${text}`;
-
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4.1-mini",
-          messages: [
-            {
-              role: "system",
-              content: "You are a professional translator. Output ONLY the translated text.",
-            },
-            { role: "user", content: prompt },
-          ],
-          temperature: 0,
-        });
-
-        const translatedText = completion.choices?.[0]?.message?.content?.trim() || "";
-
-        await docRef.set({
-          key,
-          targetLang,
-          sourceText: text,
-          translatedText,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        return res.json({ translatedText, cached: false });
-      } catch (err) {
-        console.error(err);
-        return res.status(500).json({ error: err.message || "Translate failed" });
-      }
-    });
-  }
-);
-
-// ===========================
-// Step 4 — Firestore Triggers
-// ===========================
-
-// A) Message created -> notify other participants
-//
-// ✅ FIXED:
-// - Listen to the REAL message path: conversations/{conversationId}/messages/{messageId}
-// - Use conversationId from event params (no need to rely on msg.conversationId field)
-// - Support participants stored as array OR map (participants_map / participantsMap / members_map / membersMap)
-// - Keep existing senderId detection + preview building + notifyUser behavior
-exports.onMessageCreated = onDocumentCreated(
-  "conversations/{conversationId}/messages/{messageId}",
-  async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-
-    const msg = snap.data() || {};
-    const senderId = msg.sender_id || msg.senderId || msg.from_uid || msg.fromUid;
-
-    // conversationId comes from the path
-    const conversationId = event.params.conversationId;
-    const messageId = event.params.messageId;
-
-    if (!senderId || !conversationId) return;
-
-    const convRef = admin.firestore().collection("conversations").doc(conversationId);
-    const convSnap = await convRef.get();
-    if (!convSnap.exists) return;
-
-    const conv = convSnap.data() || {};
-
-    // participants can be an array OR a map
-    let participants = [];
-    if (Array.isArray(conv.participants)) {
-      participants = conv.participants;
-    } else {
-      const pMap =
-        conv.participants_map ||
-        conv.participantsMap ||
-        conv.members_map ||
-        conv.membersMap;
-
-      if (pMap && typeof pMap === "object") {
-        participants = Object.keys(pMap);
-      }
-    }
-
-    if (!participants.length) return;
-
-    const recipients = participants.filter((uid) => uid && uid !== senderId);
-
-    const preview =
-      (msg.text || msg.message || msg.body || msg.content || "")
-        .toString()
-        .trim()
-        .slice(0, 120);
-
-    await Promise.all(
-      recipients.map((uid) =>
-        notifyUser(uid, {
-          type: "message",
-          title: "New message",
-          body: preview || "You received a new message",
-          link: `/messages?c=${conversationId}`,
-          data: { conversationId, senderId, messageId },
-        })
-      )
-    );
-  }
-);
-
-// B) Lead created -> notify assigned agent (if lead has agent field)
-exports.onLeadCreated = onDocumentCreated(
-  "leads/{docId}",
-  async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-
-    const lead = snap.data() || {};
-
-    // Try common field names (adjust if you confirm exact field name)
-    const agentUid = pickFirst(lead, [
-      "assigned_agent_id",
-      "assigned_agent_uid",
-      "agent_id",
-      "agent_uid",
-      "to_agent_id",
-      "to_agent_uid",
-    ]);
-
-    if (!agentUid) return;
-
-    await notifyUser(agentUid, {
-      type: "lead",
-      title: "New lead",
-      body: "A new lead was submitted.",
-      link: "/agent/leads",
-      data: { leadId: event.params.docId },
-    });
-  }
-);
-
-// C) Tutoring session created -> notify tutor + student (if fields exist)
-exports.onTutoringSessionCreated = onDocumentCreated(
-  "tutoring_sessions/{docId}",
-  async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-
-    const s = snap.data() || {};
-
-    const tutorUid = pickFirst(s, ["tutor_auth_uid", "tutor_uid", "tutor_id"]);
-    const studentUid = pickFirst(s, ["student_auth_uid", "student_uid", "student_id"]);
-
-    // notify tutor
-    if (tutorUid) {
-      await notifyUser(tutorUid, {
-        type: "session",
-        title: "New tutoring session",
-        body: "A student booked a tutoring session.",
-        link: "/tutor/sessions",
-        data: { sessionId: event.params.docId },
-      });
-    }
-
-    // notify student (optional but recommended)
-    if (studentUid) {
-      await notifyUser(studentUid, {
-        type: "session",
-        title: "Session booked",
-        body: "Your tutoring session has been created.",
-        link: "/my-sessions",
-        data: { sessionId: event.params.docId },
-      });
-    }
-  }
-);
