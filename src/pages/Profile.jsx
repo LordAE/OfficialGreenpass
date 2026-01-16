@@ -1,617 +1,792 @@
-import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// src/pages/Profile.jsx
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import UserProfileForm from "../components/profile/UserProfileForm";
-import AgentProfileForm from "../components/profile/AgentProfileForm";
-import TutorProfileForm from "../components/profile/TutorProfileForm";
-import SchoolProfileForm from "../components/profile/SchoolProfileForm";
-import VendorProfileForm from "../components/profile/VendorProfileForm";
-import ProfilePictureUpload from "../components/profile/ProfilePictureUpload";
-import { Loader2, AlertCircle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 
-/* ---------- Firebase ---------- */
+import { UploadFile } from "@/api/integrations";
+
+import {
+  Loader2,
+  Save,
+  Upload,
+  User as UserIcon,
+  Briefcase,
+  BookOpen,
+  Building,
+  Store,
+} from "lucide-react";
+
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  query,
-  where,
-  limit,
-  getDocs,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  addDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 
-/* =========================
-   Helpers
-========================= */
-const pickFirst = (...vals) =>
-  vals.find((v) => (Array.isArray(v) ? v.length : v || v === 0)) ?? undefined;
-
-const csvToArray = (s) =>
-  (s || "")
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-const ensureArray = (v) => {
-  if (Array.isArray(v)) return v;
-  if (typeof v === "string") return csvToArray(v);
-  return [];
+/* ---------------- helpers ---------------- */
+const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor"];
+const normalizeRole = (r) => {
+  const v = String(r || "").trim().toLowerCase();
+  return VALID_ROLES.includes(v) ? v : "user";
 };
 
-const ensureNumber = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-};
+const csvToArray = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
+const arrayToCSV = (v) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
 
-/* =========================
-   Field mapping from onboarding
-========================= */
-const mapOnboardingToAgent = (src = {}) => ({
-  company_name: pickFirst(src.company_name, src.companyName, src.agency_name, src.org_name),
-  business_license_mst: pickFirst(
-    src.business_license_mst,
-    src.business_license,
-    src.mst,
-    src.tax_id,
-    src.taxNumber,
-    src.tax_number
-  ),
-  paypal_email: pickFirst(src.paypal_email, src.paypal, src.payout_email),
-  year_established: ensureNumber(pickFirst(src.year_established, src.established_year, src.yearEstablished)),
-  website: pickFirst(src.website, src.org_website),
-  phone: pickFirst(src.phone, src.business_phone),
-  address: pickFirst(src.address, src.business_address),
-});
+const slugify = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
 
-const mapOnboardingToTutor = (src = {}) => ({
-  experience_years: ensureNumber(pickFirst(src.experience_years, src.experience, src.years_of_experience)),
-  hourly_rate: ensureNumber(pickFirst(src.hourly_rate, src.rate, src.hourlyRate)),
-  specializations: ensureArray(pickFirst(src.specializations, src.subjects, src.specialties)),
-  paypal_email: pickFirst(src.paypal_email, src.paypal, src.payout_email),
-  bio: pickFirst(src.bio, src.about),
-});
-
-const mapOnboardingToSchool = (src = {}) => ({
-  name: pickFirst(src.name, src.school_name, src.institution_name),
-  school_level: pickFirst(src.school_level, src.level, src.tier),
-  location: pickFirst(src.location, src.city_country, src.city),
-  website: pickFirst(src.website),
-  description: pickFirst(src.description, src.about),
-});
-
-const mapOnboardingToVendor = (src = {}) => ({
-  business_name: pickFirst(src.business_name, src.company_name),
-  service_categories: ensureArray(pickFirst(src.service_categories, src.categories, src.services)),
-  paypal_email: pickFirst(src.paypal_email, src.paypal, src.payout_email),
-  website: pickFirst(src.website),
-});
-
-/* =========================
-   Role meta + lookups
-========================= */
-const ROLE_COLLECTIONS = {
-  agent: ["agents"],
-  tutor: ["tutors"],
-  school: ["school_profiles", "schools"],
-  vendor: ["vendors"],
-};
-
-const ROLE_USER_ID_FIELDS = ["user_id", "userId", "uid"];
-
-async function findRoleDoc(db, uid, userType, onError) {
-  const collections = ROLE_COLLECTIONS[userType] || [];
-  for (const colName of collections) {
-    for (const idField of ROLE_USER_ID_FIELDS) {
-      try {
-        const q = query(collection(db, colName), where(idField, "==", uid), limit(1));
-        const qs = await getDocs(q);
-        if (!qs.empty) {
-          const d = qs.docs[0];
-          return { refPath: `${colName}/${d.id}`, id: d.id, colName, idField, data: d.data() };
-        }
-      } catch (err) {
-        onError && onError(err);
-        console.debug(`No match in ${colName}.${idField}:`, err?.code || err?.message);
-      }
-    }
-  }
-  return null;
+function roleMeta(role) {
+  if (role === "agent") return { label: "Agent", icon: <Briefcase className="w-5 h-5" /> };
+  if (role === "tutor") return { label: "Tutor", icon: <BookOpen className="w-5 h-5" /> };
+  if (role === "school") return { label: "School", icon: <Building className="w-5 h-5" /> };
+  if (role === "vendor") return { label: "Vendor", icon: <Store className="w-5 h-5" /> };
+  return { label: "Student", icon: <UserIcon className="w-5 h-5" /> };
 }
 
-async function loadOnboardingDraft(db, uid) {
-  try {
-    const userRef = doc(db, "users", uid);
-    const snap = await getDoc(userRef);
-    const base = snap.exists() ? snap.data() : {};
+/**
+ * School merge helper:
+ * - keeps redundancy low by syncing only the overlapping fields to institutions + school_profiles
+ * - DOES NOT remove your SchoolProfile page
+ */
+async function syncSchoolCollections({ uid, payload }) {
+  const name = (payload.school_name || "").trim();
+  if (!name) return "";
 
-    const inline =
-      base.onboarding ||
-      base.onboarding_data ||
-      base.onboardingDraft ||
-      base.onboarding_draft ||
-      base.profileDraft;
-
-    if (inline && typeof inline === "object") return inline;
-
-    try {
-      const sub = await getDocs(query(collection(db, "users", uid, "onboarding"), limit(1)));
-      if (!sub.empty) return sub.docs[0].data();
-    } catch {}
-
-    const nested =
-      base.profile ||
-      base.profile_data ||
-      base.draft ||
-      base.draft_profile ||
-      base.roleDraft ||
-      null;
-
-    if (nested && typeof nested === "object") return nested;
-  } catch (err) {
-    console.debug("No onboarding draft found:", err?.code || err?.message);
+  let institutionId = (payload.institution_id || "").trim();
+  if (!institutionId) {
+    institutionId = `${slugify(name)}-${uid.substring(0, 6)}`;
   }
-  return null;
+
+  const instRef = doc(db, "institutions", institutionId);
+  const spRef = doc(db, "school_profiles", uid);
+
+  const institutionData = {
+    name,
+    short_name: name,
+    website: payload.website || "",
+    city: payload.location || "",
+    description: payload.about || "",
+    updated_at: serverTimestamp(),
+  };
+
+  const schoolProfileData = {
+    institution_id: institutionId,
+    user_id: uid,
+
+    name,
+    school_name: name,
+    type: payload.type || "",
+    school_level: payload.type || "",
+
+    location: payload.location || "",
+    website: payload.website || "",
+    about: payload.about || "",
+    bio: payload.bio || "",
+
+    updated_at: serverTimestamp(),
+  };
+
+  await Promise.all([
+    setDoc(instRef, institutionData, { merge: true }),
+    setDoc(spRef, schoolProfileData, { merge: true }),
+  ]);
+
+  return institutionId;
 }
 
-function normalizeRoleData(userType, data = {}) {
-  if (userType === "tutor") {
-    return {
-      ...data,
-      experience_years: ensureNumber(data.experience_years),
-      hourly_rate: ensureNumber(data.hourly_rate),
-      specializations: ensureArray(data.specializations),
-      qualifications: ensureArray(data.qualifications),
-    };
-  }
-  if (userType === "vendor") {
-    return {
-      ...data,
-      service_categories: ensureArray(data.service_categories),
-    };
-  }
-  if (userType === "agent") {
-    return {
-      ...data,
-      year_established: ensureNumber(data.year_established),
-    };
-  }
-  return data;
-}
-
-/* role change helper */
-async function changeUserRole(db, uid, newRole) {
-  const ref = doc(db, "users", uid);
-  await setDoc(ref, { user_type: newRole, updatedAt: serverTimestamp() }, { merge: true });
-  return newRole;
-}
-
-/* =========================
-   Component
-========================= */
 export default function Profile() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [roleSpecificData, setRoleSpecificData] = useState(null);
+  const [uid, setUid] = useState(null);
+  const [role, setRole] = useState("user");
+  const meta = useMemo(() => roleMeta(role), [role]);
+
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [userFormData, setUserFormData] = useState({});
-  const [roleFormData, setRoleFormData] = useState({});
+  const [uploadingProfilePic, setUploadingProfilePic] = useState(false);
 
-  const normalizeUser = (uid, data = {}, fbUser = {}) => {
-    const full_name = pickFirst(data.full_name, data.displayName, fbUser.displayName, data.name) || "";
-    const user_type = (pickFirst(data.user_type, data.role, "student") || "student").toLowerCase();
-    return { id: uid, ...data, full_name, user_type };
-  };
+  // ✅ ONE unified state = personal + role-specific
+  const [form, setForm] = useState({
+    // Personal Information
+    full_name: "",
+    email: "",
+    phone: "",
+    country: "",
+    country_code: "",
+    profile_picture: "",
+    bio: "",
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
-      setLoading(true);
-      setError(null);
-      try {
-        if (!fbUser) {
-          setCurrentUser(null);
-          setLoading(false);
-          return;
-        }
+    // Agent
+    company_name: "",
+    business_license_mst: "",
+    year_established: "",
+    paypal_email: "",
 
-        const uref = doc(db, "users", fbUser.uid);
-        const usnap = await getDoc(uref);
-        if (!usnap.exists()) {
-          const seed = {
-            uid: fbUser.uid,
-            full_name: fbUser.displayName || "",
-            email: fbUser.email || "",
-            user_type: "student",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          };
-          await setDoc(uref, seed, { merge: true });
-        }
-        const freshUserSnap = await getDoc(uref);
-        const freshUser = freshUserSnap.data() || {};
-        const baseUser = normalizeUser(fbUser.uid, freshUser, fbUser);
-        setCurrentUser(baseUser);
+    // Tutor
+    specializations: "",
+    experience_years: "",
+    hourly_rate: "",
 
-        // Merge onboarding into personal form (if any)
-        const onboarding = await loadOnboardingDraft(db, fbUser.uid);
-        const personalMerge = onboarding?.personal || onboarding?.user || onboarding || {};
-        setUserFormData({ ...baseUser, ...personalMerge });
+    // School (from onboarding)
+    institution_id: "",
+    school_name: "",
+    type: "",
+    location: "",
+    website: "",
+    about: "",
 
-        // Load or seed role doc
-        const found = await findRoleDoc(db, fbUser.uid, baseUser.user_type, (err) => {
-          if (err?.code === "permission-denied") {
-            setError(
-              "Permission denied reading your professional profile. Ask an admin or update rules/owner field."
-            );
-          }
+    // Vendor
+    business_name: "",
+    service_categories: [],
+  });
+
+  const setField = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const isUserStudent = role === "user";
+  const showAgent = role === "agent";
+  const showTutor = role === "tutor";
+  const showSchool = role === "school";
+  const showVendor = role === "vendor";
+
+  const loadProfile = useCallback(async (userId) => {
+    setLoading(true);
+    try {
+      // users doc
+      const uref = doc(db, "users", userId);
+      const usnap = await getDoc(uref);
+
+      // If missing, create minimal defaults so page doesn't break
+      if (!usnap.exists()) {
+        await setDoc(uref, {
+          role: "user",
+          user_type: "user",
+          userType: "user",
+          selected_role: "user",
+          email: auth.currentUser?.email || "",
+          full_name: auth.currentUser?.displayName || "",
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
         });
-
-        if (found) {
-          const roleData = { id: found.id, ...found.data };
-          const normalized = normalizeRoleData(baseUser.user_type, roleData);
-          setRoleSpecificData(normalized);
-          setRoleFormData(normalized);
-        } else {
-          // Map from onboarding draft if role doc doesn’t exist yet
-          const src = onboarding?.[baseUser.user_type] || onboarding || {};
-          let mapped = {};
-          if (baseUser.user_type === "agent") mapped = mapOnboardingToAgent(src);
-          if (baseUser.user_type === "tutor") mapped = mapOnboardingToTutor(src);
-          if (baseUser.user_type === "school") mapped = mapOnboardingToSchool(src);
-          if (baseUser.user_type === "vendor") mapped = mapOnboardingToVendor(src);
-
-          const normalized = normalizeRoleData(baseUser.user_type, mapped);
-          setRoleSpecificData(null);
-          setRoleFormData(normalized);
-        }
-      } catch (err) {
-        console.error("Error loading profile:", err);
-        setError("Failed to load profile data. Please refresh the page.");
-      } finally {
-        setLoading(false);
       }
-    });
 
-    return () => unsub && unsub();
+      const u2 = await getDoc(uref);
+      const u = u2.data() || {};
+
+      const resolvedRole = normalizeRole(
+        u.selected_role || u.user_type || u.userType || u.role || "user"
+      );
+      setRole(resolvedRole);
+
+      const resolvedBio =
+        u.bio ||
+        u.agent_profile?.bio ||
+        u.tutor_profile?.bio ||
+        u.school_profile?.bio ||
+        u.vendor_profile?.bio ||
+        "";
+
+      // Optional: if school, pull school_profiles to merge (no redundancy)
+      let schoolProfileDoc = null;
+      if (resolvedRole === "school") {
+        const spRef = doc(db, "school_profiles", userId);
+        const spSnap = await getDoc(spRef);
+        if (spSnap.exists()) schoolProfileDoc = spSnap.data();
+      }
+
+      setForm((p) => ({
+        ...p,
+
+        // Personal
+        full_name: u.full_name || "",
+        email: u.email || auth.currentUser?.email || "",
+        phone: u.phone || "",
+        country: u.country || "",
+        country_code: u.country_code || "",
+        profile_picture: u.profile_picture || "",
+        bio: resolvedBio || "",
+
+        // Agent
+        company_name: u.agent_profile?.company_name || "",
+        business_license_mst: u.agent_profile?.business_license_mst || "",
+        year_established: u.agent_profile?.year_established || "",
+        paypal_email:
+          u.agent_profile?.paypal_email ||
+          u.tutor_profile?.paypal_email ||
+          u.vendor_profile?.paypal_email ||
+          "",
+
+        // Tutor
+        specializations: arrayToCSV(u.tutor_profile?.specializations),
+        experience_years: u.tutor_profile?.experience_years || "",
+        hourly_rate: u.tutor_profile?.hourly_rate || "",
+
+        // School (prefer school_profiles if exists)
+        institution_id: u.school_profile?.institution_id || schoolProfileDoc?.institution_id || "",
+        school_name:
+          u.school_profile?.school_name ||
+          schoolProfileDoc?.school_name ||
+          schoolProfileDoc?.name ||
+          "",
+        type: u.school_profile?.type || schoolProfileDoc?.type || schoolProfileDoc?.school_level || "",
+        location: u.school_profile?.location || schoolProfileDoc?.location || "",
+        website: u.school_profile?.website || schoolProfileDoc?.website || "",
+        about: u.school_profile?.about || schoolProfileDoc?.about || "",
+
+        // Vendor
+        business_name: u.vendor_profile?.business_name || "",
+        service_categories: u.vendor_profile?.service_categories || [],
+      }));
+    } catch (e) {
+      console.error("Profile load error:", e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleUserInputChange = (field, value) => {
-    setUserFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        setUid(null);
+        setLoading(false);
+        return;
+      }
+      setUid(u.uid);
+      await loadProfile(u.uid);
+    });
+    return () => unsub();
+  }, [loadProfile]);
 
-  const handleRoleInputChange = (field, value) => {
-    setRoleFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  // ✅ Profile picture upload (kept)
+  const handleUploadProfilePicture = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const handleSaveUserProfile = async () => {
-    if (!currentUser?.id) return;
+    setUploadingProfilePic(true);
     try {
-      setSaving(true);
-      setError(null);
-      setSaveSuccess(false);
+      const { file_url } = await UploadFile({ file });
+      setField("profile_picture", file_url);
 
-      const userRef = doc(db, "users", currentUser.id);
-      const { id, ...payload } = userFormData || {};
-      await updateDoc(userRef, { ...payload, updatedAt: serverTimestamp() }).catch(async (err) => {
-        if (err?.code === "not-found") {
-          await setDoc(
-            userRef,
-            { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() },
-            { merge: true }
-          );
-        } else {
-          throw err;
-        }
-      });
-
-      const fresh = await getDoc(userRef);
-      const updated = normalizeUser(currentUser.id, fresh.data() || {}, {});
-      setCurrentUser(updated);
-      setUserFormData(updated);
-
-      setSaveSuccess(true);
-      // Force a full refresh shortly after success so the UI reflects all changes
-      setTimeout(() => window.location.reload(), 300);
+      // save immediately to users doc so avatar updates everywhere
+      if (uid) {
+        await updateDoc(doc(db, "users", uid), {
+          profile_picture: file_url,
+          updated_at: serverTimestamp(),
+        });
+      }
     } catch (err) {
-      console.error("Error saving user profile:", err);
-      setError("Failed to save profile. Please try again.");
+      console.error("Profile picture upload failed:", err);
+      alert("Failed to upload profile picture. Please try again.");
+    } finally {
+      setUploadingProfilePic(false);
+      e.target.value = "";
+    }
+  };
+
+  // ✅ Single Save button saves EVERYTHING
+  const handleSaveAll = async () => {
+    if (!uid) return;
+
+    // Align with onboarding basic requirements
+    if (!form.full_name?.trim()) return alert("Full name is required.");
+    if (!form.phone?.trim()) return alert("Phone is required.");
+    if (!form.country?.trim()) return alert("Country is required.");
+
+    // Align with onboarding role-specific requirements
+    if (role === "agent") {
+      if (!form.company_name?.trim()) return alert("Company name is required.");
+      if (!form.business_license_mst?.trim()) return alert("Business license (MST) is required.");
+      if (!form.paypal_email?.trim()) return alert("PayPal email is required.");
+    }
+
+    if (role === "tutor") {
+      if (csvToArray(form.specializations).length === 0) return alert("Specializations are required.");
+      if (!String(form.experience_years).trim()) return alert("Years of experience is required.");
+      if (!String(form.hourly_rate).trim()) return alert("Hourly rate is required.");
+      if (!form.paypal_email?.trim()) return alert("PayPal email is required.");
+    }
+
+    if (role === "school") {
+      if (!form.school_name?.trim()) return alert("Institution name is required.");
+      if (!form.type?.trim()) return alert("School type is required.");
+      if (!form.location?.trim()) return alert("City/Location is required.");
+      if (!form.website?.trim()) return alert("Website is required.");
+    }
+
+    if (role === "vendor") {
+      if (!form.business_name?.trim()) return alert("Business name is required.");
+      if (!Array.isArray(form.service_categories) || form.service_categories.length === 0)
+        return alert("Select at least 1 service category.");
+      if (!form.paypal_email?.trim()) return alert("PayPal email is required.");
+    }
+
+    setSaving(true);
+    try {
+      const uref = doc(db, "users", uid);
+
+      const updates = {
+        // personal
+        full_name: form.full_name || "",
+        phone: form.phone || "",
+        country: form.country || "",
+        country_code: form.country_code || "",
+        profile_picture: form.profile_picture || "",
+        bio: form.bio || "",
+
+        updated_at: serverTimestamp(),
+      };
+
+      // keep nested profiles consistent with onboarding
+      if (role === "agent") {
+        updates.agent_profile = {
+          company_name: form.company_name || "",
+          business_license_mst: form.business_license_mst || "",
+          year_established: form.year_established || "",
+          paypal_email: form.paypal_email || "",
+          bio: form.bio || "",
+        };
+      }
+
+      if (role === "tutor") {
+        updates.tutor_profile = {
+          specializations: csvToArray(form.specializations),
+          experience_years: Number(form.experience_years) || 0,
+          hourly_rate: Number(form.hourly_rate) || 0,
+          paypal_email: form.paypal_email || "",
+          bio: form.bio || "",
+        };
+      }
+
+      if (role === "vendor") {
+        updates.vendor_profile = {
+          business_name: form.business_name || "",
+          service_categories: form.service_categories || [],
+          paypal_email: form.paypal_email || "",
+          bio: form.bio || "",
+        };
+      }
+
+      if (role === "school") {
+        const institutionId = await syncSchoolCollections({
+          uid,
+          payload: {
+            institution_id: form.institution_id || "",
+            school_name: form.school_name || "",
+            type: form.type || "",
+            location: form.location || "",
+            website: form.website || "",
+            about: form.about || "",
+            bio: form.bio || "",
+          },
+        });
+
+        updates.school_profile = {
+          institution_id: institutionId,
+          school_name: form.school_name || "",
+          type: form.type || "",
+          location: form.location || "",
+          website: form.website || "",
+          about: form.about || "",
+          bio: form.bio || "",
+        };
+      }
+
+      await updateDoc(uref, updates);
+      alert("Saved! All changes were updated.");
+      await loadProfile(uid);
+    } catch (e) {
+      console.error("Save failed:", e);
+      alert("Failed to save changes. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  const getRoleMeta = (userType) => {
-    switch (userType) {
-      case "agent":
-        return { col: "agents", required: ["company_name", "business_license_mst", "paypal_email"] };
-      case "tutor":
-        return { col: "tutors", required: ["experience_years", "hourly_rate", "specializations", "paypal_email"] };
-      case "school":
-        return { col: "school_profiles", required: ["name", "school_level", "location"] };
-      case "vendor":
-        return { col: "vendors", required: ["business_name", "service_categories", "paypal_email"] };
-      default:
-        return { col: null, required: [] };
-    }
-  };
-
-  const handleSaveRoleProfile = async () => {
-    if (!currentUser?.id) return;
-    try {
-      setSaving(true);
-      setError(null);
-      setSaveSuccess(false);
-
-      const userType = currentUser.user_type;
-      const { col, required } = getRoleMeta(userType);
-      if (!col) {
-        setError("Your account has no professional role to save.");
-        setSaving(false);
-        return;
-      }
-
-      // Normalize before validating/saving
-      let normalizedToSave = normalizeRoleData(userType, roleFormData);
-
-      // Validate required fields
-      const missing = required.filter((k) => {
-        const v = normalizedToSave?.[k];
-        if (Array.isArray(v)) return v.length === 0;
-        return v === undefined || v === null || `${v}`.trim?.() === "" || (!`${v}`.trim && v === "");
-      });
-      if (missing.length) {
-        setError("Please complete all required fields.");
-        setSaving(false);
-        return;
-      }
-
-      // Ensure Firestore gets correct shapes
-      if (userType === "tutor") {
-        normalizedToSave = {
-          ...normalizedToSave,
-          experience_years: ensureNumber(normalizedToSave.experience_years) ?? 0,
-          hourly_rate: ensureNumber(normalizedToSave.hourly_rate) ?? 0,
-          specializations: ensureArray(normalizedToSave.specializations),
-          qualifications: ensureArray(normalizedToSave.qualifications),
-        };
-      }
-      if (userType === "vendor") {
-        normalizedToSave = {
-          ...normalizedToSave,
-          service_categories: ensureArray(normalizedToSave.service_categories),
-        };
-      }
-      if (userType === "agent") {
-        normalizedToSave = {
-          ...normalizedToSave,
-          year_established: ensureNumber(normalizedToSave.year_established),
-        };
-      }
-
-      let savedData = null;
-
-      if (roleSpecificData?.id) {
-        const refDoc = doc(db, col, roleSpecificData.id);
-        const { id, ...payload } = normalizedToSave || {};
-        await updateDoc(refDoc, { ...payload, updatedAt: serverTimestamp() });
-        const fresh = await getDoc(refDoc);
-        savedData = { id: refDoc.id, ...fresh.data() };
-      } else {
-        const payload = {
-          ...normalizedToSave,
-          user_id: currentUser.id,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        if (userType === "agent" && !payload.referral_code) {
-          payload.referral_code = `AG${Date.now().toString().slice(-6)}`;
-        }
-        const refDoc = await addDoc(collection(db, col), payload);
-        const fresh = await getDoc(refDoc);
-        savedData = { id: refDoc.id, ...fresh.data() };
-      }
-
-      const normalizedSaved = normalizeRoleData(userType, savedData);
-      setRoleSpecificData(normalizedSaved);
-      setRoleFormData(normalizedSaved);
-      setSaveSuccess(true);
-      // Force a full refresh shortly after success so the UI reflects all changes
-      setTimeout(() => window.location.reload(), 300);
-    } catch (err) {
-      console.error("Error saving professional profile:", err);
-      setError("Failed to save professional profile. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // -------- UI --------
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading your profile...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="w-10 h-10 animate-spin text-green-600" />
       </div>
     );
   }
 
-  if (!currentUser) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">You’re signed out</h2>
-            <p className="text-gray-600 mb-4">Please log in to view your profile.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // ✅ Avatar fallback should match Layout.jsx (same gradient + initial)
+  const displayName = (form.full_name || "User").trim();
+  const initial = displayName.charAt(0).toUpperCase() || "U";
+  const avatarBg = "bg-gradient-to-br from-green-500 to-blue-500";
+  const profilePhoto = form.profile_picture || form.photo_url || form.photoURL || "";
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Profile Settings</h1>
-          <p className="text-gray-600">Manage your account information and preferences.</p>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="rounded-full bg-white border p-2">{meta.icon}</div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
+            <p className="text-sm text-gray-600">
+              Role: <span className="font-semibold">{meta.label}</span>
+            </p>
+          </div>
         </div>
 
-        {saveSuccess && (
-          <Alert className="mb-6 border-green-200 bg-green-50">
-            <AlertCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">Profile updated successfully!</AlertDescription>
-          </Alert>
-        )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Personal Information</CardTitle>
+          </CardHeader>
 
-        {error && (
-          <Alert className="mb-6 border-red-200 bg-red-50">
-            <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
-          </Alert>
-        )}
+          <CardContent className="space-y-6">
+            {/* Profile picture upload (kept) */}
+            <div>
+              <Label>Profile Picture</Label>
+              <div className="flex items-center gap-4 mt-2">
+                <input
+                  type="file"
+                  id="profile_picture"
+                  accept="image/*"
+                  onChange={handleUploadProfilePicture}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => document.getElementById("profile_picture")?.click()}
+                  disabled={uploadingProfilePic}
+                >
+                  {uploadingProfilePic ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4 mr-2" />
+                  )}
+                  Upload Picture
+                </Button>
 
-        <Tabs defaultValue="personal" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="personal">Personal Information</TabsTrigger>
-            <TabsTrigger value="professional">Professional Profile</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="personal">
-            <Card>
-              <CardHeader>
-                <CardTitle>Personal Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* Photo */}
-                <div className="mb-6">
-                  <ProfilePictureUpload
-                    currentPicture={userFormData?.photo_url}
-                    fallbackName={currentUser?.full_name || "User"}
-                    onUpdate={(url) => {
-                      setUserFormData((prev) => ({ ...prev, photo_url: url }));
-                      setCurrentUser((prev) => (prev ? { ...prev, photo_url: url } : prev));
+                {profilePhoto ? (
+                  <img
+                    src={profilePhoto}
+                    alt="Profile"
+                    className="w-16 h-16 rounded-full object-cover border border-white shadow-sm"
+                    onError={(e) => {
+                      e.currentTarget.src = "";
+                      setField("profile_picture", "");
                     }}
                   />
-                </div>
-
-                {/* Personal form */}
-                <UserProfileForm formData={userFormData} handleInputChange={handleUserInputChange} />
-
-                <div className="flex justify-end mt-6">
-                  <Button onClick={handleSaveUserProfile} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
-                    {saving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      "Save Changes"
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="professional">
-            <Card>
-              <CardHeader>
-                <CardTitle>Professional Profile</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {["user", "student"].includes(currentUser.user_type) ? (
-                  <div className="py-6">
-                    <p className="text-gray-600 mb-3">Choose your professional role to continue:</p>
-                    <div className="flex items-center gap-3">
-                      <Select
-                        onValueChange={async (val) => {
-                          try {
-                            await changeUserRole(db, currentUser.id, val);
-                            setCurrentUser((u) => ({ ...u, user_type: val }));
-                            setRoleSpecificData(null);
-                            setRoleFormData({});
-                          } catch (e) {
-                            setError("Failed to set role. Please try again.");
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-60">
-                          <SelectValue placeholder="Select role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="tutor">Tutor</SelectItem>
-                          <SelectItem value="agent">Agent</SelectItem>
-                          <SelectItem value="school">School</SelectItem>
-                          <SelectItem value="vendor">Vendor</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
                 ) : (
-                  <>
-                    {currentUser.user_type === "agent" && (
-                      <AgentProfileForm
-                        formData={roleFormData}
-                        handleInputChange={handleRoleInputChange}
-                        autoLoadFromFirestore={false}
-                      />
-                    )}
-                    {currentUser.user_type === "tutor" && (
-                      <TutorProfileForm
-                        formData={roleFormData}
-                        handleInputChange={handleRoleInputChange}
-                        autoLoadFromFirestore={false}
-                      />
-                    )}
-                    {currentUser.user_type === "school" && (
-                      <SchoolProfileForm
-                        formData={roleFormData}
-                        handleInputChange={handleRoleInputChange}
-                        autoLoadFromFirestore={false}
-                      />
-                    )}
-                    {currentUser.user_type === "vendor" && (
-                      <VendorProfileForm
-                        formData={roleFormData}
-                        handleInputChange={handleRoleInputChange}
-                        autoLoadFromFirestore={false}
-                      />
-                    )}
-
-                    <div className="flex justify-end mt-6">
-                      <Button onClick={handleSaveRoleProfile} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
-                        {saving ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          "Save Changes"
-                        )}
-                      </Button>
-                    </div>
-                  </>
+                  <div
+                    className={`w-16 h-16 rounded-full ${avatarBg} text-white border border-white shadow-sm flex items-center justify-center font-bold text-xl`}
+                  >
+                    {initial}
+                  </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              </div>
+            </div>
+
+            {/* Basic info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Full Name *</Label>
+                <Input
+                  value={form.full_name}
+                  onChange={(e) => setField("full_name", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label>Email (Login)</Label>
+                <Input value={form.email} disabled className="mt-1 bg-gray-100" />
+              </div>
+
+              <div>
+                <Label>Phone *</Label>
+                <Input
+                  value={form.phone}
+                  onChange={(e) => setField("phone", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label>Country *</Label>
+                <Input
+                  value={form.country}
+                  onChange={(e) => setField("country", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            {/* Biography (fixed + saved) */}
+            <div>
+              <Label>Biography / Description</Label>
+              <Textarea
+                value={form.bio}
+                onChange={(e) => setField("bio", e.target.value)}
+                className="mt-1"
+                rows={4}
+                placeholder="Write a short bio/description shown on your profile..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Optional, but recommended for better profile visibility.
+              </p>
+            </div>
+
+            {/* ✅ Hide these “requirements/verification” UI for user/student */}
+            {isUserStudent ? null : (
+              <div className="rounded-md border bg-white p-4 text-sm text-gray-600">
+                Some roles may require verification or additional details before appearing publicly.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Role-specific sections (kept) */}
+        {showAgent && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Agent Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Company Name *</Label>
+                <Input
+                  value={form.company_name}
+                  onChange={(e) => setField("company_name", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Business License (MST) *</Label>
+                <Input
+                  value={form.business_license_mst}
+                  onChange={(e) => setField("business_license_mst", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Year Established</Label>
+                <Input
+                  type="number"
+                  value={form.year_established}
+                  onChange={(e) => setField("year_established", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>PayPal Email *</Label>
+                <Input
+                  type="email"
+                  value={form.paypal_email}
+                  onChange={(e) => setField("paypal_email", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {showTutor && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Tutor Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Specializations *</Label>
+                <Input
+                  value={form.specializations}
+                  onChange={(e) => setField("specializations", e.target.value)}
+                  className="mt-1"
+                  placeholder="IELTS, TOEFL..."
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Years of Experience *</Label>
+                  <Input
+                    type="number"
+                    value={form.experience_years}
+                    onChange={(e) => setField("experience_years", e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Hourly Rate (USD) *</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.hourly_rate}
+                    onChange={(e) => setField("hourly_rate", e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>PayPal Email *</Label>
+                <Input
+                  type="email"
+                  value={form.paypal_email}
+                  onChange={(e) => setField("paypal_email", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {showVendor && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Vendor Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Business Name *</Label>
+                <Input
+                  value={form.business_name}
+                  onChange={(e) => setField("business_name", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label>Service Categories *</Label>
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  {["Transport", "SIM Card", "Banking", "Accommodation", "Delivery", "Tours"].map(
+                    (category) => (
+                      <div key={category} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`cat-${category}`}
+                          checked={form.service_categories?.includes(category) || false}
+                          onChange={(e) => {
+                            const cur = form.service_categories || [];
+                            const next = e.target.checked
+                              ? [...cur, category]
+                              : cur.filter((c) => c !== category);
+                            setField("service_categories", next);
+                          }}
+                          className="h-4 w-4"
+                        />
+                        <label htmlFor={`cat-${category}`} className="text-sm text-gray-700">
+                          {category}
+                        </label>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label>PayPal Email *</Label>
+                <Input
+                  type="email"
+                  value={form.paypal_email}
+                  onChange={(e) => setField("paypal_email", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {showSchool && (
+          <Card>
+            <CardHeader>
+              <CardTitle>School Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Institution Name *</Label>
+                <Input
+                  value={form.school_name}
+                  onChange={(e) => setField("school_name", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label>School Type *</Label>
+                <Select value={form.type || ""} onValueChange={(v) => setField("type", v)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select institution type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="High School">High School</SelectItem>
+                    <SelectItem value="College">College</SelectItem>
+                    <SelectItem value="University">University</SelectItem>
+                    <SelectItem value="Institute">Institute</SelectItem>
+                    <SelectItem value="Vocational">Vocational School</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>City/Location *</Label>
+                <Input
+                  value={form.location}
+                  onChange={(e) => setField("location", e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label>Official Website *</Label>
+                <Input
+                  value={form.website}
+                  onChange={(e) => setField("website", e.target.value)}
+                  className="mt-1"
+                  placeholder="https://..."
+                />
+              </div>
+
+              <div>
+                <Label>About Your Institution</Label>
+                <Textarea
+                  value={form.about}
+                  onChange={(e) => setField("about", e.target.value)}
+                  className="mt-1"
+                  rows={3}
+                />
+              </div>
+
+              {form.institution_id ? (
+                <p className="text-xs text-gray-500">
+                  Linked institution_id: <span className="font-mono">{form.institution_id}</span>
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ✅ ONLY ONE BUTTON (saves ALL changes) */}
+        <div className="flex justify-end">
+          <Button
+            onClick={handleSaveAll}
+            disabled={saving}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            Save Changes
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -4,6 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Green Pass</title>
+    <script>
+      // Sync language from marketing site / deep links.
+      // If the URL has ?lang=xx, persist it so the app can read it (e.g., i18next default key).
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var lang = params.get('lang');
+          if (lang) {
+            localStorage.setItem('gp_lang', lang);
+            localStorage.setItem('i18nextLng', lang);
+            document.documentElement.lang = lang;
+          } else {
+            var stored = localStorage.getItem('gp_lang') || localStorage.getItem('i18nextLng');
+            if (stored) document.documentElement.lang = stored;
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

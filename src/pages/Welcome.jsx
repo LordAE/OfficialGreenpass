@@ -471,7 +471,7 @@ export default function Welcome() {
                 className="h-12 sm:h-16 w-auto mx-auto mb-6"
               />
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">
-                Your Journey to Canada Starts Here
+                Your Journey Starts Here
               </h1>
               <p className="mt-6 text-lg leading-8 text-gray-600">
                 {mode === 'signin'

@@ -45,7 +45,7 @@ export default function SchoolProfile() {
 
     // ✅ keep image_url for backward compatibility (primary image)
     image_url: "",
-    // ✅ NEW: multiple additional images
+    // ✅ multiple additional images
     image_urls: [],
 
     logo_url: "",
@@ -97,6 +97,9 @@ export default function SchoolProfile() {
           ? [d.image_url]
           : [];
 
+        // ✅ merge about/description so BOTH pages stay synced
+        const about = (d.about || d.description || "").toString();
+
         setFormData((prev) => ({
           ...prev,
           institution_id: d.institution_id || "",
@@ -107,7 +110,7 @@ export default function SchoolProfile() {
           country: d.country || "",
           founded_year: d.founded_year || new Date().getFullYear(),
           address: d.address || "",
-          about: d.about || "",
+          about,
           website: d.website || "",
 
           // ✅ primary image = first of image_urls (if present)
@@ -134,6 +137,7 @@ export default function SchoolProfile() {
           is_public: d.is_public || "public",
           email: d.email || "",
           phone: d.phone || "",
+          // keep as string for selects
           pgwp_available: String(d.pgwp_available ?? "false"),
           has_coop: String(d.has_coop ?? "false"),
           is_dli: String(d.is_dli ?? "false"),
@@ -168,7 +172,6 @@ export default function SchoolProfile() {
       alert("Failed to upload. Please try again.");
     } finally {
       setUploading(false);
-      // allow selecting same file again
       e.target.value = "";
     }
   };
@@ -180,7 +183,6 @@ export default function SchoolProfile() {
 
     setUploadingImages(true);
     try {
-      // Upload sequentially (safer for rate limits). If you want parallel, tell me.
       const uploadedUrls = [];
       for (const file of files) {
         const { file_url } = await UploadFile({ file });
@@ -190,11 +192,11 @@ export default function SchoolProfile() {
       setFormData((prev) => {
         const merged = [...(prev.image_urls || []), ...uploadedUrls].filter(Boolean);
 
-        // also keep image_url as the primary (first) for compatibility
-        const primary = merged[0] || "";
-
-        // de-dupe
+        // ✅ de-dupe first
         const deduped = Array.from(new Set(merged));
+
+        // ✅ primary is ALWAYS deduped[0]
+        const primary = deduped[0] || "";
 
         return {
           ...prev,
@@ -255,7 +257,6 @@ export default function SchoolProfile() {
 
       { key: "logo_url", label: "Logo", type: "text" },
       { key: "banner_url", label: "Banner / Hero", type: "text" },
-      // ✅ required: at least 1 additional image
       { key: "image_urls", label: "Additional Images", type: "array" },
 
       { key: "about", label: "Description", type: "text" },
@@ -290,7 +291,10 @@ export default function SchoolProfile() {
     [formData]
   );
 
-  const missingFields = useMemo(() => REQUIRED_FIELDS.filter(isMissingField), [REQUIRED_FIELDS, isMissingField]);
+  const missingFields = useMemo(
+    () => REQUIRED_FIELDS.filter(isMissingField),
+    [REQUIRED_FIELDS, isMissingField]
+  );
   const hasMissing = missingFields.length > 0;
 
   const validate = () => {
@@ -321,7 +325,8 @@ export default function SchoolProfile() {
         institutionId = `${slug}-${shortUid}`;
       }
 
-      const primaryImage = (formData.image_urls?.[0] || formData.image_url || "").trim();
+      const imageUrls = Array.isArray(formData.image_urls) ? formData.image_urls.filter(Boolean) : [];
+      const primaryImage = (imageUrls[0] || formData.image_url || "").trim();
 
       // 1) Institution doc (canonical)
       const institutionData = {
@@ -345,9 +350,12 @@ export default function SchoolProfile() {
         logoUrl: formData.logo_url || primaryImage || "",
         bannerUrl: formData.banner_url || "",
 
-        // ✅ store multiple images too (handy for public pages)
         imageUrl: primaryImage,
-        imageUrls: Array.isArray(formData.image_urls) ? formData.image_urls : [],
+        imageUrls,
+
+        // ✅ also store about/description on institution for public pages
+        about: formData.about,
+        description: formData.about,
 
         pgwp_available: toBool(formData.pgwp_available),
         hasCoop: toBool(formData.has_coop),
@@ -382,12 +390,14 @@ export default function SchoolProfile() {
         founded_year: toNum(formData.founded_year),
         address: formData.address,
 
+        // ✅ MERGE: keep both fields synced
         about: formData.about,
+        description: formData.about,
+
         website: formData.website,
 
-        // ✅ keep both fields
         image_url: primaryImage,
-        image_urls: Array.isArray(formData.image_urls) ? formData.image_urls : [],
+        image_urls: imageUrls,
 
         logo_url: formData.logo_url,
         banner_url: formData.banner_url,
@@ -402,9 +412,12 @@ export default function SchoolProfile() {
         is_public: formData.is_public,
         email: formData.email,
         phone: formData.phone,
-        pgwp_available: toBool(formData.pgwp_available),
-        has_coop: toBool(formData.has_coop),
-        is_dli: toBool(formData.is_dli),
+
+        // ✅ keep as string in profile doc (matches your UI selects)
+        pgwp_available: String(formData.pgwp_available),
+        has_coop: String(formData.has_coop),
+        is_dli: String(formData.is_dli),
+
         dli_number: formData.dli_number,
 
         updated_at: serverTimestamp(),
@@ -456,7 +469,10 @@ export default function SchoolProfile() {
               {missingFields.length === 1 ? "field is" : "fields are"} missing.
             </div>
             <div className="text-sm mt-1">
-              Missing: <span className="font-medium">{missingFields.map((f) => f.label).join(", ")}</span>
+              Missing:{" "}
+              <span className="font-medium">
+                {missingFields.map((f) => f.label).join(", ")}
+              </span>
             </div>
           </div>
         )}
@@ -693,10 +709,20 @@ export default function SchoolProfile() {
                     disabled={uploadingLogo}
                     className={missingKeys.has("logo_url") ? "border-red-500" : ""}
                   >
-                    {uploadingLogo ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                    {uploadingLogo ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4 mr-2" />
+                    )}
                     Upload Logo
                   </Button>
-                  {formData.logo_url && <img src={formData.logo_url} alt="Logo" className="w-16 h-16 object-cover rounded" />}
+                  {formData.logo_url && (
+                    <img
+                      src={formData.logo_url}
+                      alt="Logo"
+                      className="w-16 h-16 object-cover rounded"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -717,10 +743,20 @@ export default function SchoolProfile() {
                     disabled={uploadingBanner}
                     className={missingKeys.has("banner_url") ? "border-red-500" : ""}
                   >
-                    {uploadingBanner ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                    {uploadingBanner ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4 mr-2" />
+                    )}
                     Upload Banner
                   </Button>
-                  {formData.banner_url && <img src={formData.banner_url} alt="Banner" className="w-28 h-16 object-cover rounded" />}
+                  {formData.banner_url && (
+                    <img
+                      src={formData.banner_url}
+                      alt="Banner"
+                      className="w-28 h-16 object-cover rounded"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -745,13 +781,18 @@ export default function SchoolProfile() {
                     disabled={uploadingImages}
                     className={missingKeys.has("image_urls") ? "border-red-500" : ""}
                   >
-                    {uploadingImages ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                    {uploadingImages ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4 mr-2" />
+                    )}
                     Upload Images
                   </Button>
 
                   {Array.isArray(formData.image_urls) && formData.image_urls.length > 0 && (
                     <span className="text-sm text-gray-600">
-                      {formData.image_urls.length} image{formData.image_urls.length === 1 ? "" : "s"} uploaded
+                      {formData.image_urls.length} image
+                      {formData.image_urls.length === 1 ? "" : "s"} uploaded
                     </span>
                   )}
                 </div>
@@ -766,9 +807,12 @@ export default function SchoolProfile() {
                           idx === 0 ? "border-blue-500" : "border-gray-200"
                         }`}
                       >
-                        <img src={url} alt={`Additional ${idx + 1}`} className="w-full h-28 object-cover" />
+                        <img
+                          src={url}
+                          alt={`Additional ${idx + 1}`}
+                          className="w-full h-28 object-cover"
+                        />
 
-                        {/* Primary badge */}
                         {idx === 0 && (
                           <div className="absolute top-2 left-2 text-xs bg-blue-600 text-white px-2 py-1 rounded">
                             Primary
@@ -905,17 +949,25 @@ export default function SchoolProfile() {
             </CardContent>
           </Card>
 
-          {/* Hidden link display (readonly) */}
           {formData.institution_id ? (
             <p className="text-sm text-gray-500">
-              Linked institution: <span className="font-mono">{formData.institution_id}</span>
+              Linked institution:{" "}
+              <span className="font-mono">{formData.institution_id}</span>
             </p>
           ) : null}
 
           {/* Save Button */}
           <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
-              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
               Save Profile
             </Button>
           </div>

@@ -1,7 +1,7 @@
 // src/api/messaging.js
 // Firebase-first messaging helpers (NO AI BOT)
 
-import { auth, db } from "@/firebase";
+import { db } from "@/firebase";
 import {
   addDoc,
   collection,
@@ -9,11 +9,12 @@ import {
   getDoc,
   getDocs,
   limit,
+  orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
-  setDoc,
 } from "firebase/firestore";
 
 export const MESSAGE_CATEGORIES = {
@@ -22,241 +23,144 @@ export const MESSAGE_CATEGORIES = {
   SUPPORT: "support",
 };
 
-export function monthKey(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
-}
-
 export function normalizeRole(r) {
   const v = String(r || "").toLowerCase().trim();
-  if (v === "student") return "user";
-  if (v === "users") return "user";
+  if (v === "student" || v === "users") return "user";
   if (v === "tutors") return "tutor";
   if (v === "agents") return "agent";
-  return v;
+  if (v === "schools") return "school";
+  return v || "user";
 }
 
-export function isStudent(userDoc) {
-  const t = normalizeRole(userDoc?.user_type || userDoc?.selected_role || userDoc?.role);
-  return t === "user";
-}
-
-export function isPremiumStudent(userDoc) {
-  if (!userDoc) return false;
-  if (userDoc.is_student_premium === true) return true;
-  if (userDoc.student_membership === "premium") return true;
-  if (Array.isArray(userDoc.purchased_packages) && userDoc.purchased_packages.includes("student_premium_yearly")) return true;
-  return false;
-}
-
-export function categoryForRecipientRole(role) {
-  const r = normalizeRole(role);
-  if (r === "agent" || r === "tutor") return MESSAGE_CATEGORIES.AGENT_TUTOR;
-  if (r === "vendor") return MESSAGE_CATEGORIES.VENDOR;
-  return MESSAGE_CATEGORIES.SUPPORT;
-}
-
-/**
- * Option B: GP Team = Admins
- * Pick the first admin user in `users` where user_type == "admin".
- */
-export async function getSupportAdminUid() {
-  const q = query(collection(db, "users"), where("user_type", "==", "admin"), limit(1));
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  return snap.docs[0].id;
-}
-
-/**
- * Optional settings doc: messaging_settings/SINGLETON
- * If missing, uses safe defaults.
- */
-export async function getMessagingSettings() {
-  const ref = doc(db, "messaging_settings", "SINGLETON");
-  const snap = await getDoc(ref);
-  if (snap.exists()) return { id: snap.id, ...snap.data() };
-
-  return {
-    free_student_agent_tutor_limit: 5, // configurable 3–5
-    free_student_vendor_limit: 5,
-    premium_student_price_usd: 19,
-  };
-}
-
-export async function getMyUserDoc(uid) {
+export async function getUserDoc(uid) {
   if (!uid) return null;
-  const snap = await getDoc(doc(db, "users", uid));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  // "support" is special
+  if (uid === "support") return { id: "support", full_name: "Support", role: "support" };
+
+  const ref = doc(db, "users", uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return { id: uid }; // don’t crash UI
+  return { id: snap.id, ...snap.data() };
 }
 
 function pairKey(a, b) {
-  const ids = [String(a || ""), String(b || "")].sort();
-  return `${ids[0]}_${ids[1]}`;
+  const x = String(a || "");
+  const y = String(b || "");
+  return [x, y].sort().join("__");
 }
 
-export async function findConversationBetween(uidA, uidB) {
-  const pk = pairKey(uidA, uidB);
-  const q = query(collection(db, "conversations"), where("pair_key", "==", pk), limit(1));
+export async function listMyConversations(myUid) {
+  if (!myUid) return [];
+  const q = query(
+    collection(db, "conversations"),
+    where("participants", "array-contains", myUid),
+    orderBy("last_message_at", "desc"),
+    limit(50)
+  );
   const snap = await getDocs(q);
-  if (snap.empty) return null;
-  const d = snap.docs[0];
-  return { id: d.id, ...d.data() };
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-export async function assertStudentConversationLimit({ user, recipientRole, settings }) {
-  const me = user || {};
-  const s = settings || (await getMessagingSettings());
-
-  if (!isStudent(me)) return; // only students are limited
-  if (isPremiumStudent(me)) return; // premium unlimited (for now)
-
-  const mk = monthKey(new Date());
-  const category = categoryForRecipientRole(recipientRole);
-
-  const used = Number(me?.message_limits?.[mk]?.[category] || 0);
-
-  const max =
-    category === MESSAGE_CATEGORIES.AGENT_TUTOR
-      ? Number(s.free_student_agent_tutor_limit || 5)
-      : category === MESSAGE_CATEGORIES.VENDOR
-      ? Number(s.free_student_vendor_limit || 5)
-      : 999999; // support not limited by default
-
-  if (used >= max) {
-    const label =
-      category === MESSAGE_CATEGORIES.AGENT_TUTOR ? "Agents/Tutors" : category === MESSAGE_CATEGORIES.VENDOR ? "Vendors" : "Support";
-    throw new Error(`You reached your free monthly conversation limit for ${label}. Upgrade to continue.`);
-  }
+export async function listMessages(conversationId) {
+  if (!conversationId) return [];
+  const q = query(
+    collection(db, "conversations", conversationId, "messages"),
+    orderBy("created_at", "asc"),
+    limit(200)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
 /**
- * Creates or returns an existing conversation.
- * IMPORTANT: Only increments the student's monthly limit when a NEW conversation is created by a student.
+ * ✅ Creates a conversation if it doesn't exist yet.
+ * This is the “first time chat” fix.
  */
-export async function getOrCreateConversation({
-  me,
-  otherUser,
-  otherRole,
-  settings,
-  forceCategory,
+export async function ensureConversation({
+  meId,
+  meRole,
+  targetId,
+  targetRole,
+  source = "app",
 }) {
-  const myUid = me?.id || auth.currentUser?.uid;
-  const otherUid = otherUser?.id;
+  if (!meId) throw new Error("Missing meId");
+  if (!targetId) throw new Error("Missing targetId");
 
-  if (!myUid || !otherUid) throw new Error("Missing participants.");
+  const meR = normalizeRole(meRole);
+  const toR = normalizeRole(targetRole || "support");
 
-  // return existing if found
-  const existing = await findConversationBetween(myUid, otherUid);
-  if (existing) return existing;
+  // hard block here too (frontend)
+  if ((meR === "user" || meR === "student") && toR === "school") {
+    targetId = "support";
+    targetRole = "support";
+  }
 
-  // enforce limits ONLY when new conversation is created
-  const meDoc = me || (await getMyUserDoc(myUid));
-  const s = settings || (await getMessagingSettings());
+  const pkey = pairKey(meId, targetId);
 
-  await assertStudentConversationLimit({ user: meDoc, recipientRole: otherRole, settings: s });
+  // Find existing conversation by pair_key
+  const q = query(
+    collection(db, "conversations"),
+    where("pair_key", "==", pkey),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    const d = snap.docs[0];
+    return { id: d.id, ...d.data() };
+  }
 
-  const category = forceCategory || categoryForRecipientRole(otherRole);
-
-  const conversationDoc = {
-    pair_key: pairKey(myUid, otherUid),
-    participants: [myUid, otherUid],
-    participant_roles: {
-      [myUid]: normalizeRole(meDoc?.user_type || meDoc?.selected_role || meDoc?.role),
-      [otherUid]: normalizeRole(otherRole || otherUser?.user_type || otherUser?.role),
+  // Create new conversation
+  const docData = {
+    pair_key: pkey,
+    participants: [meId, targetId],
+    participants_map: {
+      [meId]: true,
+      [targetId]: true,
     },
-    category,
+    roles: {
+      [meId]: meR,
+      [targetId]: toR,
+    },
+    created_by: meId,
+    source,
     created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
     last_message_at: null,
     last_message_text: "",
-    last_message_sender_id: "",
   };
 
-  const convRef = await addDoc(collection(db, "conversations"), conversationDoc);
-
-  // Increment monthly counter on student doc (only if student + free tier)
-  if (isStudent(meDoc) && !isPremiumStudent(meDoc)) {
-    const mk = monthKey(new Date());
-    const path = `message_limits.${mk}.${category}`;
-    const current = Number(meDoc?.message_limits?.[mk]?.[category] || 0);
-
-    await updateDoc(doc(db, "users", myUid), {
-      [path]: current + 1,
-      message_limits_updated_at: serverTimestamp(),
-    });
-  }
-
-  const createdSnap = await getDoc(convRef);
-  return createdSnap.exists() ? { id: createdSnap.id, ...createdSnap.data() } : { id: convRef.id, ...conversationDoc };
+  const ref = await addDoc(collection(db, "conversations"), docData);
+  return { id: ref.id, ...docData };
 }
 
-export async function sendMessage({ conversationId, senderId, text }) {
-  if (!conversationId || !senderId) throw new Error("Missing message info.");
-  const clean = String(text || "").trim();
-  if (!clean) return;
+export async function sendMessage({
+  conversationId,
+  conversationDoc,
+  senderId,
+  text,
+}) {
+  if (!conversationId) throw new Error("Missing conversationId");
+  if (!senderId) throw new Error("Missing senderId");
+  const t = String(text || "").trim();
+  if (!t) return;
 
-  await addDoc(collection(db, "messages"), {
+  // Resolve recipient (other participant)
+  const parts = conversationDoc?.participants || [];
+  const toUserId = parts.find((x) => x !== senderId) || "support";
+
+  // Write message
+  await addDoc(collection(db, "conversations", conversationId, "messages"), {
     conversation_id: conversationId,
     sender_id: senderId,
-    text: clean,
+    to_user_id: toUserId,
+    text: t,
     created_at: serverTimestamp(),
   });
 
-  // Update conversation summary
+  // Update conversation metadata
   await updateDoc(doc(db, "conversations", conversationId), {
     last_message_at: serverTimestamp(),
-    last_message_text: clean.slice(0, 300),
-    last_message_sender_id: senderId,
-  });
-}
-
-/**
- * Student agreement gate
- */
-export async function acceptMessagingAgreement(uid) {
-  if (!uid) return;
-  await updateDoc(doc(db, "users", uid), {
-    messaging_agreement_accepted_at: serverTimestamp(),
-  });
-}
-
-/**
- * Reports
- */
-export async function submitReport({
-  reporterId,
-  againstUserId,
-  conversationId,
-  reason,
-  type, // "agent" | "tutor" | "vendor"
-}) {
-  if (!reporterId || !againstUserId || !conversationId) throw new Error("Missing report fields.");
-
-  await addDoc(collection(db, "reports"), {
-    reporter_id: reporterId,
-    against_user_id: againstUserId,
-    conversation_id: conversationId,
-    type: String(type || "").toLowerCase(),
-    reason: String(reason || "").trim(),
-    created_at: serverTimestamp(),
-    status: "submitted",
-    note: "Investigation uses platform chat logs only. External transactions with no chat trace may be disregarded.",
-  });
-}
-
-/**
- * Helper: ensure messaging_settings exists (optional). Call from an admin panel if you want.
- */
-export async function ensureMessagingSettingsSingleton() {
-  const ref = doc(db, "messaging_settings", "SINGLETON");
-  const snap = await getDoc(ref);
-  if (snap.exists()) return;
-
-  await setDoc(ref, {
-    free_student_agent_tutor_limit: 5,
-    free_student_vendor_limit: 5,
-    premium_student_price_usd: 19,
-    created_at: serverTimestamp(),
+    last_message_text: t,
     updated_at: serverTimestamp(),
   });
 }

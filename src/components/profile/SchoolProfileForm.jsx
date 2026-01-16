@@ -7,14 +7,25 @@ import { Textarea } from "@/components/ui/textarea";
 /* Firebase */
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, getDocs, query, where, limit } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  limit,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 
-const normalizeSchool = (doc = {}) => ({
-  name: doc.name || "",
-  school_level: doc.school_level || "",
-  location: doc.location || "",
-  website: doc.website || "",
-  description: doc.description || "",
+const normalizeSchool = (d = {}) => ({
+  name: d.name || "",
+  school_level: d.school_level || "",
+  location: d.location || "",
+  website: d.website || "",
+  // ✅ unify: UI uses "about"
+  about: d.about || d.description || "",
+  // keep description too (optional)
+  description: d.description || d.about || "",
 });
 
 export default function SchoolProfileForm({
@@ -31,21 +42,47 @@ export default function SchoolProfileForm({
   useEffect(() => {
     if (usingParentState) return;
     setLocalData(normalizeSchool(formData));
-  }, [formData]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData]);
 
   useEffect(() => {
     if (!autoLoadFromFirestore) return;
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       setLoading(true);
       try {
         if (!user) return setLoading(false);
-        // Prefer school_profiles; if you store in "schools" instead, change below
-        const qRef = query(collection(db, "school_profiles"), where("user_id", "==", user.uid), limit(1));
+
+        // ✅ 1) Prefer single source of truth: doc id = uid
+        const byIdRef = doc(db, "school_profiles", user.uid);
+        const byIdSnap = await getDoc(byIdRef);
+
+        if (byIdSnap.exists()) {
+          const data = normalizeSchool(byIdSnap.data());
+          setDocId(byIdSnap.id);
+
+          if (usingParentState) {
+            Object.entries(data).forEach(([k, v]) => handleInputChange(k, v));
+          } else {
+            setLocalData(data);
+          }
+          onLoaded && onLoaded({ docId: byIdSnap.id, data });
+          return;
+        }
+
+        // ✅ 2) Fallback: query by user_id (for legacy docs)
+        const qRef = query(
+          collection(db, "school_profiles"),
+          where("user_id", "==", user.uid),
+          limit(1)
+        );
         const qs = await getDocs(qRef);
+
         if (!qs.empty) {
           const snap = qs.docs[0];
           const data = normalizeSchool(snap.data());
           setDocId(snap.id);
+
           if (usingParentState) {
             Object.entries(data).forEach(([k, v]) => handleInputChange(k, v));
           } else {
@@ -54,6 +91,7 @@ export default function SchoolProfileForm({
           onLoaded && onLoaded({ docId: snap.id, data });
         } else {
           const empty = normalizeSchool({});
+          setDocId(null);
           if (usingParentState) {
             Object.entries(empty).forEach(([k, v]) => handleInputChange(k, v));
           } else {
@@ -67,18 +105,22 @@ export default function SchoolProfileForm({
         setLoading(false);
       }
     });
+
     return () => unsub && unsub();
   }, [autoLoadFromFirestore, usingParentState, handleInputChange, onLoaded]);
 
   const data = usingParentState ? formData || {} : localData;
   const onChange = (k, v) =>
-    usingParentState ? handleInputChange(k, v) : setLocalData((p) => ({ ...p, [k]: v }));
+    usingParentState
+      ? handleInputChange(k, v)
+      : setLocalData((p) => ({ ...p, [k]: v }));
 
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
-        School Profile {docId ? <span className="text-xs text-gray-500">({docId})</span> : null}
-      </h3>
+      {/* (Optional) keep small helper text only */}
+      <div className="text-sm text-gray-500">
+        {docId ? `School profile doc: ${docId}` : "School profile not created yet."}
+      </div>
 
       {loading ? (
         <div className="text-sm text-gray-500">Loading school profile…</div>
@@ -129,12 +171,16 @@ export default function SchoolProfileForm({
           </div>
 
           <div>
-            <Label htmlFor="description">About</Label>
+            <Label htmlFor="about">About</Label>
             <Textarea
-              id="description"
+              id="about"
               placeholder="Describe the institution..."
-              value={data.description || ""}
-              onChange={(e) => onChange("description", e.target.value)}
+              value={data.about || ""}
+              onChange={(e) => {
+                // ✅ write both keys so old pages stay consistent
+                onChange("about", e.target.value);
+                onChange("description", e.target.value);
+              }}
               rows={4}
             />
           </div>

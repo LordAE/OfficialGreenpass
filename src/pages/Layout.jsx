@@ -1,8 +1,21 @@
 // src/pages/Layout.jsx
 import React from "react";
-import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import NotificationsBell from "@/components/NotificationsBell";
+import CountriesMegaMenuIcon from "@/components/CountriesMegaMenuIcon";
+
+/* --- Safe import of createPageUrl (with fallback if not exported) --- */
+import * as Utils from "@/utils";
+const createPageUrl =
+  (Utils && Utils.createPageUrl) ||
+  ((label = "") =>
+    label
+      .toString()
+      .trim()
+      .replace(/\s+/g, "")
+      .replace(/[^\w/]/g, "")
+      .toLowerCase());
+
 import {
   Home,
   School,
@@ -12,7 +25,6 @@ import {
   Settings,
   UserCheck,
   Calendar,
-  ShoppingCart,
   Store,
   Package,
   BarChart3,
@@ -24,22 +36,13 @@ import {
   MessageSquare,
   UsersIcon,
   LayoutGrid,
-  Edit,
-  Phone,
-  Info,
-  Palette,
-  Landmark,
-  Facebook,
-  Instagram,
-  Linkedin,
-  Youtube,
-  Ticket,
-  DoorOpen,
-  Bell,
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
+  Landmark,
+  Palette,
 } from "lucide-react";
+
 import {
   Sidebar,
   SidebarContent,
@@ -71,35 +74,37 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   English-only text helper (exported)
+   ✅ Marketing Website URL (env-first)
 ========================= */
+const MARKETING_URL =
+  (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
+  "http://localhost:3000/";
+
+const normalizeUrl = (u = "") => {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  return s.endsWith("/") ? s : `${s}/`;
+};
+
+const getMarketingUrl = () => normalizeUrl(MARKETING_URL);
+
 const TEXT = {
   login: "Login",
   logOut: "Log Out",
   profileSettings: "Profile Settings",
   more: "More",
-
-  about: "About",
-  events: "Events & Fairs",
-  blog: "News and Highlights",
+  backToWebsite: "Back to website",
 
   dashboard: "Dashboard",
   discoverSchools: "Discover Schools",
   findTutors: "Tutors",
   findAgent: "Find Agent",
   myAgent: "My Agent",
-  visaPackages: "Visa Packages",
-  visaApplications: "Visa Applications",
-  marketplace: "Marketplace",
   mySessions: "My Sessions",
   myStudents: "My Students",
-  visaCases: "Visa Cases",
   leads: "Leads",
-  earnings: "Earnings",
   availability: "Availability",
-  myServices: "My Services",
-  myOrders: "My Orders",
-  analytics: "Analytics",
+
   userManagement: "User Management",
   schoolManagement: "Program Management",
   institutionManagement: "Institution Management",
@@ -107,16 +112,10 @@ const TEXT = {
   paymentVerification: "Payment Verification",
   walletManagement: "Wallet Management",
   eventsAdmin: "Events Admin",
-  homePageEditor: "Home Page",
-  blogEditor: "Blog Editor",
-  aboutPageEditor: "About Page Editor",
-  contactPageEditor: "Contact Page Editor",
-  faqEditor: "FAQ Editor",
+  brandSettings: "Brand Settings",
+  chatSettings: "Chat Settings",
   bankSettings: "Bank Settings",
   reports: "Reports",
-  chatSettings: "Chat Settings",
-  marketplaceAdmin: "Marketplace Admin",
-  packageAdmin: "Package Admin",
 };
 
 export const getText = (key) => TEXT[key] || key;
@@ -149,13 +148,28 @@ const TikTokIcon = ({ className = "h-5 w-5" }) => (
 
 const iconByPlatform = (platform = "") => {
   const p = platform.toLowerCase().trim();
-  if (p === "facebook") return <Facebook className="h-5 w-5" />;
-  if (p === "instagram") return <Instagram className="h-5 w-5" />;
-  if (p === "youtube") return <Youtube className="h-5 w-5" />;
-  if (p === "linkedin") return <Linkedin className="h-5 w-5" />;
   if (p === "tiktok" || p === "tik tok") return <TikTokIcon className="h-5 w-5" />;
   return <Globe className="h-5 w-5" />;
 };
+
+/* =========================
+   External link button (Website)
+========================= */
+const WebsiteIconButton = ({ className = "" }) => (
+  <a
+    href={getMarketingUrl()}
+    target="_blank"
+    rel="noopener noreferrer"
+    className={cn(
+      "w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition",
+      className
+    )}
+    aria-label={getText("backToWebsite")}
+    title={getText("backToWebsite")}
+  >
+    <Globe className="h-6 w-6" />
+  </a>
+);
 
 /* =========================
    Small: click-outside hook
@@ -181,18 +195,26 @@ function useClickOutside(ref, handler, when = true) {
 /* =========================
    Avatar + Account Button (Facebook-style)
 ========================= */
-const UserAvatar = ({ user, sizeClass = "w-10 h-10", textClass = "text-lg", className = "" }) => {
+const UserAvatar = ({
+  user,
+  sizeClass = "w-10 h-10",
+  textClass = "text-lg",
+  className = "",
+}) => {
   const name = user?.full_name || "User";
   const initial = name.charAt(0).toUpperCase();
-  if (user?.photo_url) {
+  const photo = user?.photo_url || user?.profile_picture || user?.photoURL;
+
+  if (photo) {
     return (
       <img
-        src={user.photo_url}
+        src={photo}
         alt={name}
         className={`rounded-full object-cover border border-white shadow-sm ${sizeClass} ${className}`}
       />
     );
   }
+
   return (
     <div
       className={`rounded-full bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center text-white font-bold ${sizeClass} ${textClass} ${className}`}
@@ -218,7 +240,11 @@ const AccountTrigger = ({ currentUser, open, onClick }) => {
       aria-expanded={open}
       aria-haspopup="menu"
     >
-      <UserAvatar user={currentUser} sizeClass="w-8 h-8 sm:w-9 sm:h-9" textClass="text-base" />
+      <UserAvatar
+        user={currentUser}
+        sizeClass="w-8 h-8 sm:w-9 sm:h-9"
+        textClass="text-base"
+      />
       <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 opacity-80" />
     </button>
   );
@@ -273,7 +299,11 @@ const AccountDropdown = ({
 
   return (
     <div className="relative" ref={wrapRef}>
-      <AccountTrigger currentUser={currentUser} open={open} onClick={() => setOpen((v) => !v)} />
+      <AccountTrigger
+        currentUser={currentUser}
+        open={open}
+        onClick={() => setOpen((v) => !v)}
+      />
 
       <AnimatePresence>
         {open && (
@@ -285,7 +315,6 @@ const AccountDropdown = ({
             role="menu"
             className="absolute right-0 mt-2 w-[320px] max-w-[90vw] rounded-2xl bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5 p-2 z-[210]"
           >
-            {/* Header like screenshot */}
             <div className="px-2 pt-2 pb-3">
               <div className="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-gray-50 transition">
                 <UserAvatar user={currentUser} sizeClass="w-12 h-12" textClass="text-lg" />
@@ -329,8 +358,7 @@ const AccountDropdown = ({
 
 /* =========================
    ✅ Mobile Bottom Nav (restored)
-   - 3 main icons + "More"
-   - More opens a bottom sheet with extra links
+   NOTE: Notifications route removed from "More" (popover is in top bar)
 ========================= */
 const MobileBottomNav = ({ nav, isActive }) => {
   const [moreOpen, setMoreOpen] = React.useState(false);
@@ -370,7 +398,6 @@ const MobileBottomNav = ({ nav, isActive }) => {
 
   return (
     <>
-      {/* Bottom Bar */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200">
         <div className="h-[72px] px-2 flex items-stretch">
           {main.slice(0, 3).map((it) => (
@@ -394,13 +421,14 @@ const MobileBottomNav = ({ nav, isActive }) => {
             aria-label={getText("more")}
             title={getText("more")}
           >
-            <MoreHorizontal className={cn("h-6 w-6", moreOpen ? "text-green-700" : "text-gray-600")} />
+            <MoreHorizontal
+              className={cn("h-6 w-6", moreOpen ? "text-green-700" : "text-gray-600")}
+            />
             <span className="text-[11px] font-medium leading-none">{getText("more")}</span>
           </button>
         </div>
       </div>
 
-      {/* Bottom Sheet */}
       <AnimatePresence>
         {moreOpen && (
           <motion.div
@@ -425,6 +453,18 @@ const MobileBottomNav = ({ nav, isActive }) => {
 
               <div className="px-3 pb-6 max-h-[65vh] overflow-y-auto">
                 <div className="space-y-1">
+                  {/* ✅ Website link first */}
+                  <a
+                    href={getMarketingUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-gray-50 text-gray-800"
+                  >
+                    <Globe className="h-5 w-5 text-gray-600" />
+                    <span className="text-sm font-medium">{getText("backToWebsite")}</span>
+                    <ChevronRight className="ml-auto h-4 w-4 text-gray-400" />
+                  </a>
+
                   {more.map((it) => (
                     <SheetItem key={it.url} to={it.url} Icon={it.icon} label={it.title} />
                   ))}
@@ -438,204 +478,7 @@ const MobileBottomNav = ({ nav, isActive }) => {
   );
 };
 
-/* ---------- Countries mega-menu (PORTAL + centered under Globe icon) ---------- */
-function CountriesMegaMenuIcon({ iconSizeClass = "h-6 w-6 sm:h-7 sm:w-7" }) {
-  const [open, setOpen] = React.useState(false);
-  const [geom, setGeom] = React.useState({ top: 64, left: 16, width: 900 });
-
-  const btnRef = React.useRef(null);
-  const closeTimerRef = React.useRef(null);
-
-  const moreCountries = [
-    { name: "Australia", href: createPageUrl("StudyAustralia") },
-    { name: "Ireland", href: createPageUrl("StudyIreland") },
-    { name: "Germany", href: createPageUrl("StudyGermany") },
-    { name: "United Kingdom", href: createPageUrl("StudyUnitedKingdom") },
-    { name: "United States", href: createPageUrl("StudyUnitedStates") },
-  ];
-
-  const Card = ({ to, title, img, desc }) => (
-    <Link
-      to={to}
-      className="group block rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition"
-    >
-      <div className="relative h-60 sm:h-64">
-        <img src={img} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/5 to-transparent" />
-      </div>
-
-      <div className="p-6">
-        <div className="text-base sm:text-lg font-semibold text-gray-900 mb-1 whitespace-normal break-words leading-snug">
-          {title}
-        </div>
-        <p className="text-sm sm:text-base text-gray-600 leading-snug line-clamp-3">{desc}</p>
-      </div>
-    </Link>
-  );
-
-  const clearCloseTimer = React.useCallback(() => {
-    if (closeTimerRef.current) {
-      window.clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleClose = React.useCallback(() => {
-    clearCloseTimer();
-    closeTimerRef.current = window.setTimeout(() => setOpen(false), 140);
-  }, [clearCloseTimer]);
-
-  const computeGeom = React.useCallback(() => {
-    const br = btnRef.current?.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const edgePad = 16;
-
-    const desired =
-      vw < 900
-        ? Math.min(740, vw - edgePad * 2)
-        : vw < 1200
-          ? Math.min(980, vw - edgePad * 2)
-          : Math.min(1180, vw - edgePad * 2);
-
-    const width = Math.max(520, desired);
-
-    const btnBottom = (br?.bottom ?? 56) + 12;
-    const btnCenterX = (br?.left ?? vw / 2) + (br?.width ?? 0) / 2;
-
-    const minCenter = edgePad + width / 2;
-    const maxCenter = vw - edgePad - width / 2;
-    const clampedCenter = Math.max(minCenter, Math.min(btnCenterX, maxCenter));
-
-    const left = Math.round(clampedCenter - width / 2);
-
-    setGeom({ top: Math.round(btnBottom), left, width: Math.round(width) });
-  }, []);
-
-  React.useEffect(() => {
-    if (!open) return;
-    computeGeom();
-
-    const onResize = () => computeGeom();
-    const onScroll = () => computeGeom();
-
-    window.addEventListener("resize", onResize, { passive: true });
-    window.addEventListener("scroll", onScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", onScroll);
-    };
-  }, [open, computeGeom]);
-
-  React.useEffect(() => {
-    const onKey = (e) => {
-      if (!open) return;
-      if (e.key === "Escape") {
-        setOpen(false);
-        btnRef.current?.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  const menu = (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 8 }}
-          transition={{ duration: 0.12 }}
-          role="menu"
-          className="fixed z-[200] rounded-2xl bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5"
-          style={{ top: geom.top, left: geom.left, width: geom.width }}
-          onMouseEnter={() => {
-            clearCloseTimer();
-            setOpen(true);
-          }}
-          onMouseLeave={scheduleClose}
-        >
-          <div className="grid grid-cols-12 gap-7 p-7">
-            <div className="col-span-12 md:col-span-5">
-              <Card
-                to={createPageUrl("StudyCanada")}
-                title="Study in Canada"
-                img="https://images.unsplash.com/photo-1494526585095-c41746248156?q=80&w=1600&auto=format&fit=crop"
-                desc="Hassle-free visa options, affordable tuition, and globally ranked universities make Canada a top destination."
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-4">
-              <Card
-                to={createPageUrl("StudyNewZealand")}
-                title="Study in New Zealand"
-                img="https://images.unsplash.com/photo-1502786129293-79981df4e689?q=80&w=1600&auto=format&fit=crop"
-                desc="Safe cities, world-class research, flexible work-study options, and breathtaking scenery."
-              />
-            </div>
-
-            <div className="col-span-12 md:col-span-3 border-t md:border-t-0 md:border-l pt-6 md:pt-0 md:pl-6">
-              <div className="text-sm sm:text-base font-extrabold text-pink-600 tracking-wide mb-3">
-                More Countries
-              </div>
-
-              <ul className="space-y-2">
-                {moreCountries.map((c) => (
-                  <li key={c.name}>
-                    <Link
-                      to={c.href}
-                      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm sm:text-base text-gray-700 hover:bg-gray-50 hover:text-green-700 whitespace-normal break-words"
-                    >
-                      <span>Study in {c.name}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-
-              <Link
-                to={createPageUrl("Directory")}
-                className="mt-5 inline-flex w-full items-center justify-center rounded-full border border-pink-200 bg-pink-50 px-5 py-3 text-sm sm:text-base font-semibold text-pink-700 hover:bg-pink-100 whitespace-nowrap"
-              >
-                Explore all countries
-              </Link>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
-  return (
-    <div
-      className="relative"
-      onMouseEnter={() => {
-        clearCloseTimer();
-        setOpen(true);
-      }}
-      onMouseLeave={scheduleClose}
-    >
-      <button
-        ref={btnRef}
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
-          open ? "bg-green-100 text-green-700 ring-1 ring-green-200" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-        )}
-        aria-label="Countries"
-        title="Countries"
-        aria-expanded={open}
-        aria-haspopup="menu"
-      >
-        <Globe className={iconSizeClass} />
-      </button>
-
-      {typeof document !== "undefined" ? createPortal(menu, document.body) : null}
-    </div>
-  );
-}
-
-/* ---------- Public layout (ONE LAYER, CORNER GROUPS, BIG CENTER) ---------- */
+/* ---------- Public layout ---------- */
 const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -692,7 +535,9 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
         to={to}
         className={cn(
           "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
-          active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+          active
+            ? "bg-green-100 text-green-700"
+            : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
         )}
         aria-label={label}
         title={label}
@@ -704,16 +549,27 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
 
   return (
     <div className="min-h-[100svh] bg-white font-sans text-gray-800">
-      <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
+      <header
+        ref={headerRef}
+        className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm"
+      >
         <nav data-public-nav="1" className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
             {/* LEFT */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <Link to={createPageUrl("")} className="flex items-center shrink-0" aria-label="GreenPass" title="GreenPass">
-                <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
+              <Link
+                to={createPageUrl("")}
+                className="flex items-center shrink-0"
+                aria-label="GreenPass"
+                title="GreenPass"
+              >
+                <img
+                  src={getLogoUrl()}
+                  alt={`${getCompanyName()} Super App`}
+                  className="h-8 sm:h-9 w-auto"
+                />
               </Link>
 
-              {/* Desktop search */}
               <form onSubmit={onSubmitSearch} className="hidden sm:flex items-center min-w-0">
                 <div className="relative min-w-0 w-[170px] md:w-[210px] lg:w-[240px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -728,24 +584,24 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </form>
             </div>
 
-            {/* CENTER (TRUE CENTER) */}
+            {/* CENTER */}
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("")} Icon={Home} label="Home" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
-                    <CountriesMegaMenuIcon iconSizeClass="h-6 w-6 sm:h-7 sm:w-7" />
+                    <CountriesMegaMenuIcon
+                      createPageUrl={createPageUrl}
+                      iconSizeClass="h-6 w-6 sm:h-7 sm:w-7"
+                    />
                   </div>
-
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events & Fairs" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
                 </div>
               </div>
@@ -753,6 +609,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
+              <WebsiteIconButton />
+
               <Link
                 to={createPageUrl("Directory")}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
@@ -768,7 +626,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                 aria-label="Login"
                 title="Login"
               >
-                <DoorOpen className="h-6 w-6" />
+                <UserCheck className="h-6 w-6" />
               </Link>
             </div>
           </div>
@@ -832,16 +690,12 @@ const useIsActive = () => {
   );
 };
 
-/* ---------- School authenticated top navbar (matches public style) ---------- */
+/* ---------- School authenticated top navbar ---------- */
 const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
-  const location = useLocation();
   const navigate = useNavigate();
   const isActive = useIsActive();
-
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
-
-  // account menu
   const [acctOpen, setAcctOpen] = React.useState(false);
 
   const onSubmitSearch = React.useCallback(
@@ -878,7 +732,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
       <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <nav className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
-            {/* LEFT: logo + search */}
+            {/* LEFT */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Link to={createPageUrl("Dashboard")} className="flex items-center shrink-0" aria-label="GreenPass" title="GreenPass">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
@@ -898,7 +752,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
               </form>
             </div>
 
-            {/* CENTER: Dashboard, Events & Fair, Profile, Programs, Leads */}
+            {/* CENTER */}
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[560px] md:w-[640px] lg:w-[720px]">
                 <div className="flex w-full">
@@ -906,13 +760,13 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                     <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("FairAndEvents")} Icon={Calendar} label="Events & Fair" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("SchoolProfile")} Icon={Building} label="Profile" />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("SchoolPrograms")} Icon={BookOpen} label="Programs" />
+                    <IconLink to={createPageUrl("SchoolDetails")} Icon={BookOpen} label="Details" />
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("SchoolLeads")} Icon={Users} label="Leads" />
@@ -921,16 +775,22 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
               </div>
             </div>
 
-            {/* RIGHT: bell + account (profile pic + dropdown icon) */}
+            {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <Link
-                to={createPageUrl("Notifications")}
+              <WebsiteIconButton />
+
+              <button
+                type="button"
+                onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Notifications"
-                title="Notifications"
+                aria-label="Messages"
+                title="Messages"
               >
-                <Bell className="h-6 w-6" />
-              </Link>
+                <MessageSquare className="h-6 w-6" />
+              </button>
+
+              {/* ✅ POPUP Notifications (no route) */}
+              <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
                 currentUser={currentUser}
@@ -965,13 +825,10 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
 };
 
 const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
-  const location = useLocation();
   const navigate = useNavigate();
   const isActive = useIsActive();
-
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
-
   const [acctOpen, setAcctOpen] = React.useState(false);
 
   const onSubmitSearch = React.useCallback(
@@ -1035,17 +892,14 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("FairAndEvents")} Icon={Calendar} label="Events & Fair" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("MyStudents")} Icon={Users} label="My Students" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("VisaCases")} Icon={FileText} label="Visa Cases" />
+                    <IconLink to={createPageUrl("AgentLeads")} Icon={UsersIcon} label="Leads" />
                   </div>
                 </div>
               </div>
@@ -1053,14 +907,20 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <Link
-                to={createPageUrl("Notifications")}
+              <WebsiteIconButton />
+
+              <button
+                type="button"
+                onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Notifications"
-                title="Notifications"
+                aria-label="Messages"
+                title="Messages"
               >
-                <Bell className="h-6 w-6" />
-              </Link>
+                <MessageSquare className="h-6 w-6" />
+              </button>
+
+              {/* ✅ POPUP Notifications (no route) */}
+              <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
                 currentUser={currentUser}
@@ -1070,8 +930,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 title="Account"
                 items={[
                   { label: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-                  { label: getText("leads"), url: createPageUrl("AgentLeads"), icon: Users },
-                  { label: getText("earnings"), url: createPageUrl("AgentEarnings"), icon: BarChart3 },
+                  { label: getText("leads"), url: createPageUrl("AgentLeads"), icon: UsersIcon, chevron: true },
                 ]}
               />
             </div>
@@ -1102,7 +961,6 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
-
   const [acctOpen, setAcctOpen] = React.useState(false);
 
   const onSubmitSearch = React.useCallback(
@@ -1167,7 +1025,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                     <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("FairAndEvents")} Icon={Calendar} label="Events & Fair" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("TutorStudents")} Icon={Users} label="My Students" />
@@ -1181,14 +1039,20 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <Link
-                to={createPageUrl("Notifications")}
+              <WebsiteIconButton />
+
+              <button
+                type="button"
+                onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Notifications"
-                title="Notifications"
+                aria-label="Messages"
+                title="Messages"
               >
-                <Bell className="h-6 w-6" />
-              </Link>
+                <MessageSquare className="h-6 w-6" />
+              </button>
+
+              {/* ✅ POPUP Notifications (no route) */}
+              <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
                 currentUser={currentUser}
@@ -1198,8 +1062,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 title="Account"
                 items={[
                   { label: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-                  { label: getText("availability"), url: createPageUrl("TutorAvailability"), icon: Calendar },
-                  { label: getText("earnings"), url: createPageUrl("TutorEarnings"), icon: BarChart3 },
+                  { label: getText("availability"), url: createPageUrl("TutorAvailability"), icon: Calendar, chevron: true },
                 ]}
               />
             </div>
@@ -1230,7 +1093,6 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
 
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
-
   const [acctOpen, setAcctOpen] = React.useState(false);
 
   const onSubmitSearch = React.useCallback(
@@ -1294,13 +1156,11 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("FairAndEvents")} Icon={Calendar} label="Events & Fair" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
                 </div>
               </div>
@@ -1308,14 +1168,20 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <Link
-                to={createPageUrl("Notifications")}
+              <WebsiteIconButton />
+
+              <button
+                type="button"
+                onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Notifications"
-                title="Notifications"
+                aria-label="Messages"
+                title="Messages"
               >
-                <Bell className="h-6 w-6" />
-              </Link>
+                <MessageSquare className="h-6 w-6" />
+              </button>
+
+              {/* ✅ POPUP Notifications (no route) */}
+              <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
                 currentUser={currentUser}
@@ -1324,7 +1190,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: getText("mySessions"), url: createPageUrl("MySessions"), icon: Calendar },
+                  { label: getText("mySessions"), url: createPageUrl("MySessions"), icon: Calendar, chevron: true },
                   { label: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
                 ]}
               />
@@ -1351,22 +1217,23 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
 };
 
 /* =========================
-   ✅ ADMIN: Top Nav + Left Panel (Facebook-style)
+   ✅ ADMIN: Top Nav + Left Panel
 ========================= */
-const AdminAuthedTopNavWithLeftPanelLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
-  const location = useLocation();
+const AdminAuthedTopNavWithLeftPanelLayout = ({
+  currentUser,
+  getLogoUrl,
+  getCompanyName,
+  onLogout,
+}) => {
+  const navigate = useNavigate(); // ✅ FIX: was missing (your admin used navigate without declaring)
   const isActive = useIsActive();
-
   const { headerRef, headerH, measured } = useHeaderMeasure();
-
-  // account dropdown
   const [acctOpen, setAcctOpen] = React.useState(false);
 
-  // Top-center items
   const centerItems = React.useMemo(
     () => [
       { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
-      { title: "Events & Fair", url: createPageUrl("FairAndEvents"), icon: Calendar },
+      { title: "Events", url: createPageUrl("Events"), icon: Calendar },
       { title: getText("institutionManagement"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
       { title: getText("userManagement"), url: createPageUrl("UserManagement"), icon: Users },
       { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
@@ -1377,7 +1244,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({ currentUser, getLogoUrl, getComp
   const accountSettingsItems = React.useMemo(
     () => [
       { title: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-      { title: "Brand Settings", url: createPageUrl("AdminBrandSettings"), icon: Palette },
+      { title: getText("brandSettings"), url: createPageUrl("AdminBrandSettings"), icon: Palette },
       { title: getText("bankSettings"), url: createPageUrl("AdminBankSettings"), icon: Building },
       { title: getText("chatSettings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
     ],
@@ -1392,13 +1259,6 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({ currentUser, getLogoUrl, getComp
       { title: getText("walletManagement"), url: createPageUrl("AdminWalletManagement"), icon: DollarSign },
       { title: getText("eventsAdmin"), url: createPageUrl("AdminEvents"), icon: Calendar },
       { title: getText("schoolManagement"), url: createPageUrl("AdminSchools"), icon: Building },
-      { title: getText("homePageEditor"), url: createPageUrl("AdminHomeEditor"), icon: Edit },
-      { title: getText("blogEditor"), url: createPageUrl("AdminBlog"), icon: BookOpen },
-      { title: getText("aboutPageEditor"), url: createPageUrl("AdminAboutEditor"), icon: Info },
-      { title: getText("contactPageEditor"), url: createPageUrl("AdminContactEditor"), icon: Phone },
-      { title: getText("faqEditor"), url: createPageUrl("AdminFAQ"), icon: MessageSquare },
-      { title: getText("marketplaceAdmin"), url: createPageUrl("MarketplaceAdmin"), icon: Store },
-      { title: getText("packageAdmin"), url: createPageUrl("AdminPackages"), icon: Package },
       { title: getText("reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
     ],
     []
@@ -1442,13 +1302,25 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({ currentUser, getLogoUrl, getComp
   return (
     <div className="min-h-[100svh] bg-gray-50 font-sans text-gray-800">
       {/* TOP NAV */}
-      <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
+      <header
+        ref={headerRef}
+        className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm"
+      >
         <nav className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
             {/* LEFT */}
             <div className="flex items-center min-w-0">
-              <Link to={createPageUrl("Dashboard")} className="flex items-center shrink-0" aria-label="GreenPass" title="GreenPass">
-                <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
+              <Link
+                to={createPageUrl("Dashboard")}
+                className="flex items-center shrink-0"
+                aria-label="GreenPass"
+                title="GreenPass"
+              >
+                <img
+                  src={getLogoUrl()}
+                  alt={`${getCompanyName()} Super App`}
+                  className="h-8 sm:h-9 w-auto"
+                />
               </Link>
             </div>
 
@@ -1467,14 +1339,20 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({ currentUser, getLogoUrl, getComp
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <Link
-                to={createPageUrl("Notifications")}
+              <WebsiteIconButton />
+
+              <button
+                type="button"
+                onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Notifications"
-                title="Notifications"
+                aria-label="Messages"
+                title="Messages"
               >
-                <Bell className="h-6 w-6" />
-              </Link>
+                <MessageSquare className="h-6 w-6" />
+              </button>
+
+              {/* ✅ POPUP Notifications (no route) */}
+              <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
                 currentUser={currentUser}
@@ -1515,6 +1393,17 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({ currentUser, getLogoUrl, getComp
                     <LeftPanelLink key={it.url} item={it} />
                   ))}
                 </div>
+
+                <div className="mt-3 h-px bg-gray-100" />
+                <a
+                  href={getMarketingUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 flex items-center gap-3 rounded-xl px-3 py-2 text-gray-700 hover:bg-gray-100"
+                >
+                  <Globe className="h-5 w-5 text-gray-600" />
+                  <span className="text-sm font-medium">{getText("backToWebsite")}</span>
+                </a>
               </div>
             </div>
           </div>
@@ -1534,39 +1423,32 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({ currentUser, getLogoUrl, getComp
   );
 };
 
-/* ---------- Footer ---------- */
+/* ---------- Footer (aligned to existing routes only) ---------- */
 const Footer = ({ getCompanyName }) => {
   const footerLinks = [
     {
-      column_title: "Solutions",
+      column_title: "Explore",
       links: [
-        { text: "Find Schools", url: createPageUrl("Directory") },
-        { text: "Visa Help", url: createPageUrl("VisaRequests") },
+        { text: "Directory", url: createPageUrl("Directory") },
+        { text: "Events", url: createPageUrl("Events") },
+        { text: "Messages", url: createPageUrl("Messages") },
       ],
     },
     {
-      column_title: "Support",
+      column_title: "Account",
       links: [
-        { text: "Contact Us", url: createPageUrl("Contact") },
-        { text: "FAQ", url: createPageUrl("FAQ") },
-        { text: "Chat Support", url: createPageUrl("Messages") },
-      ],
-    },
-    {
-      column_title: "Company",
-      links: [
-        { text: "About Us", url: createPageUrl("About") },
-        { text: "News and Highlights", url: createPageUrl("Blog") },
-        { text: "Partnerships", url: createPageUrl("Partnership") },
+        { text: "Welcome", url: createPageUrl("Welcome") },
+        { text: "Login", url: createPageUrl("Login") },
+        { text: "Profile", url: createPageUrl("Profile") },
       ],
     },
     {
       column_title: "Legal",
-      links: [
-        { text: "Terms of Service", url: createPageUrl("TermsOfService") },
-        { text: "Privacy Policy", url: createPageUrl("PrivacyPolicy") },
-        { text: "Agent Agreement", url: createPageUrl("AgentAgreement") },
-      ],
+      links: [{ text: "Agent Agreement", url: createPageUrl("AgentAgreement") }],
+    },
+    {
+      column_title: "Website",
+      links: [{ text: getText("backToWebsite"), url: null }],
     },
   ];
 
@@ -1580,9 +1462,20 @@ const Footer = ({ getCompanyName }) => {
               <ul className="mt-4 space-y-4">
                 {column.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
-                    <Link to={link.url} className="text-base text-gray-300 hover:text-white">
-                      {link.text}
-                    </Link>
+                    {column.column_title === "Website" ? (
+                      <a
+                        href={getMarketingUrl()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-base text-gray-300 hover:text-white"
+                      >
+                        {getText("backToWebsite")}
+                      </a>
+                    ) : (
+                      <Link to={link.url} className="text-base text-gray-300 hover:text-white">
+                        {link.text}
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -1614,162 +1507,145 @@ const Footer = ({ getCompanyName }) => {
   );
 };
 
-/* ---------- Nav builders ---------- */
-function buildDesktopNav(currentUser, hasReservation, latestReservationId) {
+/* ---------- Nav builders (aligned to current App routes) ---------- */
+function buildDesktopNav(currentUser) {
   const baseItems = [
     { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
-    { title: getText("events"), url: createPageUrl("FairAndEvents"), icon: Calendar },
+    { title: "Events", url: createPageUrl("Events"), icon: Calendar },
   ];
 
   switch ((currentUser?.user_type || "").toLowerCase()) {
     case "vendor":
       return [
         ...baseItems,
-        { title: getText("myServices"), url: createPageUrl("MyServices"), icon: Store },
-        { title: getText("myOrders"), url: createPageUrl("MyOrders"), icon: ShoppingCart },
-        { title: getText("analytics"), url: createPageUrl("VendorAnalytics"), icon: BarChart3 },
-        { title: getText("earnings"), url: createPageUrl("VendorEarnings"), icon: BarChart3 },
+        { title: "My Services", url: createPageUrl("MyServices"), icon: Store },
       ];
-
     default:
       return baseItems;
   }
 }
 
 function buildMobileNav(currentUser, hasReservation, latestReservationId) {
-  const hasPurchasedPackage =
-    currentUser?.purchased_packages && currentUser.purchased_packages.length > 0;
+  const role = (currentUser?.user_type || "student").toLowerCase();
 
-  switch ((currentUser?.user_type || "student").toLowerCase()) {
-    case "user":
-    case "student": {
-      const main = [
+  // ✅ IMPORTANT: Removed Notifications route items from all "more" menus.
+  // Notifications are ONLY via <NotificationsBell /> in the top bar (popover).
+
+  if (role === "agent") {
+    return {
+      main: [
         { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-        { title: "Schools", url: createPageUrl("Directory"), icon: School },
-        { title: "Tutors", url: createPageUrl("Tutors"), icon: BookOpen },
-      ];
-
-      const more = [
-        { title: "Events & Fairs", url: createPageUrl("FairAndEvents"), icon: Calendar },
-        {
-          title: currentUser?.assigned_agent_id ? "My Agent" : "Find Agent",
-          url: createPageUrl(currentUser?.assigned_agent_id ? "MyAgent" : "FindAgent"),
-          icon: UserCheck,
-        },
-        { title: "My Sessions", url: createPageUrl("MySessions"), icon: Calendar },
-        { title: "Visa Packages", url: createPageUrl("VisaPackages"), icon: Package },
-        { title: "Marketplace", url: createPageUrl("Marketplace"), icon: ShoppingCart },
+        { title: "Students", url: createPageUrl("MyStudents"), icon: Users },
+      ],
+      more: [
+        { title: "Leads", url: createPageUrl("AgentLeads"), icon: UsersIcon },
+        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: "Support", url: createPageUrl("Support"), icon: MessageSquare },
         { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-      ];
-
-      if (hasPurchasedPackage) {
-        more.splice(3, 0, {
-          title: "Visa Applications",
-          url: createPageUrl("VisaRequests"),
-          icon: FileText,
-        });
-      }
-
-      if (hasReservation && latestReservationId) {
-        more.splice(3, 0, {
-          title: "Seat Reservations",
-          url: `${createPageUrl("ReservationStatus")}?reservationId=${encodeURIComponent(latestReservationId)}`,
-          icon: Ticket,
-        });
-      }
-
-      return { main, more };
-    }
-
-    case "agent":
-      return {
-        main: [
-          { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-          { title: "Students", url: createPageUrl("MyStudents"), icon: Users },
-          { title: "Cases", url: createPageUrl("VisaCases"), icon: FileText },
-        ],
-        more: [
-          { title: "Events & Fairs", url: createPageUrl("FairAndEvents"), icon: Calendar },
-          { title: "Leads", url: createPageUrl("AgentLeads"), icon: Users },
-          { title: "Earnings", url: createPageUrl("AgentEarnings"), icon: BarChart3 },
-          { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        ],
-      };
-
-    case "tutor":
-      return {
-        main: [
-          { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-          { title: "Sessions", url: createPageUrl("TutorSessions"), icon: Calendar },
-          { title: "Students", url: createPageUrl("TutorStudents"), icon: Users },
-        ],
-        more: [
-          { title: "Events & Fairs", url: createPageUrl("FairAndEvents"), icon: Calendar },
-          { title: "Availability", url: createPageUrl("TutorAvailability"), icon: Calendar },
-          { title: "Earnings", url: createPageUrl("TutorEarnings"), icon: BarChart3 },
-          { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        ],
-      };
-
-    case "vendor":
-      return {
-        main: [
-          { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-          { title: "Services", url: createPageUrl("MyServices"), icon: Store },
-          { title: "Orders", url: createPageUrl("MyOrders"), icon: ShoppingCart },
-        ],
-        more: [
-          { title: "Events & Fairs", url: createPageUrl("FairAndEvents"), icon: Calendar },
-          { title: "Analytics", url: createPageUrl("VendorAnalytics"), icon: BarChart3 },
-          { title: "Earnings", url: createPageUrl("VendorEarnings"), icon: BarChart3 },
-          { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        ],
-      };
-
-    case "school":
-      return {
-        main: [
-          { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-          { title: "Programs", url: createPageUrl("SchoolPrograms"), icon: BookOpen },
-          { title: "Leads", url: createPageUrl("SchoolLeads"), icon: Users },
-        ],
-        more: [
-          { title: "Events & Fairs", url: createPageUrl("FairAndEvents"), icon: Calendar },
-          { title: "Profile", url: createPageUrl("SchoolProfile"), icon: Building },
-          { title: "Settings", url: createPageUrl("Profile"), icon: Settings },
-        ],
-      };
-
-    case "admin":
-      return {
-        main: [
-          { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-          { title: "Users", url: createPageUrl("UserManagement"), icon: Users },
-          { title: "Events", url: createPageUrl("FairAndEvents"), icon: Calendar },
-        ],
-        more: [
-          { title: "Institutions", url: createPageUrl("AdminInstitutions"), icon: Landmark },
-          { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
-          { title: "Verify", url: createPageUrl("Verification"), icon: UserCheck },
-          { title: "Payments", url: createPageUrl("AdminPayments"), icon: DollarSign },
-          { title: "Reports", url: createPageUrl("AdminReports"), icon: BarChart3 },
-          { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        ],
-      };
-
-    default:
-      return {
-        main: [
-          { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-          { title: "Schools", url: createPageUrl("Directory"), icon: School },
-          { title: "Tutors", url: createPageUrl("Tutors"), icon: BookOpen },
-        ],
-        more: [
-          { title: "Events & Fairs", url: createPageUrl("FairAndEvents"), icon: Calendar },
-          { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        ],
-      };
+        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+      ],
+    };
   }
+
+  if (role === "tutor") {
+    return {
+      main: [
+        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
+        { title: "Sessions", url: createPageUrl("TutorSessions"), icon: Calendar },
+        { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+      ],
+      more: [
+        { title: "Students", url: createPageUrl("TutorStudents"), icon: Users },
+        { title: "Availability", url: createPageUrl("TutorAvailability"), icon: Calendar },
+        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
+        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+      ],
+    };
+  }
+
+  if (role === "school") {
+    return {
+      main: [
+        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
+        { title: "Leads", url: createPageUrl("SchoolLeads"), icon: Users },
+        { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+      ],
+      more: [
+        { title: "Profile", url: createPageUrl("SchoolProfile"), icon: Building },
+        { title: "Details", url: createPageUrl("SchoolDetails"), icon: BookOpen },
+        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: "Support", url: createPageUrl("Support"), icon: MessageSquare },
+        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+      ],
+    };
+  }
+
+  if (role === "admin") {
+    return {
+      main: [
+        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
+        { title: "Users", url: createPageUrl("UserManagement"), icon: Users },
+        { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+      ],
+      more: [
+        { title: "Schools", url: createPageUrl("AdminSchools"), icon: School },
+        { title: "Institutions", url: createPageUrl("AdminInstitutions"), icon: Landmark },
+        { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
+        { title: "Verify", url: createPageUrl("Verification"), icon: UserCheck },
+        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: "Payments", url: createPageUrl("AdminPayments"), icon: DollarSign },
+        { title: "Reports", url: createPageUrl("AdminReports"), icon: BarChart3 },
+        { title: "Chat Settings", url: createPageUrl("ChatSettings"), icon: MessageSquare },
+        { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
+        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+      ],
+    };
+  }
+
+  if (role === "vendor") {
+    return {
+      main: [
+        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
+        { title: "Services", url: createPageUrl("MyServices"), icon: Store },
+        { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+      ],
+      more: [
+        { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
+        { title: "Support", url: createPageUrl("Support"), icon: MessageSquare },
+        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+      ],
+    };
+  }
+
+  const main = [
+    { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
+    { title: "Schools", url: createPageUrl("Directory"), icon: School },
+    { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+  ];
+
+  const more = [
+    { title: "Tutors", url: createPageUrl("Tutors"), icon: BookOpen },
+    { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+    {
+      title: currentUser?.assigned_agent_id ? "My Agent" : "Find Agent",
+      url: createPageUrl(currentUser?.assigned_agent_id ? "MyAgent" : "FindAgent"),
+      icon: UserCheck,
+    },
+    { title: "My Sessions", url: createPageUrl("MySessions"), icon: Calendar },
+    { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+    { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
+  ];
+
+  if (hasReservation && latestReservationId) {
+    more.splice(2, 0, {
+      title: "Seat Reservations",
+      url: `${createPageUrl("ReservationStatus")}?reservationId=${encodeURIComponent(latestReservationId)}`,
+      icon: Package,
+    });
+  }
+
+  return { main, more };
 }
 
 /* =========================
@@ -1785,7 +1661,6 @@ export default function Layout() {
 
   const profileUnsubRef = React.useRef(null);
 
-  // seat reservation visibility
   const [hasReservation, setHasReservation] = React.useState(false);
   const [latestReservationId, setLatestReservationId] = React.useState(null);
 
@@ -1869,7 +1744,11 @@ export default function Layout() {
 
     const checkReservations = async () => {
       try {
-        const qx = query(collection(db, "reservations"), where("student_id", "==", currentUser.id), limit(1));
+        const qx = query(
+          collection(db, "reservations"),
+          where("student_id", "==", currentUser.id),
+          limit(1)
+        );
         const snap = await getDocs(qx);
         if (!snap.empty) {
           setHasReservation(true);
@@ -2011,8 +1890,8 @@ export default function Layout() {
     );
   }
 
-  // everything else stays as sidebar layout (vendor/etc.)
-  const navigationItems = buildDesktopNav(currentUser, hasReservation, latestReservationId);
+  // everything else (sidebar layout: vendor/etc.)
+  const navigationItems = buildDesktopNav(currentUser);
   const mobileNav = buildMobileNav(currentUser, hasReservation, latestReservationId);
 
   return (
@@ -2020,8 +1899,15 @@ export default function Layout() {
       <div className="min-h-[100svh] flex w-full bg-gray-50">
         <Sidebar className="border-r border-gray-200 bg-white hidden md:flex">
           <SidebarHeader className="border-b border-gray-200 p-4">
-            <Link to={createPageUrl("Dashboard")} className="flex items-center gap-3 hover:opacity-80 transition-opacity duration-200">
-              <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-10 w-auto object-contain" />
+            <Link
+              to={createPageUrl("Dashboard")}
+              className="flex items-center gap-3 hover:opacity-80 transition-opacity duration-200"
+            >
+              <img
+                src={getLogoUrl()}
+                alt={`${getCompanyName()} Super App`}
+                className="h-10 w-auto object-contain"
+              />
             </Link>
           </SidebarHeader>
 
@@ -2059,6 +1945,16 @@ export default function Layout() {
               </Button>
             </div>
 
+            <a
+              href={getMarketingUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-2 flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
+            >
+              <Globe className="w-5 h-5 text-gray-600" />
+              <span className="text-gray-700">{getText("backToWebsite")}</span>
+            </a>
+
             <SidebarMenu>
               <SidebarMenuItem className="rounded-lg">
                 <Link
@@ -2079,6 +1975,7 @@ export default function Layout() {
               <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 w-auto object-contain" />
               </Link>
+              <WebsiteIconButton className="w-10 h-10" />
             </div>
           </header>
 
@@ -2086,7 +1983,6 @@ export default function Layout() {
             <Outlet />
           </div>
 
-          {/* ✅ restored mobile bottom nav */}
           <MobileBottomNav nav={mobileNav} isActive={isActive} />
         </main>
       </div>

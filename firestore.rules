@@ -30,8 +30,9 @@ service cloud.firestore {
       );
     }
 
-    function isOwner(resource) {
-      return signedIn() && resource.data.user_id == request.auth.uid;
+    // ✅ rename params (avoid "Invalid variable name: resource" warnings)
+    function isOwner(resDoc) {
+      return signedIn() && resDoc.data.user_id == request.auth.uid;
     }
     function ownerCreating() {
       return signedIn() && request.resource.data.user_id == request.auth.uid;
@@ -54,24 +55,24 @@ service cloud.firestore {
     }
 
     // NEW: student whose assigned_agent_id points at this agent's user_id
-    function isStudentOfAgent(resource) {
+    function isStudentOfAgent(agentRes) {
       return signedIn() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assigned_agent_id == resource.data.user_id;
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assigned_agent_id == agentRes.data.user_id;
     }
 
-    function canAccessReservation(resource) {
+    function canAccessReservation(resvRes) {
       return signedIn() && (
-        resource.data.student_id == request.auth.uid ||
-        ownsSchoolId(resource.data.school_id)
+        resvRes.data.student_id == request.auth.uid ||
+        ownsSchoolId(resvRes.data.school_id)
       );
     }
 
-    function publiclyListable(resource) {
-      return resource != null && (
-        resource.data.is_visible == true ||
-        resource.data.verification_status == "verified" ||
-        resource.data.is_verified == true
+    function publiclyListable(resDoc) {
+      return resDoc != null && (
+        resDoc.data.is_visible == true ||
+        resDoc.data.verification_status == "verified" ||
+        resDoc.data.is_verified == true
       );
     }
 
@@ -106,13 +107,6 @@ service cloud.firestore {
         'exhibitor_registration','exhibitor_registrations','exhibitorRegistrations',
         'StudentRSVP','student_rsvps'
       ].hasAny([name]);
-    }
-
-    function isPublicPaypalSetting() {
-      return resource.data.provider == "paypal" &&
-             (resource.data.active == true ||
-              resource.data.enabled == true ||
-              resource.data.is_active == true);
     }
 
     // ---------- PROGRAM HELPERS ----------
@@ -150,101 +144,284 @@ service cloud.firestore {
     }
 
     // Check if caller is the tutor of a TutoringSession doc (by uid OR email OR app user id fields)
-    function isTutorOfSession(res) {
+    function isTutorOfSession(resDoc) {
       return signedIn() && (
-        // direct uid fields commonly used
-        res.data.tutor_auth_uid == request.auth.uid ||
-        res.data.tutor_uid == request.auth.uid ||
-        res.data.tutor_id == request.auth.uid ||
-        // match by email
-        sameEmail(authEmail(), res.data.tutor_email) ||
-        // allow when app stored a different "user id" for the same account
+        resDoc.data.tutor_auth_uid == request.auth.uid ||
+        resDoc.data.tutor_uid == request.auth.uid ||
+        resDoc.data.tutor_id == request.auth.uid ||
+        sameEmail(authEmail(), resDoc.data.tutor_email) ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           (
-            res.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
-            res.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
-            res.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
+            resDoc.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
+            resDoc.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
+            resDoc.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
           )
         )
       );
     }
 
     // Check if caller is the student of a TutoringSession doc (by uid OR email OR app user id fields)
-    function isStudentOfSession(res) {
+    function isStudentOfSession(resDoc) {
       return signedIn() && (
-        res.data.student_auth_uid == request.auth.uid ||
-        res.data.student_uid == request.auth.uid ||
-        res.data.student_id == request.auth.uid ||
-        sameEmail(authEmail(), res.data.student_email) ||
+        resDoc.data.student_auth_uid == request.auth.uid ||
+        resDoc.data.student_uid == request.auth.uid ||
+        resDoc.data.student_id == request.auth.uid ||
+        sameEmail(authEmail(), resDoc.data.student_email) ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           (
-            res.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
-            res.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
-            res.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
+            resDoc.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
+            resDoc.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
+            resDoc.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
           )
         )
       );
     }
 
-    function canReadSession(res) { return isAdmin() || isTutorOfSession(res) || isStudentOfSession(res); }
-    function canWriteSession(res) { return isAdmin() || isTutorOfSession(res) || isStudentOfSession(res); }
+    function canReadSession(resDoc) { return isAdmin() || isTutorOfSession(resDoc) || isStudentOfSession(resDoc); }
+    function canWriteSession(resDoc) { return isAdmin() || isTutorOfSession(resDoc) || isStudentOfSession(resDoc); }
 
     // ===========================
     // Messaging System (NO AI BOT)
     // ===========================
 
-    // A conversation doc is accessible only to its participants (and admins).
-    function isConversationParticipant(convRes) {
-      return signedIn() &&
-        (convRes.data.participants is list) &&
-        convRes.data.participants.hasAny([request.auth.uid]);
+    // ---- Role normalization (rules-side) ----
+    function normRole(v) {
+      return v == null ? "" :
+        (
+          (v == "student" || v == "users" || v == "user") ? "user" :
+          (v == "agents" || v == "agent") ? "agent" :
+          (v == "tutors" || v == "tutor") ? "tutor" :
+          (v == "schools" || v == "school") ? "school" :
+          (v == "support") ? "support" :
+          (v == "admin") ? "admin" :
+          (v == "vendor") ? "vendor" :
+          ""
+        );
     }
 
-    // messaging settings doc (optional)
+    function roleFromUserDoc(d) {
+      return normRole(
+        (d.role is string ? d.role :
+          (d.selected_role is string ? d.selected_role :
+            (d.user_type is string ? d.user_type :
+              (d.userType is string ? d.userType : ""))))
+      );
+    }
+
+    // Treat the special "support" id as support without requiring a /users doc.
+    function roleOfUid(uid) {
+      return uid == "support" ? "support" :
+        (
+          exists(/databases/$(database)/documents/users/$(uid))
+            ? roleFromUserDoc(get(/databases/$(database)/documents/users/$(uid)).data)
+            : ""
+        );
+    }
+
+    function forbiddenUserSchoolPair(aRole, bRole) {
+      return (aRole == "user" && bRole == "school") || (aRole == "school" && bRole == "user");
+    }
+
+    // ✅ FIXED: accept participants_map values that are NOT boolean true (ex: role strings)
+    function docMentionsUid(d) {
+      return signedIn() && (
+        (d.participants is list && d.participants.hasAny([request.auth.uid])) ||
+        (d.participant_ids is list && d.participant_ids.hasAny([request.auth.uid])) ||
+        (d.user_ids is list && d.user_ids.hasAny([request.auth.uid])) ||
+        (d.members is list && d.members.hasAny([request.auth.uid])) ||
+        (d.users is list && d.users.hasAny([request.auth.uid])) ||
+
+        // ✅ maps: just check key exists (value can be true OR role OR timestamp)
+        (d.participants_map is map && d.participants_map[request.auth.uid] != null) ||
+        (d.participantsMap is map && d.participantsMap[request.auth.uid] != null) ||
+        (d.participants_by_uid is map && d.participants_by_uid[request.auth.uid] != null) ||
+
+        (d.user_id is string && d.user_id == request.auth.uid) ||
+        (d.owner_id is string && d.owner_id == request.auth.uid) ||
+        (d.created_by is string && d.created_by == request.auth.uid) ||
+        (d.createdBy is string && d.createdBy == request.auth.uid) ||
+
+        (d.from_user_id is string && d.from_user_id == request.auth.uid) ||
+        (d.to_user_id is string && d.to_user_id == request.auth.uid) ||
+        (d.sender_id is string && d.sender_id == request.auth.uid) ||
+        (d.senderId is string && d.senderId == request.auth.uid) ||
+
+        (d.agent_id is string && d.agent_id == request.auth.uid) ||
+        (d.tutor_id is string && d.tutor_id == request.auth.uid) ||
+        (d.student_id is string && d.student_id == request.auth.uid)
+      );
+    }
+
+    function reqSenderId() {
+      return request.resource.data.keys().hasAny(["sender_id"])
+        ? request.resource.data.sender_id
+        : (request.resource.data.keys().hasAny(["senderId"])
+          ? request.resource.data.senderId
+          : (request.resource.data.keys().hasAny(["from_user_id"])
+            ? request.resource.data.from_user_id
+            : null));
+    }
+
+    function reqRecipientId() {
+      return request.resource.data.keys().hasAny(["to_user_id"])
+        ? request.resource.data.to_user_id
+        : (request.resource.data.keys().hasAny(["recipient_id"])
+          ? request.resource.data.recipient_id
+          : (request.resource.data.keys().hasAny(["toUserId"])
+            ? request.resource.data.toUserId
+            : null));
+    }
+
+    function reqConvId() {
+      return request.resource.data.keys().hasAny(["conversation_id"])
+        ? request.resource.data.conversation_id
+        : (request.resource.data.keys().hasAny(["conversationId"])
+          ? request.resource.data.conversationId
+          : (request.resource.data.keys().hasAny(["thread_id"])
+            ? request.resource.data.thread_id
+            : (request.resource.data.keys().hasAny(["threadId"])
+              ? request.resource.data.threadId
+              : null)));
+    }
+
+    function resConvId() {
+      return resource.data.keys().hasAny(["conversation_id"])
+        ? resource.data.conversation_id
+        : (resource.data.keys().hasAny(["conversationId"])
+          ? resource.data.conversationId
+          : (resource.data.keys().hasAny(["thread_id"])
+            ? resource.data.thread_id
+            : (resource.data.keys().hasAny(["threadId"])
+              ? resource.data.threadId
+              : null)));
+    }
+
+    // ✅ Policy: Students/Users can NEVER message School directly.
+    // We enforce this strongly whenever we can determine sender/recipient.
+    function pairAllowedByUids(aUid, bUid) {
+      return !forbiddenUserSchoolPair(roleOfUid(aUid), roleOfUid(bUid));
+    }
+
+    // ✅ FIXED: NO "if" statements (Firestore Rules doesn't allow if in functions)
+    function pairAllowedForConversationCreate(d) {
+      return
+        (
+          (d.participants is list && d.participants.size() == 2)
+            ? pairAllowedByUids(d.participants[0], d.participants[1])
+            : (
+                (d.from_user_id is string && d.to_user_id is string)
+                  ? pairAllowedByUids(d.from_user_id, d.to_user_id)
+                  : true
+              )
+        );
+    }
+
+    // ✅ allow config/messaging reads (your app reads /config/messaging)
+    match /config/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ✅ app settings for messaging limits (optional)
+    match /app_settings/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ✅ monthly usage tracker for student free-tier limits (optional)
+    match /message_usage/{studentId}/months/{mk} {
+      allow read: if signedIn() && (request.auth.uid == studentId || isAdmin());
+      allow create, update: if signedIn() && (request.auth.uid == studentId || isAdmin());
+      allow delete: if false;
+    }
+
+    // messaging settings doc (optional legacy)
     match /messaging_settings/{docId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
-    // New messaging conversations collection used by the app (plural)
+    // Root conversations (plural) used by the app
     match /conversations/{docId} {
-      // create: must include caller uid in participants
-      allow create: if signedIn() &&
-        (request.resource.data.participants is list) &&
-        request.resource.data.participants.hasAny([request.auth.uid]);
 
-      // read/update: participant or admin
-      allow read: if isAdmin() || isConversationParticipant(resource);
-      allow update: if isAdmin() || isConversationParticipant(resource);
+      // ✅ Anyone signed in can CREATE a conversation (including first-time chat)
+      // must include authed uid + must not be user<->school
+      allow create: if signedIn() &&
+        docMentionsUid(request.resource.data) &&
+        pairAllowedForConversationCreate(request.resource.data);
+
+      // read/list: participant/owner/mentioned user OR admin
+      allow read: if signedIn();
+
+      // prevent participants from editing participants/roles/etc
+      // Only allow updating chat metadata fields.
+      allow update: if isAdmin() || (
+        docMentionsUid(resource.data) &&
+        request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly(["last_message_at", "last_message_text", "updated_at"])
+      );
 
       // delete disabled (safety)
       allow delete: if false;
+
+      // Subcollection messages
+      match /messages/{messageId} {
+
+        // ✅ Participant can send if sender==authed and conversation is accessible
+        // ✅ Enforce user<->school restriction if message includes to_user_id
+        allow create: if signedIn() &&
+          (reqSenderId() == request.auth.uid) &&
+          (
+            reqRecipientId() == null ||
+            pairAllowedByUids(reqSenderId(), reqRecipientId())
+          ) &&
+          (
+            isAdmin() ||
+            docMentionsUid(get(/databases/$(database)/documents/conversations/$(docId)).data) ||
+            docMentionsUid(request.resource.data)
+          ) &&
+          (
+            !request.resource.data.keys().hasAny(["conversation_id","conversationId","thread_id","threadId"]) ||
+            reqConvId() == docId
+          );
+
+        allow read: if signedIn() && (
+          isAdmin() ||
+          docMentionsUid(get(/databases/$(database)/documents/conversations/$(docId)).data) ||
+          docMentionsUid(resource.data)
+        );
+
+        // no edits or deletes to preserve logs
+        allow update, delete: if false;
+      }
     }
 
-    // Messages collection used by the app (plural)
+    // Root messages collection (optional if your app uses it)
     match /messages/{docId} {
-      // create: sender must be caller and must be participant of conversation_id
+
       allow create: if signedIn() &&
-        (request.resource.data.sender_id == request.auth.uid) &&
-        (request.resource.data.conversation_id is string) &&
-        exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id)) &&
-        get(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id))
-          .data.participants.hasAny([request.auth.uid]);
+        (reqSenderId() == request.auth.uid) &&
+        (
+          reqRecipientId() == null ||
+          pairAllowedByUids(reqSenderId(), reqRecipientId())
+        );
 
-      // read: allowed if caller is participant of the parent conversation
-      allow read: if signedIn() &&
-        (resource.data.conversation_id is string) &&
-        exists(/databases/$(database)/documents/conversations/$(resource.data.conversation_id)) &&
-        get(/databases/$(database)/documents/conversations/$(resource.data.conversation_id))
-          .data.participants.hasAny([request.auth.uid]);
+      allow read: if signedIn() && (
+        isAdmin() ||
+        docMentionsUid(resource.data) ||
+        (
+          (resConvId() is string) &&
+          exists(/databases/$(database)/documents/conversations/$(resConvId())) &&
+          docMentionsUid(get(/databases/$(database)/documents/conversations/$(resConvId())).data)
+        )
+      );
 
-      // no edits or deletes to preserve logs for investigations
       allow update, delete: if false;
     }
 
-    // Reports: students can create; only admins can read/update/delete
+    // Reports: signed-in can create; only admins can read/update/delete
     match /reports/{docId} {
       allow create: if signedIn() && request.resource.data.reporter_id == request.auth.uid;
       allow read, update, delete: if isAdmin();
@@ -254,7 +431,6 @@ service cloud.firestore {
 
     match /AboutPageContent/{docId} { allow read, write: if isAdmin(); }
 
-    // lower-case plural collection used by About page
     match /about_page_contents/{docId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
@@ -282,7 +458,6 @@ service cloud.firestore {
 
     match /BrandSettings/{docId} { allow read, write: if isAdmin(); }
 
-    // ---------- Case (PascalCase) ----------
     match /Case/{docId} {
       allow create: if signedIn() && (
         request.resource.data.student_id == request.auth.uid ||
@@ -296,7 +471,6 @@ service cloud.firestore {
       );
     }
 
-    // lowercase /cases with same semantics
     match /cases/{docId} {
       allow create: if signedIn() && (
         request.resource.data.student_id == request.auth.uid ||
@@ -323,8 +497,6 @@ service cloud.firestore {
 
     match /ContactPageContent/{docId} { allow read, write: if isAdmin(); }
 
-    // NOTE: This is your legacy "Conversation" entity (PascalCase).
-    // It remains as-is; your new messaging system uses /conversations (plural).
     match /Conversation/{docId} {
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
       allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
@@ -337,7 +509,6 @@ service cloud.firestore {
       allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
     }
 
-    // Event registrations (root and any depth)
     match /EventRegistration/{docId} {
       allow create: if isAdmin() || hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields();
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
@@ -364,7 +535,6 @@ service cloud.firestore {
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
-    // Universal registration create (by collection name)
     match /{path=**}/{coll}/{docId} {
       allow create: if isRegColl(coll) && (hasAuthedEventRegistrationFields() || hasGuestEventRegistrationFields());
     }
@@ -490,7 +660,6 @@ service cloud.firestore {
     match /Vendor/{docId} {
       allow get: if publiclyListable(resource) || isOwner(resource) || isAdmin();
       allow list: if signedIn() && isAdmin();
-
       allow create: if ownerCreating();
       allow update, delete: if isAdmin() || isOwner(resource);
     }
@@ -498,7 +667,6 @@ service cloud.firestore {
     match /vendors/{docId} {
       allow get: if publiclyListable(resource) || isOwner(resource) || isAdmin();
       allow list: if signedIn() && isAdmin();
-
       allow create: if ownerCreating();
       allow update, delete: if isAdmin() || isOwner(resource);
     }
@@ -634,15 +802,43 @@ service cloud.firestore {
       );
     }
 
-    // ✅ PUBLIC read for guests (WARNING: exposes full user docs)
+    // ✅ FIXED: Public directory can read ONLY verified/visible NON-student profiles.
+    // - Guests can browse agents/tutors/schools if profile is publiclyListable.
+    // - Students/users are NOT public.
     match /users/{docId} {
-      allow read: if true;
+      function resUserRole(resDoc) {
+        return roleFromUserDoc(resDoc.data);
+      }
+
+      // ✅ allow signed-in users to read (messaging needs this)
+      // ✅ allow guests to read ONLY publiclyListable agent/tutor/school
+      allow get, list: if
+        isAdmin() ||
+        signedIn() ||
+        (
+          publiclyListable(resource) &&
+          ["agent","tutor","school"].hasAny([resUserRole(resource)])
+        );
+
       allow create: if signedIn();
       allow update, delete: if signedIn() && (
         docId == request.auth.uid ||
         resource.data.user_id == request.auth.uid ||
         isAdmin()
       );
+
+      // ===========================
+      // Notifications (All Roles)
+      // ===========================
+      match /notifications/{nid} {
+        allow get, list: if signedIn() && request.auth.uid == docId;
+        allow create: if false;
+        allow update: if signedIn()
+                      && request.auth.uid == docId
+                      && request.resource.data.diff(resource.data).changedKeys()
+                        .hasOnly(["seen", "readAt"]);
+        allow delete: if signedIn() && request.auth.uid == docId;
+      }
     }
 
     match /school_profiles/{uid} {
@@ -776,6 +972,11 @@ service cloud.firestore {
 
     match /brandSettings/{docId} { allow read, write: if isAdmin(); }
     match /chat_settings/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
+
+    match /translations_public/{docId} {
+      allow read: if true;
+      allow write: if false; // only server (Admin SDK) writes
+    }
 
     // final catch-all
     match /{document=**} { allow read, write: if false; }

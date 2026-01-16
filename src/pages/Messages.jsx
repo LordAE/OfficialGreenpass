@@ -1,513 +1,442 @@
 // src/pages/Messages.jsx
-// Human-to-human messaging (NO AI BOT)
-
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/firebase";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-
-import { auth, db } from "@/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  doc,
-  getDoc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-} from "firebase/firestore";
+import { Loader2, Send, MessageSquare } from "lucide-react";
 
 import {
-  getMessagingSettings,
-  getSupportAdminUid,
-  getMyUserDoc,
-  isStudent,
-  isPremiumStudent,
-  categoryForRecipientRole,
-  getOrCreateConversation,
+  ensureConversation,
+  getUserDoc,
+  listMessages,
+  listMyConversations,
+  normalizeRole,
   sendMessage,
-  acceptMessagingAgreement,
-  submitReport,
 } from "@/api/messaging";
 
-import { MessageSquare, Send, ShieldAlert, Lock } from "lucide-react";
-
-function tsToDate(ts) {
-  if (!ts) return null;
-  if (typeof ts?.toDate === "function") return ts.toDate();
-  try {
-    return new Date(ts);
-  } catch {
-    return null;
-  }
+function displayName(u) {
+  return u?.full_name || u?.name || u?.displayName || u?.email || "Unknown";
 }
 
-function fmtTime(d) {
-  if (!d) return "";
-  return d.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+function avatarUrl(u) {
+  return (
+    u?.profile_picture ||
+    u?.photoURL ||
+    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" +
+      encodeURIComponent(displayName(u))
+  );
 }
 
 export default function Messages() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const [params] = useSearchParams();
 
-  const directTo = searchParams.get("to");   // uid OR "support"
-  const directRole = searchParams.get("role"); // agent|tutor|vendor|support
+  // Directory passes these
+  const to = params.get("to") || "";
+  const toRole = normalizeRole(params.get("role") || "");
 
-  const [fbUser, setFbUser] = useState(null);
   const [me, setMe] = useState(null);
-  const [settings, setSettings] = useState(null);
+  const [meDoc, setMeDoc] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+  const [errorText, setErrorText] = useState("");
 
   const [conversations, setConversations] = useState([]);
-  const [activeConv, setActiveConv] = useState(null);
-  const [activeOtherUser, setActiveOtherUser] = useState(null);
+  const [selectedConv, setSelectedConv] = useState(null);
 
+  // Cache user docs for peers so inbox can show names
+  const [peerCache, setPeerCache] = useState({}); // { uid: userDoc }
+
+  const [peerDoc, setPeerDoc] = useState(null);
+
+  const [msgsLoading, setMsgsLoading] = useState(false);
   const [messages, setMessages] = useState([]);
-  const [draft, setDraft] = useState("");
 
-  // Agreement + limits + report
-  const [agreementOpen, setAgreementOpen] = useState(false);
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [limitError, setLimitError] = useState("");
-  const [reportOpen, setReportOpen] = useState(false);
-  const [reportReason, setReportReason] = useState("");
-  const [reportType, setReportType] = useState("");
+  const [text, setText] = useState("");
+  const endRef = useRef(null);
 
-  const listRef = useRef(null);
+  const myRole = useMemo(() => {
+    return normalizeRole(meDoc?.user_type || meDoc?.selected_role || meDoc?.role || "user");
+  }, [meDoc]);
 
-  const isMeStudent = useMemo(() => isStudent(me), [me]);
-  const isMePremium = useMemo(() => isPremiumStudent(me), [me]);
+  const safeSetPeerCache = useCallback((uid, doc) => {
+    if (!uid) return;
+    setPeerCache((prev) => {
+      if (prev[uid]) return prev;
+      return { ...prev, [uid]: doc };
+    });
+  }, []);
 
-  // Auth + load settings + my user doc
+  const refreshConversations = useCallback(
+    async (uid) => {
+      try {
+        setErrorText("");
+        const list = await listMyConversations(uid);
+        setConversations(list || []);
+        return list || [];
+      } catch (e) {
+        console.error("refreshConversations error:", e);
+        setErrorText(e?.message || "Failed to load conversations.");
+        setConversations([]);
+        return [];
+      }
+    },
+    []
+  );
+
+  // Auth bootstrap
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      setFbUser(u || null);
-      if (!u?.uid) {
-        setMe(null);
-        setSettings(null);
+      setMe(u || null);
+
+      if (!u) {
+        setMeDoc(null);
+        setSelectedConv(null);
         setConversations([]);
-        setActiveConv(null);
+        setPeerDoc(null);
         setMessages([]);
+        setLoading(false);
         return;
       }
 
-      const [s, m] = await Promise.all([getMessagingSettings(), getMyUserDoc(u.uid)]);
-      setSettings(s);
-      setMe(m || { id: u.uid });
+      try {
+        const doc = await getUserDoc(u.uid);
+        setMeDoc(doc || null);
+      } catch (e) {
+        console.error("getUserDoc error:", e);
+        setMeDoc(null);
+      } finally {
+        setLoading(false);
+      }
     });
 
     return () => unsub();
   }, []);
 
-  // List my conversations
+  // Load conversations once logged in
   useEffect(() => {
-    if (!fbUser?.uid) return;
-
-    const q = query(
-      collection(db, "conversations"),
-      where("participants", "array-contains", fbUser.uid),
-      orderBy("last_message_at", "desc"),
-      limit(200)
-    );
-
-    const unsub = onSnapshot(q, async (snap) => {
-      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-      // Populate "other user" preview (best-effort)
-      const withOther = await Promise.all(
-        rows.map(async (c) => {
-          const otherId = (c.participants || []).find((p) => p !== fbUser.uid);
-          if (!otherId) return { ...c, other: null };
-
-          try {
-            const us = await getDoc(doc(db, "users", otherId));
-            const other = us.exists() ? { id: us.id, ...us.data() } : { id: otherId };
-            return { ...c, other };
-          } catch {
-            return { ...c, other: { id: otherId } };
-          }
-        })
-      );
-
-      setConversations(withOther);
-
-      // Auto-select first convo if none selected
-      if (!activeConv && withOther.length) {
-        setActiveConv(withOther[0]);
-      }
-    });
-
-    return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fbUser?.uid]);
-
-  // If URL has ?to=... create/open a conversation
-  useEffect(() => {
+    if (!me?.uid) return;
     (async () => {
-      if (!fbUser?.uid || !settings) return;
-      if (!directTo) return;
+      const list = await refreshConversations(me.uid);
 
-      let otherId = directTo;
-      let otherRole = directRole || "support";
-
-      // support shortcut
-      if (directTo === "support") {
-        const adminUid = await getSupportAdminUid();
-        if (!adminUid) return;
-        otherId = adminUid;
-        otherRole = "support";
+      // Warm peer cache so inbox has names instead of just IDs
+      const others = new Set();
+      for (const c of list) {
+        const parts = Array.isArray(c?.participants) ? c.participants : [];
+        const otherId = parts.find((x) => x && x !== me.uid);
+        if (otherId) others.add(otherId);
       }
 
-      // Student agreement gate
-      if (isMeStudent && !me?.messaging_agreement_accepted_at) {
-        setAgreementOpen(true);
-        return;
+      const ids = Array.from(others).filter((x) => x !== "support");
+      if (ids.length) {
+        await Promise.all(
+          ids.map(async (uid) => {
+            try {
+              const udoc = await getUserDoc(uid);
+              if (udoc) safeSetPeerCache(uid, udoc);
+            } catch (e) {
+              // ignore
+            }
+          })
+        );
       }
+    })();
+  }, [me?.uid, refreshConversations, safeSetPeerCache]);
 
-      // Fetch other user doc
-      const otherSnap = await getDoc(doc(db, "users", otherId));
-      const otherUser = otherSnap.exists() ? { id: otherSnap.id, ...otherSnap.data() } : { id: otherId };
+  /**
+   * ✅ FIRST-TIME CHAT HANDLING:
+   * If opened with ?to=... we ensure the conversation exists,
+   * refresh inbox immediately, then auto-select it.
+   */
+  useEffect(() => {
+    if (!me?.uid || !meDoc) return;
+    if (!to) return;
 
-      // Create/open conversation (this enforces limit ONLY if new)
+    (async () => {
       try {
-        const conv = await getOrCreateConversation({
-          me: { id: fbUser.uid, ...(me || {}) },
-          otherUser,
-          otherRole,
-          settings,
-          forceCategory: categoryForRecipientRole(otherRole),
+        setErrorText("");
+
+        // ✅ Enforce: student/user cannot message schools (route to support convo)
+        if ((myRole === "user" || myRole === "student") && toRole === "school") {
+          const conv = await ensureConversation({
+            meId: me.uid,
+            meRole: myRole,
+            targetId: "support",
+            targetRole: "support",
+            source: "blocked_school_message",
+          });
+
+          // Refresh inbox so the new convo appears immediately
+          const list = await refreshConversations(me.uid);
+          const latest = list.find((c) => c.id === conv.id) || conv;
+          setSelectedConv(latest);
+
+          setPeerDoc({ id: "support", full_name: "Support" });
+          safeSetPeerCache("support", { id: "support", full_name: "Support" });
+          return;
+        }
+
+        // Normal direct convo
+        const conv = await ensureConversation({
+          meId: me.uid,
+          meRole: myRole,
+          targetId: to,
+          targetRole: toRole || "support",
+          source: location?.state?.source || "directory",
         });
 
-        setActiveConv(conv);
+        // Refresh inbox so convo is listed even before first message
+        const list = await refreshConversations(me.uid);
+        const latest = list.find((c) => c.id === conv.id) || conv;
+        setSelectedConv(latest);
 
-        // clean URL
-        navigate("/messages", { replace: true });
+        // Load peer doc right away for header
+        if (to && to !== "support") {
+          const u = await getUserDoc(to);
+          if (u) {
+            setPeerDoc(u);
+            safeSetPeerCache(to, u);
+          }
+        } else {
+          setPeerDoc({ id: "support", full_name: "Support" });
+          safeSetPeerCache("support", { id: "support", full_name: "Support" });
+        }
       } catch (e) {
-        setLimitError(e?.message || "You reached your free messaging limit.");
-        setUpgradeOpen(true);
+        console.error("ensure/open conversation error:", e);
+        setErrorText(e?.message || "Failed to open conversation.");
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [directTo, directRole, fbUser?.uid, settings]);
+  }, [me?.uid, meDoc, to, toRole, myRole]);
 
-  // When active conversation changes, set other user + load messages
+  // When conversation selected: load peer + messages
   useEffect(() => {
-    if (!fbUser?.uid || !activeConv?.id) {
-      setMessages([]);
-      setActiveOtherUser(null);
-      return;
+    if (!me?.uid || !selectedConv?.id) return;
+
+    (async () => {
+      setMsgsLoading(true);
+      try {
+        setErrorText("");
+
+        // Determine peer
+        const participants = Array.isArray(selectedConv?.participants) ? selectedConv.participants : [];
+        const otherId = participants.find((x) => x && x !== me.uid) || "support";
+
+        if (otherId === "support") {
+          const support = { id: "support", full_name: "Support" };
+          setPeerDoc(support);
+          safeSetPeerCache("support", support);
+        } else if (peerCache[otherId]) {
+          setPeerDoc(peerCache[otherId]);
+        } else {
+          const u = await getUserDoc(otherId);
+          if (u) {
+            setPeerDoc(u);
+            safeSetPeerCache(otherId, u);
+          } else {
+            setPeerDoc({ id: otherId, full_name: "Unknown" });
+          }
+        }
+
+        // Load messages
+        const list = await listMessages(selectedConv.id);
+        setMessages(list || []);
+      } catch (e) {
+        console.error("load messages error:", e);
+        setErrorText(e?.message || "Failed to load messages.");
+        setMessages([]);
+      } finally {
+        setMsgsLoading(false);
+      }
+    })();
+  }, [me?.uid, selectedConv?.id, peerCache, safeSetPeerCache]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages?.length, msgsLoading]);
+
+  const handlePickConversation = useCallback(async (conv) => {
+    setSelectedConv(conv);
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    if (!me?.uid || !selectedConv?.id) return;
+
+    const t = text.trim();
+    if (!t) return;
+
+    try {
+      setErrorText("");
+      setText("");
+
+      await sendMessage({
+        conversationId: selectedConv.id,
+        conversationDoc: selectedConv,
+        senderId: me.uid,
+        text: t,
+      });
+
+      // Refresh messages + inbox ordering/preview
+      const list = await listMessages(selectedConv.id);
+      setMessages(list || []);
+
+      const updated = await refreshConversations(me.uid);
+      const latest = updated.find((c) => c.id === selectedConv.id);
+      if (latest) setSelectedConv(latest);
+    } catch (e) {
+      console.error("send message error:", e);
+      setErrorText(e?.message || "Failed to send message.");
     }
+  }, [me?.uid, refreshConversations, selectedConv, text]);
 
-    const otherId = (activeConv.participants || []).find((p) => p !== fbUser.uid);
-    if (activeConv.other) setActiveOtherUser(activeConv.other);
-    else if (otherId) {
-      getDoc(doc(db, "users", otherId))
-        .then((s) => setActiveOtherUser(s.exists() ? { id: s.id, ...s.data() } : { id: otherId }))
-        .catch(() => setActiveOtherUser({ id: otherId }));
-    }
-
-    const q = query(
-      collection(db, "messages"),
-      where("conversation_id", "==", activeConv.id),
-      orderBy("created_at", "asc"),
-      limit(500)
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setMessages(rows);
-
-      setTimeout(() => {
-        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-      }, 0);
-    });
-
-    return () => unsub();
-  }, [activeConv?.id, fbUser?.uid, activeConv?.participants]);
-
-  const otherLabel = useMemo(() => {
-    const name = activeOtherUser?.full_name || activeOtherUser?.name || activeOtherUser?.email || "Conversation";
-    const role = activeConv?.participant_roles?.[activeOtherUser?.id] || activeOtherUser?.user_type || "";
-    const roleNorm = String(role || "").toLowerCase();
-    return { name, role: roleNorm };
-  }, [activeOtherUser, activeConv]);
-
-  const onSend = async () => {
-    if (!fbUser?.uid || !activeConv?.id) return;
-    const text = String(draft || "").trim();
-    if (!text) return;
-
-    await sendMessage({
-      conversationId: activeConv.id,
-      senderId: fbUser.uid,
-      text,
-    });
-    setDraft("");
-  };
-
-  const onAcceptAgreement = async () => {
-    if (!fbUser?.uid) return;
-    await acceptMessagingAgreement(fbUser.uid);
-
-    // update local
-    setMe((prev) => ({ ...(prev || {}), messaging_agreement_accepted_at: new Date().toISOString() }));
-    setAgreementOpen(false);
-
-    // retry direct open if present
-    if (directTo) {
-      navigate(`/messages?to=${encodeURIComponent(directTo)}&role=${encodeURIComponent(directRole || "support")}`, { replace: true });
-    }
-  };
-
-  const openReport = () => {
-    const otherId = activeOtherUser?.id;
-    if (!otherId || !activeConv?.id) return;
-
-    // only allow reporting agent/tutor/vendor
-    const role = (otherLabel.role || "").toLowerCase();
-    const type =
-      role === "agent" ? "agent" : role === "tutor" ? "tutor" : role === "vendor" ? "vendor" : "";
-
-    if (!type) return;
-
-    setReportType(type);
-    setReportReason("");
-    setReportOpen(true);
-  };
-
-  const submitReportNow = async () => {
-    const otherId = activeOtherUser?.id;
-    if (!fbUser?.uid || !otherId || !activeConv?.id) return;
-
-    await submitReport({
-      reporterId: fbUser.uid,
-      againstUserId: otherId,
-      conversationId: activeConv.id,
-      reason: reportReason,
-      type: reportType,
-    });
-
-    setReportOpen(false);
-  };
-
-  if (!fbUser?.uid) {
+  if (loading) {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-gray-50 p-6">
-        <div className="max-w-3xl mx-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="w-5 h-5" />
-                Messages
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Please log in to use messaging.
-            </CardContent>
-          </Card>
-        </div>
+      <div className="p-6 flex items-center gap-2 text-gray-600">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        Loading…
       </div>
     );
   }
 
-  return (
-    <div className="min-h-[calc(100vh-80px)] bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* Left: conversation list */}
-        <Card className="md:col-span-4 overflow-hidden">
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5" />
-              Conversations
-            </CardTitle>
-            {isMeStudent && !isMePremium && (
-              <p className="text-xs text-muted-foreground">
-                Free tier limits reset monthly. Upgrade: ${settings?.premium_student_price_usd || 19}/year.
-              </p>
-            )}
+  if (!me) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Messages</CardTitle>
           </CardHeader>
-
-          <CardContent className="p-0">
-            <div className="max-h-[70vh] overflow-auto">
-              {conversations.map((c) => {
-                const other = c.other || {};
-                const name = other.full_name || other.email || "User";
-                const role = c.participant_roles?.[other.id] || other.user_type || "";
-                const cat = c.category || "";
-                const active = activeConv?.id === c.id;
-
-                return (
-                  <button
-                    key={c.id}
-                    className={`w-full text-left px-4 py-3 border-b hover:bg-gray-50 ${active ? "bg-gray-100" : ""}`}
-                    onClick={() => setActiveConv(c)}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium truncate">{name}</div>
-                      <div className="flex items-center gap-2">
-                        {role ? <Badge variant="secondary">{String(role).toUpperCase()}</Badge> : null}
-                        {cat ? <Badge variant="outline">{cat}</Badge> : null}
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {c.last_message_text || "No messages yet"}
-                    </div>
-                  </button>
-                );
-              })}
-
-              {!conversations.length && (
-                <div className="p-6 text-sm text-muted-foreground">
-                  No conversations yet. Start one from Directory, My Agent, or Support.
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Right: active chat */}
-        <Card className="md:col-span-8 overflow-hidden">
-          <CardHeader className="border-b">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <CardTitle className="truncate">{otherLabel.name}</CardTitle>
-                <div className="text-xs text-muted-foreground">
-                  {otherLabel.role ? `Role: ${otherLabel.role}` : " "}
-                </div>
-              </div>
-
-              {/* Report button (only for agent/tutor/vendor) */}
-              {["agent", "tutor", "vendor"].includes((otherLabel.role || "").toLowerCase()) && (
-                <Button variant="outline" className="gap-2" onClick={openReport}>
-                  <ShieldAlert className="w-4 h-4" />
-                  Report
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-
-          <CardContent className="p-0 flex flex-col h-[70vh]">
-            <div ref={listRef} className="flex-1 overflow-auto p-4 space-y-3">
-              {messages.map((m) => {
-                const mine = m.sender_id === fbUser.uid;
-                const d = tsToDate(m.created_at);
-                return (
-                  <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${mine ? "bg-blue-600 text-white" : "bg-white border"}`}>
-                      <div className="whitespace-pre-wrap break-words">{m.text}</div>
-                      <div className={`mt-1 text-[11px] ${mine ? "text-blue-100" : "text-muted-foreground"}`}>
-                        {fmtTime(d)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {!activeConv?.id && (
-                <div className="text-sm text-muted-foreground">
-                  Select a conversation from the left, or open one from Directory.
-                </div>
-              )}
-            </div>
-
-            <div className="border-t p-3 flex gap-2">
-              <Input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Type a message…"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    onSend();
-                  }
-                }}
-                disabled={!activeConv?.id}
-              />
-              <Button onClick={onSend} disabled={!activeConv?.id} className="gap-2">
-                <Send className="w-4 h-4" />
-                Send
-              </Button>
-            </div>
+          <CardContent className="text-sm text-gray-600">
+            Please log in to use messaging.
           </CardContent>
         </Card>
       </div>
+    );
+  }
 
-      {/* Agreement banner (before first convo) */}
-      <Dialog open={agreementOpen} onOpenChange={setAgreementOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Messaging Agreement</DialogTitle>
-            <DialogDescription>
-              Before your first conversation:
-              <div className="mt-3 space-y-2 text-sm">
-                <div>• Keep important terms inside chat for traceability.</div>
-                <div>• GreenPass is not liable for external payments.</div>
-                <div className="text-muted-foreground">
-                  Reporting & investigations use platform chat logs only. If a transaction happens fully outside the platform with no trace,
-                  reports may be disregarded.
+  const peerName = displayName(peerDoc);
+  const peerAvatar = avatarUrl(peerDoc);
+
+  return (
+    <div className="p-4 md:p-6">
+      {errorText ? (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {errorText}
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+        {/* Left: conversations */}
+        <Card className="md:col-span-4 h-[75vh] overflow-hidden">
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              Inbox
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="p-0 h-full overflow-auto">
+            {conversations.length === 0 ? (
+              <div className="p-4 text-sm text-gray-600">No conversations yet.</div>
+            ) : (
+              <div className="divide-y">
+                {conversations.map((c) => {
+                  const participants = Array.isArray(c.participants) ? c.participants : [];
+                  const otherId = participants.find((x) => x && x !== me.uid) || "support";
+
+                  const otherDoc =
+                    otherId === "support"
+                      ? { id: "support", full_name: "Support" }
+                      : peerCache[otherId];
+
+                  const title = displayName(otherDoc) || (otherId === "support" ? "Support" : `Chat (${otherId.slice(0, 6)}…)`);
+                  const isActive = selectedConv?.id === c.id;
+
+                  return (
+                    <button
+                      key={c.id}
+                      className={`w-full text-left p-4 hover:bg-gray-50 ${isActive ? "bg-gray-50" : ""}`}
+                      onClick={() => handlePickConversation(c)}
+                    >
+                      <div className="font-semibold text-gray-900">{title}</div>
+                      <div className="text-xs text-gray-600 line-clamp-1">
+                        {c.last_message_text || "No messages yet"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Right: chat */}
+        <Card className="md:col-span-8 h-[75vh] overflow-hidden flex flex-col">
+          <CardHeader className="border-b">
+            <div className="flex items-center gap-3">
+              <img
+                src={peerAvatar}
+                alt={peerName}
+                className="h-10 w-10 rounded-full object-cover"
+              />
+              <div>
+                <div className="font-semibold text-gray-900">{peerName}</div>
+                <div className="text-xs text-gray-600 capitalize">
+                  {normalizeRole(selectedConv?.roles?.[peerDoc?.id] || toRole || "support")}
                 </div>
               </div>
-            </DialogDescription>
-          </DialogHeader>
+            </div>
+          </CardHeader>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setAgreementOpen(false)}>Cancel</Button>
-            <Button onClick={onAcceptAgreement}>I Agree</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Upgrade prompt */}
-      <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Upgrade required</DialogTitle>
-            <DialogDescription>
-              {limitError || "You hit your free tier limit."}
-              <div className="mt-2 text-sm">
-                Upgrade to Student Premium for <b>${settings?.premium_student_price_usd || 19}/year</b> to continue messaging.
+          <CardContent className="flex-1 overflow-auto p-4 bg-white">
+            {!selectedConv ? (
+              <div className="text-sm text-gray-600">Select a conversation to start chatting.</div>
+            ) : msgsLoading ? (
+              <div className="flex items-center gap-2 text-gray-600">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading messages…
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">
-                If you don’t upgrade, you can message again after your next monthly reset.
+            ) : (
+              <div className="space-y-3">
+                {messages.map((m) => {
+                  const mine = m.sender_id === me.uid;
+                  return (
+                    <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                          mine ? "bg-black text-white" : "bg-gray-100 text-gray-900"
+                        }`}
+                      >
+                        {m.text}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={endRef} />
               </div>
-            </DialogDescription>
-          </DialogHeader>
+            )}
+          </CardContent>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setUpgradeOpen(false)}>No thanks</Button>
-            <Button onClick={() => navigate("/checkout?plan=student_premium_yearly")}>Upgrade</Button>
+          <div className="border-t p-3 flex gap-2">
+            <Input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={selectedConv ? "Type a message…" : "Select a conversation…"}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSend();
+              }}
+              disabled={!selectedConv}
+            />
+            <Button onClick={handleSend} disabled={!selectedConv || !text.trim()}>
+              <Send className="h-4 w-4 mr-2" />
+              Send
+            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Report dialog */}
-      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Report {reportType}</DialogTitle>
-            <DialogDescription>
-              Reports are reviewed using platform chat logs only. If the issue is based on external payments with no chat trace,
-              the report may be disregarded.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Reason</div>
-            <Input value={reportReason} onChange={(e) => setReportReason(e.target.value)} placeholder="Describe what happened…" />
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setReportOpen(false)}>Cancel</Button>
-            <Button onClick={submitReportNow} disabled={!reportReason.trim()}>Submit</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </Card>
+      </div>
     </div>
   );
 }

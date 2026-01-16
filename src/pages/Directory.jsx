@@ -1,3 +1,4 @@
+// src/pages/Directory.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { School } from "@/api/entities";
 import { Institution } from "@/api/entities";
@@ -23,7 +24,14 @@ import {
   Chrome,
   Apple,
 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import ProvinceSelector from "../components/ProvinceSelector";
 import CountrySelector from "@/components/CountrySelector";
@@ -32,7 +40,16 @@ import _ from "lodash";
 
 // 🔥 Firebase
 import { db, auth } from "@/firebase";
-import { collection, getDocs, query, where, doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  setDoc,
+  serverTimestamp,
+  getDoc,
+} from "firebase/firestore";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -47,9 +64,26 @@ import {
 } from "firebase/auth";
 
 // shadcn dialog
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const PAGE_SIZE = 15;
+
+/* -----------------------------
+   Subscription helper (matches YOUR DB fields)
+   ----------------------------- */
+function hasActiveSubscription(userDoc) {
+  const d = userDoc || {};
+  if (typeof d.subscription_active === "boolean")
+    return d.subscription_active === true;
+  const status = String(d.subscription_status || "").toLowerCase().trim();
+  return status === "active";
+}
 
 /* -----------------------------
    Country flag helpers (use IMAGE flags for reliability)
@@ -59,7 +93,9 @@ const isIso2 = (code) => /^[A-Z]{2}$/.test((code || "").trim().toUpperCase());
 const codeToFlagEmoji = (code) => {
   const cc = (code || "").trim().toUpperCase();
   if (!isIso2(cc)) return "";
-  return String.fromCodePoint(...[...cc].map((c) => 127397 + c.charCodeAt(0)));
+  return String.fromCodePoint(
+    ...[...cc].map((c) => 127397 + c.charCodeAt(0))
+  );
 };
 
 const flagPngUrl = (code) => {
@@ -79,7 +115,10 @@ function CountryFlag({ code, className = "" }) {
 
   if (!url || !imgOk) {
     return emoji ? (
-      <span className={["text-base leading-none", className].join(" ")} title={cc}>
+      <span
+        className={["text-base leading-none", className].join(" ")}
+        title={cc}
+      >
         {emoji}
       </span>
     ) : null;
@@ -89,7 +128,9 @@ function CountryFlag({ code, className = "" }) {
     <img
       src={url}
       alt={`${cc} flag`}
-      className={["h-4 w-6 rounded-sm border object-cover", className].join(" ")}
+      className={["h-4 w-6 rounded-sm border object-cover", className].join(
+        " "
+      )}
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setImgOk(false)}
@@ -104,8 +145,14 @@ const normalize = (s = "") =>
   String(s)
     .toLowerCase()
     .replace(/&/g, "and")
-    .replace(/\b(the|of|and|for|at|in|de|la|le|du|des|université|universite)\b/g, "")
-    .replace(/\b(university|college|institute|polytechnic|school|academy|centre|center)\b/g, "")
+    .replace(
+      /\b(the|of|and|for|at|in|de|la|le|du|des|université|universite)\b/g,
+      ""
+    )
+    .replace(
+      /\b(university|college|institute|polytechnic|school|academy|centre|center)\b/g,
+      ""
+    )
     .replace(/[^a-z0-9]/g, "")
     .trim();
 
@@ -137,7 +184,9 @@ const SchoolListRow = ({ item, isSelected, onSelect }) => {
       className={[
         "w-full text-left rounded-lg border p-3 transition",
         "focus:outline-none focus:ring-2 focus:ring-green-400",
-        isSelected ? "border-green-400 bg-green-50" : "border-gray-200 bg-white hover:bg-gray-50",
+        isSelected
+          ? "border-green-400 bg-green-50"
+          : "border-gray-200 bg-white hover:bg-gray-50",
       ].join(" ")}
     >
       <div className="flex gap-3">
@@ -187,7 +236,8 @@ const uniqStrings = (arr) => {
 };
 
 const getSchoolImageList = (item) => {
-  const fallback = "https://images.unsplash.com/photo-1562774053-701939374585?w=1200&h=600&fit=crop&q=80";
+  const fallback =
+    "https://images.unsplash.com/photo-1562774053-701939374585?w=1200&h=600&fit=crop&q=80";
   if (!item) return [fallback];
 
   const candidates = [
@@ -238,7 +288,9 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
   if (!item) {
     return (
       <Card className="h-full">
-        <CardContent className="p-6 text-gray-600">Select a school from the list to see details.</CardContent>
+        <CardContent className="p-6 text-gray-600">
+          Select a school from the list to see details.
+        </CardContent>
       </Card>
     );
   }
@@ -252,7 +304,8 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
   const list = Array.isArray(programs) ? programs : [];
   const hasPrograms = list.length > 0;
 
-  const getProgramTitle = (p) => p?.program_title || p?.programTitle || p?.title || p?.name || "Untitled program";
+  const getProgramTitle = (p) =>
+    p?.program_title || p?.programTitle || p?.title || p?.name || "Untitled program";
 
   const getProgramMeta = (p) => {
     const level = p?.program_level || p?.level || p?.programLevel;
@@ -266,7 +319,12 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
     <Card className="h-full flex flex-col overflow-hidden">
       <CardContent className="p-0 flex-1 min-h-0 overflow-auto">
         <div className="relative h-56 bg-gradient-to-br from-blue-100 to-green-100">
-          <img src={images[imgIndex]} alt={name} className="w-full h-full object-cover" loading="lazy" />
+          <img
+            src={images[imgIndex]}
+            alt={name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
 
           <div className="absolute top-4 left-4 flex gap-2">
             {item.isDLI && (
@@ -309,7 +367,10 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
                     key={idx}
                     type="button"
                     onClick={() => setImgIndex(idx)}
-                    className={["h-2 w-2 rounded-full transition", idx === imgIndex ? "bg-white" : "bg-white/50 hover:bg-white/80"].join(" ")}
+                    className={[
+                      "h-2 w-2 rounded-full transition",
+                      idx === imgIndex ? "bg-white" : "bg-white/50 hover:bg-white/80",
+                    ].join(" ")}
                     aria-label={`Go to image ${idx + 1}`}
                   />
                 ))}
@@ -420,7 +481,8 @@ const UserListRow = ({ user, isSelected, onSelect }) => {
   const photo =
     user.profile_picture ||
     user.photoURL ||
-    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" + encodeURIComponent(name);
+    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" +
+      encodeURIComponent(name);
 
   return (
     <button
@@ -429,7 +491,9 @@ const UserListRow = ({ user, isSelected, onSelect }) => {
       className={[
         "w-full text-left rounded-lg border p-3 transition",
         "focus:outline-none focus:ring-2 focus:ring-green-400",
-        isSelected ? "border-green-400 bg-green-50" : "border-gray-200 bg-white hover:bg-gray-50",
+        isSelected
+          ? "border-green-400 bg-green-50"
+          : "border-gray-200 bg-white hover:bg-gray-50",
       ].join(" ")}
     >
       <div className="flex gap-3 items-center">
@@ -477,7 +541,8 @@ const UserDetailsPanel = ({ user, onMessageClick }) => {
   const photo =
     user.profile_picture ||
     user.photoURL ||
-    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" + encodeURIComponent(name);
+    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" +
+      encodeURIComponent(name);
 
   const banner =
     user.cover_photo ||
@@ -485,7 +550,14 @@ const UserDetailsPanel = ({ user, onMessageClick }) => {
     user.banner ||
     "https://images.unsplash.com/photo-1526498460520-4c246339dccb?w=1600&h=600&fit=crop&q=80";
 
-  const bio = user.biography || user.bio || user.description || user.about || user.summary || user.profile_description || "";
+  const bio =
+    user.biography ||
+    user.bio ||
+    user.description ||
+    user.about ||
+    user.summary ||
+    user.profile_description ||
+    "";
 
   return (
     <Card className="h-full flex flex-col overflow-hidden">
@@ -518,7 +590,9 @@ const UserDetailsPanel = ({ user, onMessageClick }) => {
           <h2 className="mt-2 text-2xl font-bold text-gray-900">{name}</h2>
 
           <Badge variant="secondary" className="mt-2 capitalize">
-            {role === "user" ? "Student / User" : role}
+            {String(role).toLowerCase() === "user" || String(role).toLowerCase() === "student"
+              ? "Student / User"
+              : role}
           </Badge>
         </div>
 
@@ -572,18 +646,18 @@ export default function Directory() {
   const [page, setPage] = useState(1);
   const [selectedKey, setSelectedKey] = useState(null);
 
-  // Auth state
+  // ✅ Auth state
   const [currentUser, setCurrentUser] = useState(null);
+
+  // ✅ Current user's Firestore doc (gating uses THIS)
+  const [currentUserDoc, setCurrentUserDoc] = useState(null);
 
   // ✅ current user's role (used to hide same-role tab)
   const [currentUserRole, setCurrentUserRole] = useState("");
 
   // ✅ In-page Auth modal
-  // Steps:
-  // choice -> login OR role -> signup_method -> signup_email OR oauth_finish
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [forceStudentSignup, setForceStudentSignup] = useState(false);
-
   const [authStep, setAuthStep] = useState("choice"); // "choice" | "login" | "role" | "signup_method" | "signup_email" | "oauth_finish"
 
   // ✅ Pending post-auth action
@@ -596,8 +670,8 @@ export default function Directory() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginShowPw, setLoginShowPw] = useState(false);
 
-  // ✅ Signup role selected FIRST
-  const [signupRole, setSignupRole] = useState("user"); // user | agent | tutor (NO school)
+  // ✅ Signup role selected FIRST (NO school)
+  const [signupRole, setSignupRole] = useState("user"); // user | agent | tutor
 
   // Email signup fields
   const [signupName, setSignupName] = useState("");
@@ -610,28 +684,33 @@ export default function Directory() {
   const [oauthUser, setOauthUser] = useState(null); // { uid, email, full_name }
   const [oauthName, setOauthName] = useState("");
 
-  // role normalization helpers
+  // role normalization helpers (IMPORTANT: student -> user)
   const normalizeRole = useCallback((r) => {
     const v = String(r || "").toLowerCase().trim();
     if (v === "student") return "user";
     if (v === "users") return "user";
     if (v === "tutors") return "tutor";
     if (v === "agents") return "agent";
-    if (["user", "agent", "tutor"].includes(v)) return v;
+    if (["user", "agent", "tutor", "school", "admin", "vendor", "support"].includes(v))
+      return v;
     return "";
   }, []);
 
   const detectRoleFromUserDoc = useCallback(
-    (data) => normalizeRole(data?.user_type || data?.userType || data?.role || data?.selected_role || ""),
+    (data) =>
+      normalizeRole(
+        data?.role || data?.selected_role || data?.user_type || data?.userType || ""
+      ),
     [normalizeRole]
   );
 
-  // ✅ auth + role fetch
+  // ✅ auth + user doc fetch
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setCurrentUser(u || null);
 
       if (!u?.uid) {
+        setCurrentUserDoc(null);
         setCurrentUserRole("");
         return;
       }
@@ -639,9 +718,12 @@ export default function Directory() {
       try {
         const snap = await getDoc(doc(db, "users", u.uid));
         const data = snap.exists() ? snap.data() : {};
-        setCurrentUserRole(detectRoleFromUserDoc(data) || "");
+        const full = { id: u.uid, uid: u.uid, ...(data || {}) };
+        setCurrentUserDoc(full);
+        setCurrentUserRole(detectRoleFromUserDoc(full) || "");
       } catch (e) {
-        console.error("Failed to load user role:", e);
+        console.error("Failed to load user doc:", e);
+        setCurrentUserDoc(null);
         setCurrentUserRole("");
       }
     });
@@ -652,7 +734,6 @@ export default function Directory() {
   // ✅ tabs visible: if logged in, hide the same role tab
   const visibleTabs = useMemo(() => {
     const role = normalizeRole(currentUserRole);
-    // Always keep school tab; hide only the user's own role tab
     return BROWSE_TABS.filter((t) => t.key === "school" || !role || t.key !== role);
   }, [currentUserRole, normalizeRole]);
 
@@ -954,7 +1035,7 @@ export default function Directory() {
 
   const selectedItem = useMemo(() => {
     if (!selectedKey) return null;
-    const src = isSchoolTab ? (filteredSchools || []) : (filteredUsers || []);
+    const src = isSchoolTab ? filteredSchools || [] : filteredUsers || [];
     return src.find((s) => (s.school_key || s.id) === selectedKey) || null;
   }, [isSchoolTab, filteredSchools, filteredUsers, selectedKey]);
 
@@ -993,40 +1074,110 @@ export default function Directory() {
     setSelectedType("all");
   }, []);
 
-  const onContactSchool = useCallback((schoolItem) => {
-    const name = schoolItem?.name || schoolItem?.school_name || schoolItem?.institution_name || "School";
+  // ✅ Helper to get my effective role from Firestore doc
+  const myRole = useMemo(() => {
+    return normalizeRole(
+      currentUserDoc?.role ||
+        currentUserDoc?.selected_role ||
+        currentUserDoc?.user_type ||
+        currentUserDoc?.userType ||
+        ""
+    );
+  }, [currentUserDoc, normalizeRole]);
 
-    const email =
-      schoolItem?.contact_email ||
-      schoolItem?.contactEmail ||
-      schoolItem?.admissions_email ||
-      schoolItem?.international_email ||
-      schoolItem?.email;
+  /* -----------------------------
+     ✅ Messaging navigation helpers
+   ----------------------------- */
+  const navToMessages = useCallback(
+    ({ studentId, targetId, targetRole }) => {
+      const qs = new URLSearchParams();
+      if (targetId) qs.set("to", String(targetId));
+      if (targetRole) qs.set("role", String(targetRole));
+      const url = `/messages?${qs.toString()}`;
 
-    if (email) {
-      const subject = encodeURIComponent(`Inquiry: ${name}`);
-      window.location.href = `mailto:${email}?subject=${subject}`;
-      return;
-    }
+      navigate(url, {
+        state: {
+          studentId,
+          targetId,
+          targetRole,
+          source: "directory",
+        },
+      });
+    },
+    [navigate]
+  );
 
-    window.location.href = `/contact?school=${encodeURIComponent(name)}`;
-  }, []);
+  const onContactSchool = useCallback(
+    (schoolItem) => {
+      const uid = currentUser?.uid;
 
-  const onMessageProfile = useCallback((profileUser, roleKey) => {
-    const name = profileUser?.full_name || profileUser?.name || "Support";
-    const email = profileUser?.email || profileUser?.contact_email || profileUser?.contactEmail;
+      // If not logged in: handled by openAuthDialog from caller
+      if (!uid) return;
 
-    if (email) {
-      const subject = encodeURIComponent(`Message: ${name}`);
-      window.location.href = `mailto:${email}?subject=${subject}`;
-      return;
-    }
+      const norm = myRole;
+      const supportTarget = { targetId: "support", targetRole: "support" };
 
-    window.location.href = `/contact?to=${encodeURIComponent(name)}&role=${encodeURIComponent(String(roleKey || ""))}&uid=${encodeURIComponent(
-      String(profileUser?.id || "")
-    )}`;
-  }, []);
+      // ✅ user/student never messages school: route to assigned agent or support
+      if (norm === "user") {
+        const assignedAgent = String(
+          currentUserDoc?.assigned_agent_id ||
+            currentUserDoc?.assignedAgentId ||
+            currentUserDoc?.assigned_agent ||
+            ""
+        ).trim();
 
+        if (assignedAgent) {
+          navToMessages({ studentId: uid, targetId: assignedAgent, targetRole: "agent" });
+          return;
+        }
+
+        navToMessages({ studentId: uid, ...supportTarget });
+        return;
+      }
+
+      // All other roles: route to GP Team
+      navToMessages({ studentId: uid, ...supportTarget });
+    },
+    [currentUser?.uid, currentUserDoc, myRole, navToMessages]
+  );
+
+  const onMessageProfile = useCallback(
+    (profileUser, roleKey) => {
+      const uid = currentUser?.uid;
+      if (!uid) return;
+
+      const targetId = String(profileUser?.id || "").trim();
+      const rRaw = String(
+        roleKey ||
+          profileUser?.user_type ||
+          profileUser?.userType ||
+          profileUser?.role ||
+          "support"
+      );
+      const targetRole = normalizeRole(rRaw);
+
+      // ✅ FIX: ONLY user/student cannot message schools
+      const meRole = myRole || normalizeRole(currentUserDoc?.role || currentUserDoc?.user_type || "");
+      if ((meRole === "user" || meRole === "student") && targetRole === "school") {
+        navToMessages({ studentId: uid, targetId: "support", targetRole: "support" });
+        return;
+      }
+
+      // ✅ Support route
+      if (targetRole === "support") {
+        navToMessages({ studentId: uid, targetId: "support", targetRole: "support" });
+        return;
+      }
+
+      if (!targetId) return;
+      navToMessages({ studentId: uid, targetId, targetRole });
+    },
+    [currentUser?.uid, currentUserDoc, myRole, navToMessages, normalizeRole]
+  );
+
+  /* -----------------------------
+     Auth modal helpers
+   ----------------------------- */
   const resetAuthForm = useCallback(() => {
     setAuthError("");
     setAuthLoading(false);
@@ -1056,18 +1207,13 @@ export default function Directory() {
       resetAuthForm();
 
       setForceStudentSignup(forceStudent);
-      if (forceStudent) setSignupRole("user"); // auto student
+      if (forceStudent) setSignupRole("user");
 
       setAuthDialogOpen(true);
     },
     [resetAuthForm]
   );
 
-  /**
-   * ✅ afterAuthSuccess
-   * - If onboardingRole provided => redirect to onboarding (new signup)
-   * - Else, resume pendingAction
-   */
   const afterAuthSuccess = useCallback(
     (opts = {}) => {
       const onboardingRole = opts?.onboardingRole;
@@ -1097,20 +1243,66 @@ export default function Directory() {
     [navigate, onContactSchool, onMessageProfile, pendingAction]
   );
 
+  /* -----------------------------
+     ✅ Message click logic (directory)
+   ----------------------------- */
   const onMessageClick = useCallback(
     (profileUser) => {
       if (!profileUser) return;
 
-      if (currentUser) {
-        onMessageProfile(profileUser, browseTab);
+      // If NOT logged in: force student signup when messaging agent/tutor
+      if (!currentUser || !currentUserDoc) {
+        const forceStudent = browseTab === "tutor" || browseTab === "agent";
+        openAuthDialog(
+          { type: "message_profile", profile: profileUser, roleKey: browseTab },
+          { forceStudent }
+        );
         return;
       }
 
-      const forceStudent = browseTab === "tutor" || browseTab === "agent";
+      const me = myRole || "";
+      const targetRole = normalizeRole(
+        browseTab ||
+          profileUser?.role ||
+          profileUser?.selected_role ||
+          profileUser?.user_type ||
+          profileUser?.userType ||
+          ""
+      );
 
-      openAuthDialog({ type: "message_profile", profile: profileUser, roleKey: browseTab }, { forceStudent });
+      // 🚫 Hard policy: schools cannot message students/users
+      if (me === "school" && targetRole === "user") {
+        window.alert("Schools cannot message students. Schools can only contact Admin/Advisor (GP Team).");
+        navToMessages({ studentId: currentUser.uid, targetId: "support", targetRole: "support" });
+        return;
+      }
+
+      // 🔒 Subscription gate: agent/tutor must be subscribed to use messaging
+      if ((me === "agent" || me === "tutor") && !hasActiveSubscription(currentUserDoc)) {
+        navigate(`/checkout?plan=${encodeURIComponent(`${me}_yearly`)}`);
+        return;
+      }
+
+      // ✅ FIX: ONLY user/student cannot message schools (covers any future school-profile message button)
+      if ((me === "user" || me === "student") && targetRole === "school") {
+        navToMessages({ studentId: currentUser.uid, targetId: "support", targetRole: "support" });
+        return;
+      }
+
+      // ✅ Proceed
+      onMessageProfile(profileUser, browseTab);
     },
-    [browseTab, currentUser, onMessageProfile, openAuthDialog]
+    [
+      browseTab,
+      currentUser,
+      currentUserDoc,
+      myRole,
+      navigate,
+      navToMessages,
+      normalizeRole,
+      onMessageProfile,
+      openAuthDialog,
+    ]
   );
 
   const handleLogin = useCallback(async () => {
@@ -1193,12 +1385,6 @@ export default function Directory() {
 
   const isValidRole = (r) => ["user", "agent", "tutor"].includes(String(r || "").toLowerCase().trim());
 
-  /**
-   * ✅ OAuth Sign In
-   * intent:
-   *  - "login": if user not found in Firestore => show "no account exists" and cleanup
-   *  - "signup": role already chosen (signupRole); auto-redirect to onboarding after signup
-   */
   const handleOAuthSignIn = useCallback(
     async (providerKey, intent = "login") => {
       setAuthError("");
@@ -1218,7 +1404,6 @@ export default function Directory() {
           throw new Error("Unsupported provider.");
         }
 
-        // ✅ If intent is signup, validate role BEFORE opening popup
         if (intent === "signup") {
           const role = String(signupRole || "").toLowerCase().trim();
           if (!isValidRole(role)) {
@@ -1241,10 +1426,8 @@ export default function Directory() {
         const existing = existsInDb ? snap.data() || {} : null;
         const roleInDoc = detectRoleFromUserDoc(existing || {});
 
-        // ✅ LOGIN intent: must exist in Firestore users collection
         if (intent === "login") {
           if (!existsInDb || isNewUser) {
-            // If firebase created a brand-new auth user but we don't have a DB doc, cleanup
             try {
               if (isNewUser) await deleteUser(fbUser);
             } catch {}
@@ -1262,14 +1445,12 @@ export default function Directory() {
             return;
           }
 
-          afterAuthSuccess(); // resumes pendingAction (intended for login)
+          afterAuthSuccess();
           return;
         }
 
-        // ✅ SIGNUP intent
         const role = String(signupRole || "").toLowerCase().trim();
 
-        // If account already exists with a role, block signup and send them to login
         if (existsInDb && roleInDoc) {
           try {
             await signOut(auth);
@@ -1279,7 +1460,6 @@ export default function Directory() {
           return;
         }
 
-        // Make sure a doc exists (at least basic)
         await ensureBasicUserDoc(fbUser);
 
         const fullName = (fbUser.displayName || existing?.full_name || "").trim();
@@ -1292,12 +1472,10 @@ export default function Directory() {
               uid: fbUser.uid,
               email,
               full_name: fullName,
-
               user_type: role,
               userType: role,
               role,
               selected_role: role,
-
               updated_at: serverTimestamp(),
               created_at: serverTimestamp(),
               createdAt: Date.now(),
@@ -1305,12 +1483,10 @@ export default function Directory() {
             { merge: true }
           );
 
-          // ✅ OAuth signup (auto) => onboarding
           afterAuthSuccess({ onboardingRole: role });
           return;
         }
 
-        // Otherwise, ask for name then onboarding
         setOauthUser({
           uid: fbUser.uid,
           email,
@@ -1325,7 +1501,13 @@ export default function Directory() {
         setAuthLoading(false);
       }
     },
-    [afterAuthSuccess, detectRoleFromUserDoc, ensureBasicUserDoc, forceStudentSignup, signupRole]
+    [
+      afterAuthSuccess,
+      detectRoleFromUserDoc,
+      ensureBasicUserDoc,
+      forceStudentSignup,
+      signupRole,
+    ]
   );
 
   const handleOAuthComplete = useCallback(async () => {
@@ -1343,7 +1525,6 @@ export default function Directory() {
       const name = (oauthName || "").trim();
       if (!name) throw new Error("Please enter your full name to continue.");
 
-      // optional update displayName if missing
       if (auth.currentUser?.uid === oauthUser.uid && name && !auth.currentUser.displayName) {
         try {
           await updateProfile(auth.currentUser, { displayName: name });
@@ -1356,12 +1537,10 @@ export default function Directory() {
           uid: oauthUser.uid,
           email: oauthUser.email || auth.currentUser?.email || "",
           full_name: name || oauthUser.full_name || auth.currentUser?.displayName || "",
-
           user_type: role,
           userType: role,
           role: role,
           selected_role: role,
-
           updated_at: serverTimestamp(),
           created_at: serverTimestamp(),
           createdAt: Date.now(),
@@ -1369,7 +1548,6 @@ export default function Directory() {
         { merge: true }
       );
 
-      // ✅ OAuth signup => onboarding
       afterAuthSuccess({ onboardingRole: role });
     } catch (e) {
       setAuthError(e?.message || "Could not finish setup. Please try again.");
@@ -1384,7 +1562,11 @@ export default function Directory() {
       const url = programId
         ? `/programdetails?id=${encodeURIComponent(String(programId))}`
         : `/schooldetails?school=${encodeURIComponent(
-            schoolItem?.school_key || schoolItem?.name || schoolItem?.school_name || schoolItem?.institution_name || ""
+            schoolItem?.school_key ||
+              schoolItem?.name ||
+              schoolItem?.school_name ||
+              schoolItem?.institution_name ||
+              ""
           )}`;
 
       if (currentUser) {
@@ -1399,13 +1581,14 @@ export default function Directory() {
 
   const onContactClick = useCallback(
     (schoolItem) => {
-      if (currentUser) {
+      if (currentUser && currentUserDoc) {
         onContactSchool(schoolItem);
         return;
       }
-      openAuthDialog({ type: "contact", schoolItem });
+      // ✅ Not logged in: require login; treat as prospective student
+      openAuthDialog({ type: "contact", schoolItem }, { forceStudent: true });
     },
-    [currentUser, onContactSchool, openAuthDialog]
+    [currentUser, currentUserDoc, onContactSchool, openAuthDialog]
   );
 
   if (loading) {
@@ -1436,23 +1619,44 @@ export default function Directory() {
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Sign in required</DialogTitle>
-            <DialogDescription>You need to log in to continue. You can use email/password, or sign in with Google / Apple.</DialogDescription>
+            <DialogDescription>
+              You need to log in to continue. You can use email/password, or sign in with Google / Apple.
+            </DialogDescription>
           </DialogHeader>
 
           {authError ? (
-            <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{authError}</div>
+            <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+              {authError}
+            </div>
           ) : null}
 
           {/* CHOICE */}
           {authStep === "choice" ? (
             <div className="mt-4 space-y-3">
-              <Button className="w-full h-11" onClick={() => handleOAuthSignIn("google", "login")} disabled={authLoading}>
-                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Chrome className="w-4 h-4 mr-2" />}
+              <Button
+                className="w-full h-11"
+                onClick={() => handleOAuthSignIn("google", "login")}
+                disabled={authLoading}
+              >
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Chrome className="w-4 h-4 mr-2" />
+                )}
                 Log in with Google
               </Button>
 
-              <Button variant="outline" className="w-full h-11" onClick={() => handleOAuthSignIn("apple", "login")} disabled={authLoading}>
-                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Apple className="w-4 h-4 mr-2" />}
+              <Button
+                variant="outline"
+                className="w-full h-11"
+                onClick={() => handleOAuthSignIn("apple", "login")}
+                disabled={authLoading}
+              >
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Apple className="w-4 h-4 mr-2" />
+                )}
                 Log in with Apple
               </Button>
 
@@ -1560,7 +1764,12 @@ export default function Directory() {
 
               <div className="text-sm text-gray-600 text-center">
                 No account yet?{" "}
-                <button type="button" className="text-blue-600 underline hover:text-blue-700" onClick={() => setAuthStep("role")} disabled={authLoading}>
+                <button
+                  type="button"
+                  className="text-blue-600 underline hover:text-blue-700"
+                  onClick={() => setAuthStep("role")}
+                  disabled={authLoading}
+                >
                   Create one
                 </button>
               </div>
@@ -1603,7 +1812,10 @@ export default function Directory() {
           {authStep === "signup_method" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
-                Creating account as: <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+                Creating account as:{" "}
+                <span className="font-semibold capitalize">
+                  {signupRole === "user" ? "Student" : signupRole}
+                </span>
               </div>
 
               <Button className="w-full h-11" onClick={() => handleOAuthSignIn("google", "signup")} disabled={authLoading}>
@@ -1642,7 +1854,10 @@ export default function Directory() {
           {authStep === "signup_email" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
-                Creating account as: <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+                Creating account as:{" "}
+                <span className="font-semibold capitalize">
+                  {signupRole === "user" ? "Student" : signupRole}
+                </span>
               </div>
 
               <div className="space-y-2">
@@ -1712,17 +1927,29 @@ export default function Directory() {
             </div>
           ) : null}
 
-          {/* ✅ OAUTH FINISH (CONFIRM NAME THEN ONBOARDING) */}
+          {/* ✅ OAUTH FINISH */}
           {authStep === "oauth_finish" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
-                Creating account as: <span className="font-semibold capitalize">{signupRole === "user" ? "Student" : signupRole}</span>
+                Creating account as:{" "}
+                <span className="font-semibold capitalize">
+                  {signupRole === "user" ? "Student" : signupRole}
+                </span>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Full name</label>
-                <Input value={oauthName} onChange={(e) => setOauthName(e.target.value)} placeholder="Your name" className="h-11" autoComplete="name" disabled={authLoading} />
-                <p className="text-xs text-gray-500">Apple may not provide your name every time — you can type it here.</p>
+                <Input
+                  value={oauthName}
+                  onChange={(e) => setOauthName(e.target.value)}
+                  placeholder="Your name"
+                  className="h-11"
+                  autoComplete="name"
+                  disabled={authLoading}
+                />
+                <p className="text-xs text-gray-500">
+                  Apple may not provide your name every time — you can type it here.
+                </p>
               </div>
 
               <Button className="w-full h-11" onClick={handleOAuthComplete} disabled={authLoading}>
@@ -1743,7 +1970,6 @@ export default function Directory() {
         </DialogContent>
       </Dialog>
 
-      {/* --- REST OF YOUR PAGE UI BELOW (UNCHANGED) --- */}
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         <div className="mb-8 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-4">
@@ -1767,7 +1993,10 @@ export default function Directory() {
                 key={t.key}
                 type="button"
                 variant={browseTab === t.key ? "default" : "outline"}
-                className={["h-10 px-5 text-base rounded-xl shadow-sm", browseTab === t.key ? "shadow" : ""].join(" ")}
+                className={[
+                  "h-10 px-5 text-base rounded-xl shadow-sm",
+                  browseTab === t.key ? "shadow" : "",
+                ].join(" ")}
                 onClick={() => {
                   setBrowseTab(t.key);
                   setSelectedCountry("all");
@@ -1798,7 +2027,11 @@ export default function Directory() {
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                       <Input
                         type="text"
-                        placeholder={browseTab === "school" ? "Search schools, institutions, programs..." : `Search ${browseTab}s by name, country...`}
+                        placeholder={
+                          browseTab === "school"
+                            ? "Search schools, institutions, programs..."
+                            : `Search ${browseTab}s by name, country...`
+                        }
                         value={searchTerm}
                         onChange={handleSearchChange}
                         className="pl-10 h-11 text-base"
@@ -1818,8 +2051,10 @@ export default function Directory() {
 
                   {browseTab === "school" ? (
                     <>
+                      {/* ✅ FIX: Pass BOTH props to avoid mismatch with your ProvinceSelector implementation */}
                       <ProvinceSelector
                         value={selectedProvince}
+                        onChange={handleProvinceChange}
                         onValueChange={handleProvinceChange}
                         placeholder="All Provinces"
                         includeAll={true}
@@ -1855,8 +2090,14 @@ export default function Directory() {
                     {totalCount > 0 ? (
                       <>
                         Showing <span className="font-medium">{startIndex + 1}</span>–<span className="font-medium">{endIndex}</span> of{" "}
-                        <span className="font-medium">{totalCount}</span> {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}
-                        {browseTab === "school" ? <> ({allSchools.length} programs, {allInstitutions.length} institutions)</> : null}
+                        <span className="font-medium">{totalCount}</span>{" "}
+                        {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}
+                        {browseTab === "school" ? (
+                          <>
+                            {" "}
+                            ({allSchools.length} programs, {allInstitutions.length} institutions)
+                          </>
+                        ) : null}
                       </>
                     ) : (
                       <>Showing 0 {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}</>
@@ -1880,7 +2121,9 @@ export default function Directory() {
               <CardContent className="p-4 h-full flex flex-col min-h-0">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900">
-                    {browseTab === "school" ? "Schools & Institutions" : `${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)}s`}
+                    {browseTab === "school"
+                      ? "Schools & Institutions"
+                      : `${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)}s`}
                   </h3>
                   <Badge variant="secondary">{totalCount}</Badge>
                 </div>
@@ -1889,9 +2132,19 @@ export default function Directory() {
                   {pagedItems.map((item) => {
                     const key = item.school_key || item.id;
                     return browseTab === "school" ? (
-                      <SchoolListRow key={key} item={item} isSelected={key === selectedKey} onSelect={() => setSelectedKey(key)} />
+                      <SchoolListRow
+                        key={key}
+                        item={item}
+                        isSelected={key === selectedKey}
+                        onSelect={() => setSelectedKey(key)}
+                      />
                     ) : (
-                      <UserListRow key={key} user={item} isSelected={key === selectedKey} onSelect={() => setSelectedKey(key)} />
+                      <UserListRow
+                        key={key}
+                        user={item}
+                        isSelected={key === selectedKey}
+                        onSelect={() => setSelectedKey(key)}
+                      />
                     );
                   })}
                 </div>
@@ -1899,7 +2152,13 @@ export default function Directory() {
                 {/* Pagination */}
                 {totalCount > 0 && totalPages > 1 && (
                   <div className="pt-4 flex items-center justify-center gap-2 flex-wrap">
-                    <Button type="button" variant="outline" size="sm" onClick={() => updatePage(Math.max(1, page - 1))} disabled={page === 1}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updatePage(Math.max(1, page - 1))}
+                      disabled={page === 1}
+                    >
                       Prev
                     </Button>
 
@@ -1922,7 +2181,13 @@ export default function Directory() {
                       )
                     )}
 
-                    <Button type="button" variant="outline" size="sm" onClick={() => updatePage(Math.min(totalPages, page + 1))} disabled={page === totalPages}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updatePage(Math.min(totalPages, page + 1))}
+                      disabled={page === totalPages}
+                    >
                       Next
                     </Button>
                   </div>
@@ -1935,7 +2200,12 @@ export default function Directory() {
           <div className="lg:col-span-7 min-h-0">
             <div className="h-[70vh] min-h-0">
               {browseTab === "school" ? (
-                <SchoolDetailsPanel item={selectedItem} programs={selectedPrograms} onContactClick={onContactClick} onProgramClick={onProgramClick} />
+                <SchoolDetailsPanel
+                  item={selectedItem}
+                  programs={selectedPrograms}
+                  onContactClick={onContactClick}
+                  onProgramClick={onProgramClick}
+                />
               ) : (
                 <UserDetailsPanel user={selectedItem} onMessageClick={onMessageClick} />
               )}
@@ -1946,8 +2216,12 @@ export default function Directory() {
         {/* Empty state */}
         {totalCount === 0 && (
           <div className="text-center py-12">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No {browseTab === "school" ? "schools or institutions" : `${browseTab}s`} found</h3>
-            <p className="text-gray-600 mb-4">Try adjusting your search criteria or clear filters to see all available options.</p>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              No {browseTab === "school" ? "schools or institutions" : `${browseTab}s`} found
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Try adjusting your search criteria or clear filters to see all available options.
+            </p>
             <Button type="button" onClick={clearAllFilters} variant="outline">
               Clear All Filters
             </Button>
