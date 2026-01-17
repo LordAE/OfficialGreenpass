@@ -78,7 +78,7 @@ import {
 ========================= */
 const MARKETING_URL =
   (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
-  "http://localhost:3000/";
+  "https://www.greenpassgroup.com/";
 
 const normalizeUrl = (u = "") => {
   const s = String(u || "").trim();

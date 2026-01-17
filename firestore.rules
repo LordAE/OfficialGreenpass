@@ -828,6 +828,18 @@ service cloud.firestore {
       );
 
       // ===========================
+      // Messaging Usage (per-user)
+      // ===========================
+      // ✅ Required by new messaging limits logic:
+      // Path: users/{uid}/messaging_usage/{YYYY-MM}
+      // Only the owner (or admin) can read/write. No deletes (audit).
+      match /messaging_usage/{mk} {
+        allow get, list: if signedIn() && (request.auth.uid == docId || isAdmin());
+        allow create, update: if signedIn() && (request.auth.uid == docId || isAdmin());
+        allow delete: if false;
+      }
+
+      // ===========================
       // Notifications (All Roles)
       // ===========================
       match /notifications/{nid} {

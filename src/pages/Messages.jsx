@@ -1,6 +1,6 @@
 // src/pages/Messages.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase";
 
@@ -12,10 +12,14 @@ import { Loader2, Send, MessageSquare } from "lucide-react";
 import {
   ensureConversation,
   getUserDoc,
+  resolveUserRole,
   normalizeRole,
   sendMessage,
   listenToMessages,
   listenToMyConversations,
+  createReport,
+  acceptMessagingAgreement,
+  MESSAGING_LIMITS,
 } from "@/api/messaging";
 
 function displayName(u) {
@@ -31,8 +35,19 @@ function avatarUrl(u) {
   );
 }
 
+function isSubInactiveForRole(userDoc) {
+  const role = resolveUserRole(userDoc);
+  if (!(role === "agent" || role === "tutor" || role === "school")) return false;
+
+  // Use your real schema:
+  if (userDoc?.subscription_active === true) return false;
+  const s = String(userDoc?.subscription_status || "").toLowerCase().trim();
+  return !(s === "active" || s === "trialing");
+}
+
 export default function Messages() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
 
   const to = params.get("to") || "";
@@ -59,19 +74,23 @@ export default function Messages() {
   const msgsUnsubRef = useRef(null);
   const convoUnsubRef = useRef(null);
 
-  // Optional: smart autoscroll (only scroll if user is near bottom)
+  // ✅ SMART scroll (no jump on open)
   const listRef = useRef(null);
+  const didOpenConvRef = useRef(false);
+  const prevMsgCountRef = useRef(0);
 
-  const myRole = useMemo(() => {
-    return normalizeRole(meDoc?.user_type || meDoc?.selected_role || meDoc?.role || "user");
-  }, [meDoc]);
+  // Prompts
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgradeInfo, setUpgradeInfo] = useState(null);
 
-  const safeSetPeerCache = useCallback((uid, doc) => {
+  const [showReport, setShowReport] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+
+  const myRole = useMemo(() => resolveUserRole(meDoc), [meDoc]);
+
+  const safeSetPeerCache = useCallback((uid, docu) => {
     if (!uid) return;
-    setPeerCache((prev) => {
-      if (prev[uid]) return prev;
-      return { ...prev, [uid]: doc };
-    });
+    setPeerCache((prev) => (prev[uid] ? prev : { ...prev, [uid]: docu }));
   }, []);
 
   // Auth bootstrap
@@ -82,7 +101,6 @@ export default function Messages() {
       if (!u) {
         if (msgsUnsubRef.current) msgsUnsubRef.current();
         msgsUnsubRef.current = null;
-
         if (convoUnsubRef.current) convoUnsubRef.current();
         convoUnsubRef.current = null;
 
@@ -131,7 +149,7 @@ export default function Messages() {
         if (updated) setSelectedConv(updated);
       }
 
-      // warm cache
+      // warm cache (names in inbox)
       const others = new Set();
       for (const c of list || []) {
         const parts = Array.isArray(c?.participants) ? c.participants : [];
@@ -162,7 +180,7 @@ export default function Messages() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.uid, selectedConv?.id, safeSetPeerCache]);
 
-  // First-time chat via ?to=
+  // First-time open via ?to=
   useEffect(() => {
     if (!me?.uid || !meDoc) return;
     if (!to) return;
@@ -171,25 +189,9 @@ export default function Messages() {
       try {
         setErrorText("");
 
-        if ((myRole === "user" || myRole === "student") && toRole === "school") {
-          const conv = await ensureConversation({
-            meId: me.uid,
-            meRole: myRole,
-            targetId: "support",
-            targetRole: "support",
-            source: "blocked_school_message",
-          });
-
-          setSelectedConv(conv);
-          const support = { id: "support", full_name: "Support" };
-          setPeerDoc(support);
-          safeSetPeerCache("support", support);
-          return;
-        }
-
         const conv = await ensureConversation({
           meId: me.uid,
-          meRole: myRole,
+          meDoc,
           targetId: to,
           targetRole: toRole || "support",
           source: location?.state?.source || "directory",
@@ -197,19 +199,31 @@ export default function Messages() {
 
         setSelectedConv(conv);
 
-        if (to && to !== "support") {
-          const udoc = await getUserDoc(to);
-          if (udoc) {
-            setPeerDoc(udoc);
-            safeSetPeerCache(to, udoc);
-          }
-        } else {
+        // Load peer
+        const participants = Array.isArray(conv?.participants) ? conv.participants : [];
+        const otherId = participants.find((x) => x && x !== me.uid) || "support";
+
+        if (otherId === "support") {
           const support = { id: "support", full_name: "Support" };
           setPeerDoc(support);
           safeSetPeerCache("support", support);
+        } else {
+          const udoc = await getUserDoc(otherId);
+          if (udoc) {
+            setPeerDoc(udoc);
+            safeSetPeerCache(otherId, udoc);
+          }
         }
       } catch (e) {
         console.error("ensure/open conversation error:", e);
+
+        if (e?.code === "LIMIT_REACHED") {
+          setUpgradeInfo(e.details || null);
+          setShowUpgrade(true);
+          setErrorText("");
+          return;
+        }
+
         setErrorText(e?.message || "Failed to open conversation.");
       }
     })();
@@ -219,6 +233,10 @@ export default function Messages() {
   // Selected conversation -> realtime messages
   useEffect(() => {
     if (!me?.uid || !selectedConv?.id) return;
+
+    // reset smart scroll on convo switch
+    didOpenConvRef.current = false;
+    prevMsgCountRef.current = 0;
 
     if (msgsUnsubRef.current) msgsUnsubRef.current();
     msgsUnsubRef.current = null;
@@ -271,39 +289,34 @@ export default function Messages() {
     };
   }, [me?.uid, selectedConv?.id, peerCache, safeSetPeerCache]);
 
-  // ✅ Smart auto-scroll (only if user is near bottom)
-const didOpenConvRef = useRef(false);
-const prevMsgCountRef = useRef(0);
+  // ✅ Smart auto-scroll:
+  // - DO NOT scroll when opening a conversation
+  // - Only scroll when NEW messages arrive AND user already near bottom
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
 
-useEffect(() => {
-  const el = listRef.current;
-  if (!el) return;
+    const currentCount = messages?.length || 0;
 
-  const currentCount = messages?.length || 0;
+    // first update after opening: skip
+    if (!didOpenConvRef.current) {
+      didOpenConvRef.current = true;
+      prevMsgCountRef.current = currentCount;
+      return;
+    }
 
-  // When you switch/open a conversation:
-  // record count and SKIP auto-scroll once
-  if (!didOpenConvRef.current) {
-    didOpenConvRef.current = true;
+    const added = currentCount > prevMsgCountRef.current;
     prevMsgCountRef.current = currentCount;
-    return;
-  }
+    if (!added) return;
 
-  // Only react to NEW messages (count increased)
-  const added = currentCount > prevMsgCountRef.current;
-  prevMsgCountRef.current = currentCount;
-  if (!added) return;
+    const threshold = 140;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isNearBottom = distanceFromBottom < threshold;
 
-  // Only scroll if user is already near bottom
-  const threshold = 140;
-  const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-  const isNearBottom = distanceFromBottom < threshold;
-
-  if (isNearBottom) {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }
-}, [messages?.length]);
-
+    if (isNearBottom) {
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages?.length]);
 
   const handlePickConversation = useCallback((conv) => {
     setSelectedConv(conv);
@@ -323,15 +336,80 @@ useEffect(() => {
         conversationId: selectedConv.id,
         conversationDoc: selectedConv,
         senderId: me.uid,
+        senderDoc: meDoc,
         text: t,
       });
-
-      // ✅ No manual refresh. Listener updates automatically.
     } catch (e) {
       console.error("send message error:", e);
+
+      if (e?.code === "SUBSCRIPTION_REQUIRED") {
+        setErrorText("Messaging is locked. Please activate your subscription to continue.");
+        return;
+      }
+
+      if (e?.code === "WAIT_FOR_REPLY") {
+        setErrorText(
+          `You can send up to ${MESSAGING_LIMITS.PRO_MAX_OUTBOUND_UNTIL_REPLY} messages until the other user replies.`
+        );
+        return;
+      }
+
       setErrorText(e?.message || "Failed to send message.");
     }
-  }, [me?.uid, selectedConv, text]);
+  }, [me?.uid, selectedConv, text, meDoc]);
+
+  // Agreement banner: uses timestamp in your doc
+  const showAgreement =
+    myRole === "student" &&
+    meDoc &&
+    !meDoc?.messaging_agreement_accepted_at;
+
+  const handleAcceptAgreement = useCallback(async () => {
+    if (!me?.uid) return;
+    try {
+      await acceptMessagingAgreement(me.uid);
+      const updated = await getUserDoc(me.uid);
+      setMeDoc(updated || meDoc);
+    } catch (e) {
+      setErrorText(e?.message || "Failed to accept agreement.");
+    }
+  }, [me?.uid, meDoc]);
+
+  // Subscription lock state for agent/tutor/school
+  const locked = isSubInactiveForRole(meDoc);
+
+  const peerName = displayName(peerDoc);
+  const peerAvatar = avatarUrl(peerDoc);
+
+  const participants = Array.isArray(selectedConv?.participants) ? selectedConv.participants : [];
+  const otherId = participants.find((x) => x && x !== me?.uid) || "support";
+  const otherRole = normalizeRole(selectedConv?.roles?.[otherId] || toRole || "support");
+
+  const canReport =
+    myRole === "student" &&
+    (otherRole === "agent" || otherRole === "tutor" || otherRole === "vendor") &&
+    selectedConv?.id;
+
+  const handleSubmitReport = useCallback(async () => {
+    if (!me?.uid || !selectedConv?.id) return;
+
+    try {
+      await createReport({
+        reporterId: me.uid,
+        reporterDoc: meDoc,
+        conversationId: selectedConv.id,
+        reportedUserId: otherId,
+        reportedRole: otherRole,
+        reason: reportReason,
+      });
+
+      setShowReport(false);
+      setReportReason("");
+      setErrorText("Report submitted. Our team will review platform chat logs only.");
+    } catch (e) {
+      setErrorText(e?.message || "Failed to submit report.");
+    }
+  }, [me?.uid, meDoc, selectedConv?.id, otherId, otherRole, reportReason]);
 
   if (loading) {
     return (
@@ -349,16 +427,11 @@ useEffect(() => {
           <CardHeader>
             <CardTitle>Messages</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-gray-600">
-            Please log in to use messaging.
-          </CardContent>
+          <CardContent className="text-sm text-gray-600">Please log in to use messaging.</CardContent>
         </Card>
       </div>
     );
   }
-
-  const peerName = displayName(peerDoc);
-  const peerAvatar = avatarUrl(peerDoc);
 
   return (
     <div className="p-4 md:p-6">
@@ -368,8 +441,51 @@ useEffect(() => {
         </div>
       ) : null}
 
+      {/* ✅ Agreement banner */}
+      {showAgreement ? (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+          <div className="font-semibold mb-1">Before you start messaging</div>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Keep important terms inside chat for traceability.</li>
+            <li>GreenPass is not liable for external payments.</li>
+            <li>If transactions happen outside the platform with no trace, reports may be disregarded.</li>
+          </ul>
+          <div className="mt-3">
+            <Button onClick={handleAcceptAgreement}>I Agree</Button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ✅ Upgrade prompt */}
+      {showUpgrade ? (
+        <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-900">
+          <div className="font-semibold mb-1">You reached your free messaging limit</div>
+          <div className="mb-2">You can start only limited new conversations per month on the free tier.</div>
+          <div className="flex gap-2">
+            <Button onClick={() => navigate("/pricing")}>Upgrade ($19/year)</Button>
+            <Button variant="outline" onClick={() => setShowUpgrade(false)}>
+              Not now
+            </Button>
+          </div>
+          {upgradeInfo?.bucket ? (
+            <div className="mt-2 text-xs text-blue-800">
+              Bucket: {upgradeInfo.bucket}, Month: {upgradeInfo.key}, Limit: {upgradeInfo.limit}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* ✅ Subscription locked */}
+      {locked ? (
+        <div className="mb-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800">
+          <div className="font-semibold mb-1">Messaging is locked</div>
+          <div className="mb-2">Your subscription is inactive/pending. Activate it to use messaging.</div>
+          <Button onClick={() => navigate("/pricing")}>Go to Payment</Button>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-        {/* Left: conversations */}
+        {/* Left: inbox */}
         <Card className="md:col-span-4 h-[75vh] overflow-hidden">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
@@ -384,18 +500,11 @@ useEffect(() => {
             ) : (
               <div className="divide-y">
                 {conversations.map((c) => {
-                  const participants = Array.isArray(c.participants) ? c.participants : [];
-                  const otherId = participants.find((x) => x && x !== me.uid) || "support";
+                  const parts = Array.isArray(c.participants) ? c.participants : [];
+                  const oid = parts.find((x) => x && x !== me.uid) || "support";
 
-                  const otherDoc =
-                    otherId === "support"
-                      ? { id: "support", full_name: "Support" }
-                      : peerCache[otherId];
-
-                  const title =
-                    displayName(otherDoc) ||
-                    (otherId === "support" ? "Support" : `Chat (${otherId.slice(0, 6)}…)`);
-
+                  const oDoc = oid === "support" ? { id: "support", full_name: "Support" } : peerCache[oid];
+                  const title = displayName(oDoc) || (oid === "support" ? "Support" : `Chat (${oid.slice(0, 6)}…)`);
                   const isActive = selectedConv?.id === c.id;
 
                   return (
@@ -419,14 +528,20 @@ useEffect(() => {
         {/* Right: chat */}
         <Card className="md:col-span-8 h-[75vh] overflow-hidden flex flex-col">
           <CardHeader className="border-b">
-            <div className="flex items-center gap-3">
-              <img src={peerAvatar} alt={peerName} className="h-10 w-10 rounded-full object-cover" />
-              <div>
-                <div className="font-semibold text-gray-900">{peerName}</div>
-                <div className="text-xs text-gray-600 capitalize">
-                  {normalizeRole(selectedConv?.roles?.[peerDoc?.id] || toRole || "support")}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <img src={peerAvatar} alt={peerName} className="h-10 w-10 rounded-full object-cover" />
+                <div>
+                  <div className="font-semibold text-gray-900">{peerName}</div>
+                  <div className="text-xs text-gray-600 capitalize">{otherRole}</div>
                 </div>
               </div>
+
+              {canReport ? (
+                <Button variant="outline" onClick={() => setShowReport(true)}>
+                  Report
+                </Button>
+              ) : null}
             </div>
           </CardHeader>
 
@@ -467,15 +582,41 @@ useEffect(() => {
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleSend();
               }}
-              disabled={!selectedConv}
+              disabled={!selectedConv || locked || showAgreement}
             />
-            <Button onClick={handleSend} disabled={!selectedConv || !text.trim()}>
+            <Button onClick={handleSend} disabled={!selectedConv || locked || showAgreement || !text.trim()}>
               <Send className="h-4 w-4 mr-2" />
               Send
             </Button>
           </div>
         </Card>
       </div>
+
+      {/* Report modal */}
+      {showReport ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-lg">
+            <div className="font-semibold text-gray-900 mb-1">Report {peerName}</div>
+            <div className="text-xs text-gray-600 mb-3">
+              Investigation uses platform chat logs only.
+            </div>
+
+            <textarea
+              className="w-full h-28 border rounded-lg p-2 text-sm"
+              placeholder="What happened? (optional)"
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+            />
+
+            <div className="mt-3 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowReport(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSubmitReport}>Submit report</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
