@@ -71,7 +71,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         {/* Index → Home */}
-        <Route index element={<Directory />} />
+        <Route index element={<Welcome />} />
         <Route path="welcome" element={<Welcome />} />
         <Route path="messages" element={<Messages />} />
 
@@ -146,7 +146,6 @@ export default function App() {
         {/* Payments / orders */}
         <Route path="checkout" element={<Checkout />} />
 
-        {/* User utilities */}
         <Route path="userdetails" element={<UserDetails />} />
       </Route>
     </Routes>

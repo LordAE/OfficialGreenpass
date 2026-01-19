@@ -27,7 +27,7 @@ export default function Dashboard() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
         // No Firebase user logged in → redirect to Home
-        navigate(createPageUrl('Home'));
+        navigate(createPageUrl('Welcome'));
         setLoading(false);
         return;
       }

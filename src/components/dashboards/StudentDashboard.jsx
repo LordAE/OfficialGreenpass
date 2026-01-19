@@ -1,549 +1,544 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import React, { useEffect, useMemo, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Case, TutoringSession, Reservation } from "@/api/entities";
 import {
+  MoreHorizontal,
+  Globe,
+  UserPlus,
+  UserMinus,
+  Send,
+  Sparkles,
+  ShieldCheck,
+  Building2,
   GraduationCap,
-  BookOpen,
-  FileText,
-  Calendar,
   Users,
-  ArrowRight,
-  CheckCircle,
-  AlertCircle,
   Loader2,
-  CreditCard,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { format } from "date-fns";
 
-import ProfileCompletionBanner from "../profile/ProfileCompletionBanner";
-import ActionBlocker from "../profile/ActionBlocker";
-import { getProfileCompletionData } from "../profile/ProfileCompletionBanner";
+// 🔥 Firebase
+import { db, auth } from "@/firebase";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+  limit,
+  writeBatch,
+  serverTimestamp,
+} from "firebase/firestore";
 
-/* -------------------- SAFE HELPERS (date & arrays) -------------------- */
+/* -------------------- Small helpers -------------------- */
 const toValidDate = (v) => {
-  // Firestore Timestamp?
-  if (v && typeof v === "object") {
-    if (typeof v.toDate === "function") {
-      const d = v.toDate();
-      return isNaN(d?.getTime()) ? null : d;
-    }
-    if (typeof v.seconds === "number") {
-      const d = new Date(v.seconds * 1000);
-      return isNaN(d?.getTime()) ? null : d;
-    }
-  }
-  // number (epoch ms or seconds)
-  if (typeof v === "number") {
-    const d = new Date(v > 1e12 ? v : v * 1000);
-    return isNaN(d?.getTime()) ? null : d;
-  }
-  // string (ISO or epoch-in-string)
-  if (typeof v === "string") {
-    const s = v.trim();
-    if (!s) return null;
-    if (/^\d+$/.test(s)) {
-      const n = Number(s);
-      const d = new Date(n > 1e12 ? n : n * 1000);
-      return isNaN(d?.getTime()) ? null : d;
-    }
-    const d = new Date(s);
-    return isNaN(d?.getTime()) ? null : d;
-  }
-  return null;
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  if (typeof v === "object" && typeof v.toDate === "function") return v.toDate(); // Firestore Timestamp
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
 };
 
-const fmt = (v, fmtStr = "MMM dd, h:mm a") => {
-  const d = toValidDate(v);
+const timeAgo = (dt) => {
+  const d = toValidDate(dt);
   if (!d) return "—";
-  try {
-    return format(d, fmtStr);
-  } catch {
-    return d.toLocaleString();
-  }
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d`;
+  const w = Math.floor(days / 7);
+  if (w < 4) return `${w}w`;
+  const mo = Math.floor(days / 30);
+  if (mo < 12) return `${mo}mo`;
+  const y = Math.floor(days / 365);
+  return `${y}y`;
 };
 
-const arr = (x) => (Array.isArray(x) ? x : x ? [x] : []);
-/* --------------------------------------------------------------------- */
+const Avatar = ({ name = "User", role = "user" }) => {
+  const initials = String(name)
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((x) => x[0]?.toUpperCase())
+    .join("");
 
-/* ✅ SUBSCRIPTION LOGIC (based on your real user doc fields)
-   - subscription_active (boolean)
-   - subscription_status (string e.g. "skipped", "active")
-*/
-function isSubscribedUser(u) {
-  if (!u) return false;
-  if (u.subscription_active === true) return true;
+  const roleIcon =
+    role === "school" ? (
+      <Building2 className="h-3.5 w-3.5" />
+    ) : role === "tutor" ? (
+      <GraduationCap className="h-3.5 w-3.5" />
+    ) : role === "agent" ? (
+      <Users className="h-3.5 w-3.5" />
+    ) : (
+      <ShieldCheck className="h-3.5 w-3.5" />
+    );
 
-  const status = String(u.subscription_status || "").toLowerCase().trim();
-  const ok = new Set(["active", "paid", "trialing"]);
-  return ok.has(status);
-}
-
-const SubscribeBanner = ({ to, user }) => {
-  const status = String(user?.subscription_status || "").toLowerCase().trim();
-  const message =
-    status === "skipped"
-      ? "You skipped subscription. Subscribe to unlock full student features and premium access."
-      : status === "expired"
-      ? "Your subscription expired. Renew to regain full student features and premium access."
-      : "You’re not subscribed yet. Subscribe to unlock full student features and premium access.";
+  const roleColor =
+    role === "school"
+      ? "bg-blue-600"
+      : role === "tutor"
+      ? "bg-purple-600"
+      : role === "agent"
+      ? "bg-emerald-600"
+      : "bg-gray-600";
 
   return (
-    <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5">
-          <CreditCard className="w-5 h-5 text-red-600" />
-        </div>
-        <div>
-          <p className="font-semibold text-red-800">Subscription required</p>
-          <p className="text-sm text-red-700">{message}</p>
-        </div>
+    <div className="relative">
+      <div className="h-11 w-11 rounded-full bg-gradient-to-br from-emerald-500 to-blue-600 text-white flex items-center justify-center font-semibold">
+        {initials || "U"}
       </div>
-
-      <Link to={to}>
-        <Button className="bg-red-600 hover:bg-red-700 w-full sm:w-auto">
-          Subscribe Now
-        </Button>
-      </Link>
+      <div
+        className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-full ${roleColor} text-white flex items-center justify-center border-2 border-white`}
+        title={role}
+      >
+        {roleIcon}
+      </div>
     </div>
   );
 };
 
-const StatCard = ({ title, value, icon, to, color = "text-blue-600", subtitle }) => (
-  <Card className="hover:shadow-lg transition-shadow">
-    <CardContent className="p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className={`text-2xl font-bold ${color}`}>{value}</div>
-          <p className="text-gray-600">{title}</p>
-          {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
-        </div>
-        {icon}
-      </div>
-      {to && (
-        <Link to={to}>
-          <Button variant="ghost" size="sm" className="w-full mt-3">
-            View Details <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-        </Link>
-      )}
-    </CardContent>
-  </Card>
+const RoleBadge = ({ role }) => {
+  const cfg =
+    role === "school"
+      ? { label: "School", cls: "bg-blue-50 text-blue-700 border-blue-100" }
+      : role === "tutor"
+      ? { label: "Tutor", cls: "bg-purple-50 text-purple-700 border-purple-100" }
+      : role === "agent"
+      ? { label: "Agent", cls: "bg-emerald-50 text-emerald-700 border-emerald-100" }
+      : { label: "Verified", cls: "bg-gray-50 text-gray-700 border-gray-100" };
+
+  return (
+    <Badge variant="secondary" className={`border ${cfg.cls}`}>
+      {cfg.label}
+    </Badge>
+  );
+};
+
+const StatPill = ({ children }) => (
+  <span className="inline-flex items-center gap-1 rounded-full border bg-white px-2 py-0.5 text-[11px] text-gray-600">
+    {children}
+  </span>
 );
 
-const QuickLink = ({ title, description, to, icon }) => (
-  <Link to={to}>
-    <Card className="hover:shadow-md transition-shadow cursor-pointer">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div>{icon}</div>
-          <div>
-            <h4 className="font-semibold">{title}</h4>
-            <p className="text-sm text-gray-600">{description}</p>
+/* ✅ Real media viewer: multiple images/videos */
+const MediaGallery = ({ media = [] }) => {
+  const items = Array.isArray(media) ? media : [];
+  if (!items.length) return null;
+
+  const many = items.length > 1;
+
+  return (
+    <div className="px-4 pb-4">
+      <div className={`grid gap-2 ${many ? "grid-cols-2" : "grid-cols-1"}`}>
+        {items.slice(0, 4).map((m, idx) => {
+          const type = String(m?.type || "").toLowerCase();
+          const url = m?.url;
+          if (!url) return null;
+
+          if (type === "image") {
+            return (
+              <a
+                key={idx}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="block overflow-hidden rounded-2xl border bg-gray-100"
+                title="Open image"
+              >
+                <img
+                  src={url}
+                  alt={m?.name || `image-${idx}`}
+                  className="h-60 w-full object-cover hover:scale-[1.01] transition"
+                  loading="lazy"
+                />
+              </a>
+            );
+          }
+
+          if (type === "video") {
+            return (
+              <div key={idx} className="overflow-hidden rounded-2xl border bg-black">
+                <video src={url} controls preload="metadata" className="h-60 w-full object-cover" />
+              </div>
+            );
+          }
+
+          return (
+            <a
+              key={idx}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-60 items-center justify-center rounded-2xl border bg-gray-50 text-sm text-gray-600"
+            >
+              Open media
+            </a>
+          );
+        })}
+      </div>
+
+      {items.length > 4 ? (
+        <div className="mt-2 text-xs text-gray-500">+{items.length - 4} more</div>
+      ) : null}
+    </div>
+  );
+};
+
+/* -------------------- Post Card UI (NO like/comment/share) -------------------- */
+function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage }) {
+  const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
+
+  return (
+    <Card className="overflow-hidden rounded-2xl">
+      <CardContent className="p-0">
+        {/* Header */}
+        <div className="p-4 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <Avatar name={post.authorName} role={post.authorRole} />
+            <div className="min-w-0 leading-tight">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="font-semibold text-gray-900 truncate">{post.authorName}</div>
+                <RoleBadge role={String(post.authorRole || "").toLowerCase()} />
+
+                {post.isFeatured ? (
+                  <Badge className="bg-amber-500 text-white">
+                    <Sparkles className="h-3.5 w-3.5 mr-1" />
+                    Featured
+                  </Badge>
+                ) : null}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                <span>{post.timeAgo}</span>
+                <span>•</span>
+                <Globe className="h-3.5 w-3.5" />
+                <span>Public</span>
+              </div>
+
+              {post.tags?.length ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {post.tags.slice(0, 4).map((t) => (
+                    <StatPill key={t}>{t}</StatPill>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
+
+          <Button variant="ghost" size="icon" className="text-gray-500" type="button">
+            <MoreHorizontal className="h-5 w-5" />
+          </Button>
+        </div>
+
+        {/* Body */}
+        {post.text ? (
+          <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
+        ) : null}
+
+        {/* Media */}
+        <MediaGallery media={post.media || []} />
+
+        {/* Follow + Message row */}
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Button
+              className="rounded-xl"
+              variant={isFollowing ? "outline" : "default"}
+              onClick={() => onToggleFollow(post.authorId)}
+              type="button"
+              disabled={!post.authorId}
+            >
+              {isFollowing ? (
+                <>
+                  <UserMinus className="h-4 w-4 mr-2" /> Following
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4 mr-2" /> Follow
+                </>
+              )}
+            </Button>
+
+            <Button
+              className="rounded-xl"
+              variant="outline"
+              disabled={!canMessage}
+              onClick={() => onMessage(post)}
+              type="button"
+              title={
+                canMessage
+                  ? "Message this creator"
+                  : "Students cannot message Schools. Please contact Admin/Advisor."
+              }
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {canMessage ? "Message" : "Message (Not allowed)"}
+            </Button>
+          </div>
+
+          {!canMessage ? (
+            <div className="mt-2 text-xs text-gray-500">
+              Schools can’t be messaged directly. Follow them to get updates.
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>
-  </Link>
-);
+  );
+}
 
-export default function StudentDashboard({ user }) {
-  const [stats, setStats] = useState({
-    totalSessions: 0,
-    upcomingSessions: 0,
-    visaApplications: 0,
-    schoolReservations: 0,
-    sessionCredits: 0,
-  });
-  const [upcomingSessions, setUpcomingSessions] = useState([]);
-  const [visaCases, setVisaCases] = useState([]);
-  const [reservations, setReservations] = useState([]);
+/* -------------------- REAL Student Dashboard (FB-style) -------------------- */
+export default function StudentDashboard() {
+  const navigate = useNavigate();
+  const me = auth?.currentUser;
+  const myUid = me?.uid;
+
   const [loading, setLoading] = useState(true);
-  const [hasAgent, setHasAgent] = useState(false);
-  const [profileCompletion, setProfileCompletion] = useState({ isComplete: true });
+  const [posts, setPosts] = useState([]);
+  const [following, setFollowing] = useState(() => new Set());
 
-  // ✅ subscription based on your user doc fields
-  const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
-  // ✅ change this if your actual page name is different
-  const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
-
+  // ✅ Live following set
   useEffect(() => {
-    let alive = true;
+    if (!myUid) return;
 
-    const loadDashboardData = async () => {
-      // 🔑 Use uid (auth), with fallbacks
-      const userId = user?.uid || user?.id || user?.user_id;
+    const ref = collection(db, "users", myUid, "following");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const next = new Set();
+        snap.forEach((d) => next.add(d.id));
+        setFollowing(next);
+      },
+      () => {}
+    );
 
-      if (!userId) {
-        setLoading(false);
-        return;
-      }
+    return () => unsub();
+  }, [myUid]);
 
-      try {
-        const [sessions, casesByStudent, casesByUser, userReservations] =
-          await Promise.all([
-            TutoringSession.filter({ student_id: userId }),
-            Case.filter({ student_id: userId }),
-            Case.filter({ user_id: userId }),
-            Reservation.filter({ student_id: userId }),
-          ]);
+  // ✅ Live posts feed
+  useEffect(() => {
+    const qPosts = query(
+      collection(db, "posts"),
+      where("status", "==", "published"),
+      orderBy("createdAt", "desc"),
+      limit(30)
+    );
 
-        const completion = getProfileCompletionData(user, null);
-        if (!alive) return;
-        setProfileCompletion(completion);
+    const unsub = onSnapshot(
+      qPosts,
+      (snap) => {
+        const list = snap.docs.map((d) => {
+          const data = d.data() || {};
+          const created =
+            data.createdAt || data.created_at || data.publishedAt || data.published_at || null;
 
-        const now = Date.now();
-        const upcoming = arr(sessions)
-          .filter((s) => s?.status === "scheduled")
-          .filter((s) => {
-            const d = toValidDate(s?.scheduled_date);
-            return d ? d.getTime() > now : false;
-          })
-          .slice(0, 5);
-
-        // Merge cases from both queries and dedupe by id
-        const mergedCases = [...arr(casesByStudent), ...arr(casesByUser)]
-          .filter((c) => !!c?.id)
-          .reduce((acc, c) => {
-            if (!acc.find((x) => x.id === c.id)) acc.push(c);
-            return acc;
-          }, []);
-
-        if (!alive) return;
-
-        setStats({
-          totalSessions: arr(sessions).length,
-          upcomingSessions: arr(upcoming).length,
-          visaApplications: mergedCases.length,
-          schoolReservations: arr(userReservations).length,
-          sessionCredits: user.session_credits || 0,
+          return {
+            id: d.id,
+            authorId: data.authorId || data.author_id || data.user_id || data.userId || "",
+            authorRole: String(data.authorRole || data.author_role || "").toLowerCase(),
+            authorName: data.authorName || data.author_name || "Creator",
+            text: data.text || "",
+            tags: Array.isArray(data.tags) ? data.tags : [],
+            isFeatured: !!data.isFeatured,
+            timeAgo: timeAgo(created),
+            media: Array.isArray(data.media) ? data.media : [],
+          };
         });
 
-        setUpcomingSessions(upcoming);
-        setVisaCases(mergedCases.slice(0, 3));
-        setReservations(arr(userReservations).slice(0, 3));
-
-        setHasAgent(!!(user.assigned_agent_id || user.agent_id));
-      } catch (error) {
-        console.error("Error loading dashboard data:", error);
-      } finally {
-        if (alive) setLoading(false);
+        setPosts(list);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("community posts snapshot error", err);
+        setPosts([]);
+        setLoading(false);
       }
-    };
-
-    loadDashboardData();
-    return () => {
-      alive = false;
-    };
-  }, [user]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[80vh] items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-gray-400" />
-      </div>
     );
-  }
 
-  const getVisaProgress = (caseData) => {
-    const list = arr(caseData?.checklist);
-    if (list.length === 0) return 0;
-    const completed = list.filter((item) => item?.status === "verified").length;
-    return (completed / list.length) * 100;
+    return () => unsub();
+  }, []);
+
+  const isFollowing = (creatorId) => following.has(creatorId);
+
+  const toggleFollow = async (creatorId) => {
+    if (!myUid || !creatorId || creatorId === myUid) return;
+
+    const followed = following.has(creatorId);
+    const batch = writeBatch(db);
+
+    const myFollowingRef = doc(db, "users", myUid, "following", creatorId);
+    const creatorFollowersRef = doc(db, "users", creatorId, "followers", myUid);
+
+    if (followed) {
+      batch.delete(myFollowingRef);
+      batch.delete(creatorFollowersRef);
+    } else {
+      batch.set(myFollowingRef, {
+        followee_id: creatorId,
+        follower_id: myUid,
+        createdAt: serverTimestamp(),
+      });
+      batch.set(creatorFollowersRef, {
+        follower_id: myUid,
+        followee_id: creatorId,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  };
+
+  const messageCreator = (post) => {
+    // your messaging page can read ?with=<uid>
+    if (!post?.authorId) return;
+    navigate(`${createPageUrl("Messages")}?with=${encodeURIComponent(post.authorId)}`);
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Welcome, {user?.full_name?.split(" ")[0] || "Student"}
-          </h1>
-          <p className="text-gray-600 mt-1 text-sm sm:text-base">
-            Your study abroad journey dashboard
-          </p>
-        </div>
-        <Badge
-          variant={user?.onboarding_completed ? "default" : "secondary"}
-          className={`self-start sm:self-center ${
-            user?.onboarding_completed
-              ? "bg-green-100 text-green-800"
-              : "bg-yellow-100 text-yellow-800"
-          }`}
-        >
-          {user?.onboarding_completed ? "Verified" : "Pending Verification"}
-        </Badge>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="w-full px-3 sm:px-6 lg:px-8 py-5">
+        <div className="mx-auto max-w-[1800px] grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-10">
+          {/* LEFT */}
+          <div className="hidden lg:block lg:col-span-3">
+            <div className="sticky top-4 space-y-4">
+              <div className="rounded-2xl border bg-white p-4">
+                <div className="text-sm font-semibold text-gray-900">Discover</div>
+                <div className="text-xs text-gray-600 mt-1">
+                  Browse posts from Agents, Tutors, and Schools.
+                </div>
 
-      {/* ✅ Subscribe signage (only if NOT subscribed) */}
-      {!isSubscribed && <SubscribeBanner to={subscribeUrl} user={user} />}
+                <div className="mt-4 grid grid-cols-1 gap-2">
+                  <Button
+                    variant="outline"
+                    className="justify-start rounded-xl"
+                    onClick={() => navigate(createPageUrl("Directory"))}
+                  >
+                    <Users className="h-4 w-4 mr-2 text-emerald-600" />
+                    Directory
+                  </Button>
+                </div>
 
-      {/* Profile Completion Banner */}
-      <ProfileCompletionBanner user={user} relatedEntity={null} />
+                <div className="mt-4 rounded-xl bg-gray-50 border p-3">
+                  <div className="text-xs font-semibold text-gray-700">Following</div>
+                  <div className="text-xs text-gray-600 mt-1">
+                    You’re following <span className="font-semibold">{following.size}</span> creators
+                  </div>
+                </div>
+              </div>
 
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Tutoring"
-          value={stats.totalSessions}
-          icon={<BookOpen className="h-6 w-6 text-purple-200" />}
-          to={createPageUrl("MySessions")}
-          color="text-purple-600"
-          subtitle={`${stats.sessionCredits} credits`}
-        />
-        <StatCard
-          title="Applications"
-          value={stats.schoolReservations}
-          icon={<GraduationCap className="h-6 w-6 text-blue-200" />}
-          to={createPageUrl("Schools")}
-          color="text-blue-600"
-          subtitle="School reservations"
-        />
-        <StatCard
-          title="Visa Cases"
-          value={stats.visaApplications}
-          icon={<FileText className="h-6 w-6 text-emerald-200" />}
-          to={createPageUrl("VisaRequests")}
-          color="text-emerald-600"
-        />
-        <StatCard
-          title="Upcoming"
-          value={stats.upcomingSessions}
-          icon={<Calendar className="h-6 w-6 text-orange-200" />}
-          to={createPageUrl("MySessions")}
-          color="text-orange-600"
-          subtitle="Sessions"
-        />
-      </div>
+              <div className="rounded-2xl border bg-white p-4">
+                <div className="text-sm font-semibold text-gray-900">How messaging works</div>
+                <div className="text-xs text-gray-600 mt-2 leading-relaxed">
+                  You can message <span className="font-semibold">Agents</span> and{" "}
+                  <span className="font-semibold">Tutors</span>. For{" "}
+                  <span className="font-semibold">Schools</span>, messaging is handled by Admin/Advisor —
+                  follow schools to receive updates.
+                </div>
+              </div>
+            </div>
+          </div>
 
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
-        {/* Upcoming Sessions - Block if profile incomplete */}
-        <ActionBlocker
-          isBlocked={!profileCompletion.isComplete}
-          title="Complete Profile to Book Sessions"
-          message="Finish your profile to start booking tutoring sessions."
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
-                Upcoming Sessions
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {arr(upcomingSessions).length > 0 ? (
-                <div className="space-y-3">
-                  {arr(upcomingSessions).map((session) => (
-                    <div
-                      key={session?.id || Math.random()}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium">{session?.subject || "Session"}</p>
-                        <p className="text-sm text-gray-600">{fmt(session?.scheduled_date)}</p>
-                      </div>
-                      <Badge variant="outline">{session?.duration ?? "—"} min</Badge>
+          {/* CENTER */}
+          <div className="lg:col-span-6 space-y-4">
+            <Card className="rounded-2xl">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-900">Explore Updates</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      Follow creators to get notified when they post next.
                     </div>
-                  ))}
-                  <Link to={createPageUrl("MySessions")}>
-                    <Button variant="outline" className="w-full mt-2">
-                      View All <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
+                  </div>
+                  <Badge className="bg-zinc-900 text-white">All Posts</Badge>
                 </div>
-              ) : (
-                <div className="text-center py-6">
-                  <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-600">No upcoming sessions</p>
-                  <Link to={createPageUrl("Tutors")}>
-                    <Button size="sm" className="mt-2">
-                      Find a Tutor
-                    </Button>
-                  </Link>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Badge variant="secondary" className="border bg-white">
+                    Trending
+                  </Badge>
+                  <Badge variant="secondary" className="border bg-white">
+                    Latest
+                  </Badge>
+                  <Badge variant="secondary" className="border bg-white">
+                    Scholarships
+                  </Badge>
+                  <Badge variant="secondary" className="border bg-white">
+                    IELTS
+                  </Badge>
+                  <Badge variant="secondary" className="border bg-white">
+                    Admissions
+                  </Badge>
                 </div>
-              )}
+              </CardContent>
+            </Card>
+
+            {loading ? (
+              <Card className="rounded-2xl">
+                <CardContent className="p-10 flex items-center justify-center text-gray-500">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading posts…
+                </CardContent>
+              </Card>
+            ) : posts.length === 0 ? (
+              <Card className="rounded-2xl">
+                <CardContent className="p-6 text-sm text-gray-600">No community posts yet.</CardContent>
+              </Card>
+            ) : (
+              posts.map((p) => (
+                <FeedPostCard
+                  key={p.id}
+                  post={p}
+                  isFollowing={isFollowing(p.authorId)}
+                  onToggleFollow={toggleFollow}
+                  onMessage={messageCreator}
+                />
+              ))
+            )}
+          </div>
+
+          {/* RIGHT */}
+          <div className="hidden lg:block lg:col-span-3">
+            <div className="sticky top-4 space-y-4">
+              <div className="rounded-2xl border bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-gray-900">Suggested to follow</div>
+                  <Button variant="ghost" size="icon" className="text-gray-500" type="button">
+                    <MoreHorizontal className="h-5 w-5" />
+                  </Button>
+                </div>
+
+                <div className="mt-3 text-xs text-gray-600">
+                  (Optional) You can later load “Suggested” from Firestore.
+                </div>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-4">
+                <div className="text-sm font-semibold text-gray-900">Tip</div>
+                <div className="text-xs text-gray-600 mt-2 leading-relaxed">
+                  Follow creators you trust. You’ll automatically get a notification when they post next.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile-only suggestions block (kept minimal) */}
+        <div className="lg:hidden mt-6">
+          <Card className="rounded-2xl">
+            <CardContent className="p-4">
+              <div className="text-sm font-semibold text-gray-900">Tip</div>
+              <div className="text-xs text-gray-600 mt-1">
+                Follow creators to get notified when they post next.
+              </div>
             </CardContent>
           </Card>
-        </ActionBlocker>
-
-        {/* Visa Progress */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Visa Applications
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {arr(visaCases).length > 0 ? (
-              <div className="space-y-4">
-                {arr(visaCases).map((caseData) => {
-                  const progress = getVisaProgress(caseData);
-                  return (
-                    <div key={caseData?.id || Math.random()} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium">{caseData?.case_type || "Visa Case"}</p>
-                        <Badge
-                          variant={caseData?.status === "Approved" ? "default" : "secondary"}
-                          className="text-xs"
-                        >
-                          {caseData?.status || "—"}
-                        </Badge>
-                      </div>
-                      <Progress value={progress} className="h-2" />
-                      <p className="text-xs text-gray-500">{Math.round(progress)}% complete</p>
-                    </div>
-                  );
-                })}
-                <Link to={createPageUrl("VisaRequests")}>
-                  <Button variant="outline" className="w-full">
-                    View All <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600">No visa applications</p>
-                <Link to={createPageUrl("VisaPackages")}>
-                  <Button variant="outline" size="sm" className="mt-2">
-                    Explore Packages
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <ActionBlocker
-              isBlocked={!profileCompletion.isComplete}
-              title="Profile Required"
-              message="Complete your profile to access all features."
-            >
-              <QuickLink
-                title="Find Schools"
-                description="Discover programs that match your goals"
-                to={createPageUrl("Schools")}
-                icon={<GraduationCap className="w-5 h-5 text-blue-500" />}
-              />
-              <QuickLink
-                title="Book Tutoring"
-                description="Get help with test preparation"
-                to={createPageUrl("Tutors")}
-                icon={<BookOpen className="w-5 h-5 text-purple-500" />}
-              />
-              <QuickLink
-                title="Apply for Visa"
-                description="Get professional visa assistance"
-                to={createPageUrl("VisaPackages")}
-                icon={<FileText className="w-5 h-5 text-emerald-500" />}
-              />
-            </ActionBlocker>
-
-            {hasAgent ? (
-              <QuickLink
-                title="Contact My Agent"
-                description="Speak with your assigned agent"
-                to={createPageUrl("MyAgent")}
-                icon={<Users className="w-5 h-5 text-orange-500" />}
-              />
-            ) : (
-              <QuickLink
-                title="Find an Agent"
-                description="Get expert guidance"
-                to={createPageUrl("FindAgent")}
-                icon={<Users className="w-5 h-5 text-orange-500" />}
-              />
-            )}
-          </CardContent>
-        </Card>
+        </div>
       </div>
-
-      {/* Recent School Reservations */}
-      {arr(reservations).length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent School Applications</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {arr(reservations).map((reservation) => (
-                <div
-                  key={reservation?.id || Math.random()}
-                  className="p-4 border rounded-lg bg-white"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium">{reservation?.school_name || "School"}</h4>
-                    <Badge
-                      variant={reservation?.status === "confirmed" ? "default" : "secondary"}
-                    >
-                      {reservation?.status || "—"}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-2">
-                    {reservation?.program_name || "—"}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {fmt(reservation?.created_date, "MMM dd, yyyy")}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Next Steps Guidance */}
-      {Array.isArray(user?.purchased_packages) && user.purchased_packages.length === 0 && (
-        <Card className="border-l-4 border-l-blue-500">
-          <CardContent className="p-6">
-            <div className="flex items-start gap-4">
-              <AlertCircle className="w-6 h-6 text-blue-500 mt-1" />
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-2">
-                  Ready to start your journey?
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Complete these steps to make the most of GreenPass:
-                </p>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                    <span className="text-sm">Account created</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
-                    <span className="text-sm text-gray-600">Choose a visa package</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>
-                    <span className="text-sm text-gray-600">Reserve school programs</span>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <Link to={createPageUrl("VisaPackages")}>
-                    <Button size="sm">Explore Visa Packages</Button>
-                  </Link>
-                  <Link to={createPageUrl("Schools")}>
-                    <Button variant="outline" size="sm">
-                      Browse Schools
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

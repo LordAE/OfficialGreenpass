@@ -289,9 +289,10 @@ export default function Messages() {
     };
   }, [me?.uid, selectedConv?.id, peerCache, safeSetPeerCache]);
 
-  // ✅ Smart auto-scroll:
+  // ✅ Smart auto-scroll (UPDATED):
   // - DO NOT scroll when opening a conversation
   // - Only scroll when NEW messages arrive AND user already near bottom
+  // - ✅ DO NOT auto-scroll when the newest message is MINE (prevents jump on send)
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -309,6 +310,10 @@ export default function Messages() {
     prevMsgCountRef.current = currentCount;
     if (!added) return;
 
+    // ✅ if newest message is mine, don't auto-scroll
+    const lastMsg = messages?.[messages.length - 1];
+    if (lastMsg?.sender_id === me?.uid) return;
+
     const threshold = 140;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const isNearBottom = distanceFromBottom < threshold;
@@ -316,7 +321,7 @@ export default function Messages() {
     if (isNearBottom) {
       endRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages?.length]);
+  }, [messages, me?.uid]);
 
   const handlePickConversation = useCallback((conv) => {
     setSelectedConv(conv);

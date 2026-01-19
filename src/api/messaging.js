@@ -1,5 +1,4 @@
 // src/api/messaging.js
-// Messaging helpers + restrictions (matches your real user doc schema)
 
 import { db } from "@/firebase";
 import {
@@ -30,6 +29,9 @@ export const MESSAGING_LIMITS = {
 
   // Student free-tier: Vendors conversation starts per month
   FREE_VENDOR_CONV_PER_MONTH: 5,
+
+  // ✅ Student free-tier: max messages per conversation (THIS FIXES YOUR ISSUE)
+  FREE_STUDENT_MAX_MESSAGES_PER_CONVO: 3,
 
   // Agent/Tutor/School: max outbound messages until other party replies
   PRO_MAX_OUTBOUND_UNTIL_REPLY: 3,
@@ -349,6 +351,33 @@ async function enforceOutboundUntilReplyGate({ conversationId, senderId }) {
 }
 
 /**
+ * ✅ Student free-tier gating:
+ * - if student/user and not subscribed -> max 3 messages per conversation
+ *
+ * NOTE: Frontend-only enforcement. Users can bypass via direct Firestore writes
+ * unless you also enforce server-side (rules/functions).
+ */
+async function enforceFreeStudentMaxMessagesPerConvo({ conversationId, senderId }) {
+  const qMine = query(
+    collection(db, "conversations", conversationId, "messages"),
+    where("sender_id", "==", senderId),
+    limit(MESSAGING_LIMITS.FREE_STUDENT_MAX_MESSAGES_PER_CONVO)
+  );
+
+  const snap = await getDocs(qMine);
+
+  // If we already have 3 docs (limit), user has reached the cap
+  if (snap.size >= MESSAGING_LIMITS.FREE_STUDENT_MAX_MESSAGES_PER_CONVO) {
+    const err = new Error(
+      `Free plan limit reached (${MESSAGING_LIMITS.FREE_STUDENT_MAX_MESSAGES_PER_CONVO} messages). Please subscribe to continue.`
+    );
+    err.code = "FREE_STUDENT_MESSAGE_LIMIT";
+    err.details = { max: MESSAGING_LIMITS.FREE_STUDENT_MAX_MESSAGES_PER_CONVO };
+    throw err;
+  }
+}
+
+/**
  * ✅ sendMessage (with restrictions)
  */
 export async function sendMessage({
@@ -364,6 +393,11 @@ export async function sendMessage({
   if (!t) return;
 
   const senderRole = resolveUserRole(senderDoc);
+
+  // ✅ FREE STUDENT LIMIT (THIS IS THE FIX)
+  if (isFreeStudent(senderDoc) && (senderRole === "student" || senderRole === "user")) {
+    await enforceFreeStudentMaxMessagesPerConvo({ conversationId, senderId });
+  }
 
   // ✅ subscription required for agent/tutor/school
   if (senderRole === "agent" || senderRole === "tutor" || senderRole === "school") {

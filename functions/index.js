@@ -1,216 +1,205 @@
-// src/api/messaging.js
-import { db } from "@/firebase";
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-} from "firebase/firestore";
+const admin = require("firebase-admin");
+const cors = require("cors")({ origin: true });
+const crypto = require("crypto");
+const OpenAI = require("openai");
 
-export const MESSAGE_CATEGORIES = {
-  AGENT_TUTOR: "agent_tutor",
-  VENDOR: "vendor",
-  SUPPORT: "support",
-};
+const { onRequest } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 
-export function normalizeRole(r) {
-  const v = String(r || "").toLowerCase().trim();
-  if (v === "student" || v === "users") return "user";
-  if (v === "tutors") return "tutor";
-  if (v === "agents") return "agent";
-  if (v === "schools") return "school";
-  return v || "user";
-}
+admin.initializeApp();
 
-export async function getUserDoc(uid) {
-  if (!uid) return null;
-  // "support" is special
-  if (uid === "support") return { id: "support", full_name: "Support", role: "support" };
+const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 
-  const ref = doc(db, "users", uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return { id: uid }; // don’t crash UI
-  return { id: snap.id, ...snap.data() };
-}
-
-function pairKey(a, b) {
-  const x = String(a || "");
-  const y = String(b || "");
-  return [x, y].sort().join("__");
-}
-
-export async function listMyConversations(myUid) {
-  if (!myUid) return [];
-  const q = query(
-    collection(db, "conversations"),
-    where("participants", "array-contains", myUid),
-    orderBy("last_message_at", "desc"),
-    limit(50)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-}
-
-export async function listMessages(conversationId) {
-  if (!conversationId) return [];
-  const q = query(
-    collection(db, "conversations", conversationId, "messages"),
-    orderBy("created_at", "asc"),
-    limit(200)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+function hashKey(text, targetLang) {
+  return crypto.createHash("sha256").update(`${targetLang}||${text}`).digest("hex");
 }
 
 /**
- * ✅ REALTIME: listen to my conversations
- * Returns unsubscribe()
+ * ============================
+ * 1) Translation API (existing)
+ * ============================
  */
-export function listenToMyConversations(myUid, callback) {
-  if (!myUid) return () => {};
-  const q = query(
-    collection(db, "conversations"),
-    where("participants", "array-contains", myUid),
-    orderBy("last_message_at", "desc"),
-    limit(50)
-  );
+exports.api = onRequest(
+  { secrets: [OPENAI_API_KEY] },
+  async (req, res) => {
+    cors(req, res, async () => {
+      try {
+        const { text, targetLang } = req.body || {};
 
-  return onSnapshot(
-    q,
-    (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      callback(list);
-    },
-    (err) => {
-      console.error("listenToMyConversations error:", err);
-      callback([], err);
-    }
-  );
-}
+        if (!text || !targetLang) {
+          return res.status(400).json({ error: "Missing text or targetLang" });
+        }
 
-/**
- * ✅ REALTIME: listen to messages inside a conversation
- * Returns unsubscribe()
- */
-export function listenToMessages(conversationId, callback) {
-  if (!conversationId) return () => {};
+        if (typeof text !== "string" || text.length > 4000) {
+          return res.status(400).json({ error: "Text too long (max 4000 chars)" });
+        }
 
-  const q = query(
-    collection(db, "conversations", conversationId, "messages"),
-    orderBy("created_at", "asc"),
-    limit(300)
-  );
+        const key = hashKey(text, targetLang);
+        const docRef = admin.firestore().collection("translations_public").doc(key);
+        const cached = await docRef.get();
 
-  return onSnapshot(
-    q,
-    (snap) => {
-      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      callback(msgs);
-    },
-    (err) => {
-      console.error("listenToMessages error:", err);
-      callback([], err);
-    }
-  );
-}
+        if (cached.exists) {
+          return res.json({ translatedText: cached.data().translatedText, cached: true });
+        }
 
-/**
- * ✅ Creates a conversation if it doesn't exist yet.
- * This is the “first time chat” fix.
- */
-export async function ensureConversation({
-  meId,
-  meRole,
-  targetId,
-  targetRole,
-  source = "app",
-}) {
-  if (!meId) throw new Error("Missing meId");
-  if (!targetId) throw new Error("Missing targetId");
+        // ✅ Create OpenAI client INSIDE the handler using the secret
+        const openai = new OpenAI({ apiKey: OPENAI_API_KEY.value() });
 
-  const meR = normalizeRole(meRole);
-  const toR = normalizeRole(targetRole || "support");
+        const prompt = `Translate the following text to ${targetLang}. Keep URLs, emails, and names unchanged. Return only the translation.\n\n${text}`;
 
-  // hard block here too (frontend)
-  if ((meR === "user" || meR === "student") && toR === "school") {
-    targetId = "support";
-    targetRole = "support";
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "system", content: "You are a professional translator. Output ONLY the translated text." },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0,
+        });
+
+        const translatedText = completion.choices?.[0]?.message?.content?.trim() || "";
+
+        await docRef.set({
+          key,
+          targetLang,
+          sourceText: text,
+          translatedText,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return res.json({ translatedText, cached: false });
+      } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: err.message || "Translate failed" });
+      }
+    });
   }
+);
 
-  const pkey = pairKey(meId, targetId);
+/**
+ * =========================================================
+ * 2) Notifications: Followers get notified on new published post
+ * =========================================================
+ *
+ * Data expectations (we support multiple field names):
+ * - posts/{postId} contains:
+ *   - authorId OR user_id OR author_id
+ *   - authorName OR author_name OR full_name (optional)
+ *   - authorRole OR author_role OR role (optional)
+ *   - status: "published" (recommended)
+ *
+ * Followers live at:
+ * - users/{authorId}/followers/{followerId}
+ *
+ * Notifications written to:
+ * - users/{followerId}/notifications/{notifId}
+ *
+ * IMPORTANT:
+ * - We write: seen (boolean) + readAt (timestamp|null)
+ *   (matches your rules that only allow updating seen/readAt)
+ * - We use a deterministic notif doc id per follower per post to prevent duplicates.
+ */
 
-  // Find existing conversation by pair_key
-  const q = query(
-    collection(db, "conversations"),
-    where("pair_key", "==", pkey),
-    limit(1)
-  );
-  const snap = await getDocs(q);
-  if (!snap.empty) {
-    const d = snap.docs[0];
-    return { id: d.id, ...d.data() };
+function normalizeStatus(v) {
+  return String(v || "").toLowerCase().trim();
+}
+
+function getAuthorId(post) {
+  return post.authorId || post.user_id || post.author_id || null;
+}
+
+function getAuthorName(post) {
+  return post.authorName || post.author_name || post.full_name || "Someone you follow";
+}
+
+function getAuthorRole(post) {
+  return post.authorRole || post.author_role || post.role || null;
+}
+
+async function fanoutNewPostNotification({ postId, post }) {
+  const authorId = getAuthorId(post);
+  if (!authorId) return;
+
+  const authorName = getAuthorName(post);
+  const authorRole = getAuthorRole(post);
+
+  const followersRef = admin.firestore().collection(`users/${authorId}/followers`);
+  const followersSnap = await followersRef.get();
+  if (followersSnap.empty) return;
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  // Firestore batch limit = 500 ops/commit
+  const followerIds = followersSnap.docs.map((d) => d.id);
+  const chunkSize = 450; // leave headroom
+  for (let i = 0; i < followerIds.length; i += chunkSize) {
+    const chunk = followerIds.slice(i, i + chunkSize);
+    const batch = admin.firestore().batch();
+
+    chunk.forEach((followerId) => {
+      // Deterministic ID: 1 notif per follower per post
+      const notifId = `new_post_${postId}`;
+      const notifRef = admin.firestore().collection(`users/${followerId}/notifications`).doc(notifId);
+
+      batch.set(
+        notifRef,
+        {
+          type: "new_post",
+          postId,
+          authorId,
+          authorName,
+          authorRole,
+          title: "New post",
+          body: `${authorName} posted an update`,
+          link: `/postdetail?id=${postId}`,
+
+          // ✅ matches your notification rules pattern
+          seen: false,
+          readAt: null,
+
+          createdAt: now,
+        },
+        { merge: true } // safe if doc already exists
+      );
+    });
+
+    await batch.commit();
   }
-
-  // Create new conversation
-  const docData = {
-    pair_key: pkey,
-    participants: [meId, targetId],
-    participants_map: {
-      [meId]: true,
-      [targetId]: true,
-    },
-    roles: {
-      [meId]: meR,
-      [targetId]: toR,
-    },
-    created_by: meId,
-    source,
-    created_at: serverTimestamp(),
-    updated_at: serverTimestamp(),
-    last_message_at: null,
-    last_message_text: "",
-  };
-
-  const ref = await addDoc(collection(db, "conversations"), docData);
-  return { id: ref.id, ...docData };
 }
 
-export async function sendMessage({
-  conversationId,
-  conversationDoc,
-  senderId,
-  text,
-}) {
-  if (!conversationId) throw new Error("Missing conversationId");
-  if (!senderId) throw new Error("Missing senderId");
-  const t = String(text || "").trim();
-  if (!t) return;
+/**
+ * 2A) If a post is created already "published", notify immediately.
+ */
+exports.notifyFollowersOnNewPost = onDocumentCreated("posts/{postId}", async (event) => {
+  const snap = event.data;
+  if (!snap) return;
 
-  // Resolve recipient (other participant)
-  const parts = conversationDoc?.participants || [];
-  const toUserId = parts.find((x) => x !== senderId) || "support";
+  const post = snap.data() || {};
+  const postId = event.params.postId;
 
-  // Write message
-  await addDoc(collection(db, "conversations", conversationId, "messages"), {
-    conversation_id: conversationId,
-    sender_id: senderId,
-    to_user_id: toUserId,
-    text: t,
-    created_at: serverTimestamp(),
-  });
+  const status = normalizeStatus(post.status);
 
-  // Update conversation metadata
-  await updateDoc(doc(db, "conversations", conversationId), {
-    last_message_at: serverTimestamp(),
-    last_message_text: t,
-    updated_at: serverTimestamp(),
-  });
-}
+  // If you don't use status yet, remove this check.
+  // Keeping it prevents "draft" posts from notifying followers.
+  if (status && status !== "published") return;
+
+  await fanoutNewPostNotification({ postId, post });
+});
+
+/**
+ * 2B) If you create posts as "draft" first and publish later,
+ * this handles the transition draft -> published.
+ */
+exports.notifyFollowersOnPostPublished = onDocumentUpdated("posts/{postId}", async (event) => {
+  const before = event.data?.before?.data?.() || {};
+  const after = event.data?.after?.data?.() || {};
+  const postId = event.params.postId;
+
+  const beforeStatus = normalizeStatus(before.status);
+  const afterStatus = normalizeStatus(after.status);
+
+  if (afterStatus !== "published") return;
+  if (beforeStatus === "published") return;
+
+  await fanoutNewPostNotification({ postId, post: after });
+});

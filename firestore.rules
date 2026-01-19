@@ -30,6 +30,29 @@ service cloud.firestore {
       );
     }
 
+    // ✅ Creators who can post
+    function isCreatorRole() {
+      return signedIn() && (userHasType("agent") || userHasType("tutor") || userHasType("school"));
+    }
+
+    // ✅ Post helpers (support camelCase + snake_case owner fields)
+    function isPostOwnerFromData(d) {
+      return signedIn() && (
+        (d.authorId is string && d.authorId == request.auth.uid) ||
+        (d.author_id is string && d.author_id == request.auth.uid) ||
+        (d.user_id is string && d.user_id == request.auth.uid)
+      );
+    }
+    function isPostOwnerResource() { return isPostOwnerFromData(resource.data); }
+    function isPostOwnerRequest()  { return isPostOwnerFromData(request.resource.data); }
+
+    function statusIs(d, s) {
+      return d.keys().hasAny(["status"]) && d.status == s;
+    }
+    function statusMissing(d) {
+      return !d.keys().hasAny(["status"]);
+    }
+
     // ✅ rename params (avoid "Invalid variable name: resource" warnings)
     function isOwner(resDoc) {
       return signedIn() && resDoc.data.user_id == request.auth.uid;
@@ -299,12 +322,10 @@ service cloud.firestore {
     }
 
     // ✅ Policy: Students/Users can NEVER message School directly.
-    // We enforce this strongly whenever we can determine sender/recipient.
     function pairAllowedByUids(aUid, bUid) {
       return !forbiddenUserSchoolPair(roleOfUid(aUid), roleOfUid(bUid));
     }
 
-    // ✅ FIXED: NO "if" statements (Firestore Rules doesn't allow if in functions)
     function pairAllowedForConversationCreate(d) {
       return
         (
@@ -318,59 +339,43 @@ service cloud.firestore {
         );
     }
 
-    // ✅ allow config/messaging reads (your app reads /config/messaging)
     match /config/{docId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
-    // ✅ app settings for messaging limits (optional)
     match /app_settings/{docId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
-    // ✅ monthly usage tracker for student free-tier limits (optional)
     match /message_usage/{studentId}/months/{mk} {
       allow read: if signedIn() && (request.auth.uid == studentId || isAdmin());
       allow create, update: if signedIn() && (request.auth.uid == studentId || isAdmin());
       allow delete: if false;
     }
 
-    // messaging settings doc (optional legacy)
     match /messaging_settings/{docId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
-    // Root conversations (plural) used by the app
     match /conversations/{docId} {
-
-      // ✅ Anyone signed in can CREATE a conversation (including first-time chat)
-      // must include authed uid + must not be user<->school
       allow create: if signedIn() &&
         docMentionsUid(request.resource.data) &&
         pairAllowedForConversationCreate(request.resource.data);
 
-      // read/list: participant/owner/mentioned user OR admin
       allow read: if signedIn();
 
-      // prevent participants from editing participants/roles/etc
-      // Only allow updating chat metadata fields.
       allow update: if isAdmin() || (
         docMentionsUid(resource.data) &&
         request.resource.data.diff(resource.data).changedKeys()
           .hasOnly(["last_message_at", "last_message_text", "updated_at"])
       );
 
-      // delete disabled (safety)
       allow delete: if false;
 
-      // Subcollection messages
       match /messages/{messageId} {
-
-        // ✅ Participant can send if sender==authed and conversation is accessible
-        // ✅ Enforce user<->school restriction if message includes to_user_id
         allow create: if signedIn() &&
           (reqSenderId() == request.auth.uid) &&
           (
@@ -393,14 +398,11 @@ service cloud.firestore {
           docMentionsUid(resource.data)
         );
 
-        // no edits or deletes to preserve logs
         allow update, delete: if false;
       }
     }
 
-    // Root messages collection (optional if your app uses it)
     match /messages/{docId} {
-
       allow create: if signedIn() &&
         (reqSenderId() == request.auth.uid) &&
         (
@@ -421,13 +423,10 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Reports: signed-in can create; only admins can read/update/delete
     match /reports/{docId} {
       allow create: if signedIn() && request.resource.data.reporter_id == request.auth.uid;
       allow read, update, delete: if isAdmin();
     }
-
-    // ── Collections ─────────────────────────────────
 
     match /AboutPageContent/{docId} { allow read, write: if isAdmin(); }
 
@@ -594,14 +593,26 @@ service cloud.firestore {
       allow read, update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
     }
 
+    // ==========================================
+    // ✅ Posts (NO PAYWALL): /Post (legacy)
+    // ==========================================
     match /Post/{docId} {
-      allow create: if signedIn();
       allow read: if
-        (resource.data.keys().hasAny(['status']) && resource.data.status == "published") ||
-        (!resource.data.keys().hasAny(['status'])) ||
-        (signedIn() && resource.data.user_id == request.auth.uid) ||
+        statusIs(resource.data, "published") ||
+        statusMissing(resource.data) ||
+        isPostOwnerResource() ||
         isAdmin();
-      allow update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
+
+      allow create: if isCreatorRole()
+        && isPostOwnerRequest()
+        && (
+          statusMissing(request.resource.data) ||
+          statusIs(request.resource.data, "draft") ||
+          statusIs(request.resource.data, "published")
+        );
+
+      allow update: if isAdmin() || (isCreatorRole() && isPostOwnerResource());
+      allow delete: if isAdmin() || (isCreatorRole() && isPostOwnerResource());
     }
 
     match /Registration/{docId} {
@@ -741,14 +752,26 @@ service cloud.firestore {
     match /contact_page_contents/{docId} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /contacts/{docId} { allow create: if true; allow read, update, delete: if isAdmin(); }
 
+    // ==========================================
+    // ✅ Posts (NO PAYWALL): /posts (main)
+    // ==========================================
     match /posts/{docId} {
-      allow create: if signedIn();
       allow read: if
-        (resource.data.keys().hasAny(['status']) && resource.data.status == "published") ||
-        (!resource.data.keys().hasAny(['status'])) ||
-        (signedIn() && resource.data.user_id == request.auth.uid) ||
+        statusIs(resource.data, "published") ||
+        statusMissing(resource.data) ||
+        isPostOwnerResource() ||
         isAdmin();
-      allow update, delete: if (signedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
+
+      allow create: if isCreatorRole()
+        && isPostOwnerRequest()
+        && (
+          statusMissing(request.resource.data) ||
+          statusIs(request.resource.data, "draft") ||
+          statusIs(request.resource.data, "published")
+        );
+
+      allow update: if isAdmin() || (isCreatorRole() && isPostOwnerResource());
+      allow delete: if isAdmin() || (isCreatorRole() && isPostOwnerResource());
     }
 
     match /events/{docId} {
@@ -802,16 +825,11 @@ service cloud.firestore {
       );
     }
 
-    // ✅ FIXED: Public directory can read ONLY verified/visible NON-student profiles.
-    // - Guests can browse agents/tutors/schools if profile is publiclyListable.
-    // - Students/users are NOT public.
     match /users/{docId} {
       function resUserRole(resDoc) {
         return roleFromUserDoc(resDoc.data);
       }
 
-      // ✅ allow signed-in users to read (messaging needs this)
-      // ✅ allow guests to read ONLY publiclyListable agent/tutor/school
       allow get, list: if
         isAdmin() ||
         signedIn() ||
@@ -827,21 +845,33 @@ service cloud.firestore {
         isAdmin()
       );
 
-      // ===========================
-      // Messaging Usage (per-user)
-      // ===========================
-      // ✅ Required by new messaging limits logic:
-      // Path: users/{uid}/messaging_usage/{YYYY-MM}
-      // Only the owner (or admin) can read/write. No deletes (audit).
       match /messaging_usage/{mk} {
         allow get, list: if signedIn() && (request.auth.uid == docId || isAdmin());
         allow create, update: if signedIn() && (request.auth.uid == docId || isAdmin());
         allow delete: if false;
       }
 
-      // ===========================
-      // Notifications (All Roles)
-      // ===========================
+      match /following/{creatorId} {
+        allow get, list: if signedIn() && request.auth.uid == docId;
+        allow create, update: if signedIn()
+          && request.auth.uid == docId
+          && request.resource.data.followee_id == creatorId;
+        allow delete: if signedIn() && request.auth.uid == docId;
+      }
+
+      match /followers/{followerId} {
+        allow get, list: if signedIn() && (request.auth.uid == docId || request.auth.uid == followerId || isAdmin());
+        allow create, update: if signedIn()
+          && request.auth.uid == followerId
+          && request.resource.data.follower_id == followerId;
+        allow delete: if signedIn() && (request.auth.uid == followerId || request.auth.uid == docId || isAdmin());
+      }
+
+      match /feed/{postId} {
+        allow get, list: if signedIn() && request.auth.uid == docId;
+        allow create, update, delete: if false; // server only
+      }
+
       match /notifications/{nid} {
         allow get, list: if signedIn() && request.auth.uid == docId;
         allow create: if false;
