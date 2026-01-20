@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Send, MessageSquare } from "lucide-react";
 
+// ✅ Global toggle: Admin can turn subscription gating ON/OFF
+import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
+
 import {
   ensureConversation,
   getUserDoc,
@@ -49,6 +52,8 @@ export default function Messages() {
   const location = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+
+  const { subscriptionModeEnabled } = useSubscriptionMode();
 
   const to = params.get("to") || "";
   const toRole = normalizeRole(params.get("role") || "");
@@ -348,7 +353,15 @@ export default function Messages() {
       console.error("send message error:", e);
 
       if (e?.code === "SUBSCRIPTION_REQUIRED") {
-        setErrorText("Messaging is locked. Please activate your subscription to continue.");
+        if (subscriptionModeEnabled) {
+          setErrorText("Messaging is locked. Please activate your subscription to continue.");
+        } else {
+          // Subscription mode is OFF, but backend still rejected.
+          // This means your messaging backend (api/messaging or functions) still enforces subscription.
+          setErrorText(
+            "Subscription mode is OFF, but messaging is still being enforced by the backend. Update your messaging backend to honor app_config/subscription.enabled."
+          );
+        }
         return;
       }
 
@@ -361,7 +374,7 @@ export default function Messages() {
 
       setErrorText(e?.message || "Failed to send message.");
     }
-  }, [me?.uid, selectedConv, text, meDoc]);
+  }, [me?.uid, selectedConv, text, meDoc, subscriptionModeEnabled]);
 
   // Agreement banner: uses timestamp in your doc
   const showAgreement =
@@ -381,7 +394,8 @@ export default function Messages() {
   }, [me?.uid, meDoc]);
 
   // Subscription lock state for agent/tutor/school
-  const locked = isSubInactiveForRole(meDoc);
+  // ✅ Only applies when admin has subscription mode ENABLED
+  const locked = subscriptionModeEnabled ? isSubInactiveForRole(meDoc) : false;
 
   const peerName = displayName(peerDoc);
   const peerAvatar = avatarUrl(peerDoc);

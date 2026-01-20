@@ -35,7 +35,6 @@ import {
   Search,
   MessageSquare,
   UsersIcon,
-  LayoutGrid,
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
@@ -143,6 +142,25 @@ const TikTokIcon = ({ className = "h-5 w-5" }) => (
       d="M240 96a96 96 0 0 1-56-18.1V160a56 56 0 1 1-56-56 56.1 56.1 0 0 1 9 .74V80.22a96.19 96.19 0 0 1-16-.22v37.84A72 72 0 1 0 216 128V112a96.26 96.26 0 0 0 24 3.17Z"
       fill="currentColor"
     />
+  </svg>
+);
+
+// ✅ 3x3 Dots (App Launcher style) — matches the circular 9-dot icon
+const Dots9Icon = ({ className = "h-6 w-6" }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    {[
+      [6, 6],
+      [12, 6],
+      [18, 6],
+      [6, 12],
+      [12, 12],
+      [18, 12],
+      [6, 18],
+      [12, 18],
+      [18, 18],
+    ].map(([cx, cy], i) => (
+      <circle key={i} cx={cx} cy={cy} r="1.6" />
+    ))}
   </svg>
 );
 
@@ -617,7 +635,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                 aria-label="Apps"
                 title="Apps"
               >
-                <LayoutGrid className="h-6 w-6" />
+                <Dots9Icon className="h-6 w-6" />
               </Link>
 
               <Link
@@ -1509,20 +1527,41 @@ const Footer = ({ getCompanyName }) => {
 
 /* ---------- Nav builders (aligned to current App routes) ---------- */
 function buildDesktopNav(currentUser) {
-  const baseItems = [
+  const role = (currentUser?.user_type || currentUser?.role || "student").toLowerCase();
+
+  // ✅ Admin uses the sidebar layout on desktop (so it needs the full admin nav here)
+  if (role === "admin") {
+    return [
+      { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+      { title: getText("userManagement"), url: createPageUrl("UserManagement"), icon: Users },
+      { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+      { title: getText("schoolManagement"), url: createPageUrl("AdminSchools"), icon: School },
+      { title: getText("institutionManagement"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
+      { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
+      { title: getText("verifications"), url: createPageUrl("Verification"), icon: UserCheck },
+      { title: getText("paymentVerification"), url: createPageUrl("AdminPayments"), icon: DollarSign },
+      { title: getText("reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
+      { title: "Subscription Mode", url: createPageUrl("AdminSubscription"), icon: DollarSign },
+      { title: getText("chatSettings"), url: createPageUrl("ChatSettings"), icon: MessageSquare },
+      { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+    ];
+  }
+
+  // Vendor (sidebar layout)
+  if (role === "vendor") {
+    return [
+      { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+      { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+      { title: "My Services", url: createPageUrl("MyServices"), icon: Store },
+      { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+    ];
+  }
+
+  // Fallback (should rarely be used)
+  return [
     { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
     { title: "Events", url: createPageUrl("Events"), icon: Calendar },
   ];
-
-  switch ((currentUser?.user_type || "").toLowerCase()) {
-    case "vendor":
-      return [
-        ...baseItems,
-        { title: "My Services", url: createPageUrl("MyServices"), icon: Store },
-      ];
-    default:
-      return baseItems;
-  }
 }
 
 function buildMobileNav(currentUser, hasReservation, latestReservationId) {
@@ -1596,6 +1635,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
         { title: "Events", url: createPageUrl("Events"), icon: Calendar },
         { title: "Payments", url: createPageUrl("AdminPayments"), icon: DollarSign },
         { title: "Reports", url: createPageUrl("AdminReports"), icon: BarChart3 },
+        { title: "Subscription Mode", url: createPageUrl("AdminSubscription"), icon: DollarSign },
         { title: "Chat Settings", url: createPageUrl("ChatSettings"), icon: MessageSquare },
         { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
         { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },

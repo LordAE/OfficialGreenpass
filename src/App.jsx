@@ -49,6 +49,7 @@ import StudyGermany from "@/pages/countries/StudyGermany";
 import StudyUnitedKingdom from "@/pages/countries/StudyUnitedKingdom";
 import StudyUnitedStates from "@/pages/countries/StudyUnitedStates";
 import Messages from "@/pages/Messages";
+import AdminSubscription from "./pages/AdminSubscription";
 
 
 // --- Safe import of createPageUrl (with fallback if not exported) ---
@@ -143,6 +144,7 @@ export default function App() {
         <Route path="adminchatsettings" element={<AdminChatSettings />} />
         <Route path="adminbanksettings" element={<AdminBankSettings />} />
         <Route path="adminreports" element={<AdminReports />} />
+        <Route path="subscriptions" element= {<AdminSubscription/>} />
         {/* Payments / orders */}
         <Route path="checkout" element={<Checkout />} />
 

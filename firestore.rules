@@ -30,6 +30,16 @@ service cloud.firestore {
       );
     }
 
+    /* ===============================
+       ADMIN APP CONFIG (Subscription)
+       - Frontend reads: app_config/subscription
+       - Only admins can write/toggle
+       =============================== */
+    match /app_config/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
     // ✅ Creators who can post
     function isCreatorRole() {
       return signedIn() && (userHasType("agent") || userHasType("tutor") || userHasType("school"));

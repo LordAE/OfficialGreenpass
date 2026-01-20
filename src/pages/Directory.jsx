@@ -33,7 +33,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import ProvinceSelector from "../components/ProvinceSelector";
 import CountrySelector from "@/components/CountrySelector";
 import { getProvinceLabel } from "../components/utils/CanadianProvinces";
 import _ from "lodash";
@@ -155,6 +154,29 @@ const normalize = (s = "") =>
     )
     .replace(/[^a-z0-9]/g, "")
     .trim();
+
+/* -----------------------------
+   Helpers: location normalization (for reliable filtering)
+   - Handles case/whitespace differences
+   - Handles province values stored as codes OR labels
+   ----------------------------- */
+const normText = (v = "") => String(v || "").trim().toLowerCase();
+const eqText = (a, b) => normText(a) === normText(b);
+
+// Canonicalize country values so UI labels and DB codes match
+const canonCountry = (v = "") => {
+  const x = String(v || "").trim();
+  const lx = x.toLowerCase();
+  if (["united states", "united states of america", "usa", "us"].includes(lx)) return "US";
+  if (["united kingdom", "great britain", "britain", "england", "uk"].includes(lx)) return "UK";
+  if (lx === "canada") return "Canada";
+  if (lx === "australia") return "Australia";
+  if (lx === "ireland") return "Ireland";
+  if (lx === "germany") return "Germany";
+  if (lx === "new zealand" || lx === "nz") return "New Zealand";
+  return x;
+};
+
 
 /* -----------------------------
    Tabs
@@ -639,11 +661,8 @@ export default function Directory() {
   const [selectedCountry, setSelectedCountry] = useState("all");
 
   // School filters
-  const [selectedProvince, setSelectedProvince] = useState("all");
-  const [selectedCity, setSelectedCity] = useState("all");
-  const [selectedType, setSelectedType] = useState("all");
-
-  const [page, setPage] = useState(1);
+const [selectedCity, setSelectedCity] = useState("all");
+const [page, setPage] = useState(1);
   const [selectedKey, setSelectedKey] = useState(null);
 
   // ✅ Auth state
@@ -731,22 +750,49 @@ export default function Directory() {
     return () => unsub();
   }, [detectRoleFromUserDoc]);
 
-  // ✅ tabs visible: if logged in, hide the same role tab
+  // ✅ Users directory should ONLY be visible to admin
+  const isAdmin = useMemo(() => {
+    const role = normalizeRole(currentUserRole);
+    if (role === "admin") return true;
+    // support admin flags if role field isn't set
+    return currentUserDoc?.is_admin === true || currentUserDoc?.admin === true;
+  }, [currentUserRole, currentUserDoc, normalizeRole]);
+
+  // ✅ tabs visible:
+  // - Always show School
+  // - Hide the same role tab when logged in
+  // - Hide User tab for everyone except admin
   const visibleTabs = useMemo(() => {
     const role = normalizeRole(currentUserRole);
-    return BROWSE_TABS.filter((t) => t.key === "school" || !role || t.key !== role);
-  }, [currentUserRole, normalizeRole]);
+    return BROWSE_TABS.filter((t) => {
+      if (t.key === "school") return true;
+      if (t.key === "user") return isAdmin;
+      if (!role) return true;
+      return t.key !== role;
+    });
+  }, [currentUserRole, normalizeRole, isAdmin]);
 
   // ✅ if user is currently on a hidden tab, move them to school
   useEffect(() => {
     const role = normalizeRole(currentUserRole);
-    if (!role) return;
-    if (browseTab === role) {
+
+    // same-role tab hidden when logged in
+    if (role && browseTab === role) {
       setBrowseTab("school");
       setSelectedCountry("all");
       setSearchTerm("");
+      setSelectedCity("all");
+      return;
     }
-  }, [browseTab, currentUserRole, normalizeRole]);
+
+    // users tab is admin-only (also hidden for non-logged-in)
+    if (browseTab === "user" && !isAdmin) {
+      setBrowseTab("school");
+      setSelectedCountry("all");
+      setSearchTerm("");
+      setSelectedCity("all");
+    }
+  }, [browseTab, currentUserRole, normalizeRole, isAdmin]);
 
   useEffect(() => {
     const p = parseInt(searchParams.get("page") || "1", 10);
@@ -774,21 +820,31 @@ export default function Directory() {
   );
 
   /* -----------------------------
-     Load schools + institutions
+     Load institutions (schools list) + programs (from schools collection)
+     - institutions: actual schools
+     - schools: program docs, linked by school_id == institutions doc id
    ----------------------------- */
   const loadSchoolData = useCallback(async () => {
     setLoadingSchools(true);
     try {
-      const [schoolsData, institutionsData] = await Promise.all([
-        School.list("-created_date", 2000),
-        Institution.list("-created_date", 1000),
+      const instRef = collection(db, "institutions");
+      const progRef = collection(db, "schools");
+
+      const [instSnap, progSnap] = await Promise.all([
+        getDocs(instRef),
+        getDocs(progRef),
       ]);
-      setAllSchools(schoolsData || []);
+
+      const institutionsData = instSnap.docs.map((d) => ({ id: d.id, ...((d.data && d.data()) || {}) }));
+      const programsData = progSnap.docs.map((d) => ({ id: d.id, ...((d.data && d.data()) || {}) }));
+
+      // Keep naming to minimize refactors in rest of file
       setAllInstitutions(institutionsData || []);
+      setAllSchools(programsData || []);
     } catch (error) {
-      console.error("Error loading data:", error);
-      setAllSchools([]);
+      console.error("Error loading institutions/programs:", error);
       setAllInstitutions([]);
+      setAllSchools([]);
     } finally {
       setLoadingSchools(false);
     }
@@ -834,77 +890,53 @@ export default function Directory() {
 
   useEffect(() => {
     if (browseTab === "school") return;
+
+    // ✅ HARD GATE: the "user" directory is admin-only
+    if (browseTab === "user" && !isAdmin) return;
+
     fetchUsersForRole(browseTab);
-  }, [browseTab, fetchUsersForRole]);
+  }, [browseTab, fetchUsersForRole, isAdmin]);
 
   /* -----------------------------
-     Programs grouped by school key
+     Programs grouped by institution id (school_id)
    ----------------------------- */
   const programsBySchoolKey = useMemo(() => {
-    return _.groupBy(allSchools || [], (s) => s.school_name || s.institution_name || "Unknown School");
+    return _.groupBy(allSchools || [], (p) => String(p.school_id || p.institution_id || p.schoolId || "").trim() || "__unlinked__");
   }, [allSchools]);
 
   /* -----------------------------
-     Merge schools + institutions
+     Build school cards from institutions collection
+     - Each card represents ONE institution
+     - programCount comes from programs in "schools" collection grouped by school_id
    ----------------------------- */
-  const institutionsByName = useMemo(() => {
-    return Object.fromEntries((allInstitutions || []).map((inst) => [normalize(inst.name), inst]));
-  }, [allInstitutions]);
-
   const mergedSchools = useMemo(() => {
-    const schoolGroups = _.groupBy(allSchools, (s) => s.school_name || s.institution_name || "Unknown School");
-
-    const schoolCards = Object.entries(schoolGroups).map(([schoolKey, schoolPrograms]) => {
-      const representative = schoolPrograms[0];
-      const matchKey = normalize(representative.institution_name || representative.school_name || representative.name);
-      const matchedInst = institutionsByName[matchKey];
+    return (allInstitutions || []).map((inst) => {
+      const key = String(inst.id || inst.docId || inst.uid || "").trim() || String(inst.name || "").trim();
+      const programs = (programsBySchoolKey && programsBySchoolKey[key]) || [];
 
       return {
-        ...representative,
-        programCount: schoolPrograms.length,
-        school_key: schoolKey,
-        isInstitution: false,
+        ...inst,
+        school_key: key,
+        isInstitution: true,
+        programCount: programs.length,
 
-        logoUrl:
-          matchedInst?.logoUrl ||
-          representative.logoUrl ||
-          representative.school_image_url ||
-          representative.institution_logo_url ||
-          null,
-        website: matchedInst?.website || representative.website || null,
-        about: matchedInst?.about || representative.about || null,
-        institution_type: matchedInst?.type || representative.institution_type || null,
-
-        city: representative.city || representative.school_city || matchedInst?.city || null,
-        province: representative.province || representative.school_province || matchedInst?.province || null,
-        country: representative.country || representative.school_country || matchedInst?.country || null,
+        // normalized display fields
+        logoUrl: inst.logoUrl || inst.logo || inst.institution_logo_url || inst.image_url || inst.photo_url || null,
+        website: inst.website || inst.site || inst.url || null,
+        about: inst.about || inst.description || inst.overview || null,
+        institution_type: inst.type || inst.institution_type || null,
+        city: inst.city || inst.school_city || inst.location_city || null,
+        province: inst.province || inst.state || inst.region || null,
+        country: inst.country || inst.country_code || inst.school_country || null,
       };
     });
-
-    const schoolInstitutionNames = new Set(
-      allSchools.map((s) => (s.institution_name || s.school_name || "").trim()).filter(Boolean)
-    );
-
-    const institutionCards = (allInstitutions || [])
-      .filter((inst) => !schoolInstitutionNames.has(inst.name))
-      .map((inst) => ({
-        ...inst,
-        logoUrl: inst.logoUrl || null,
-        website: inst.website || null,
-        institution_type: inst.type || null,
-        school_key: inst.name,
-        isInstitution: true,
-      }));
-
-    return [...schoolCards, ...institutionCards];
-  }, [allSchools, allInstitutions, institutionsByName]);
+  }, [allInstitutions, programsBySchoolKey]);
 
   const schoolCountryOptions = useMemo(() => {
-    const fromData = mergedSchools.map((s) => s.country || s.school_country).filter(Boolean);
-    const priority = ["Australia", "Germany", "Ireland", "United Kingdom", "United States", "New Zealand", "Canada"];
-    return Array.from(new Set([...fromData, ...priority]));
+    const raw = (mergedSchools || []).map((s) => s.country || s.school_country || s.country_code).filter(Boolean);
+    const priority = ["Canada", "US", "UK", "Australia", "Ireland", "Germany", "New Zealand"];
+    return Array.from(new Set([...raw.map(canonCountry), ...priority]));
   }, [mergedSchools]);
-
   const userCountryOptions = useMemo(() => {
     const fromData = (allUsers || []).map((u) => u.country).filter(Boolean);
     return Array.from(new Set(fromData));
@@ -917,17 +949,36 @@ export default function Directory() {
 
   const handleCountryChange = useCallback((value) => {
     setSelectedCountry(value);
-    setSelectedProvince("all");
     setSelectedCity("all");
   }, []);
+  // --- City options (grouped by country; derived from institutions) ---
+  const schoolCityGroups = useMemo(() => {
+    const map = new Map();
 
-  const handleProvinceChange = useCallback(
-    (value) => {
-      setSelectedProvince(value);
-      if (value !== selectedProvince) setSelectedCity("all");
-    },
-    [selectedProvince]
-  );
+    (mergedSchools || []).forEach((s) => {
+      const city = String(s.city || "").trim();
+      if (!city) return;
+
+      const country = canonCountry(
+        s.country || s.country_code || s.school_country || ""
+      );
+
+      // Scope by selected country when set
+      if (selectedCountry && selectedCountry !== "all") {
+        if (canonCountry(selectedCountry) !== country) return;
+      }
+
+      if (!map.has(country)) map.set(country, new Set());
+      map.get(country).add(city);
+    });
+
+    return Array.from(map.entries())
+      .map(([country, set]) => ({
+        country,
+        cities: Array.from(set).sort((a, b) => a.localeCompare(b)),
+      }))
+      .sort((a, b) => a.country.localeCompare(b.country));
+  }, [mergedSchools, selectedCountry]);
 
   useEffect(() => {
     updatePage(1);
@@ -936,9 +987,7 @@ export default function Directory() {
     browseTab,
     searchTerm,
     selectedCountry,
-    selectedProvince,
     selectedCity,
-    selectedType,
     mergedSchools.length,
     allUsers.length,
   ]);
@@ -951,29 +1000,44 @@ export default function Directory() {
 
     let filtered = mergedSchools;
 
+    // ✅ Search: name/city/about + (for program-backed schools) any program title in that school
     if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (school) =>
-          (school.name || school.school_name || school.institution_name || "").toLowerCase().includes(q) ||
-          (school.city || school.school_city || "").toLowerCase().includes(q) ||
-          (school.program_title || "").toLowerCase().includes(q) ||
-          (school.about || "").toLowerCase().includes(q)
-      );
+      const q = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter((school) => {
+        const name = (school.name || school.school_name || school.institution_name || "").toLowerCase();
+        const city = (school.city || school.school_city || "").toLowerCase();
+        const about = (school.about || "").toLowerCase();
+
+        const programHit = (programsBySchoolKey?.[school.school_key] || []).some((p) => {
+          const title = (p.program_title || p.title || p.name || "").toLowerCase();
+          return title.includes(q);
+        });
+
+        return name.includes(q) || city.includes(q) || about.includes(q) || programHit;
+      });
     }
 
-    if (selectedCountry !== "all") filtered = filtered.filter((s) => (s.country || s.school_country) === selectedCountry);
-    if (selectedProvince !== "all") filtered = filtered.filter((s) => (s.province || s.school_province) === selectedProvince);
-    if (selectedCity !== "all") filtered = filtered.filter((s) => (s.city || s.school_city) === selectedCity);
+    // ✅ Filters: tolerate casing/spacing inconsistencies
+    if (selectedCountry !== "all") {
+      filtered = filtered.filter((s) => canonCountry(s.country || s.country_code || s.school_country) === canonCountry(selectedCountry));
+    }
 
-    if (selectedType !== "all") {
-      if (selectedType === "institution") filtered = filtered.filter((s) => s.isInstitution);
-      else if (selectedType === "program") filtered = filtered.filter((s) => !s.isInstitution);
-      else filtered = filtered.filter((s) => (s.institution_type || "").toLowerCase() === selectedType.toLowerCase());
+    if (selectedCity !== "all") {
+      const cityOnly = String(selectedCity).includes("::")
+        ? String(selectedCity).split("::")[1]
+        : selectedCity;
+      filtered = filtered.filter((s) => eqText(s.city || s.school_city, cityOnly));
     }
 
     setFilteredSchools(filtered);
-  }, [browseTab, mergedSchools, searchTerm, selectedCountry, selectedProvince, selectedCity, selectedType]);
+  }, [
+    browseTab,
+    mergedSchools,
+    programsBySchoolKey,
+    searchTerm,
+    selectedCountry,
+    selectedCity,
+  ]);
 
   /* -----------------------------
      Filter users (directory)
@@ -1069,9 +1133,7 @@ export default function Directory() {
     e.preventDefault();
     setSearchTerm("");
     setSelectedCountry("all");
-    setSelectedProvince("all");
     setSelectedCity("all");
-    setSelectedType("all");
   }, []);
 
   // ✅ Helper to get my effective role from Firestore doc
@@ -2021,7 +2083,7 @@ export default function Directory() {
                   <div />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="sm:col-span-2">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -2051,35 +2113,33 @@ export default function Directory() {
 
                   {browseTab === "school" ? (
                     <>
-                      {/* ✅ FIX: Pass BOTH props to avoid mismatch with your ProvinceSelector implementation */}
-                      <ProvinceSelector
-                        value={selectedProvince}
-                        onChange={handleProvinceChange}
-                        onValueChange={handleProvinceChange}
-                        placeholder="All Provinces"
-                        includeAll={true}
-                        includeInternational={true}
-                        className="h-11"
-                      />
-
-                      <Select value={selectedType} onValueChange={setSelectedType}>
+                      <Select value={selectedCity} onValueChange={setSelectedCity}>
                         <SelectTrigger className="h-11">
-                          <SelectValue placeholder="All Types" />
+                          <SelectValue placeholder="All Cities" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All Types</SelectItem>
-                          <SelectItem value="institution">Institutions Only</SelectItem>
-                          <SelectItem value="program">Programs Only</SelectItem>
-                          <SelectItem value="university">Universities</SelectItem>
-                          <SelectItem value="college">Colleges</SelectItem>
-                          <SelectItem value="institute">Institutes</SelectItem>
-                          <SelectItem value="language school">Language Schools</SelectItem>
+                          <SelectItem value="all">All Cities</SelectItem>
+                          {(schoolCityGroups || []).map((g) => (
+                            <React.Fragment key={g.country}>
+                              <div className="px-2 py-1 text-xs font-semibold text-gray-500">
+                                {g.country}
+                              </div>
+                              {(g.cities || []).map((city) => (
+                                <SelectItem
+                                  key={`${g.country}-${city}`}
+                                  value={`${g.country}::${city}`}
+                                >
+                                  {city}
+                                </SelectItem>
+                              ))}
+                              <div className="my-1 h-px bg-gray-100" />
+                            </React.Fragment>
+                          ))}
                         </SelectContent>
                       </Select>
                     </>
                   ) : (
                     <>
-                      <div className="hidden lg:block" />
                       <div className="hidden lg:block" />
                     </>
                   )}

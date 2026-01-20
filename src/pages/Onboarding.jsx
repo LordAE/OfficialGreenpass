@@ -310,6 +310,18 @@ const normalizeRole = (r) => {
   return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
 };
 
+// ✅ Used to match a School's LIVE account to the School Directory card
+// Saved on the user's doc when role=school finishes onboarding.
+const normalizeSchoolKey = (s = "") =>
+  String(s)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/(the|of|and|for|at|in|de|la|le|du|des|université|universite)/g, "")
+    .replace(/(university|college|institute|polytechnic|school|academy|centre|center)/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+
+
 function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
   const finalRole = normalizeRole(role);
 
@@ -849,6 +861,10 @@ export default function Onboarding() {
       }
 
       if (selectedRole === "school") {
+        // ✅ Field used by Directory.jsx to identify LIVE school accounts
+        // (Directory normalizes the directory card name and matches it to this key)
+        updates.linked_school_key = normalizeSchoolKey(formData.school_name || "");
+
         updates.school_profile = {
           school_name: formData.school_name || "",
           location: formData.location || "",
