@@ -11,7 +11,7 @@ import { Loader2, Send, MessageSquare } from "lucide-react";
 
 // ✅ Global toggle: Admin can turn subscription gating ON/OFF
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
-
+import { useTr } from "@/i18n/useTr";
 import {
   ensureConversation,
   getUserDoc,
@@ -49,7 +49,12 @@ function isSubInactiveForRole(userDoc) {
 }
 
 export default function Messages() {
-  const location = useLocation();
+  const { tr } = useTr("messages");
+
+  
+  const lang = (new URLSearchParams(window.location.search).get("lang") || localStorage.getItem("gp_lang") || "en").trim();
+  const isRTL = ["ar","he","fa","ur"].includes(lang);
+const location = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
@@ -432,7 +437,7 @@ export default function Messages() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center gap-2 text-gray-600">
+      <div dir={isRTL ? "rtl" : "ltr"} className="p-6 flex items-center gap-2 text-gray-600">
         <Loader2 className="h-5 w-5 animate-spin" />
         Loading…
       </div>
@@ -594,7 +599,7 @@ export default function Messages() {
           </CardContent>
 
           <div className="border-t p-3 flex gap-2">
-            <Input
+            <Input className={(isRTL ? "text-right" : "")} dir={isRTL ? "rtl" : "ltr"}
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={selectedConv ? "Type a message…" : "Select a conversation…"}
@@ -604,8 +609,8 @@ export default function Messages() {
               disabled={!selectedConv || locked || showAgreement}
             />
             <Button onClick={handleSend} disabled={!selectedConv || locked || showAgreement || !text.trim()}>
-              <Send className="h-4 w-4 mr-2" />
-              Send
+              <Send className={isRTL ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
+              {tr("send","Send")}
             </Button>
           </div>
         </Card>

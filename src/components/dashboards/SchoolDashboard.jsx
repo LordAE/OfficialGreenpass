@@ -1,8 +1,10 @@
 // src/pages/SchoolDashboard.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { School, Reservation, User } from "@/api/entities";
 import {
   Building2,
@@ -21,10 +23,13 @@ import {
   ExternalLink,
   X,
   Loader2,
+  Sparkles
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
+import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway";
+import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 
 // ✅ Firebase
 import { db, storage } from "@/firebase";
@@ -40,8 +45,12 @@ import {
   onSnapshot,
   writeBatch,
   updateDoc,
+  runTransaction,
+  Timestamp,
+  increment
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useTr } from "@/i18n/useTr";
 
 /* -------------------- SAFE HELPERS (date & arrays) -------------------- */
 const toValidDate = (v) => {
@@ -104,16 +113,16 @@ function isSubscribedUser(u) {
 */
 function schoolDisplayName(school, user) {
   const candidates = [
+    // from users doc role profile (Profile.jsx saves Institution Name here)
+    user?.school_profile?.school_name,
+    user?.school_profile?.name,
+    user?.school_profile?.institution_name,
+
     // from School entity row (common possibilities)
     school?.school_name,
     school?.institution_name,
     school?.institutionName,
     school?.name,
-
-    // from users doc role profile
-    user?.school_profile?.school_name,
-    user?.school_profile?.name,
-    user?.school_profile?.institution_name,
 
     // fallback
     user?.full_name,
@@ -124,13 +133,15 @@ function schoolDisplayName(school, user) {
 }
 
 const SubscribeBanner = ({ to, user }) => {
+  const { tr } = useTr("school_dashboard");
+
   const status = String(user?.subscription_status || "").toLowerCase().trim();
   const message =
     status === "skipped"
-      ? "You skipped subscription. Subscribe to unlock full school features, leads, and visibility."
+      ? tr("sub_msg_skipped")
       : status === "expired"
-      ? "Your subscription expired. Renew to regain full school features, leads, and visibility."
-      : "You’re not subscribed yet. Subscribe to unlock full school features, leads, and visibility.";
+      ? tr("sub_msg_expired")
+      : tr("sub_msg_default");
 
   return (
     <div className="rounded-2xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -139,14 +150,14 @@ const SubscribeBanner = ({ to, user }) => {
           <CreditCard className="w-5 h-5 text-red-600" />
         </div>
         <div>
-          <p className="font-semibold text-red-800">Subscription required</p>
+          <p className="font-semibold text-red-800">{tr("sub_required")}</p>
           <p className="text-sm text-red-700">{message}</p>
         </div>
       </div>
 
       <Link to={to}>
         <Button className="bg-red-600 hover:bg-red-700 w-full sm:w-auto">
-          Subscribe Now
+          {tr("subscribe_now")}
         </Button>
       </Link>
     </div>
@@ -190,6 +201,8 @@ const Avatar = ({ name = "School", size = "md" }) => {
 
 /* -------------------- Follow Button (no likes/comments/shares) -------------------- */
 function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "" }) {
+  const { tr } = useTr("school_dashboard");
+
   const [following, setFollowing] = useState(false);
   const disabled = !currentUserId || !creatorId || currentUserId === creatorId;
 
@@ -236,13 +249,15 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
       className={className}
       onClick={following ? unfollow : follow}
     >
-      {following ? "Following" : "Follow"}
+      {following ? tr("following","Following") : tr("follow","Follow")}
     </Button>
   );
 }
 
 /* -------------------- Media grid (images + videos) -------------------- */
 const MediaGallery = ({ media = [] }) => {
+  const { tr } = useTr("school_dashboard");
+
   const items = Array.isArray(media) ? media : [];
   if (!items.length) return null;
   const many = items.length > 1;
@@ -263,7 +278,7 @@ const MediaGallery = ({ media = [] }) => {
                 target="_blank"
                 rel="noreferrer"
                 className="block overflow-hidden rounded-2xl border bg-gray-100"
-                title="Open image"
+                title={tr("open_image")}
               >
                 <img
                   src={url}
@@ -291,21 +306,23 @@ const MediaGallery = ({ media = [] }) => {
               rel="noreferrer"
               className="flex h-56 items-center justify-center rounded-2xl border bg-gray-50 text-sm text-gray-600"
             >
-              Open media
+              {tr("open_media")}
             </a>
           );
         })}
       </div>
 
       {items.length > 4 ? (
-        <div className="mt-2 text-xs text-gray-500">+{items.length - 4} more</div>
+        <div className="mt-2 text-xs text-gray-500">{tr("more_count", { count: items.length - 4 })}</div>
       ) : null}
     </div>
   );
 };
 
 /* -------------------- Real Post Card (FOLLOW + MESSAGE only) -------------------- */
-const RealPostCard = ({ post, currentUserId }) => {
+const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled }) => {
+  const { tr } = useTr("school_dashboard");
+
   const created = post?.createdAt?.seconds
     ? new Date(post.createdAt.seconds * 1000)
     : post?.createdAt?.toDate
@@ -317,6 +334,7 @@ const RealPostCard = ({ post, currentUserId }) => {
   const authorName = post?.authorName || post?.author_name || "School";
 
   const isMine = currentUserId && authorId && currentUserId === authorId;
+  const [boostOpen, setBoostOpen] = useState(false);
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
 
   return (
@@ -339,7 +357,7 @@ const RealPostCard = ({ post, currentUserId }) => {
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>
                 <Globe className="h-3.5 w-3.5" />
-                <span>Public</span>
+                <span>{tr("public","Public")}</span>
               </div>
             </div>
           </div>
@@ -360,7 +378,7 @@ const RealPostCard = ({ post, currentUserId }) => {
             <div className="flex">
               {isMine ? (
                 <Button variant="outline" className="w-full justify-center text-gray-700" type="button" disabled>
-                  This is you
+                  {tr("this_is_you","This is you")}
                 </Button>
               ) : (
                 <FollowButton
@@ -378,19 +396,29 @@ const RealPostCard = ({ post, currentUserId }) => {
                 className="w-full justify-center text-gray-700"
                 type="button"
                 disabled={!authorId || !currentUserId || isMine}
-                title={!authorId ? "Missing author id" : isMine ? "You can't message yourself" : "Message"}
+                title={!authorId ? tr("missing_author_id","Missing author id") : isMine ? tr("cant_message_self","You can\'t message yourself") : tr("message","Message")}
               >
                 <MessageCircle className="h-4 w-4 mr-2" /> Message
               </Button>
             </Link>
           </div>
         </div>
+
+        {isMine && subscriptionModeEnabled ? (
+          <BoostPostDialog
+            open={boostOpen}
+            onOpenChange={setBoostOpen}
+            postId={post?.id}
+            me={me}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );
 };
 
 export default function SchoolDashboard({ user }) {
+  const { tr } = useTr("school_dashboard");
   const userId = user?.id || user?.uid || user?.user_id || null;
 
   const [stats, setStats] = useState({
@@ -419,13 +447,34 @@ export default function SchoolDashboard({ user }) {
   // ✅ Posting / feed
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState("");
+  const [quotaUsed, setQuotaUsed] = useState(0);
+  const [quotaMonth, setQuotaMonth] = useState("");
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
 
   // ✅ subscription based on your user doc fields
   const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
+  const { subscriptionModeEnabled } = useSubscriptionMode();
 
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
+
+
+
+  // ✅ Posting limit dialog
+  const [limitOpen, setLimitOpen] = useState(false);
+// ✅ Listen to quota fields on the user doc (for disabling Post button + friendly prompt)
+useEffect(() => {
+  if (!userId) return;
+  const meRef = doc(db, "users", userId);
+  const unsub = onSnapshot(meRef, (snap) => {
+    if (!snap.exists()) return;
+    const d = snap.data() || {};
+    setQuotaUsed(Number(d.post_quota_used || 0));
+    setQuotaMonth(String(d.post_quota_month || ""));
+  });
+  return () => unsub();
+}, [userId]);
+
 
   useEffect(() => {
     if (!userId) return;
@@ -521,8 +570,22 @@ export default function SchoolDashboard({ user }) {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setCommunityPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setCommunityLoading(false);
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const now = new Date();
+        list.sort((a, b) => {
+          const aUntil = a?.boosted_until?.toDate ? a.boosted_until.toDate() : a?.boosted_until?.seconds ? new Date(a.boosted_until.seconds * 1000) : null;
+          const bUntil = b?.boosted_until?.toDate ? b.boosted_until.toDate() : b?.boosted_until?.seconds ? new Date(b.boosted_until.seconds * 1000) : null;
+          const aBoost = aUntil && aUntil > now;
+          const bBoost = bUntil && bUntil > now;
+          if (aBoost !== bBoost) return bBoost ? 1 : -1;
+          const aCreated = a?.createdAt?.toDate ? a.createdAt.toDate() : a?.createdAt?.seconds ? new Date(a.createdAt.seconds * 1000) : null;
+          const bCreated = b?.createdAt?.toDate ? b.createdAt.toDate() : b?.createdAt?.seconds ? new Date(b.createdAt.seconds * 1000) : null;
+          const at = aCreated ? aCreated.getTime() : 0;
+          const bt = bCreated ? bCreated.getTime() : 0;
+          return bt - at;
+        });
+        setCommunityPosts(list);
+setCommunityLoading(false);
       },
       (err) => {
         console.error("community posts snapshot error:", err);
@@ -557,7 +620,12 @@ export default function SchoolDashboard({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachments]);
 
-  const firstName = (schoolName).split(" ")[0];
+  // ✅ Use FULL Institute Name in greeting
+const firstName = useMemo(() => {
+  const n = String(schoolName || "").trim();
+  return n || "School";
+}, [schoolName]);
+
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
@@ -622,37 +690,69 @@ export default function SchoolDashboard({ user }) {
     setPostError("");
 
     try {
-      const authorName = schoolName;
+      const authorName = schoolDisplayName(school, user);
 
-      // 1) Create post doc first
-      const postRef = await addDoc(collection(db, "posts"), {
-        authorId: userId,
-        authorRole: "school",
-        authorName,
-        text,
-        media: [],
-        status: "published", // Cloud Function relies on this
-        paid: false,
-        createdAt: serverTimestamp(),
+      const canEnforceLimit = subscriptionModeEnabled === true;
+      const isUnlimited = isSubscribed === true;
+
+      let postDocId = null;
+
+      await runTransaction(db, async (tx) => {
+        const meRef = doc(db, "users", userId);
+
+        if (canEnforceLimit && !isUnlimited) {
+          const q = await ensureMonthlyPostQuota(tx, meRef);
+          if (q.used >= 10) throw new Error("POST_LIMIT_REACHED");
+
+          tx.set(
+            meRef,
+            { post_quota_used: increment(1), post_quota_updatedAt: serverTimestamp() },
+            { merge: true }
+          );
+        }
+
+        const postRef = doc(collection(db, "posts"));
+        postDocId = postRef.id;
+
+        tx.set(postRef, {
+          authorId: userId,
+          authorRole: "school",
+          authorName,
+          text,
+          media: [],
+          status: "published",
+          paid: false,
+          boosted: false,
+          boost_sort: 0,
+          createdAt: serverTimestamp(),
+        });
       });
 
-      // 2) Upload attachments then update the post
-      if (attachments.length > 0) {
+      if (postDocId && attachments.length > 0) {
         const uploaded = [];
         for (let i = 0; i < attachments.length; i++) {
-          uploaded.push(await uploadOne(attachments[i], postRef.id, i));
+          uploaded.push(await uploadOne(attachments[i], postDocId, i));
         }
-        await updateDoc(doc(db, "posts", postRef.id), { media: uploaded });
+        await updateDoc(doc(db, "posts", postDocId), { media: uploaded });
       }
 
       clearComposer();
     } catch (e) {
       console.error("handlePost error:", e);
-      setPostError("Failed to post. Please try again.");
+
+      if (String(e?.message || "").includes("POST_LIMIT_REACHED")) {
+        setLimitOpen(true);
+        setPostError(tr("limit_desc","You’ve reached the posting limit. Subscribe to post more."));
+      } else {
+        setPostError("Failed to post. Please try again.");
+      }
     } finally {
       setPosting(false);
     }
   };
+
+
+
 
   if (loading) {
     return (
@@ -664,17 +764,36 @@ export default function SchoolDashboard({ user }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* ✅ Posting limit prompt */}
+      <Dialog open={limitOpen} onOpenChange={setLimitOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{tr("limit_title")}</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-gray-700">
+            {tr("limit_desc")}
+          </div>
+          <div className="mt-4 flex gap-2 justify-end">
+            <Button type="button" variant="outline" onClick={() => setLimitOpen(false)}>
+              {tr("close")}
+            </Button>
+            <Link to={subscribeUrl}>
+              <Button type="button" className="bg-emerald-600 hover:bg-emerald-700">
+                {tr("subscribe")}
+              </Button>
+            </Link>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="mx-auto max-w-[1800px]">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-                Welcome, {firstName}
+                {tr("welcome_name", { name: firstName })}
               </h1>
-              <p className="text-sm text-gray-600">
-                Newsfeed-style dashboard (school announcements + leads)
-              </p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -699,8 +818,7 @@ export default function SchoolDashboard({ user }) {
 
           {permError && (
             <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-800">
-              Heads up, some data couldn’t be loaded due to Firestore permissions. Refresh after
-              updating rules.
+              {tr("perm_warning")}
             </div>
           )}
 
@@ -710,32 +828,32 @@ export default function SchoolDashboard({ user }) {
               <div className="sticky top-4 space-y-4">
                 <div className="rounded-2xl border bg-white p-2">
                   <div className="px-2 py-2 text-xs font-semibold text-gray-500">
-                    Shortcuts
+                    {tr("shortcuts")}
                   </div>
                   <div className="space-y-1">
                     <Shortcut
                       to={createPageUrl("SchoolPrograms")}
-                      label="Programs"
+                      label={tr("nav_programs")}
                       icon={<BookOpen className="h-5 w-5 text-blue-600" />}
                     />
                     <Shortcut
                       to={createPageUrl("SchoolLeads")}
-                      label="Leads"
+                      label={tr("nav_leads")}
                       icon={<Users className="h-5 w-5 text-green-600" />}
                     />
                     <Shortcut
                       to={createPageUrl("SchoolProfile")}
-                      label="School Profile"
+                      label={tr("nav_school_profile")}
                       icon={<Building2 className="h-5 w-5 text-purple-600" />}
                     />
                     <Shortcut
                       to={createPageUrl("Events")}
-                      label="Events"
+                      label={tr("nav_events")}
                       icon={<Ticket className="h-5 w-5 text-emerald-600" />}
                     />
                     <Shortcut
                       to={createPageUrl("Directory")}
-                      label="Directory"
+                      label={tr("nav_directory")}
                       icon={<Building2 className="h-5 w-5 text-blue-600" />}
                     />
                   </div>
@@ -752,13 +870,13 @@ export default function SchoolDashboard({ user }) {
                     <Avatar name={schoolName} />
                     <div className="w-full">
                       <div className="text-sm font-semibold text-gray-900">
-                        Share an announcement, {firstName}?
+                        {tr("composer_title", { name: firstName })}
                       </div>
 
                       <textarea
                         value={composerText}
                         onChange={(e) => setComposerText(e.target.value)}
-                        placeholder="Post a program update, scholarship note, intake reminder, etc..."
+                        placeholder={tr("composer_placeholder")}
                         className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200 min-h-[90px]"
                       />
 
@@ -776,7 +894,7 @@ export default function SchoolDashboard({ user }) {
                       {attachmentPreviews.length > 0 && (
                         <div className="mt-3 space-y-2">
                           <div className="text-xs font-semibold text-gray-500">
-                            Attachments ({attachmentPreviews.length})
+                            {tr("attachments", { count: attachmentPreviews.length })}
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -808,7 +926,7 @@ export default function SchoolDashboard({ user }) {
                                       {p.name}
                                     </div>
                                     <div className="text-xs text-gray-500">
-                                      {isVideo ? "Video" : "Photo"}
+                                      {isVideo ? tr("video") : tr("photo")}
                                     </div>
                                   </div>
 
@@ -818,7 +936,7 @@ export default function SchoolDashboard({ user }) {
                                     size="icon"
                                     className="text-gray-500"
                                     onClick={() => removeAttachment(p.id)}
-                                    title="Remove"
+                                    title={tr("remove")}
                                   >
                                     <X className="h-4 w-4" />
                                   </Button>
@@ -842,7 +960,7 @@ export default function SchoolDashboard({ user }) {
                           onClick={openFilePicker}
                         >
                           <ImageIcon className="h-4 w-4 mr-2 text-green-600" />
-                          Photo/video
+                          {tr("photo_video")}
                         </Button>
 
                         <Button
@@ -853,10 +971,10 @@ export default function SchoolDashboard({ user }) {
                         >
                           {posting ? (
                             <span className="inline-flex items-center">
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Posting
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> {tr("posting")}
                             </span>
                           ) : (
-                            "Post"
+                            tr("post")
                           )}
                         </Button>
                       </div>
@@ -878,15 +996,15 @@ export default function SchoolDashboard({ user }) {
               <div className="space-y-4">
                 {communityLoading ? (
                   <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500">
-                    Loading posts…
+                    {tr("loading_posts")}
                   </div>
                 ) : communityPosts.length === 0 ? (
                   <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500">
-                    No posts yet. Be the first to post an announcement.
+                    {tr("no_posts_yet")}
                   </div>
                 ) : (
                   communityPosts.map((p) => (
-                    <RealPostCard key={p.id} post={p} currentUserId={userId} />
+                    <RealPostCard key={p.id} post={p} currentUserId={userId} me={user}  subscriptionModeEnabled={subscriptionModeEnabled}/>
                   ))
                 )}
               </div>
@@ -907,7 +1025,7 @@ export default function SchoolDashboard({ user }) {
                       <div className="text-lg font-bold text-green-600">{stats.totalLeads}</div>
                     </div>
                     <div className="rounded-2xl border bg-gray-50 p-3">
-                      <div className="text-xs text-gray-500">Reservations</div>
+                      <div className="text-xs text-gray-500">{tr("reservations")}</div>
                       <div className="text-lg font-bold text-purple-600">
                         {stats.confirmedReservations}
                       </div>
@@ -930,7 +1048,7 @@ export default function SchoolDashboard({ user }) {
                     <div className="text-sm font-semibold text-gray-900">Recent Leads</div>
                     <Link to={createPageUrl("SchoolLeads")}>
                       <Button variant="ghost" size="sm" type="button">
-                        View <ArrowRight className="h-4 w-4 ml-1" />
+                        {tr("view")} <ArrowRight className="h-4 w-4 ml-1" />
                       </Button>
                     </Link>
                   </div>
@@ -982,4 +1100,130 @@ export default function SchoolDashboard({ user }) {
       </div>
     </div>
   );
+}/* -------------------- Boost Modal -------------------- */
+const BOOST_PLANS = [
+  { days: 7, price: 1.99 },
+  { days: 15, price: 2.99 },
+  { days: 30, price: 3.99 },
+];
+
+function monthKeyUTC(d = new Date()) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
 }
+
+async function ensureMonthlyPostQuota(tx, userRef) {
+  const snap = await tx.get(userRef);
+  const nowKey = monthKeyUTC();
+  const data = snap.exists() ? snap.data() : {};
+  const storedKey = String(data?.post_quota_month || "");
+  if (storedKey !== nowKey) {
+    tx.set(
+      userRef,
+      { post_quota_month: nowKey, post_quota_used: 0, post_quota_updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+    return { used: 0, key: nowKey };
+  }
+  return { used: Number(data?.post_quota_used || 0), key: storedKey || nowKey };
+}
+
+const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
+  const { tr } = useTr("school_dashboard");
+
+  const [plan, setPlan] = useState(BOOST_PLANS[0]);
+  const [processing, setProcessing] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+
+  const payerName = me?.full_name || me?.name || "GreenPass User";
+  const payerEmail = me?.email || "";
+
+  const handleSuccess = async (_method, transactionId, payload) => {
+    if (!postId) return;
+    setProcessing(true);
+    setErr("");
+    try {
+      const until = Timestamp.fromDate(new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000));
+      await updateDoc(doc(db, "posts", postId), {
+        boosted: true,
+        boost_days: plan.days,
+        boost_price_usd: plan.price,
+        boost_currency: "USD",
+        boost_transaction_id: String(transactionId || ""),
+        boost_provider: "paypal",
+        boost_details: payload || null,
+        boosted_at: serverTimestamp(),
+        boosted_until: until,
+      });
+      setDone(true);
+    } catch (e) {
+      console.error("boost update post failed:", e);
+      setErr(tr("payment_succeeded_but_failed","Payment succeeded, but we couldn\'t activate the boost. Please contact support."));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => (processing ? null : onOpenChange(v))}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{tr("boost_title","Boost your post")}</DialogTitle>
+        </DialogHeader>
+
+        {!done ? (
+          <>
+            <div className="mt-1 text-sm text-gray-600">{tr("boost_subtitle","Choose a boost duration, then pay.")}</div>
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {BOOST_PLANS.map((p) => {
+                const selected = plan?.days === p.days;
+                return (
+                  <Button
+                    key={p.days}
+                    type="button"
+                    variant={selected ? "default" : "outline"}
+                    className="w-full"
+                    onClick={() => setPlan(p)}
+                    disabled={processing}
+                  >
+                    ${p.price.toFixed(2)} • {p.days} days
+                  </Button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4">
+              <SharedPaymentGateway
+                amountUSD={plan.price}
+                itemDescription={`Boost Post (${plan.days} days)`}
+                payerName={payerName}
+                payerEmail={payerEmail}
+                onProcessing={() => setProcessing(true)}
+                onDoneProcessing={() => setProcessing(false)}
+                onError={(e) => {
+                  console.error(e);
+                  setErr(tr("payment_failed","Payment failed. Please try again."));
+                }}
+                onCardPaymentSuccess={handleSuccess}
+              />
+            </div>
+
+            {err ? <div className="mt-3 text-sm text-red-600">{err}</div> : null}
+          </>
+        ) : (
+          <div className="mt-4">
+            <div className="text-sm text-emerald-700 font-medium">{tr("boost_activated","Boost activated ✅")}</div>
+            <Button type="button" className="w-full mt-3" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+

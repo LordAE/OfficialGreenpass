@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import CountrySelector from "@/components/CountrySelector";
 import { getProvinceLabel } from "../components/utils/CanadianProvinces";
 import _ from "lodash";
@@ -179,20 +180,14 @@ const canonCountry = (v = "") => {
 
 
 /* -----------------------------
-   Tabs
+   Tabs (moved inside Directory for i18n)
    ----------------------------- */
-const BROWSE_TABS = [
-  { key: "school", label: "School" },
-  { key: "agent", label: "Agent" },
-  { key: "tutor", label: "Tutor" },
-  { key: "user", label: "User" },
-];
 
 /* -----------------------------
    Left list row (schools/institutions)
    ----------------------------- */
-const SchoolListRow = ({ item, isSelected, onSelect }) => {
-  const name = item.name || item.school_name || item.institution_name || "Unknown";
+const SchoolListRow = ({ item, isSelected, onSelect, tr }) => {
+  const name = item.name || item.school_name || item.institution_name || tr?.("directory.common.unknown", "Unknown");
   const logo =
     item.logoUrl ||
     item.school_image_url ||
@@ -217,21 +212,21 @@ const SchoolListRow = ({ item, isSelected, onSelect }) => {
           <div className="flex items-start justify-between gap-2">
             <h4 className="font-semibold text-gray-900 truncate">{name}</h4>
             <Badge variant="secondary" className="shrink-0">
-              {item.isInstitution ? "Institution" : item.institution_type || "School"}
+              {item.isInstitution ? tr?.("directory.common.institution","Institution") : (item.institution_type || tr?.("directory.tabs.school","School"))}
             </Badge>
           </div>
 
           <div className="mt-1 flex items-center text-sm text-gray-600">
             <MapPin className="w-4 h-4 mr-1 shrink-0" />
             <span className="truncate">
-              {(item.city || item.school_city || "City")},{" "}
-              {getProvinceLabel(item.province || item.school_province) || "Province"},{" "}
-              {item.country || item.school_country || "Country"}
+              {(item.city || item.school_city || tr?.("directory.common.city","City"))},{" "}
+              {getProvinceLabel(item.province || item.school_province) || tr?.("directory.common.province","Province")},{" "}
+              {item.country || item.school_country || tr?.("directory.common.country","Country")}
             </span>
           </div>
 
           <div className="mt-2 text-sm text-gray-700">
-            <span className="font-medium text-blue-600">{item.programCount || 0}+</span> programs
+            <span className="font-medium text-blue-600">{item.programCount || 0}+</span> {tr?.("directory.common.programs","programs")}
           </div>
         </div>
       </div>
@@ -287,7 +282,7 @@ const getSchoolImageList = (item) => {
 /* -----------------------------
    Right details panel (schools/institutions)
    ----------------------------- */
-const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClick }) => {
+const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClick, tr }) => {
   const [showPrograms, setShowPrograms] = useState(false);
   const [imgIndex, setImgIndex] = useState(0);
 
@@ -311,13 +306,13 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
     return (
       <Card className="h-full">
         <CardContent className="p-6 text-gray-600">
-          Select a school from the list to see details.
+          {tr?.("directory.school.select_school","Select a school from the list to see details.")}
         </CardContent>
       </Card>
     );
   }
 
-  const name = item.name || item.school_name || item.institution_name || "Unknown";
+  const name = item.name || item.school_name || item.institution_name || tr?.("directory.common.unknown", "Unknown");
 
   const city = item.city || item.school_city || "—";
   const province = getProvinceLabel(item.province || item.school_province) || "—";
@@ -405,7 +400,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <Badge variant="secondary" className="mb-2">
-                {item.isInstitution ? "Institution" : item.institution_type || "School"}
+                {item.isInstitution ? tr?.("directory.common.institution","Institution") : (item.institution_type || tr?.("directory.tabs.school","School"))}
               </Badge>
 
               <h2 className="text-2xl font-bold text-gray-900">{name}</h2>
@@ -420,7 +415,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
               <div className="mt-4">
                 <Button className="w-full h-11 text-base" onClick={() => onContactClick?.(item)}>
                   <Mail className="w-4 h-4 mr-2" />
-                  Contact Us
+                  {tr?.("directory.school.contact","Contact Us")}
                 </Button>
 
                 <button
@@ -428,15 +423,15 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
                   className="mt-3 text-sm text-blue-600 underline hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => setShowPrograms((v) => !v)}
                   disabled={!hasPrograms}
-                  title={!hasPrograms ? "No programs available for this school yet." : undefined}
+                  title={!hasPrograms ? tr?.("directory.school.no_programs","No programs available for this school yet.") : undefined}
                 >
-                  {showPrograms ? "Hide programs -" : "View programs +"}
+                  {showPrograms ? tr?.("directory.school.hide_programs","Hide programs -") : tr?.("directory.school.view_programs","View programs +")}
                 </button>
               </div>
             </div>
 
             <div className="text-right shrink-0">
-              <p className="text-sm text-gray-500">Programs</p>
+              <p className="text-sm text-gray-500">{tr?.("directory.school.programs","Programs")}</p>
               <p className="text-2xl font-bold text-blue-600">{item.programCount || 0}+</p>
             </div>
           </div>
@@ -444,7 +439,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
           {showPrograms && (
             <div className="mt-5 border rounded-lg overflow-hidden">
               <div className="px-4 py-3 bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
-                <span>Programs</span>
+                <span>{tr?.("directory.school.programs","Programs")}</span>
                 <Badge variant="secondary">{list.length}</Badge>
               </div>
 
@@ -461,7 +456,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
                     >
                       <div className="text-sm font-medium text-gray-900">{title}</div>
                       {meta ? <div className="text-xs text-gray-500 mt-1">{meta}</div> : null}
-                      <div className="text-xs text-blue-600 underline mt-2">Open</div>
+                      <div className="text-xs text-blue-600 underline mt-2">{tr?.("directory.common.open","Open")}</div>
                     </button>
                   );
                 })}
@@ -471,7 +466,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
 
           {item.about && (
             <div className="mt-6">
-              <h3 className="font-semibold text-gray-900 mb-2">Overview</h3>
+              <h3 className="font-semibold text-gray-900 mb-2">{tr?.("directory.school.overview","Overview")}</h3>
               <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{item.about}</p>
             </div>
           )}
@@ -481,7 +476,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
               <a href={item.website} target="_blank" rel="noopener noreferrer" className="block">
                 <Button variant="outline" className="w-full h-11 text-base">
                   <Globe className="w-4 h-4 mr-2" />
-                  Visit Website
+                  {tr?.("directory.school.visit_website","Visit Website")}
                 </Button>
               </a>
             </div>
@@ -495,8 +490,8 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
 /* -----------------------------
    User directory UI (FLAG IMAGE)
    ----------------------------- */
-const UserListRow = ({ user, isSelected, onSelect }) => {
-  const name = user.full_name || user.name || "Unnamed";
+const UserListRow = ({ user, isSelected, onSelect, tr }) => {
+  const name = user.full_name || user.name || tr?.("directory.common.unnamed","Unnamed");
   const country = user.country || "—";
   const countryCode = (user.country_code || user.countryCode || "").trim().toUpperCase();
 
@@ -545,16 +540,16 @@ const UserListRow = ({ user, isSelected, onSelect }) => {
 /* -----------------------------
    ✅ UserDetailsPanel
    ----------------------------- */
-const UserDetailsPanel = ({ user, onMessageClick }) => {
+const UserDetailsPanel = ({ user, onMessageClick, tr }) => {
   if (!user) {
     return (
       <Card className="h-full">
-        <CardContent className="p-6 text-gray-600">Select a user from the list to see details.</CardContent>
+        <CardContent className="p-6 text-gray-600">{tr?.("directory.profile.select_user","Select a user from the list to see details.")}</CardContent>
       </Card>
     );
   }
 
-  const name = user.full_name || user.name || "Unnamed";
+  const name = user.full_name || user.name || tr?.("directory.common.unnamed","Unnamed");
   const role = user.user_type || user.userType || user.role || user.selected_role || "user";
 
   const country = user.country || "—";
@@ -619,11 +614,11 @@ const UserDetailsPanel = ({ user, onMessageClick }) => {
         </div>
 
         <div className="mt-6">
-          <h3 className="font-semibold text-gray-900 mb-2">Biography</h3>
+          <h3 className="font-semibold text-gray-900 mb-2">{tr("directory.profile.biography","Biography")}</h3>
           {bio ? (
             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{bio}</p>
           ) : (
-            <p className="text-sm text-gray-500 italic">No biography provided yet.</p>
+            <p className="text-sm text-gray-500 italic">{tr("directory.profile.no_bio","No biography provided yet.")}</p>
           )}
         </div>
 
@@ -640,6 +635,20 @@ const UserDetailsPanel = ({ user, onMessageClick }) => {
 };
 
 export default function Directory() {
+  const { t } = useTranslation();
+  const tr = React.useCallback((key, def, vars = undefined) => t(key, { defaultValue: def, ...(vars || {}) }), [t]);
+
+  const BROWSE_TABS = useMemo(
+    () => [
+      { key: "school", label: tr("directory.tabs.school", "School") },
+      { key: "agent", label: tr("directory.tabs.agent", "Agent") },
+      { key: "tutor", label: tr("directory.tabs.tutor", "Tutor") },
+      { key: "user", label: tr("directory.tabs.user", "User") },
+    ],
+    [tr]
+  );
+
+
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1680,9 +1689,9 @@ const [page, setPage] = useState(1);
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Sign in required</DialogTitle>
+            <DialogTitle>{tr("auth.title","Sign in required")}</DialogTitle>
             <DialogDescription>
-              You need to log in to continue. You can use email/password, or sign in with Google / Apple.
+              {tr("auth.subtitle","You need to log in to continue. You can use email/password, or sign in with Google / Apple.")}
             </DialogDescription>
           </DialogHeader>
 
@@ -1705,7 +1714,7 @@ const [page, setPage] = useState(1);
                 ) : (
                   <Chrome className="w-4 h-4 mr-2" />
                 )}
-                Log in with Google
+                {tr("auth.continueGoogle","Continue with Google")}
               </Button>
 
               <Button
@@ -1719,18 +1728,18 @@ const [page, setPage] = useState(1);
                 ) : (
                   <Apple className="w-4 h-4 mr-2" />
                 )}
-                Log in with Apple
+                {tr("auth.continueApple","Continue with Apple")}
               </Button>
 
               <div className="flex items-center gap-3 my-2">
                 <div className="h-px bg-gray-200 flex-1" />
-                <div className="text-xs text-gray-500">or</div>
+                <div className="text-xs text-gray-500">{tr("auth.orContinueEmail","or")}</div>
                 <div className="h-px bg-gray-200 flex-1" />
               </div>
 
               <Button className="w-full h-11" onClick={() => setAuthStep("login")} disabled={authLoading}>
                 <LogIn className="w-4 h-4 mr-2" />
-                Log in with email
+                {tr("auth.signIn","Sign in")}
               </Button>
 
               <Button
@@ -1781,7 +1790,7 @@ const [page, setPage] = useState(1);
                 <Input
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder={tr("auth.email_placeholder","you@example.com")}
                   type="email"
                   className="h-11"
                   autoComplete="email"
@@ -1794,7 +1803,7 @@ const [page, setPage] = useState(1);
                   <Input
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="Enter your password"
+                    placeholder={tr("auth.password_placeholder","Enter your password")}
                     type={loginShowPw ? "text" : "password"}
                     className="h-11 pr-10"
                     autoComplete="current-password"
@@ -1812,7 +1821,7 @@ const [page, setPage] = useState(1);
 
               <Button className="w-full h-11" onClick={handleLogin} disabled={authLoading}>
                 {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
-                Log in
+                {tr("auth.login","Log in")}
               </Button>
 
               <div className="flex gap-2">
@@ -1892,7 +1901,7 @@ const [page, setPage] = useState(1);
 
               <div className="flex items-center gap-3 my-2">
                 <div className="h-px bg-gray-200 flex-1" />
-                <div className="text-xs text-gray-500">or</div>
+                <div className="text-xs text-gray-500">{tr("auth.orContinueEmail","or")}</div>
                 <div className="h-px bg-gray-200 flex-1" />
               </div>
 
@@ -1924,12 +1933,12 @@ const [page, setPage] = useState(1);
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Full name</label>
-                <Input value={signupName} onChange={(e) => setSignupName(e.target.value)} placeholder="Your name" className="h-11" autoComplete="name" />
+                <Input value={signupName} onChange={(e) => setSignupName(e.target.value)} placeholder={tr("auth.name_placeholder","Your name")} className="h-11" autoComplete="name" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Email</label>
-                <Input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} placeholder="you@example.com" type="email" className="h-11" autoComplete="email" />
+                <Input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} placeholder={tr("auth.email_placeholder","you@example.com")} type="email" className="h-11" autoComplete="email" />
               </div>
 
               <div className="space-y-2">
@@ -1938,7 +1947,7 @@ const [page, setPage] = useState(1);
                   <Input
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
-                    placeholder="Create a password"
+                    placeholder={tr("auth.create_password_placeholder","Create a password")}
                     type={signupShowPw ? "text" : "password"}
                     className="h-11 pr-10"
                     autoComplete="new-password"
@@ -1959,7 +1968,7 @@ const [page, setPage] = useState(1);
                 <Input
                   value={signupPassword2}
                   onChange={(e) => setSignupPassword2(e.target.value)}
-                  placeholder="Confirm your password"
+                  placeholder={tr("auth.confirm_password_placeholder","Confirm your password")}
                   type={signupShowPw ? "text" : "password"}
                   className="h-11"
                   autoComplete="new-password"
@@ -1968,7 +1977,7 @@ const [page, setPage] = useState(1);
 
               <Button className="w-full h-11" onClick={handleSignupEmail} disabled={authLoading}>
                 {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
-                Create account
+                {tr("auth.create_account","Create account")}
               </Button>
 
               <div className="flex gap-2">
@@ -1983,7 +1992,7 @@ const [page, setPage] = useState(1);
               <div className="text-sm text-gray-600 text-center">
                 Already have an account?{" "}
                 <button type="button" className="text-blue-600 underline hover:text-blue-700" onClick={() => setAuthStep("login")} disabled={authLoading}>
-                  Log in
+                  {tr("auth.login","Log in")}
                 </button>
               </div>
             </div>
@@ -2004,7 +2013,7 @@ const [page, setPage] = useState(1);
                 <Input
                   value={oauthName}
                   onChange={(e) => setOauthName(e.target.value)}
-                  placeholder="Your name"
+                  placeholder={tr("auth.name_placeholder","Your name")}
                   className="h-11"
                   autoComplete="name"
                   disabled={authLoading}
@@ -2036,14 +2045,22 @@ const [page, setPage] = useState(1);
         <div className="mb-8 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-4">
             {browseTab === "school"
-              ? "Browse Schools & Institutions"
-              : `Browse ${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)} Directory`}
+              ? tr("directory.header.school_title", "Browse Schools & Institutions")
+              : tr("directory.header.role_title", "Browse {{role}} Directory", {
+                  role: tr(`directory.tabs.${browseTab}`, browseTab),
+                })}
           </h1>
 
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
             {browseTab === "school"
-              ? "Explore schools and institutions, then expand to view programs and contact options."
-              : "Explore our public directory and connect with verified profiles by country and search."}
+              ? tr(
+                  "directory.header.school_subtitle",
+                  "Explore schools and institutions, then expand to view programs and contact options."
+                )
+              : tr(
+                  "directory.header.role_subtitle",
+                  "Explore our public directory and connect with verified profiles by country and search."
+                )}
           </p>
         </div>
 
@@ -2077,7 +2094,7 @@ const [page, setPage] = useState(1);
                   <div className="text-sm text-gray-600 flex items-center gap-2">
                     <Users className="w-4 h-4" />
                     <span>
-                      Browse: <span className="font-semibold capitalize">{browseTab}</span>
+                      {tr("directory.filters.browse_label","Browse:")} <span className="font-semibold capitalize">{browseTab}</span>
                     </span>
                   </div>
                   <div />
@@ -2091,8 +2108,8 @@ const [page, setPage] = useState(1);
                         type="text"
                         placeholder={
                           browseTab === "school"
-                            ? "Search schools, institutions, programs..."
-                            : `Search ${browseTab}s by name, country...`
+                            ? tr("directory.search_placeholder.schools","Search schools, institutions, programs...")
+                            : tr("directory.search_placeholder.users", `Search ${browseTab}s by name, country...`)
                         }
                         value={searchTerm}
                         onChange={handleSearchChange}
@@ -2107,7 +2124,7 @@ const [page, setPage] = useState(1);
                     options={browseTab === "school" ? schoolCountryOptions : userCountryOptions}
                     includeAll
                     allLabel="All Countries"
-                    placeholder="All Countries"
+                    placeholder={tr("directory.filters.all_countries","All Countries")}
                     className="h-11"
                   />
 
@@ -2115,7 +2132,7 @@ const [page, setPage] = useState(1);
                     <>
                       <Select value={selectedCity} onValueChange={setSelectedCity}>
                         <SelectTrigger className="h-11">
-                          <SelectValue placeholder="All Cities" />
+                          <SelectValue placeholder={tr("directory.filters.all_cities","All Cities")} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Cities</SelectItem>
@@ -2197,6 +2214,7 @@ const [page, setPage] = useState(1);
                         item={item}
                         isSelected={key === selectedKey}
                         onSelect={() => setSelectedKey(key)}
+                        tr={tr}
                       />
                     ) : (
                       <UserListRow
@@ -2204,6 +2222,7 @@ const [page, setPage] = useState(1);
                         user={item}
                         isSelected={key === selectedKey}
                         onSelect={() => setSelectedKey(key)}
+                        tr={tr}
                       />
                     );
                   })}
@@ -2265,9 +2284,9 @@ const [page, setPage] = useState(1);
                   programs={selectedPrograms}
                   onContactClick={onContactClick}
                   onProgramClick={onProgramClick}
-                />
+                 tr={tr} />
               ) : (
-                <UserDetailsPanel user={selectedItem} onMessageClick={onMessageClick} />
+                <UserDetailsPanel user={selectedItem} onMessageClick={onMessageClick}  tr={tr} />
               )}
             </div>
           </div>

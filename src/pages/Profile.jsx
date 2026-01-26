@@ -29,6 +29,7 @@ import {
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { useTr } from "@/i18n/useTr";
 
 /* ---------------- helpers ---------------- */
 const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor"];
@@ -47,12 +48,13 @@ const slugify = (s) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "");
 
-function roleMeta(role) {
-  if (role === "agent") return { label: "Agent", icon: <Briefcase className="w-5 h-5" /> };
-  if (role === "tutor") return { label: "Tutor", icon: <BookOpen className="w-5 h-5" /> };
-  if (role === "school") return { label: "School", icon: <Building className="w-5 h-5" /> };
-  if (role === "vendor") return { label: "Vendor", icon: <Store className="w-5 h-5" /> };
-  return { label: "Student", icon: <UserIcon className="w-5 h-5" /> };
+function roleMeta(role, tr) {
+  if (role === "agent") return { label: tr("role_agent", "Agent"), icon: <Briefcase className="w-5 h-5" /> };
+  if (role === "tutor") return { label: tr("role_tutor", "Tutor"), icon: <BookOpen className="w-5 h-5" /> };
+  if (role === "school") return { label: tr("role_school", "School"), icon: <Building className="w-5 h-5" /> };
+  if (role === "vendor") return { label: tr("role_vendor", "Vendor"), icon: <Store className="w-5 h-5" /> };
+  // Default = general user / student
+  return { label: tr("role_student", "Student"), icon: <UserIcon className="w-5 h-5" /> };
 }
 
 /**
@@ -107,9 +109,11 @@ async function syncSchoolCollections({ uid, payload }) {
 }
 
 export default function Profile() {
+  const { tr } = useTr("profile");
+
   const [uid, setUid] = useState(null);
   const [role, setRole] = useState("user");
-  const meta = useMemo(() => roleMeta(role), [role]);
+  const meta = useMemo(() => roleMeta(role, tr), [role]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -158,6 +162,30 @@ export default function Profile() {
   const showTutor = role === "tutor";
   const showSchool = role === "school";
   const showVendor = role === "vendor";
+
+  const vendorCategoryOptions = useMemo(
+    () => [
+      { value: "Transport", label: tr("cat_transport", "Transport") },
+      { value: "SIM Card", label: tr("cat_sim", "SIM Card") },
+      { value: "Banking", label: tr("cat_banking", "Banking") },
+      { value: "Accommodation", label: tr("cat_accommodation", "Accommodation") },
+      { value: "Delivery", label: tr("cat_delivery", "Delivery") },
+      { value: "Tours", label: tr("cat_tours", "Tours") },
+    ],
+    [tr]
+  );
+
+  const schoolTypeOptions = useMemo(
+    () => [
+      { value: "High School", label: tr("type_high_school", "High School") },
+      { value: "College", label: tr("type_college", "College") },
+      { value: "University", label: tr("type_university", "University") },
+      { value: "Institute", label: tr("type_institute", "Institute") },
+      { value: "Vocational", label: tr("type_vocational", "Vocational School") },
+      { value: "Other", label: tr("type_other", "Other") },
+    ],
+    [tr]
+  );
 
   const loadProfile = useCallback(async (userId) => {
     setLoading(true);
@@ -286,7 +314,7 @@ export default function Profile() {
       }
     } catch (err) {
       console.error("Profile picture upload failed:", err);
-      alert("Failed to upload profile picture. Please try again.");
+      alert(tr("alerts.upload_failed","Failed to upload profile picture. Please try again."));
     } finally {
       setUploadingProfilePic(false);
       e.target.value = "";
@@ -298,36 +326,36 @@ export default function Profile() {
     if (!uid) return;
 
     // Align with onboarding basic requirements
-    if (!form.full_name?.trim()) return alert("Full name is required.");
-    if (!form.phone?.trim()) return alert("Phone is required.");
-    if (!form.country?.trim()) return alert("Country is required.");
+    if (!form.full_name?.trim()) return alert(tr("alerts.required_full_name","Full name is required."));
+    if (!form.phone?.trim()) return alert(tr("alerts.required_phone","Phone is required."));
+    if (!form.country?.trim()) return alert(tr("alerts.required_country","Country is required."));
 
     // Align with onboarding role-specific requirements
     if (role === "agent") {
-      if (!form.company_name?.trim()) return alert("Company name is required.");
-      if (!form.business_license_mst?.trim()) return alert("Business license (MST) is required.");
-      if (!form.paypal_email?.trim()) return alert("PayPal email is required.");
+      if (!form.company_name?.trim()) return alert(tr("alerts.required_company_name","Company name is required."));
+      if (!form.business_license_mst?.trim()) return alert(tr("alerts.required_business_license","Business license (MST) is required."));
+      if (!form.paypal_email?.trim()) return alert(tr("alerts.required_paypal_email","PayPal email is required."));
     }
 
     if (role === "tutor") {
-      if (csvToArray(form.specializations).length === 0) return alert("Specializations are required.");
-      if (!String(form.experience_years).trim()) return alert("Years of experience is required.");
-      if (!String(form.hourly_rate).trim()) return alert("Hourly rate is required.");
-      if (!form.paypal_email?.trim()) return alert("PayPal email is required.");
+      if (csvToArray(form.specializations).length === 0) return alert(tr("alerts.required_specializations","Specializations are required."));
+      if (!String(form.experience_years).trim()) return alert(tr("alerts.required_experience_years","Years of experience is required."));
+      if (!String(form.hourly_rate).trim()) return alert(tr("alerts.required_hourly_rate","Hourly rate is required."));
+      if (!form.paypal_email?.trim()) return alert(tr("alerts.required_paypal_email","PayPal email is required."));
     }
 
     if (role === "school") {
-      if (!form.school_name?.trim()) return alert("Institution name is required.");
-      if (!form.type?.trim()) return alert("School type is required.");
-      if (!form.location?.trim()) return alert("City/Location is required.");
-      if (!form.website?.trim()) return alert("Website is required.");
+      if (!form.school_name?.trim()) return alert(tr("alerts.required_institution_name","Institution name is required."));
+      if (!form.type?.trim()) return alert(tr("alerts.required_school_type","School type is required."));
+      if (!form.location?.trim()) return alert(tr("alerts.required_city_location","City/Location is required."));
+      if (!form.website?.trim()) return alert(tr("alerts.required_website","Website is required."));
     }
 
     if (role === "vendor") {
-      if (!form.business_name?.trim()) return alert("Business name is required.");
+      if (!form.business_name?.trim()) return alert(tr("alerts.required_business_name","Business name is required."));
       if (!Array.isArray(form.service_categories) || form.service_categories.length === 0)
-        return alert("Select at least 1 service category.");
-      if (!form.paypal_email?.trim()) return alert("PayPal email is required.");
+        return alert(tr("alerts.required_service_category","Select at least 1 service category."));
+      if (!form.paypal_email?.trim()) return alert(tr("alerts.required_paypal_email","PayPal email is required."));
     }
 
     setSaving(true);
@@ -402,11 +430,11 @@ export default function Profile() {
       }
 
       await updateDoc(uref, updates);
-      alert("Saved! All changes were updated.");
+      alert(tr("alerts.saved","Saved! All changes were updated."));
       await loadProfile(uid);
     } catch (e) {
       console.error("Save failed:", e);
-      alert("Failed to save changes. Please try again.");
+      alert(tr("alerts.save_failed","Failed to save changes. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -421,7 +449,7 @@ export default function Profile() {
   }
 
   // ✅ Avatar fallback should match Layout.jsx (same gradient + initial)
-  const displayName = (form.full_name || "User").trim();
+  const displayName = (form.full_name || tr("default_user","User")).trim();
   const initial = displayName.charAt(0).toUpperCase() || "U";
   const avatarBg = "bg-gradient-to-br from-green-500 to-blue-500";
   const profilePhoto = form.profile_picture || form.photo_url || form.photoURL || "";
@@ -433,22 +461,22 @@ export default function Profile() {
         <div className="flex items-center gap-3">
           <div className="rounded-full bg-white border p-2">{meta.icon}</div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{tr("title","Profile")}</h1>
             <p className="text-sm text-gray-600">
-              Role: <span className="font-semibold">{meta.label}</span>
+              {tr("role_prefix","Role:")} <span className="font-semibold">{meta.label}</span>
             </p>
           </div>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Personal Information</CardTitle>
+            <CardTitle>{tr("personal_information","Personal Information")}</CardTitle>
           </CardHeader>
 
           <CardContent className="space-y-6">
             {/* Profile picture upload (kept) */}
             <div>
-              <Label>Profile Picture</Label>
+              <Label>{tr("profile_picture","Profile Picture")}</Label>
               <div className="flex items-center gap-4 mt-2">
                 <input
                   type="file"
@@ -468,7 +496,7 @@ export default function Profile() {
                   ) : (
                     <Upload className="w-4 h-4 mr-2" />
                   )}
-                  Upload Picture
+                  {uploadingProfilePic ? tr("uploading","Uploading…") : tr("upload_picture","Upload Picture")}
                 </Button>
 
                 {profilePhoto ? (
@@ -494,7 +522,7 @@ export default function Profile() {
             {/* Basic info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label>Full Name *</Label>
+                <Label>{tr("full_name","Full Name *")}</Label>
                 <Input
                   value={form.full_name}
                   onChange={(e) => setField("full_name", e.target.value)}
@@ -503,12 +531,12 @@ export default function Profile() {
               </div>
 
               <div>
-                <Label>Email (Login)</Label>
+                <Label>{tr("email_login","Email (Login)")}</Label>
                 <Input value={form.email} disabled className="mt-1 bg-gray-100" />
               </div>
 
               <div>
-                <Label>Phone *</Label>
+                <Label>{tr("phone","Phone *")}</Label>
                 <Input
                   value={form.phone}
                   onChange={(e) => setField("phone", e.target.value)}
@@ -517,7 +545,7 @@ export default function Profile() {
               </div>
 
               <div>
-                <Label>Country *</Label>
+                <Label>{tr("country","Country *")}</Label>
                 <Input
                   value={form.country}
                   onChange={(e) => setField("country", e.target.value)}
@@ -528,23 +556,23 @@ export default function Profile() {
 
             {/* Biography (fixed + saved) */}
             <div>
-              <Label>Biography / Description</Label>
+              <Label>{tr("bio_label","Biography / Description")}</Label>
               <Textarea
                 value={form.bio}
                 onChange={(e) => setField("bio", e.target.value)}
                 className="mt-1"
                 rows={4}
-                placeholder="Write a short bio/description shown on your profile..."
+                placeholder={tr("bio_placeholder","Write a short bio/description shown on your profile...")}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Optional, but recommended for better profile visibility.
+                {tr("bio_help","Optional, but recommended for better profile visibility.")}
               </p>
             </div>
 
             {/* ✅ Hide these “requirements/verification” UI for user/student */}
             {isUserStudent ? null : (
               <div className="rounded-md border bg-white p-4 text-sm text-gray-600">
-                Some roles may require verification or additional details before appearing publicly.
+                {tr("roles_require_note","Some roles may require verification or additional details before appearing publicly.")}
               </div>
             )}
           </CardContent>
@@ -554,11 +582,11 @@ export default function Profile() {
         {showAgent && (
           <Card>
             <CardHeader>
-              <CardTitle>Agent Details</CardTitle>
+              <CardTitle>{tr("agent_details","Agent Details")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Company Name *</Label>
+                <Label>{tr("company_name","Company Name *")}</Label>
                 <Input
                   value={form.company_name}
                   onChange={(e) => setField("company_name", e.target.value)}
@@ -566,7 +594,7 @@ export default function Profile() {
                 />
               </div>
               <div>
-                <Label>Business License (MST) *</Label>
+                <Label>{tr("business_license_mst","Business License (MST) *")}</Label>
                 <Input
                   value={form.business_license_mst}
                   onChange={(e) => setField("business_license_mst", e.target.value)}
@@ -574,7 +602,7 @@ export default function Profile() {
                 />
               </div>
               <div>
-                <Label>Year Established</Label>
+                <Label>{tr("year_established","Year Established")}</Label>
                 <Input
                   type="number"
                   value={form.year_established}
@@ -583,7 +611,7 @@ export default function Profile() {
                 />
               </div>
               <div>
-                <Label>PayPal Email *</Label>
+                <Label>{tr("paypal_email","PayPal Email *")}</Label>
                 <Input
                   type="email"
                   value={form.paypal_email}
@@ -598,22 +626,22 @@ export default function Profile() {
         {showTutor && (
           <Card>
             <CardHeader>
-              <CardTitle>Tutor Details</CardTitle>
+              <CardTitle>{tr("tutor_details","Tutor Details")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Specializations *</Label>
+                <Label>{tr("specializations","Specializations *")}</Label>
                 <Input
                   value={form.specializations}
                   onChange={(e) => setField("specializations", e.target.value)}
                   className="mt-1"
-                  placeholder="IELTS, TOEFL..."
+                  placeholder={tr("specializations_placeholder","IELTS, TOEFL...")}
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Years of Experience *</Label>
+                  <Label>{tr("experience_years","Years of Experience *")}</Label>
                   <Input
                     type="number"
                     value={form.experience_years}
@@ -622,7 +650,7 @@ export default function Profile() {
                   />
                 </div>
                 <div>
-                  <Label>Hourly Rate (USD) *</Label>
+                  <Label>{tr("hourly_rate_usd","Hourly Rate (USD) *")}</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -634,7 +662,7 @@ export default function Profile() {
               </div>
 
               <div>
-                <Label>PayPal Email *</Label>
+                <Label>{tr("paypal_email","PayPal Email *")}</Label>
                 <Input
                   type="email"
                   value={form.paypal_email}
@@ -649,11 +677,11 @@ export default function Profile() {
         {showVendor && (
           <Card>
             <CardHeader>
-              <CardTitle>Vendor Details</CardTitle>
+              <CardTitle>{tr("vendor_details","Vendor Details")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Business Name *</Label>
+                <Label>{tr("business_name","Business Name *")}</Label>
                 <Input
                   value={form.business_name}
                   onChange={(e) => setField("business_name", e.target.value)}
@@ -662,35 +690,33 @@ export default function Profile() {
               </div>
 
               <div>
-                <Label>Service Categories *</Label>
+                <Label>{tr("service_categories","Service Categories *")}</Label>
                 <div className="grid grid-cols-2 gap-3 mt-2">
-                  {["Transport", "SIM Card", "Banking", "Accommodation", "Delivery", "Tours"].map(
-                    (category) => (
-                      <div key={category} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id={`cat-${category}`}
-                          checked={form.service_categories?.includes(category) || false}
-                          onChange={(e) => {
-                            const cur = form.service_categories || [];
-                            const next = e.target.checked
-                              ? [...cur, category]
-                              : cur.filter((c) => c !== category);
-                            setField("service_categories", next);
-                          }}
-                          className="h-4 w-4"
-                        />
-                        <label htmlFor={`cat-${category}`} className="text-sm text-gray-700">
-                          {category}
-                        </label>
-                      </div>
-                    )
-                  )}
+                  {vendorCategoryOptions.map(({ value, label }) => (
+                    <div key={value} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={`cat-${value}`}
+                        checked={form.service_categories?.includes(value) || false}
+                        onChange={(e) => {
+                          const cur = form.service_categories || [];
+                          const next = e.target.checked
+                            ? [...cur, value]
+                            : cur.filter((c) => c !== value);
+                          setField("service_categories", next);
+                        }}
+                        className="h-4 w-4"
+                      />
+                      <label htmlFor={`cat-${value}`} className="text-sm text-gray-700">
+                        {label}
+                      </label>
+                    </div>
+                  ))}
                 </div>
               </div>
 
               <div>
-                <Label>PayPal Email *</Label>
+                <Label>{tr("paypal_email","PayPal Email *")}</Label>
                 <Input
                   type="email"
                   value={form.paypal_email}
@@ -705,11 +731,11 @@ export default function Profile() {
         {showSchool && (
           <Card>
             <CardHeader>
-              <CardTitle>School Details</CardTitle>
+              <CardTitle>{tr("school_details","School Details")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Institution Name *</Label>
+                <Label>{tr("institution_name","Institution Name *")}</Label>
                 <Input
                   value={form.school_name}
                   onChange={(e) => setField("school_name", e.target.value)}
@@ -718,24 +744,23 @@ export default function Profile() {
               </div>
 
               <div>
-                <Label>School Type *</Label>
+                <Label>{tr("school_type","School Type *")}</Label>
                 <Select value={form.type || ""} onValueChange={(v) => setField("type", v)}>
                   <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select institution type" />
+                    <SelectValue placeholder={tr("select_institution_type","Select institution type")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="High School">High School</SelectItem>
-                    <SelectItem value="College">College</SelectItem>
-                    <SelectItem value="University">University</SelectItem>
-                    <SelectItem value="Institute">Institute</SelectItem>
-                    <SelectItem value="Vocational">Vocational School</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
+                    {schoolTypeOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label>City/Location *</Label>
+                <Label>{tr("city_location","City/Location *")}</Label>
                 <Input
                   value={form.location}
                   onChange={(e) => setField("location", e.target.value)}
@@ -744,7 +769,7 @@ export default function Profile() {
               </div>
 
               <div>
-                <Label>Official Website *</Label>
+                <Label>{tr("official_website","Official Website *")}</Label>
                 <Input
                   value={form.website}
                   onChange={(e) => setField("website", e.target.value)}
@@ -754,7 +779,7 @@ export default function Profile() {
               </div>
 
               <div>
-                <Label>About Your Institution</Label>
+                <Label>{tr("about_institution","About Your Institution")}</Label>
                 <Textarea
                   value={form.about}
                   onChange={(e) => setField("about", e.target.value)}
@@ -765,7 +790,7 @@ export default function Profile() {
 
               {form.institution_id ? (
                 <p className="text-xs text-gray-500">
-                  Linked institution_id: <span className="font-mono">{form.institution_id}</span>
+                  {tr("linked_institution_id","Linked institution_id:")} <span className="font-mono">{form.institution_id}</span>
                 </p>
               ) : null}
             </CardContent>
@@ -784,7 +809,7 @@ export default function Profile() {
             ) : (
               <Save className="w-4 h-4 mr-2" />
             )}
-            Save Changes
+            {saving ? tr("saving","Saving…") : tr("save_changes","Save Changes")}
           </Button>
         </div>
       </div>

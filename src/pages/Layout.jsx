@@ -1,11 +1,22 @@
 // src/pages/Layout.jsx
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
 import NotificationsBell from "@/components/NotificationsBell";
 import CountriesMegaMenuIcon from "@/components/CountriesMegaMenuIcon";
 
 /* --- Safe import of createPageUrl (with fallback if not exported) --- */
 import * as Utils from "@/utils";
+const withLang = (path = "") => {
+  const lang =
+    new URLSearchParams(window.location.search).get("lang") ||
+    localStorage.getItem("gp_lang") ||
+    "en";
+  const u = new URL(path, window.location.origin);
+  u.searchParams.set("lang", lang);
+  return u.pathname + u.search;
+};
+
 const createPageUrl =
   (Utils && Utils.createPageUrl) ||
   ((label = "") =>
@@ -52,6 +63,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { getLang, setLang } from "@/lib/lang";
 import { AnimatePresence, motion } from "framer-motion";
 
 import ChatWidget from "@/components/chat/ChatWidget";
@@ -85,39 +97,37 @@ const normalizeUrl = (u = "") => {
   return s.endsWith("/") ? s : `${s}/`;
 };
 
-const getMarketingUrl = () => normalizeUrl(MARKETING_URL);
+const getMarketingUrl = () => {
+  const base = normalizeUrl(MARKETING_URL);
+  try {
+    const lang = window?.localStorage?.getItem("gp_lang") || window?.localStorage?.getItem("i18nextLng") || "en";
+    const u = new URL(base);
+    u.searchParams.set("lang", lang);
+    return u.toString();
+  } catch {
+    return base;
+  }
+};
 
-const TEXT = {
+const FALLBACK_TEXT = {
   login: "Login",
   logOut: "Log Out",
   profileSettings: "Profile Settings",
   more: "More",
   backToWebsite: "Back to website",
-
-  dashboard: "Dashboard",
-  discoverSchools: "Discover Schools",
-  findTutors: "Tutors",
-  findAgent: "Find Agent",
-  myAgent: "My Agent",
-  mySessions: "My Sessions",
-  myStudents: "My Students",
-  leads: "Leads",
-  availability: "Availability",
-
-  userManagement: "User Management",
-  schoolManagement: "Program Management",
-  institutionManagement: "Institution Management",
-  verifications: "Verifications",
-  paymentVerification: "Payment Verification",
-  walletManagement: "Wallet Management",
-  eventsAdmin: "Events Admin",
-  brandSettings: "Brand Settings",
-  chatSettings: "Chat Settings",
-  bankSettings: "Bank Settings",
-  reports: "Reports",
 };
 
-export const getText = (key) => TEXT[key] || key;
+const fb = (key) => FALLBACK_TEXT[key] || key;
+
+// ✅ i18n helper for this file (avoids `tr is not defined` in sub-components)
+function useNavTr() {
+  const { t } = useTranslation();
+  return React.useCallback(
+    (key) => t(`nav.${key}`, { defaultValue: fb(key) }),
+    [t]
+  );
+}
+
 
 /* ---------- Social links ---------- */
 const SOCIAL_LINKS = [
@@ -173,8 +183,10 @@ const iconByPlatform = (platform = "") => {
 /* =========================
    External link button (Website)
 ========================= */
-const WebsiteIconButton = ({ className = "" }) => (
-  <a
+const WebsiteIconButton = ({ className = "" }) => {
+  const tr = useNavTr();
+  return (
+    <a
     href={getMarketingUrl()}
     target="_blank"
     rel="noopener noreferrer"
@@ -182,12 +194,13 @@ const WebsiteIconButton = ({ className = "" }) => (
       "w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition",
       className
     )}
-    aria-label={getText("backToWebsite")}
-    title={getText("backToWebsite")}
+    aria-label={tr("backToWebsite")}
+    title={tr("backToWebsite")}
   >
     <Globe className="h-6 w-6" />
   </a>
-);
+  );
+};
 
 /* =========================
    Small: click-outside hook
@@ -276,6 +289,9 @@ const AccountDropdown = ({
   items = [],
   title = "Account",
 }) => {
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+
   const wrapRef = React.useRef(null);
   useClickOutside(wrapRef, () => setOpen(false), open);
 
@@ -365,7 +381,7 @@ const AccountDropdown = ({
 
               <div className="my-2 h-px bg-gray-100" />
 
-              <MenuItem onClick={onLogout} Icon={LogOut} label={getText("logOut")} danger />
+              <MenuItem onClick={onLogout} Icon={LogOut} label={tr("logOut")} danger />
             </div>
           </motion.div>
         )}
@@ -379,6 +395,7 @@ const AccountDropdown = ({
    NOTE: Notifications route removed from "More" (popover is in top bar)
 ========================= */
 const MobileBottomNav = ({ nav, isActive }) => {
+  const tr = useNavTr();
   const [moreOpen, setMoreOpen] = React.useState(false);
   const sheetRef = React.useRef(null);
   useClickOutside(sheetRef, () => setMoreOpen(false), moreOpen);
@@ -436,13 +453,13 @@ const MobileBottomNav = ({ nav, isActive }) => {
               "flex flex-col items-center justify-center gap-1 py-2 flex-1",
               moreOpen ? "text-green-700" : "text-gray-600"
             )}
-            aria-label={getText("more")}
-            title={getText("more")}
+            aria-label={tr("more")}
+            title={tr("more")}
           >
             <MoreHorizontal
               className={cn("h-6 w-6", moreOpen ? "text-green-700" : "text-gray-600")}
             />
-            <span className="text-[11px] font-medium leading-none">{getText("more")}</span>
+            <span className="text-[11px] font-medium leading-none">{tr("more")}</span>
           </button>
         </div>
       </div>
@@ -479,7 +496,7 @@ const MobileBottomNav = ({ nav, isActive }) => {
                     className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-gray-50 text-gray-800"
                   >
                     <Globe className="h-5 w-5 text-gray-600" />
-                    <span className="text-sm font-medium">{getText("backToWebsite")}</span>
+                    <span className="text-sm font-medium">{tr("backToWebsite")}</span>
                     <ChevronRight className="ml-auto h-4 w-4 text-gray-400" />
                   </a>
 
@@ -712,6 +729,26 @@ const useIsActive = () => {
 const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
   const navigate = useNavigate();
   const isActive = useIsActive();
+  const { t, i18n } = useTranslation();
+  const [lang, setLangState] = React.useState(getLang());
+  React.useEffect(() => {
+    try {
+      const current = i18n.language || "en";
+      if (lang && current !== lang) i18n.changeLanguage(lang);
+    } catch {}
+  }, [lang, i18n]);
+
+  const tr = React.useCallback((key) => t(`nav.${key}`, { defaultValue: fb(key) }), [t]);
+
+  const onLangChange = async (e) => {
+    const code = e.target.value;
+    setLangState(code);
+    await setLang(code);
+    try {
+      await i18n.changeLanguage(code);
+    } catch {}
+  };
+
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
   const [acctOpen, setAcctOpen] = React.useState(false);
@@ -817,7 +854,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
+                  { label: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
                 ]}
               />
             </div>
@@ -843,6 +880,9 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
 };
 
 const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+
   const navigate = useNavigate();
   const isActive = useIsActive();
   const { headerRef, headerH, measured } = useHeaderMeasure();
@@ -947,8 +987,8 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-                  { label: getText("leads"), url: createPageUrl("AgentLeads"), icon: UsersIcon, chevron: true },
+                  { label: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
+                  { label: tr("leads"), url: createPageUrl("AgentLeads"), icon: UsersIcon, chevron: true },
                 ]}
               />
             </div>
@@ -974,6 +1014,9 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 };
 
 const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+
   const navigate = useNavigate();
   const isActive = useIsActive();
 
@@ -1079,8 +1122,8 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-                  { label: getText("availability"), url: createPageUrl("TutorAvailability"), icon: Calendar, chevron: true },
+                  { label: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
+                  { label: tr("availability"), url: createPageUrl("TutorAvailability"), icon: Calendar, chevron: true },
                 ]}
               />
             </div>
@@ -1106,6 +1149,9 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 };
 
 const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+
   const navigate = useNavigate();
   const isActive = useIsActive();
 
@@ -1208,8 +1254,8 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: getText("mySessions"), url: createPageUrl("MySessions"), icon: Calendar, chevron: true },
-                  { label: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
+                  { label: tr("mySessions"), url: createPageUrl("MySessions"), icon: Calendar, chevron: true },
+                  { label: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
                 ]}
               />
             </div>
@@ -1243,6 +1289,9 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
   getCompanyName,
   onLogout,
 }) => {
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+
   const navigate = useNavigate(); // ✅ FIX: was missing (your admin used navigate without declaring)
   const isActive = useIsActive();
   const { headerRef, headerH, measured } = useHeaderMeasure();
@@ -1250,10 +1299,10 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 
   const centerItems = React.useMemo(
     () => [
-      { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+      { title: tr("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
       { title: "Events", url: createPageUrl("Events"), icon: Calendar },
-      { title: getText("institutionManagement"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
-      { title: getText("userManagement"), url: createPageUrl("UserManagement"), icon: Users },
+      { title: tr("institutionManagement"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
+      { title: tr("userManagement"), url: createPageUrl("UserManagement"), icon: Users },
       { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
     ],
     []
@@ -1261,23 +1310,23 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 
   const accountSettingsItems = React.useMemo(
     () => [
-      { title: getText("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-      { title: getText("brandSettings"), url: createPageUrl("AdminBrandSettings"), icon: Palette },
-      { title: getText("bankSettings"), url: createPageUrl("AdminBankSettings"), icon: Building },
-      { title: getText("chatSettings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
+      { title: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
+      { title: tr("brandSettings"), url: createPageUrl("AdminBrandSettings"), icon: Palette },
+      { title: tr("bankSettings"), url: createPageUrl("AdminBankSettings"), icon: Building },
+      { title: tr("chatSettings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
     ],
     []
   );
 
   const leftPanelItems = React.useMemo(
     () => [
-      { title: getText("verifications"), url: createPageUrl("Verification"), icon: UserCheck },
-      { title: getText("paymentVerification"), url: createPageUrl("AdminPaymentVerification"), icon: FileText },
+      { title: tr("verifications"), url: createPageUrl("Verification"), icon: UserCheck },
+      { title: tr("paymentVerification"), url: createPageUrl("AdminPaymentVerification"), icon: FileText },
       { title: "Payment Monitoring", url: createPageUrl("AdminPayments"), icon: DollarSign },
-      { title: getText("walletManagement"), url: createPageUrl("AdminWalletManagement"), icon: DollarSign },
-      { title: getText("eventsAdmin"), url: createPageUrl("AdminEvents"), icon: Calendar },
-      { title: getText("schoolManagement"), url: createPageUrl("AdminSchools"), icon: Building },
-      { title: getText("reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
+      { title: tr("walletManagement"), url: createPageUrl("AdminWalletManagement"), icon: DollarSign },
+      { title: tr("eventsAdmin"), url: createPageUrl("AdminEvents"), icon: Calendar },
+      { title: tr("schoolManagement"), url: createPageUrl("AdminSchools"), icon: Building },
+      { title: tr("reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
     ],
     []
   );
@@ -1420,7 +1469,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
                   className="mt-2 flex items-center gap-3 rounded-xl px-3 py-2 text-gray-700 hover:bg-gray-100"
                 >
                   <Globe className="h-5 w-5 text-gray-600" />
-                  <span className="text-sm font-medium">{getText("backToWebsite")}</span>
+                  <span className="text-sm font-medium">{tr("backToWebsite")}</span>
                 </a>
               </div>
             </div>
@@ -1443,6 +1492,9 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 
 /* ---------- Footer (aligned to existing routes only) ---------- */
 const Footer = ({ getCompanyName }) => {
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+
   const footerLinks = [
     {
       column_title: "Explore",
@@ -1466,7 +1518,7 @@ const Footer = ({ getCompanyName }) => {
     },
     {
       column_title: "Website",
-      links: [{ text: getText("backToWebsite"), url: null }],
+      links: [{ text: tr("backToWebsite"), url: null }],
     },
   ];
 
@@ -1487,7 +1539,7 @@ const Footer = ({ getCompanyName }) => {
                         rel="noopener noreferrer"
                         className="text-base text-gray-300 hover:text-white"
                       >
-                        {getText("backToWebsite")}
+                        {tr("backToWebsite")}
                       </a>
                     ) : (
                       <Link to={link.url} className="text-base text-gray-300 hover:text-white">
@@ -1527,22 +1579,25 @@ const Footer = ({ getCompanyName }) => {
 
 /* ---------- Nav builders (aligned to current App routes) ---------- */
 function buildDesktopNav(currentUser) {
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+
   const role = (currentUser?.user_type || currentUser?.role || "student").toLowerCase();
 
   // ✅ Admin uses the sidebar layout on desktop (so it needs the full admin nav here)
   if (role === "admin") {
     return [
-      { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
-      { title: getText("userManagement"), url: createPageUrl("UserManagement"), icon: Users },
+      { title: tr("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+      { title: tr("userManagement"), url: createPageUrl("UserManagement"), icon: Users },
       { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
-      { title: getText("schoolManagement"), url: createPageUrl("AdminSchools"), icon: School },
-      { title: getText("institutionManagement"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
+      { title: tr("schoolManagement"), url: createPageUrl("AdminSchools"), icon: School },
+      { title: tr("institutionManagement"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
       { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
-      { title: getText("verifications"), url: createPageUrl("Verification"), icon: UserCheck },
-      { title: getText("paymentVerification"), url: createPageUrl("AdminPayments"), icon: DollarSign },
-      { title: getText("reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
+      { title: tr("verifications"), url: createPageUrl("Verification"), icon: UserCheck },
+      { title: tr("paymentVerification"), url: createPageUrl("AdminPayments"), icon: DollarSign },
+      { title: tr("reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
       { title: "Subscription Mode", url: createPageUrl("AdminSubscription"), icon: DollarSign },
-      { title: getText("chatSettings"), url: createPageUrl("ChatSettings"), icon: MessageSquare },
+      { title: tr("chatSettings"), url: createPageUrl("ChatSettings"), icon: MessageSquare },
       { title: "Events", url: createPageUrl("Events"), icon: Calendar },
     ];
   }
@@ -1550,7 +1605,7 @@ function buildDesktopNav(currentUser) {
   // Vendor (sidebar layout)
   if (role === "vendor") {
     return [
-      { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+      { title: tr("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
       { title: "Events", url: createPageUrl("Events"), icon: Calendar },
       { title: "My Services", url: createPageUrl("MyServices"), icon: Store },
       { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
@@ -1559,7 +1614,7 @@ function buildDesktopNav(currentUser) {
 
   // Fallback (should rarely be used)
   return [
-    { title: getText("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+    { title: tr("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
     { title: "Events", url: createPageUrl("Events"), icon: Calendar },
   ];
 }
@@ -1693,6 +1748,26 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
 ========================= */
 export default function Layout() {
   const location = useLocation();
+  React.useEffect(() => {
+    const lang =
+      new URLSearchParams(location.search).get("lang") ||
+      localStorage.getItem("gp_lang") ||
+      "en";
+
+    localStorage.setItem("gp_lang", lang);
+
+    if (i18n.language !== lang) {
+      i18n.changeLanguage(lang);
+    }
+
+    document.documentElement.lang = lang;
+    document.documentElement.dir =
+      ["ar","he","fa","ur"].includes(lang) ? "rtl" : "ltr";
+  }, [location.search]);
+
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+ 
   const navigate = useNavigate();
   const isActive = useIsActive();
 
@@ -1981,7 +2056,7 @@ export default function Layout() {
                 <p className="text-xs text-gray-500 capitalize">{currentUser?.user_type}</p>
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout} className="text-red-600">
-                <LogOut className="w-4 h-4 mr-1" /> {getText("logOut")}
+                <LogOut className="w-4 h-4 mr-1" /> {tr("logOut")}
               </Button>
             </div>
 
@@ -1992,8 +2067,34 @@ export default function Layout() {
               className="mb-2 flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
             >
               <Globe className="w-5 h-5 text-gray-600" />
-              <span className="text-gray-700">{getText("backToWebsite")}</span>
+              <span className="text-gray-700">{tr("backToWebsite")}</span>
             </a>
+
+            <div className="mb-3">
+              <div className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-2">
+                <Globe className="w-4 h-4" />
+                {t("common.language", { defaultValue: "Language" })}
+              </div>
+              <select
+                data-testid="lang-select"
+                value={lang}
+                onChange={onLangChange}
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="en">English</option>
+                <option value="vi">Tiếng Việt</option>
+                <option value="fil">Filipino</option>
+                <option value="ceb">Bisaya</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+                <option value="pt-BR">Português (Brasil)</option>
+                <option value="ar">العربية</option>
+                <option value="zh">中文</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+              </select>
+            </div>
 
             <SidebarMenu>
               <SidebarMenuItem className="rounded-lg">
@@ -2002,7 +2103,7 @@ export default function Layout() {
                   className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
                 >
                   <Settings className="w-5 h-5 text-gray-600" />
-                  <span className="text-gray-700">{getText("profileSettings")}</span>
+                  <span className="text-gray-700">{tr("profileSettings")}</span>
                 </Link>
               </SidebarMenuItem>
             </SidebarMenu>

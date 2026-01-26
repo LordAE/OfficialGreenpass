@@ -1,5 +1,6 @@
 // src/pages/ResetPassword.jsx
 import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -24,7 +25,9 @@ function InfoBanner({ tone = 'info', children }) {
 }
 
 export default function ResetPassword() {
-  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+const navigate = useNavigate();
   const location = useLocation();
 
   const prefill = useMemo(() => {
@@ -42,7 +45,10 @@ export default function ResetPassword() {
     const em = email.trim().toLowerCase();
 
     if (!isValidEmail(em)) {
-      setStatus({ kind: 'error', msg: 'Please enter a valid email address.' });
+      setStatus({
+        kind: 'error',
+        msg: tr('reset.invalidEmail', 'Please enter a valid email address.')
+      });
       return;
     }
 
@@ -64,7 +70,11 @@ export default function ResetPassword() {
       // For privacy, show success even if the email might not exist
       setStatus({
         kind: 'success',
-        msg: `If an account exists for ${em}, a password reset link has been sent. Please check your inbox (and spam folder).`,
+        msg: tr(
+          'reset.successGeneric',
+          'If an account exists for {{email}}, a password reset link has been sent.',
+          { email: em }
+        )
       });
     } catch (err) {
       // Still show a generic success on user-not-found to avoid email enumeration
@@ -92,10 +102,14 @@ export default function ResetPassword() {
         <div className="mx-auto max-w-lg py-16 sm:py-24">
           <Card className="p-8 sm:p-10 shadow-2xl rounded-2xl bg-white/80 backdrop-blur-lg">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 text-center">
-              Reset your password
+              {tr('reset.title', 'Reset your password')}
             </h1>
+
             <p className="mt-3 text-center text-gray-600">
-              Enter the email associated with your account and we’ll send you a reset link.
+              {tr(
+                'reset.subtitle',
+                'Enter the email associated with your account and we’ll send you a reset link.'
+              )}
             </p>
 
             <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
@@ -103,7 +117,7 @@ export default function ResetPassword() {
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <Input
                   type="email"
-                  placeholder="Email address"
+                  placeholder={tr('reset.emailPlaceholder','Email address')}
                   className="pl-10 pr-10 h-12"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -130,24 +144,25 @@ export default function ResetPassword() {
               <Button type="submit" className="w-full h-12 text-base" disabled={busy}>
                 {busy ? (
                   <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin" /> Sending…
+                    <Loader2 className="h-5 w-5 animate-spin" /> {tr('reset.sending','Sending…')}
                   </span>
                 ) : (
-                  'Send reset link'
+                  tr('reset.send','Send reset link')
                 )}
               </Button>
 
               <div className="flex justify-center gap-3 pt-1 text-sm">
                 <Button type="button" variant="ghost" onClick={() => navigate(createPageUrl('Welcome'))}>
-                  Back to Sign in
+                  {tr('reset.backToSignIn', 'Back to Sign in')}
                 </Button>
+
                 <Button
                   type="button"
                   variant="ghost"
                   onClick={() => navigate(createPageUrl('Welcome'), { state: { mode: 'signup', email } })}
                 >
-                  Go to Sign up
-                </Button>
+                  {tr('reset.goToSignUp', 'Go to Sign up')}
+                </Button> 
               </div>
             </form>
           </Card>

@@ -16,8 +16,11 @@ import SchoolDashboard from '../components/dashboards/SchoolDashboard';
 import StudentDashboard from '../components/dashboards/StudentDashboard';
 import TutorDashboard from '../components/dashboards/TutorDashboard';
 import VendorDashboard from '../components/dashboards/VendorDashboard';
+import { useTr } from "@/i18n/useTr";
 
 export default function Dashboard() {
+  const { tr } = useTr("dashboard");
+
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

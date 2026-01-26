@@ -6,6 +6,7 @@ import { Mail, Lock, User as UserIcon, Eye, EyeOff, Check, X, Loader2 } from 'lu
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Input } from '@/components/ui/input';
+import { useTranslation } from 'react-i18next';
 
 // 🔥 Firebase
 import { auth, db } from '@/firebase';
@@ -23,6 +24,21 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
+
+// ✅ Language helper (safe for async helpers outside component scope)
+const resolveLangGlobal = () => {
+  try {
+    return (
+      new URLSearchParams(window.location.search).get("lang") ||
+      localStorage.getItem("gp_lang") ||
+      (typeof i18n !== "undefined" ? i18n.language : null) ||
+      "en"
+    ).toString();
+  } catch {
+    return (localStorage.getItem("gp_lang") || "en").toString();
+  }
+};
+
 const GoogleIcon = ({ className = 'w-5 h-5 mr-3' }) => (
   <svg className={className} role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
     <title>Google</title>
@@ -34,7 +50,7 @@ const GoogleIcon = ({ className = 'w-5 h-5 mr-3' }) => (
 );
 
 // ───────────────────────────── simple info dialog ─────────────────────────────
-function InfoDialog({ open, title, message, onClose }) {
+function InfoDialog({ open, title, message, onClose, okLabel = 'OK' }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50">
@@ -44,7 +60,7 @@ function InfoDialog({ open, title, message, onClose }) {
           <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
           <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{message}</p>
           <div className="mt-4 flex justify-end">
-            <Button onClick={onClose}>OK</Button>
+            <Button onClick={onClose}>{okLabel}</Button>
           </div>
         </div>
       </div>
@@ -63,9 +79,9 @@ function normalizeRole(r) {
 
 function buildUserDoc({ email, full_name = '', userType = DEFAULT_ROLE, signupEntryRole = DEFAULT_ROLE }) {
   return {
-    role: userType,                 // legacy UI that reads "role"
-    userType,                       // camelCase for any legacy reads
-    user_type: userType,            // ← canonical field
+    role: userType, // legacy UI that reads "role"
+    userType, // camelCase for any legacy reads
+    user_type: userType, // ← canonical field
     signup_entry_role: signupEntryRole, // how they entered (from URL)
     email,
     full_name,
@@ -155,6 +171,15 @@ async function routeAfterSignIn(navigate, fbUser, entryRole = DEFAULT_ROLE) {
 export default function Welcome() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const { t, i18n } = useTranslation();
+
+  // small helper that:
+  // - uses i18n key when available
+  // - falls back to default English (so nothing breaks while you translate progressively)
+  const tr = React.useCallback(
+    (key, fallback) => t(key, { defaultValue: fallback }),
+    [t]
+  );
 
   // role from URL (with legacy fallbacks)
   const entryRole = useMemo(() => {
@@ -193,12 +218,14 @@ export default function Welcome() {
     checking: false,
     available: null,
     methods: [],
-    error: ''
+    error: '',
   });
 
   const [emailCheckVersion, setEmailCheckVersion] = useState(0);
   const emailCheckVersionRef = useRef(0);
-  useEffect(() => { emailCheckVersionRef.current = emailCheckVersion; }, [emailCheckVersion]);
+  useEffect(() => {
+    emailCheckVersionRef.current = emailCheckVersion;
+  }, [emailCheckVersion]);
 
   const pwStatus = validatePassword(password);
 
@@ -206,7 +233,9 @@ export default function Welcome() {
   useEffect(() => {
     let unsub = () => {};
     (async () => {
-      try { await setPersistence(auth, browserLocalPersistence); } catch {}
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch {}
       unsub = onAuthStateChanged(auth, async (user) => {
         setChecking(false);
         if (user) {
@@ -227,7 +256,7 @@ export default function Welcome() {
         checking: false,
         available: methods.length === 0,
         methods,
-        error: ''
+        error: '',
       });
     } catch (e) {
       if (versionAtCall !== emailCheckVersionRef.current) return;
@@ -235,7 +264,7 @@ export default function Welcome() {
         checking: false,
         available: null,
         methods: [],
-        error: 'Could not check email right now.'
+        error: tr('auth.email_check_failed', 'Could not check email right now.'),
       });
     }
   }
@@ -270,16 +299,19 @@ export default function Welcome() {
       if (err?.code === 'auth/account-exists-with-different-credential') {
         setDialog({
           open: true,
-          title: 'Use your original sign-in method',
-          message: 'This email is already linked to a different sign-in method. Try signing in with Email & Password or Apple.',
+          title: tr('auth.use_original_method_title', 'Use your original sign-in method'),
+          message: tr(
+            'auth.use_original_method_message_google',
+            'This email is already linked to a different sign-in method. Try signing in with Email & Password or Apple.'
+          ),
         });
       } else if (err?.code === 'auth/popup-closed-by-user') {
         // ignore silently
       } else {
         setDialog({
           open: true,
-          title: 'Google sign-in failed',
-          message: err?.code ? `Firebase: ${err.code}` : (err?.message || 'Google sign-in failed'),
+          title: tr('auth.google_failed_title', 'Google sign-in failed'),
+          message: err?.code ? `Firebase: ${err.code}` : err?.message || tr('auth.google_failed_message', 'Google sign-in failed'),
         });
       }
     } finally {
@@ -298,22 +330,25 @@ export default function Welcome() {
       if (err?.code === 'auth/operation-not-supported-in-this-environment') {
         setDialog({
           open: true,
-          title: 'Apple sign-in unavailable',
-          message: 'Apple sign-in is not enabled for this project/environment.',
+          title: tr('auth.apple_unavailable_title', 'Apple sign-in unavailable'),
+          message: tr('auth.apple_unavailable_message', 'Apple sign-in is not enabled for this project/environment.'),
         });
       } else if (err?.code === 'auth/account-exists-with-different-credential') {
         setDialog({
           open: true,
-          title: 'Use your original sign-in method',
-          message: 'This email is already linked to a different sign-in method. Try signing in with Email & Password or Google.',
+          title: tr('auth.use_original_method_title', 'Use your original sign-in method'),
+          message: tr(
+            'auth.use_original_method_message_apple',
+            'This email is already linked to a different sign-in method. Try signing in with Email & Password or Google.'
+          ),
         });
       } else if (err?.code === 'auth/popup-closed-by-user') {
         // ignore
       } else {
         setDialog({
           open: true,
-          title: 'Apple sign-in failed',
-          message: err?.code ? `Firebase: ${err.code}` : (err?.message || 'Apple sign-in failed'),
+          title: tr('auth.apple_failed_title', 'Apple sign-in failed'),
+          message: err?.code ? `Firebase: ${err.code}` : err?.message || tr('auth.apple_failed_message', 'Apple sign-in failed'),
         });
       }
     } finally {
@@ -321,17 +356,28 @@ export default function Welcome() {
     }
   };
 
-  // 👉 Forgot password: navigate to Reset Password page with email
+  // 👉 Forgot password: navigate to Reset Password page with email (carry ?lang=)
   const handleForgotPassword = () => {
     const em = (email || '').trim();
-    navigate(createPageUrl('ResetPassword'), { state: { email: em } });
+    const currentLang =
+      params.get('lang') ||
+      localStorage.getItem('gp_lang') ||
+      (i18n && i18n.language) ||
+      'en';
+    navigate(`${createPageUrl('ResetPassword')}?lang=${encodeURIComponent(currentLang)}`, {
+      state: { email: em },
+    });
   };
 
   // ───────── Email/Password Sign In (TRY AUTH FIRST) ─────────
   const handleSignInEmail = async () => {
     const em = email.trim().toLowerCase();
     if (!em || !isValidEmail(em)) {
-      setDialog({ open: true, title: 'Invalid email', message: 'Please enter a valid email address.' });
+      setDialog({
+        open: true,
+        title: tr('auth.invalid_email_title', 'Invalid email'),
+        message: tr('auth.invalid_email_message', 'Please enter a valid email address.'),
+      });
       return;
     }
     try {
@@ -341,25 +387,53 @@ export default function Welcome() {
       await routeAfterSignIn(navigate, cred.user, entryRole);
     } catch (err) {
       if (err?.code === 'auth/wrong-password' || err?.code === 'auth/invalid-credential') {
-        setDialog({ open: true, title: 'Incorrect password', message: 'The password you entered is incorrect. Please try again.' });
+        setDialog({
+          open: true,
+          title: tr('auth.incorrect_password_title', 'Incorrect password'),
+          message: tr('auth.incorrect_password_message', 'The password you entered is incorrect. Please try again.'),
+        });
       } else if (err?.code === 'auth/user-not-found') {
         try {
           const methods = await fetchSignInMethodsForEmail(auth, em);
           if (!methods || methods.length === 0) {
             setMode('signup');
-            setDialog({ open: true, title: 'No account found', message: 'We couldn’t find an account for that email. Please create one.' });
+            setDialog({
+              open: true,
+              title: tr('auth.no_account_title', 'No account found'),
+              message: tr('auth.no_account_message', 'We couldn’t find an account for that email. Please create one.'),
+            });
           } else if (methods.includes('google.com') && !methods.includes('password')) {
-            setDialog({ open: true, title: 'Use Google to sign in', message: 'This email is registered with Google. Please use “Continue with Google”.' });
+            setDialog({
+              open: true,
+              title: tr('auth.use_google_title', 'Use Google to sign in'),
+              message: tr('auth.use_google_message', 'This email is registered with Google. Please use “Continue with Google”.'),
+            });
           } else if (methods.includes('apple.com') && !methods.includes('password')) {
-            setDialog({ open: true, title: 'Use Apple to sign in', message: 'This email is registered with Apple. Please use “Continue with Apple”.' });
+            setDialog({
+              open: true,
+              title: tr('auth.use_apple_title', 'Use Apple to sign in'),
+              message: tr('auth.use_apple_message', 'This email is registered with Apple. Please use “Continue with Apple”.'),
+            });
           } else {
-            setDialog({ open: true, title: 'Couldn’t sign in', message: 'Please try again, or reset your password.' });
+            setDialog({
+              open: true,
+              title: tr('auth.signin_error_title', 'Couldn’t sign in'),
+              message: tr('auth.signin_error_message', 'Please try again, or reset your password.'),
+            });
           }
         } catch (lookupErr) {
-          setDialog({ open: true, title: 'Sign-in error', message: lookupErr?.message || 'Please try again.' });
+          setDialog({
+            open: true,
+            title: tr('auth.signin_error_title', 'Sign-in error'),
+            message: lookupErr?.message || tr('auth.signin_error_try_again', 'Please try again.'),
+          });
         }
       } else {
-        setDialog({ open: true, title: 'Sign-in failed', message: err?.code ? `Firebase: ${err.code}` : (err?.message || 'Email sign-in failed.') });
+        setDialog({
+          open: true,
+          title: tr('auth.signin_failed_title', 'Sign-in failed'),
+          message: err?.code ? `Firebase: ${err.code}` : err?.message || tr('auth.email_signin_failed', 'Email sign-in failed.'),
+        });
       }
     } finally {
       setBusy(false);
@@ -373,24 +447,38 @@ export default function Welcome() {
       const em = email.trim().toLowerCase();
 
       if (!fullName.trim()) {
-        setDialog({ open: true, title: 'Missing name', message: 'Please enter your full name.' });
+        setDialog({
+          open: true,
+          title: tr('auth.missing_name_title', 'Missing name'),
+          message: tr('auth.missing_name_message', 'Please enter your full name.'),
+        });
         return;
       }
 
       const { ok, lengthOK, hasUpper, hasNumber, hasSpecial } = validatePassword(password);
       if (!ok) {
         const issues = [
-          !lengthOK && '• Minimum length is 8 characters',
-          !hasUpper && '• At least 1 capital letter',
-          !hasNumber && '• At least 1 number',
-          !hasSpecial && '• At least 1 special character',
-        ].filter(Boolean).join('\n');
-        setDialog({ open: true, title: 'Password requirements', message: `Password does not meet requirements:\n${issues}` });
+          !lengthOK && tr('auth.pw_min_len', '• Minimum length is 8 characters'),
+          !hasUpper && tr('auth.pw_upper', '• At least 1 capital letter'),
+          !hasNumber && tr('auth.pw_number', '• At least 1 number'),
+          !hasSpecial && tr('auth.pw_special', '• At least 1 special character'),
+        ]
+          .filter(Boolean)
+          .join('\n');
+        setDialog({
+          open: true,
+          title: tr('auth.password_requirements_title', 'Password requirements'),
+          message: `${tr('auth.password_requirements_message', 'Password does not meet requirements:')}\n${issues}`,
+        });
         return;
       }
 
       if (password !== confirm) {
-        setDialog({ open: true, title: 'Passwords do not match', message: 'Please make sure the passwords are identical.' });
+        setDialog({
+          open: true,
+          title: tr('auth.passwords_no_match_title', 'Passwords do not match'),
+          message: tr('auth.passwords_no_match_message', 'Please make sure the passwords are identical.'),
+        });
         return;
       }
 
@@ -401,16 +489,33 @@ export default function Welcome() {
         const hasApple = methods.includes('apple.com');
 
         if (!hasPassword && hasGoogle && !hasApple) {
-          setDialog({ open: true, title: 'Email registered with Google', message: 'This email is already registered with Google. Please use “Continue with Google”.' });
+          setDialog({
+            open: true,
+            title: tr('auth.email_registered_google_title', 'Email registered with Google'),
+            message: tr(
+              'auth.email_registered_google_message',
+              'This email is already registered with Google. Please use “Continue with Google”.'
+            ),
+          });
         } else if (!hasPassword && hasApple && !hasGoogle) {
-          setDialog({ open: true, title: 'Email registered with Apple', message: 'This email is already registered with Apple. Please use “Continue with Apple”.' });
+          setDialog({
+            open: true,
+            title: tr('auth.email_registered_apple_title', 'Email registered with Apple'),
+            message: tr(
+              'auth.email_registered_apple_message',
+              'This email is already registered with Apple. Please use “Continue with Apple”.'
+            ),
+          });
         } else {
-          const providers = [
-            hasPassword && 'Email & password',
-            hasGoogle && 'Google',
-            hasApple && 'Apple',
-          ].filter(Boolean).join(', ');
-          setDialog({ open: true, title: 'Email already registered', message: `This email is already in use (${providers}). Try signing in.` });
+          const providers = [hasPassword && tr('auth.provider_email', 'Email & password'), hasGoogle && 'Google', hasApple && 'Apple']
+            .filter(Boolean)
+            .join(', ');
+          setDialog({
+            open: true,
+            title: tr('auth.email_already_registered_title', 'Email already registered'),
+            message: tr('auth.email_already_registered_message', 'This email is already in use ({{providers}}). Try signing in.')
+              .replace('{{providers}}', providers),
+          });
         }
         setMode('signin');
         return;
@@ -425,11 +530,11 @@ export default function Welcome() {
       }
       await routeAfterSignIn(navigate, cred.user, entryRole);
     } catch (err) {
-      let message = err?.message || 'Sign-up failed.';
-      if (err?.code === 'auth/invalid-email') message = 'Please enter a valid email address.';
-      else if (err?.code === 'auth/weak-password') message = 'Password should meet the requirements listed.';
-      else if (err?.code === 'auth/email-already-in-use') message = 'Email already in use.';
-      setDialog({ open: true, title: 'Sign-up failed', message });
+      let message = err?.message || tr('auth.signup_failed_message', 'Sign-up failed.');
+      if (err?.code === 'auth/invalid-email') message = tr('auth.invalid_email_message', 'Please enter a valid email address.');
+      else if (err?.code === 'auth/weak-password') message = tr('auth.weak_password_message', 'Password should meet the requirements listed.');
+      else if (err?.code === 'auth/email-already-in-use') message = tr('auth.email_in_use_message', 'Email already in use.');
+      setDialog({ open: true, title: tr('auth.signup_failed_title', 'Sign-up failed'), message });
     } finally {
       setBusy(false);
     }
@@ -448,7 +553,7 @@ export default function Welcome() {
     !emailCheck.methods.includes?.('password') &&
     !emailCheck.methods.includes?.('apple.com');
 
-  const emailIsAppleOnly  =
+  const emailIsAppleOnly =
     emailCheck.methods.includes?.('apple.com') &&
     !emailCheck.methods.includes?.('password') &&
     !emailCheck.methods.includes?.('google.com');
@@ -467,16 +572,16 @@ export default function Welcome() {
             <div className="text-center">
               <img
                 src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/52125f446_GP2withnameTransparent.png"
-                alt="GreenPass Super App"
+                alt={tr('brand.alt', 'GreenPass Super App')}
                 className="h-12 sm:h-16 w-auto mx-auto mb-6"
               />
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">
-                Your Journey Starts Here
+                {tr('welcome.title', 'Your Journey Starts Here')}
               </h1>
               <p className="mt-6 text-lg leading-8 text-gray-600">
                 {mode === 'signin'
-                  ? 'Welcome back! Sign in to your dashboard.'
-                  : 'Create your account to get a personalized experience.'}
+                  ? tr('welcome.subtitle_signin', 'Welcome back! Sign in to your dashboard.')
+                  : tr('welcome.subtitle_signup', 'Create your account to get a personalized experience.')}
               </p>
             </div>
 
@@ -487,13 +592,13 @@ export default function Welcome() {
                   className={`py-2 rounded-lg transition ${mode === 'signin' ? 'bg-white shadow font-semibold' : 'text-gray-600'}`}
                   onClick={() => setMode('signin')}
                 >
-                  Sign in
+                  {tr('auth.signin', 'Sign in')}
                 </button>
                 <button
                   className={`py-2 rounded-lg transition ${mode === 'signup' ? 'bg-white shadow font-semibold' : 'text-gray-600'}`}
                   onClick={() => setMode('signup')}
                 >
-                  Sign up
+                  {tr('auth.signup', 'Sign up')}
                 </button>
               </div>
 
@@ -501,7 +606,7 @@ export default function Welcome() {
               <div className="space-y-3 mb-6">
                 <Button size="lg" variant="outline" className="w-full h-12 text-base" onClick={handleLoginGoogle} disabled={busy}>
                   <GoogleIcon />
-                  Continue with Google
+                  {tr('auth.continue_google', 'Continue with Google')}
                 </Button>
                 <Button
                   size="lg"
@@ -511,7 +616,7 @@ export default function Welcome() {
                   disabled={busy}
                 >
                   <span className="mr-3"></span>
-                  Continue with Apple
+                  {tr('auth.continue_apple', 'Continue with Apple')}
                 </Button>
               </div>
 
@@ -520,7 +625,7 @@ export default function Welcome() {
                   <div className="w-full border-t border-gray-300" />
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="bg-white/80 px-2 text-gray-500">or continue with email</span>
+                  <span className="bg-white/80 px-2 text-gray-500">{tr('auth.or_continue_email', 'or continue with email')}</span>
                 </div>
               </div>
 
@@ -531,7 +636,7 @@ export default function Welcome() {
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <Input
                       type="email"
-                      placeholder="Email address"
+                      placeholder={tr('auth.email_placeholder', 'Email address')}
                       className="pl-10 h-12"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -543,14 +648,14 @@ export default function Welcome() {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <Input
                       type={showSigninPw ? 'text' : 'password'}
-                      placeholder="Password"
+                      placeholder={tr('auth.password_placeholder', 'Password')}
                       className="pl-10 pr-10 h-12"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                     />
                     <button
                       type="button"
-                      aria-label={showSigninPw ? 'Hide password' : 'Show password'}
+                      aria-label={showSigninPw ? tr('auth.hide_password', 'Hide password') : tr('auth.show_password', 'Show password')}
                       aria-pressed={showSigninPw}
                       onClick={() => setShowSigninPw((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
@@ -567,18 +672,18 @@ export default function Welcome() {
                       className="text-sm text-green-700 hover:text-green-600 underline underline-offset-2"
                       disabled={busy}
                     >
-                      Forgot password?
+                      {tr('auth.forgot_password', 'Forgot password?')}
                     </button>
                   </div>
 
                   <Button size="lg" className="w-full h-12 text-base" onClick={handleSignInEmail} disabled={busy}>
-                    Sign in
+                    {tr('auth.signin', 'Sign in')}
                   </Button>
 
                   <p className="text-center text-sm text-gray-500">
-                    Don’t have an account?{' '}
+                    {tr('auth.no_account', "Don’t have an account?")}{' '}
                     <button onClick={() => setMode('signup')} className="font-semibold text-green-600 hover:text-green-500">
-                      Sign up
+                      {tr('auth.signup', 'Sign up')}
                     </button>
                   </p>
                 </div>
@@ -588,7 +693,7 @@ export default function Welcome() {
                     <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <Input
                       type="text"
-                      placeholder="Full name"
+                      placeholder={tr('auth.fullname_placeholder', 'Full name')}
                       className="pl-10 h-12"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
@@ -600,7 +705,7 @@ export default function Welcome() {
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <Input
                       type="email"
-                      placeholder="Email address"
+                      placeholder={tr('auth.email_placeholder', 'Email address')}
                       className={`pl-10 pr-10 h-12 ${isValidEmail(email) && emailTaken ? 'border-red-300' : ''}`}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -622,23 +727,31 @@ export default function Welcome() {
                   </div>
 
                   {/* Contextual availability messages */}
-                  {isValidEmail(email) && emailTaken && (
-                    emailIsGoogleOnly ? (
+                  {isValidEmail(email) && emailTaken &&
+                    (emailIsGoogleOnly ? (
                       <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
                         <GoogleIcon className="w-4 h-4 mr-0" />
-                        This email is already registered with <b>Google</b>. Please use “Continue with Google”.
+                        {tr(
+                          'auth.email_google_only',
+                          'This email is already registered with Google. Please use “Continue with Google”.'
+                        )}
                       </div>
                     ) : emailIsAppleOnly ? (
                       <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
                         <span className="inline-block text-base leading-none"></span>
-                        This email is already registered with <b>Apple</b>. Please use “Continue with Apple”.
+                        {tr(
+                          'auth.email_apple_only',
+                          'This email is already registered with Apple. Please use “Continue with Apple”.'
+                        )}
                       </div>
                     ) : (
                       <p className="text-xs text-red-600">
-                        This email is already registered. Try signing in (Email &amp; password, Google, or Apple).
+                        {tr(
+                          'auth.email_already_registered_simple',
+                          'This email is already registered. Try signing in (Email & password, Google, or Apple).'
+                        )}
                       </p>
-                    )
-                  )}
+                    ))}
                   {emailCheck.error && <p className="text-xs text-amber-600">{emailCheck.error}</p>}
 
                   {/* Sign-up password with visibility toggle */}
@@ -646,14 +759,14 @@ export default function Welcome() {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <Input
                       type={showPw ? 'text' : 'password'}
-                      placeholder="Create a password"
+                      placeholder={tr('auth.create_password_placeholder', 'Create a password')}
                       className={`pl-10 pr-10 h-12 ${password && !pwStatus.ok ? 'border-red-300' : ''}`}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                     />
                     <button
                       type="button"
-                      aria-label={showPw ? 'Hide password' : 'Show password'}
+                      aria-label={showPw ? tr('auth.hide_password', 'Hide password') : tr('auth.show_password', 'Show password')}
                       aria-pressed={showPw}
                       onClick={() => setShowPw((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
@@ -664,12 +777,14 @@ export default function Welcome() {
 
                   {/* Password requirements with live checkmarks */}
                   <div className="text-xs rounded-md bg-gray-50 border border-gray-200 p-3 leading-5">
-                    <div className="font-medium text-gray-700 mb-1">Password requirements:</div>
+                    <div className="font-medium text-gray-700 mb-1">
+                      {tr('auth.password_requirements_label', 'Password requirements:')}
+                    </div>
                     <ul className="ml-1 space-y-1">
-                      <RuleRow ok={pwStatus.lengthOK} label="Minimum length: 8 characters" />
-                      <RuleRow ok={pwStatus.hasUpper} label="At least 1 capital letter" />
-                      <RuleRow ok={pwStatus.hasNumber} label="At least 1 number" />
-                      <RuleRow ok={pwStatus.hasSpecial} label="At least 1 special character" />
+                      <RuleRow ok={pwStatus.lengthOK} label={tr('auth.pw_rule_len', 'Minimum length: 8 characters')} />
+                      <RuleRow ok={pwStatus.hasUpper} label={tr('auth.pw_rule_upper', 'At least 1 capital letter')} />
+                      <RuleRow ok={pwStatus.hasNumber} label={tr('auth.pw_rule_number', 'At least 1 number')} />
+                      <RuleRow ok={pwStatus.hasSpecial} label={tr('auth.pw_rule_special', 'At least 1 special character')} />
                     </ul>
                   </div>
 
@@ -678,14 +793,16 @@ export default function Welcome() {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <Input
                       type={showConfirm ? 'text' : 'password'}
-                      placeholder="Confirm password"
+                      placeholder={tr('auth.confirm_password_placeholder', 'Confirm password')}
                       className="pl-10 pr-10 h-12"
                       value={confirm}
                       onChange={(e) => setConfirm(e.target.value)}
                     />
                     <button
                       type="button"
-                      aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
+                      aria-label={
+                        showConfirm ? tr('auth.hide_confirm_password', 'Hide confirm password') : tr('auth.show_confirm_password', 'Show confirm password')
+                      }
                       aria-pressed={showConfirm}
                       onClick={() => setShowConfirm((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
@@ -695,13 +812,13 @@ export default function Welcome() {
                   </div>
 
                   <Button size="lg" className="w-full h-12 text-base" onClick={handleSignUpEmail} disabled={busy || !canSubmitSignup}>
-                    Create account
+                    {tr('auth.create_account', 'Create account')}
                   </Button>
 
                   <p className="text-center text-sm text-gray-500">
-                    Already have an account?{' '}
+                    {tr('auth.have_account', 'Already have an account?')}{' '}
                     <button onClick={() => setMode('signin')} className="font-semibold text-green-600 hover:text-green-500">
-                      Sign in
+                      {tr('auth.signin', 'Sign in')}
                     </button>
                   </p>
                 </div>
@@ -709,13 +826,13 @@ export default function Welcome() {
             </div>
 
             <div className="mt-8 text-center text-sm text-gray-500">
-              By continuing, you agree to our{' '}
+              {tr('legal.by_continuing', 'By continuing, you agree to our')}{' '}
               <Link to={createPageUrl('TermsOfService')} className="font-semibold text-green-600 hover:text-green-500">
-                Terms of Service
+                {tr('legal.terms', 'Terms of Service')}
               </Link>{' '}
-              and{' '}
+              {tr('legal.and', 'and')}{' '}
               <Link to={createPageUrl('PrivacyPolicy')} className="font-semibold text-green-600 hover:text-green-500">
-                Privacy Policy
+                {tr('legal.privacy', 'Privacy Policy')}
               </Link>
               .
             </div>
@@ -728,6 +845,7 @@ export default function Welcome() {
         open={dialog.open}
         title={dialog.title}
         message={dialog.message}
+        okLabel={tr('common.ok', 'OK')}
         onClose={() => setDialog({ open: false, title: '', message: '' })}
       />
     </div>

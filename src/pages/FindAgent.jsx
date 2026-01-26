@@ -10,6 +10,7 @@ import { Search, Globe, Languages, MessageCircle, UserCheck, AlertCircle, Clock 
 /* ---------- Firebase ---------- */
 import { auth, db } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import { useTr } from "@/i18n/useTr";
 import {
   collection,
   query,
@@ -116,6 +117,8 @@ const AgentCard = ({ agent, onSelectAgent, isSelecting, currentUser }) => {
 
 /* ---------- Page ---------- */
 export default function FindAgent() {
+  const { tr } = useTr("findAgent");
+
   const [agents, setAgents] = useState([]);
   const [filteredAgents, setFilteredAgents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -508,7 +511,7 @@ export default function FindAgent() {
               <div className="lg:col-span-2 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <Input
-                  placeholder="Search by name or company..."
+                  placeholder={tr("searchPlaceholder","Search by name or country…")}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 h-12 text-lg"

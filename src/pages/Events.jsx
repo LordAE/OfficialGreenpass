@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar, MapPin, ArrowRight, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/components/URLRedirect";
 
 /* ---------- Firebase ---------- */
@@ -16,13 +16,15 @@ import {
   where,
   limit,
 } from "firebase/firestore";
+import { useTr } from "@/i18n/useTr";
+
 
 /* ---------- Helpers ---------- */
 const toJsDate = (v) =>
   v && typeof v?.toDate === "function" ? v.toDate() : new Date(v || Date.now());
 
 /* ---------- Small components ---------- */
-const EventCard = ({ event }) => (
+const EventCard = ({ event, tr }) => (
   <Card className="hover:shadow-lg transition-shadow duration-300 flex flex-col group">
     <div className="overflow-hidden rounded-t-lg h-48">
       <img
@@ -52,7 +54,7 @@ const EventCard = ({ event }) => (
             variant="outline"
             className="w-full group-hover:bg-green-600 group-hover:text-white transition-colors"
           >
-            View Details <ArrowRight className="w-4 h-4 ml-2" />
+            {tr("view_details","View Details")} <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </Link>
       </div>
@@ -75,6 +77,10 @@ const PageSkeleton = () => (
 
 /* ---------- Page ---------- */
 export default function EventsPage() {
+  const { tr } = useTr("events");
+  const [searchParams] = useSearchParams();
+  const lang = (searchParams.get("lang") || localStorage.getItem("gp_lang") || "en").trim();
+
   const [events, setEvents] = useState([]);
   const [pageContent, setPageContent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -102,7 +108,33 @@ export default function EventsPage() {
     }
   };
 
-  useEffect(() => {
+  
+  function pickLocalized(header, baseKey) {
+    if (!header) return null;
+
+    // 1) i18n keys support
+    const keyField = header[`${baseKey}_i18n_key`];
+    if (keyField && typeof keyField === "string") {
+      return tr(keyField, header[baseKey] || "");
+    }
+
+    // 2) translations map support: { title_translations: { en: "...", es: "..." } }
+    const map = header[`${baseKey}_translations`];
+    if (map && typeof map === "object") {
+      const v = map[lang] || map[lang.toLowerCase()] || map[lang.split("-")[0]];
+      if (v) return v;
+    }
+
+    // 3) suffixed fields: title_es, subtitle_fil, etc.
+    const suffix = lang.replace("-", "_");
+    const byLang = header[`${baseKey}_${lang}`] || header[`${baseKey}_${suffix}`] || header[`${baseKey}_${lang.split("-")[0]}`];
+    if (byLang) return byLang;
+
+    // 4) default field
+    return header[baseKey] || null;
+  }
+
+useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
@@ -121,20 +153,24 @@ export default function EventsPage() {
 
         setEvents(sorted);
         setPageContent(
-          header || {
-            title: "Fairs and Events",
-            subtitle:
-              "Join our premier international education fairs, workshops, and seminars.",
-            header_image_url:
-              "https://images.unsplash.com/photo-1560439514-4e280ea57c89?w=1920&h=400&fit=crop&q=80",
-          }
+          header
+            ? {
+                title: pickLocalized(header, "title") || tr("fallback_title","Fairs and Events"),
+                subtitle: pickLocalized(header, "subtitle") || tr("fallback_subtitle","Join our premier international education fairs, workshops, and seminars."),
+                header_image_url: header.header_image_url || header.header_image || header.image || "https://images.unsplash.com/photo-1560439514-4e280ea57c89?w=1920&h=400&fit=crop&q=80",
+              }
+            : {
+                title: tr("fallback_title","Fairs and Events"),
+                subtitle: tr("fallback_subtitle","Join our premier international education fairs, workshops, and seminars."),
+                header_image_url: "https://images.unsplash.com/photo-1560439514-4e280ea57c89?w=1920&h=400&fit=crop&q=80",
+              }
         );
       } catch (e) {
         console.error("Error loading events:", e);
         setPageContent({
-          title: "Fairs and Events",
+          title: tr("fallback_title","Fairs and Events"),
           subtitle:
-            "Join our premier international education fairs, workshops, and seminars.",
+            tr("fallback_subtitle","Join our premier international education fairs, workshops, and seminars."),
           header_image_url:
             "https://images.unsplash.com/photo-1560439514-4e280ea57c89?w=1920&h=400&fit=crop&q=80",
         });
@@ -143,9 +179,8 @@ export default function EventsPage() {
       }
     };
     load();
-  }, []);
-
-  if (loading) return <PageSkeleton />;
+  }, [lang, tr]);
+if (loading) return <PageSkeleton />;
 
   const now = new Date();
 
@@ -171,7 +206,7 @@ export default function EventsPage() {
         <div className="relative bg-gray-800">
           <img
             src={pageContent.header_image_url}
-            alt="Events background"
+            alt={tr("events_bg_alt","Events background")}
             className="absolute inset-0 w-full h-full object-cover opacity-30"
           />
           <div className="relative max-w-7xl mx-auto py-24 px-4 sm:py-32 sm:px-6 lg:px-8 text-center text-white">
@@ -190,11 +225,11 @@ export default function EventsPage() {
           <div className="space-y-16">
             <div>
               <h2 className="text-3xl font-bold text-center mb-10">
-                Upcoming Events
+                {tr("upcoming","Upcoming Events")}
               </h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {upcomingEvents.map((event) => (
-                  <EventCard key={event.id} event={event} />
+                  <EventCard key={event.id} event={event} tr={tr} />
                 ))}
               </div>
             </div>
@@ -202,11 +237,11 @@ export default function EventsPage() {
             {pastEvents.length > 0 && (
               <div>
                 <h2 className="text-3xl font-bold text-center mb-10">
-                  Past Events
+                  {tr("past","Past Events")}
                 </h2>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                   {pastEvents.map((event) => (
-                    <EventCard key={event.id} event={event} />
+                    <EventCard key={event.id} event={event} tr={tr} />
                   ))}
                 </div>
               </div>
@@ -217,11 +252,10 @@ export default function EventsPage() {
             <CardContent className="p-12 text-center text-gray-600">
               <Calendar className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-4 text-lg font-medium text-gray-900">
-                No Upcoming Events
+                {tr("no_upcoming","No Upcoming Events")}
               </h3>
               <p className="mt-1 text-sm text-gray-500">
-                There are no upcoming events at this time. Please check back
-                later.
+                {tr("no_upcoming_body","There are no upcoming events at this time. Please check back later.")}
               </p>
             </CardContent>
           </Card>

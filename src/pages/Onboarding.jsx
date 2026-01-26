@@ -1,5 +1,6 @@
 // src/pages/Onboarding.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -53,11 +54,11 @@ const STEPS = {
   COMPLETE: "complete",
 };
 
-const ROLE_OPTIONS = [
+const buildRoleOptions = (tr) => [
   {
     type: "user",
-    title: "Student",
-    subtitle: "I want to study abroad",
+    title: tr("onboarding.roles.student.title", "Student"),
+    subtitle: tr("onboarding.roles.student.subtitle", "I want to study abroad"),
     description:
       "Find schools, get visa help, connect with tutors, and manage your study abroad journey",
     icon: <UserIcon className="w-8 h-8" />,
@@ -71,8 +72,8 @@ const ROLE_OPTIONS = [
   },
   {
     type: "agent",
-    title: "Education Agent",
-    subtitle: "I help students study abroad",
+    title: tr("onboarding.roles.agent.title", "Education Agent"),
+    subtitle: tr("onboarding.roles.agent.subtitle", "I help students study abroad"),
     description:
       "Connect with students, manage applications, earn commissions, and grow your agency",
     icon: <Briefcase className="w-8 h-8" />,
@@ -81,8 +82,8 @@ const ROLE_OPTIONS = [
   },
   {
     type: "tutor",
-    title: "Tutor",
-    subtitle: "I teach test prep & languages",
+    title: tr("onboarding.roles.tutor.title", "Tutor"),
+    subtitle: tr("onboarding.roles.tutor.subtitle", "I teach test prep & languages"),
     description: "Offer tutoring services, manage sessions, earn income teaching students",
     icon: <BookOpen className="w-8 h-8" />,
     color: "bg-green-500",
@@ -90,8 +91,8 @@ const ROLE_OPTIONS = [
   },
   {
     type: "school",
-    title: "Educational Institution",
-    subtitle: "I represent a school/college",
+    title: tr("onboarding.roles.school.title", "Educational Institution"),
+    subtitle: tr("onboarding.roles.school.subtitle", "I represent a school/college"),
     description: "Promote programs, connect with students, manage applications and enrollments",
     icon: <Building className="w-8 h-8" />,
     color: "bg-indigo-500",
@@ -99,8 +100,8 @@ const ROLE_OPTIONS = [
   },
   {
     type: "vendor",
-    title: "Service Provider",
-    subtitle: "I offer student services",
+    title: tr("onboarding.roles.vendor.title", "Service Provider"),
+    subtitle: tr("onboarding.roles.vendor.subtitle", "I offer student services"),
     description: "Provide services like transport, SIM cards, accommodation to international students",
     icon: <Store className="w-8 h-8" />,
     color: "bg-orange-500",
@@ -155,6 +156,8 @@ async function getAllCountriesFallback() {
 }
 
 function CountrySelect({ valueCode, valueName, onChange }) {
+  const { t: tr } = useTranslation();
+
   const [open, setOpen] = React.useState(false);
   const [countries, setCountries] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
@@ -224,7 +227,7 @@ function CountrySelect({ valueCode, valueName, onChange }) {
                 <span className="truncate">{selected.name}</span>
               </>
             ) : (
-              <span className="text-gray-500">Select your country</span>
+              <span className="text-gray-500">{tr("onboarding.placeholders.select_country","Select your country")}</span>
             )}
           </span>
           <ChevronsUpDown className="h-4 w-4 opacity-60" />
@@ -233,16 +236,16 @@ function CountrySelect({ valueCode, valueName, onChange }) {
 
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search country..." />
+          <CommandInput placeholder={tr("onboarding.fields.search_country", "Search country...")} />
           <CommandList className="max-h-72">
             {loading && (
               <div className="p-3 text-sm text-gray-500 flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Loading countries...
+                {tr("onboarding.country.loading","Loading countries...")}
               </div>
             )}
 
-            {!loading && <CommandEmpty>No country found.</CommandEmpty>}
+            {!loading && <CommandEmpty>{tr("onboarding.country.no_results","No country found.")}</CommandEmpty>}
 
             <CommandGroup>
               {countries.map((c) => (
@@ -286,6 +289,8 @@ const BiographyField = React.memo(function BiographyField({
   value = "",
   onChange,
 }) {
+  const { t: tr } = useTranslation();
+
   return (
     <div>
       <Label htmlFor="bio">{label}</Label>
@@ -293,11 +298,11 @@ const BiographyField = React.memo(function BiographyField({
         id="bio"
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
-        placeholder="Write a short bio/description that will be shown on your public profile..."
+        placeholder={tr("onboarding.tutor.bio_placeholder","Write a short bio/description that will be shown on your public profile...")}
         className="mt-1"
         rows={4}
       />
-      <p className="text-xs text-gray-500 mt-1">Optional, but recommended for better profile visibility.</p>
+      <p className="text-xs text-gray-500 mt-1">{tr("onboarding.tutor.bio_hint","Optional, but recommended for better profile visibility.")}</p>
     </div>
   );
 });
@@ -395,6 +400,10 @@ function loadPayPalScript({ clientId, currency = "USD" }) {
 }
 
 export default function Onboarding() {
+  const { t, i18n } = useTranslation();
+  const tr = React.useCallback((key, def, opts = {}) => t(key, { defaultValue: def, ...opts }), [t]);
+  const roleOptions = React.useMemo(() => buildRoleOptions(tr), [tr]);
+
   const navigate = useNavigate();
 
   // stable search params
@@ -983,7 +992,7 @@ export default function Onboarding() {
     return (
       <div className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm bg-white/70">
         <ShieldCheck className="w-4 h-4 text-emerald-600" />
-        Role selected: <span className="font-semibold">{label}</span>
+        {tr("onboarding.ui.role_selected","Role selected:")} <span className="font-semibold">{label}</span>
         <BadgeCheck className="w-4 h-4 text-emerald-600" />
       </div>
     );
@@ -992,14 +1001,14 @@ export default function Onboarding() {
   const renderChooseRole = () => (
     <div className="text-center max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Welcome to GreenPass!</h1>
+        <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">{tr("onboarding.ui.welcome","Welcome to GreenPass!")}</h1>
         <p className="text-lg text-gray-600">Choose your role to get started with your personalized experience</p>
         <div className="mt-3">
           <RoleLockedPill role={selectedRole} />
         </div>
       </div>
       <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {ROLE_OPTIONS.map((role) => (
+        {roleOptions.map((role) => (
           <Card
             key={role.type}
             className={`cursor-pointer transition-all duration-300 border-2 hover:shadow-xl hover:scale-105 group
@@ -1033,15 +1042,15 @@ export default function Onboarding() {
   );
 
   const renderBasicInfo = () => {
-    const selectedRoleData = ROLE_OPTIONS.find((r) => r.type === selectedRole) || ROLE_OPTIONS[0];
+    const selectedRoleData = roleOptions.find((r) => r.type === selectedRole) || roleOptions[0];
     return (
       <div className="max-w-md mx-auto">
         <div className="text-center mb-8">
           <div className={`${selectedRoleData?.color} text-white p-3 rounded-full mb-4 mx-auto w-fit`}>
             {selectedRoleData?.icon}
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Basic Information</h2>
-          <p className="text-gray-600">Setting up your {selectedRoleData?.title} profile</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{tr("onboarding.ui.basic_info_title","Basic Information")}</h2>
+          <p className="text-gray-600">{tr("onboarding.ui.setting_up_prefix","Setting up your")} {selectedRoleData?.title}{tr("onboarding.ui.profile_suffix"," profile")}</p>
           <div className="mt-3">
             <RoleLockedPill role={selectedRole} />
           </div>
@@ -1049,7 +1058,7 @@ export default function Onboarding() {
 
         <div className="space-y-6">
           <div>
-            <Label htmlFor="full_name">Full Name *</Label>
+            <Label htmlFor="full_name">{tr("onboarding.fields.full_name","Full Name *")}</Label>
             <Input
               id="full_name"
               value={formData.full_name || ""}
@@ -1057,19 +1066,19 @@ export default function Onboarding() {
                 formDirtyRef.current = true;
                 setFormData((p) => ({ ...p, full_name: e.target.value }));
               }}
-              placeholder="Enter your full name"
+              placeholder={tr("onboarding.placeholders.full_name","Enter your full name")}
               className="mt-1"
             />
           </div>
 
           <div>
-            <Label htmlFor="email">Email Address</Label>
+            <Label htmlFor="email">{tr("onboarding.fields.email","Email Address")}</Label>
             <Input id="email" value={formData.email || ""} disabled className="mt-1 bg-gray-100" />
-            <p className="text-xs text-gray-500 mt-1">This is your login email and cannot be changed</p>
+            <p className="text-xs text-gray-500 mt-1">{tr("onboarding.fields.email_hint","This is your login email and cannot be changed")}</p>
           </div>
 
           <div>
-            <Label htmlFor="phone">Phone Number *</Label>
+            <Label htmlFor="phone">{tr("onboarding.fields.phone","Phone Number *")}</Label>
             <Input
               id="phone"
               value={formData.phone || ""}
@@ -1077,13 +1086,13 @@ export default function Onboarding() {
                 formDirtyRef.current = true;
                 setFormData((p) => ({ ...p, phone: e.target.value }));
               }}
-              placeholder="Enter your phone number"
+              placeholder={tr("onboarding.placeholders.phone","Enter your phone number")}
               className="mt-1"
             />
           </div>
 
           <div>
-            <Label>Country *</Label>
+            <Label>{tr("onboarding.fields.country","Country *")}</Label>
             <CountrySelect
               valueCode={formData.country_code || ""}
               valueName={formData.country || ""}
@@ -1095,7 +1104,7 @@ export default function Onboarding() {
                 }))
               }
             />
-            <p className="text-xs text-gray-500 mt-1">Search and select your country (with flag).</p>
+            <p className="text-xs text-gray-500 mt-1">{tr("onboarding.fields.country_hint","Search and select your country (with flag).")}</p>
           </div>
 
           <div className="flex gap-3 pt-4">
@@ -1106,10 +1115,10 @@ export default function Onboarding() {
               disabled={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO}
               title={roleLockedFromEntry && currentStep === STEPS.BASIC_INFO ? "Role locked by entry flow" : "Back"}
             >
-              <ArrowLeft className="w-4 h-4 mr-2" /> Back
+              <ArrowLeft className="w-4 h-4 mr-2" /> {tr("common.back","Back")}
             </Button>
             <Button onClick={handleBasicInfoSubmit} className="flex-1" disabled={!validateBasicInfo() || saving}>
-              Continue <ArrowRight className="w-4 h-4 ml-2" />
+              {tr("common.continue","Continue")} <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
         </div>
@@ -1118,15 +1127,15 @@ export default function Onboarding() {
   };
 
   const renderRoleSpecific = () => {
-    const selectedRoleData = ROLE_OPTIONS.find((r) => r.type === selectedRole);
+    const selectedRoleData = roleOptions.find((r) => r.type === selectedRole);
     return (
       <div className="max-w-md mx-auto">
         <div className="text-center mb-8">
           <div className={`${selectedRoleData?.color} text-white p-3 rounded-full mb-4 mx-auto w-fit`}>
             {selectedRoleData?.icon}
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your {selectedRoleData?.title} Profile</h2>
-          <p className="text-gray-600">Just a few more details to continue</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{tr("onboarding.ui.complete_profile_title", "Complete Your {{role}} Profile", { role: tr(`onboarding.roles.${selectedRole}.title`, selectedRoleData?.title || selectedRole) })}</h2>
+          <p className="text-gray-600">{tr("onboarding.ui.complete_profile_subtitle","Just a few more details to continue")}</p>
           <div className="mt-3">
             <RoleLockedPill role={selectedRole} />
           </div>
@@ -1136,7 +1145,7 @@ export default function Onboarding() {
         {selectedRole === "agent" && (
           <div className="space-y-6">
             <div>
-              <Label htmlFor="company_name">Company Name *</Label>
+              <Label htmlFor="company_name">{tr("onboarding.agent.company_name","Company Name *")}</Label>
               <Input
                 id="company_name"
                 value={formData.company_name || ""}
@@ -1150,7 +1159,7 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label htmlFor="business_license_mst">Business License (MST) *</Label>
+              <Label htmlFor="business_license_mst">{tr("onboarding.agent.business_license","Business License (MST) *")}</Label>
               <Input
                 id="business_license_mst"
                 value={formData.business_license_mst || ""}
@@ -1164,7 +1173,7 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label htmlFor="year_established">Year Established</Label>
+              <Label htmlFor="year_established">{tr("onboarding.agent.year_established","Year Established")}</Label>
               <Input
                 id="year_established"
                 type="number"
@@ -1179,7 +1188,7 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label htmlFor="paypal_email">PayPal Email *</Label>
+              <Label htmlFor="paypal_email">{tr("onboarding.payments.paypal_email","PayPal Email *")}</Label>
               <Input
                 id="paypal_email"
                 type="email"
@@ -1188,10 +1197,10 @@ export default function Onboarding() {
                   formDirtyRef.current = true;
                   setFormData((p) => ({ ...p, paypal_email: e.target.value }));
                 }}
-                placeholder="payouts@example.com"
+                placeholder={tr("onboarding.payments.paypal_placeholder","payouts@example.com")}
                 className="mt-1"
               />
-              <p className="text-xs text-gray-500 mt-1">Required for commission payouts</p>
+              <p className="text-xs text-gray-500 mt-1">{tr("onboarding.agent.paypal_hint","Required for commission payouts")}</p>
             </div>
 
             <BiographyField
@@ -1209,7 +1218,7 @@ export default function Onboarding() {
         {selectedRole === "tutor" && (
           <div className="space-y-6">
             <div>
-              <Label htmlFor="specializations">Specializations *</Label>
+              <Label htmlFor="specializations">{tr("onboarding.tutor.specializations","Specializations *")}</Label>
               <Input
                 id="specializations"
                 value={formData.specializations || ""}
@@ -1217,14 +1226,14 @@ export default function Onboarding() {
                   formDirtyRef.current = true;
                   setFormData((p) => ({ ...p, specializations: e.target.value }));
                 }}
-                placeholder="IELTS, TOEFL, General English"
+                placeholder={tr("onboarding.tutor.specializations_placeholder","IELTS, TOEFL, General English")}
                 className="mt-1"
               />
-              <p className="text-xs text-gray-500 mt-1">Separate multiple specializations with commas</p>
+              <p className="text-xs text-gray-500 mt-1">{tr("onboarding.tutor.specializations_hint","Separate multiple specializations with commas")}</p>
             </div>
 
             <div>
-              <Label htmlFor="experience_years">Years of Experience *</Label>
+              <Label htmlFor="experience_years">{tr("onboarding.tutor.years_experience","Years of Experience *")}</Label>
               <Input
                 id="experience_years"
                 type="number"
@@ -1239,7 +1248,7 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label htmlFor="hourly_rate">Hourly Rate (USD) *</Label>
+              <Label htmlFor="hourly_rate">{tr("onboarding.tutor.hourly_rate","Hourly Rate (USD) *")}</Label>
               <Input
                 id="hourly_rate"
                 type="number"
@@ -1264,7 +1273,7 @@ export default function Onboarding() {
             />
 
             <div>
-              <Label htmlFor="paypal_email">PayPal Email *</Label>
+              <Label htmlFor="paypal_email">{tr("onboarding.payments.paypal_email","PayPal Email *")}</Label>
               <Input
                 id="paypal_email"
                 type="email"
@@ -1273,10 +1282,10 @@ export default function Onboarding() {
                   formDirtyRef.current = true;
                   setFormData((p) => ({ ...p, paypal_email: e.target.value }));
                 }}
-                placeholder="payouts@example.com"
+                placeholder={tr("onboarding.payments.paypal_placeholder","payouts@example.com")}
                 className="mt-1"
               />
-              <p className="text-xs text-gray-500 mt-1">Required for session payouts</p>
+              <p className="text-xs text-gray-500 mt-1">{tr("onboarding.tutor.paypal_hint","Required for session payouts")}</p>
             </div>
           </div>
         )}
@@ -1285,7 +1294,7 @@ export default function Onboarding() {
         {selectedRole === "school" && (
           <div className="space-y-6">
             <div>
-              <Label htmlFor="school_name">Institution Name *</Label>
+              <Label htmlFor="school_name">{tr("onboarding.school.institution_name","Institution Name *")}</Label>
               <Input
                 id="school_name"
                 value={formData.school_name || ""}
@@ -1299,24 +1308,24 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label htmlFor="type">School Type *</Label>
+              <Label htmlFor="type">{tr("onboarding.school.school_type","School Type *")}</Label>
               <Select value={formData.type || ""} onValueChange={(v) => setFormData((p) => ({ ...p, type: v }))}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Select institution type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="High School">High School</SelectItem>
-                  <SelectItem value="College">College</SelectItem>
-                  <SelectItem value="University">University</SelectItem>
-                  <SelectItem value="Institute">Institute</SelectItem>
-                  <SelectItem value="Vocational">Vocational School</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  <SelectItem value="High School">{tr("onboarding.school.types.high_school","High School")}</SelectItem>
+                  <SelectItem value="College">{tr("onboarding.school.types.college","College")}</SelectItem>
+                  <SelectItem value="University">{tr("onboarding.school.types.university","University")}</SelectItem>
+                  <SelectItem value="Institute">{tr("onboarding.school.types.institute","Institute")}</SelectItem>
+                  <SelectItem value="Vocational">{tr("onboarding.school.types.vocational","Vocational School")}</SelectItem>
+                  <SelectItem value="Other">{tr("common.other","Other")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label htmlFor="location">City/Location *</Label>
+              <Label htmlFor="location">{tr("onboarding.school.city","City/Location *")}</Label>
               <Input
                 id="location"
                 value={formData.location || ""}
@@ -1330,7 +1339,7 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label htmlFor="website">Official Website *</Label>
+              <Label htmlFor="website">{tr("onboarding.school.website","Official Website *")}</Label>
               <Input
                 id="website"
                 type="url"
@@ -1345,7 +1354,7 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label htmlFor="about">About Your Institution</Label>
+              <Label htmlFor="about">{tr("onboarding.school.about","About Your Institution")}</Label>
               <Textarea
                 id="about"
                 value={formData.about || ""}
@@ -1374,7 +1383,7 @@ export default function Onboarding() {
         {selectedRole === "vendor" && (
           <div className="space-y-6">
             <div>
-              <Label htmlFor="business_name">Business Name *</Label>
+              <Label htmlFor="business_name">{tr("onboarding.vendor.business_name","Business Name *")}</Label>
               <Input
                 id="business_name"
                 value={formData.business_name || ""}
@@ -1388,7 +1397,7 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label>Service Categories *</Label>
+              <Label>{tr("onboarding.vendor.service_categories","Service Categories *")}</Label>
               <div className="grid grid-cols-2 gap-3 mt-2">
                 {["Transport", "SIM Card", "Banking", "Accommodation", "Delivery", "Tours"].map((category) => (
                   <div key={category} className="flex items-center space-x-2">
@@ -1412,7 +1421,7 @@ export default function Onboarding() {
             </div>
 
             <div>
-              <Label htmlFor="paypal_email">PayPal Email *</Label>
+              <Label htmlFor="paypal_email">{tr("onboarding.payments.paypal_email","PayPal Email *")}</Label>
               <Input
                 id="paypal_email"
                 type="email"
@@ -1421,10 +1430,10 @@ export default function Onboarding() {
                   formDirtyRef.current = true;
                   setFormData((p) => ({ ...p, paypal_email: e.target.value }));
                 }}
-                placeholder="payouts@example.com"
+                placeholder={tr("onboarding.payments.paypal_placeholder","payouts@example.com")}
                 className="mt-1"
               />
-              <p className="text-xs text-gray-500 mt-1">Required for service payouts</p>
+              <p className="text-xs text-gray-500 mt-1">{tr("onboarding.vendor.paypal_hint","Required for service payouts")}</p>
             </div>
 
             <BiographyField
@@ -1440,7 +1449,7 @@ export default function Onboarding() {
 
         <div className="flex gap-3 pt-4">
           <Button variant="outline" onClick={handleBack} className="flex-1">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            <ArrowLeft className="w-4 h-4 mr-2" /> {tr("common.back","Back")}
           </Button>
 
           <Button
@@ -1451,11 +1460,11 @@ export default function Onboarding() {
             {saving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {tr("common.saving","Saving...")}
               </>
             ) : (
               <>
-                Continue
+                {tr("common.continue","Continue")}
                 <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
@@ -1464,7 +1473,7 @@ export default function Onboarding() {
 
         <div className="text-center mt-4">
           <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-600 inline-flex items-center gap-1">
-            <LogOut className="w-4 h-4" /> Log out instead
+            <LogOut className="w-4 h-4" /> {tr("onboarding.ui.logout_instead","Log out instead")}
           </button>
         </div>
       </div>
@@ -1480,7 +1489,7 @@ export default function Onboarding() {
           <div className="bg-emerald-600 text-white p-3 rounded-full mb-4 mx-auto w-fit">
             <CreditCard className="w-6 h-6" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Subscription</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{tr("onboarding.subscription.title","Subscription")}</h2>
           <p className="text-gray-600">Subscribe now or skip for later. We’ll store your choice.</p>
           <div className="mt-3">
             <RoleLockedPill role={selectedRole} />
@@ -1491,11 +1500,11 @@ export default function Onboarding() {
           <CardContent className="p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm text-gray-500">Plan</div>
+                <div className="text-sm text-gray-500">{tr("onboarding.subscription.plan","Plan")}</div>
                 <div className="text-lg font-semibold text-gray-900">{plan.label} — Yearly</div>
               </div>
               <div className="text-right">
-                <div className="text-sm text-gray-500">Price</div>
+                <div className="text-sm text-gray-500">{tr("onboarding.subscription.price","Price")}</div>
                 <div className="text-xl font-bold text-gray-900">${plan.amount}/year</div>
               </div>
             </div>
@@ -1512,13 +1521,13 @@ export default function Onboarding() {
               )}
 
               <div className="rounded-lg border p-3">
-                <div className="text-sm font-semibold text-gray-900 mb-2">Pay with PayPal</div>
+                <div className="text-sm font-semibold text-gray-900 mb-2">{tr("onboarding.payments.pay_with_paypal","Pay with PayPal")}</div>
                 <div ref={paypalContainerRef} />
 
                 {!paypalReady && !paypalError && (
                   <div className="mt-2 text-sm text-gray-500 flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Loading PayPal...
+                    {tr("onboarding.payments.loading_paypal","Loading PayPal...")}
                   </div>
                 )}
               </div>
@@ -1527,7 +1536,7 @@ export default function Onboarding() {
             <div className="mt-4 flex gap-3">
               <Button variant="outline" className="flex-1" onClick={handleBack} disabled={saving || submittingPayment}>
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
+                {tr("common.back","Back")}
               </Button>
 
               <Button
@@ -1537,7 +1546,7 @@ export default function Onboarding() {
                 disabled={saving || submittingPayment}
                 title="Skip subscription for now"
               >
-                Skip for now
+                {tr("common.skip_for_now","Skip for now")}
               </Button>
             </div>
 
@@ -1555,10 +1564,10 @@ export default function Onboarding() {
       <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
         <Check className="w-10 h-10 text-white" />
       </div>
-      <h2 className="text-3xl font-bold text-gray-900 mb-4">Welcome to GreenPass!</h2>
+      <h2 className="text-3xl font-bold text-gray-900 mb-4">{tr("onboarding.ui.welcome","Welcome to GreenPass!")}</h2>
       <p className="text-gray-600 mb-6">Your account has been set up successfully. Get ready to start your journey!</p>
       <div className="bg-green-50 rounded-lg p-4 mb-6">
-        <p className="text-sm text-green-800">Redirecting to your personalized dashboard...</p>
+        <p className="text-sm text-green-800">{tr("onboarding.ui.redirecting","Redirecting to your personalized dashboard...")}</p>
       </div>
       <div className="flex justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-green-600" />
@@ -1587,15 +1596,15 @@ export default function Onboarding() {
             onClick={handleLogout}
             disabled={loggingOut}
             className="text-red-600 hover:bg-red-50"
-            title="Log out and exit onboarding"
+            title={tr("onboarding.ui.logout_title","Log out and exit onboarding")}
           >
             {loggingOut ? (
               <>
-                <Loader2 className="w-4 h-4 mr-1 animate-spin" /> Logging out
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" /> {tr("common.logging_out","Logging out")}
               </>
             ) : (
               <>
-                <LogOut className="w-4 h-4 mr-1" /> Log out
+                <LogOut className="w-4 h-4 mr-1" /> {tr("common.logout","Log out")}
               </>
             )}
           </Button>

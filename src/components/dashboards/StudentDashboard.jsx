@@ -18,6 +18,9 @@ import {
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
+// 🌍 i18n
+import { useTr } from "@/i18n/useTr";
+
 // 🔥 Firebase
 import { db, auth } from "@/firebase";
 import {
@@ -31,6 +34,9 @@ import {
   writeBatch,
   serverTimestamp,
 } from "firebase/firestore";
+
+// 💳 Subscription mode toggle
+import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 
 /* -------------------- Small helpers -------------------- */
 const toValidDate = (v) => {
@@ -103,15 +109,15 @@ const Avatar = ({ name = "User", role = "user" }) => {
   );
 };
 
-const RoleBadge = ({ role }) => {
+const RoleBadge = ({ role, tr }) => {
   const cfg =
     role === "school"
-      ? { label: "School", cls: "bg-blue-50 text-blue-700 border-blue-100" }
+      ? { label: tr("role_school", "School"), cls: "bg-blue-50 text-blue-700 border-blue-100" }
       : role === "tutor"
-      ? { label: "Tutor", cls: "bg-purple-50 text-purple-700 border-purple-100" }
+      ? { label: tr("role_tutor", "Tutor"), cls: "bg-purple-50 text-purple-700 border-purple-100" }
       : role === "agent"
-      ? { label: "Agent", cls: "bg-emerald-50 text-emerald-700 border-emerald-100" }
-      : { label: "Verified", cls: "bg-gray-50 text-gray-700 border-gray-100" };
+      ? { label: tr("role_agent", "Agent"), cls: "bg-emerald-50 text-emerald-700 border-emerald-100" }
+      : { label: tr("role_verified", "Verified"), cls: "bg-gray-50 text-gray-700 border-gray-100" };
 
   return (
     <Badge variant="secondary" className={`border ${cfg.cls}`}>
@@ -127,7 +133,7 @@ const StatPill = ({ children }) => (
 );
 
 /* ✅ Real media viewer: multiple images/videos */
-const MediaGallery = ({ media = [] }) => {
+const MediaGallery = ({ media = [], tr }) => {
   const items = Array.isArray(media) ? media : [];
   if (!items.length) return null;
 
@@ -149,7 +155,7 @@ const MediaGallery = ({ media = [] }) => {
                 target="_blank"
                 rel="noreferrer"
                 className="block overflow-hidden rounded-2xl border bg-gray-100"
-                title="Open image"
+                title={tr("open_image", "Open image")}
               >
                 <img
                   src={url}
@@ -177,7 +183,7 @@ const MediaGallery = ({ media = [] }) => {
               rel="noreferrer"
               className="flex h-60 items-center justify-center rounded-2xl border bg-gray-50 text-sm text-gray-600"
             >
-              Open media
+              {tr("open_media", "Open media")}
             </a>
           );
         })}
@@ -191,7 +197,7 @@ const MediaGallery = ({ media = [] }) => {
 };
 
 /* -------------------- Post Card UI (NO like/comment/share) -------------------- */
-function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage }) {
+function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage, tr }) {
   const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
 
   return (
@@ -204,12 +210,12 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage }) {
             <div className="min-w-0 leading-tight">
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="font-semibold text-gray-900 truncate">{post.authorName}</div>
-                <RoleBadge role={String(post.authorRole || "").toLowerCase()} />
+                <RoleBadge role={String(post.authorRole || "").toLowerCase()} tr={tr} />
 
                 {post.isFeatured ? (
                   <Badge className="bg-amber-500 text-white">
                     <Sparkles className="h-3.5 w-3.5 mr-1" />
-                    Featured
+                    {tr("featured", "Featured")}
                   </Badge>
                 ) : null}
               </div>
@@ -218,7 +224,7 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage }) {
                 <span>{post.timeAgo}</span>
                 <span>•</span>
                 <Globe className="h-3.5 w-3.5" />
-                <span>Public</span>
+                <span>{tr("public", "Public")}</span>
               </div>
 
               {post.tags?.length ? (
@@ -242,7 +248,7 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage }) {
         ) : null}
 
         {/* Media */}
-        <MediaGallery media={post.media || []} />
+        <MediaGallery media={post.media || []} tr={tr} />
 
         {/* Follow + Message row */}
         <div className="px-4 pb-4">
@@ -256,11 +262,11 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage }) {
             >
               {isFollowing ? (
                 <>
-                  <UserMinus className="h-4 w-4 mr-2" /> Following
+                  <UserMinus className="h-4 w-4 mr-2" /> {tr("following", "Following")}
                 </>
               ) : (
                 <>
-                  <UserPlus className="h-4 w-4 mr-2" /> Follow
+                  <UserPlus className="h-4 w-4 mr-2" /> {tr("follow", "Follow")}
                 </>
               )}
             </Button>
@@ -273,18 +279,21 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage }) {
               type="button"
               title={
                 canMessage
-                  ? "Message this creator"
-                  : "Students cannot message Schools. Please contact Admin/Advisor."
+                  ? tr("message_this_creator", "Message this creator")
+                  : tr(
+                      "students_cannot_message_schools",
+                      "Students cannot message Schools. Please contact Admin/Advisor."
+                    )
               }
             >
               <Send className="h-4 w-4 mr-2" />
-              {canMessage ? "Message" : "Message (Not allowed)"}
+              {canMessage ? tr("message", "Message") : tr("message_not_allowed", "Message (Not allowed)")}
             </Button>
           </div>
 
           {!canMessage ? (
             <div className="mt-2 text-xs text-gray-500">
-              Schools can’t be messaged directly. Follow them to get updates.
+              {tr("schools_cant_be_messaged", "Schools can’t be messaged directly. Follow them to get updates.")}
             </div>
           ) : null}
         </div>
@@ -295,6 +304,9 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage }) {
 
 /* -------------------- REAL Student Dashboard (FB-style) -------------------- */
 export default function StudentDashboard() {
+  const { tr } = useTr("student_dashboard");
+  const { subscriptionModeEnabled, loading: subscriptionLoading } = useSubscriptionMode();
+
   const navigate = useNavigate();
   const me = auth?.currentUser;
   const myUid = me?.uid;
@@ -400,17 +412,45 @@ export default function StudentDashboard() {
     navigate(`${createPageUrl("Messages")}?with=${encodeURIComponent(post.authorId)}`);
   };
 
+  const showSubscriptionNotice = !subscriptionLoading && subscriptionModeEnabled;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="w-full px-3 sm:px-6 lg:px-8 py-5">
+        {/* ✅ Subscription notice depends on app_config/subscription.enabled */}
+        {showSubscriptionNotice ? (
+          <div className="mx-auto max-w-[1800px] mb-5">
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-red-800">
+                  {tr("subscription_required_title", "Subscription required")}
+                </div>
+                <div className="text-xs text-red-700 mt-1">
+                  {tr("subscription_required_body", "Subscription mode is enabled. Subscribe to unlock full features.")}
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                className="rounded-xl bg-red-600 hover:bg-red-700"
+                onClick={() => navigate(createPageUrl("Subscribe"))}
+              >
+                {tr("subscribe_now", "Subscribe")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mx-auto max-w-[1800px] grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-10">
           {/* LEFT */}
           <div className="hidden lg:block lg:col-span-3">
             <div className="sticky top-4 space-y-4">
               <div className="rounded-2xl border bg-white p-4">
-                <div className="text-sm font-semibold text-gray-900">Discover</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {tr("discover_title", "Discover")}
+                </div>
                 <div className="text-xs text-gray-600 mt-1">
-                  Browse posts from Agents, Tutors, and Schools.
+                  {tr("discover_subtitle", "Browse posts from Agents, Tutors, and Schools.")}
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-2">
@@ -418,27 +458,32 @@ export default function StudentDashboard() {
                     variant="outline"
                     className="justify-start rounded-xl"
                     onClick={() => navigate(createPageUrl("Directory"))}
+                    type="button"
                   >
                     <Users className="h-4 w-4 mr-2 text-emerald-600" />
-                    Directory
+                    {tr("directory", "Directory")}
                   </Button>
                 </div>
 
                 <div className="mt-4 rounded-xl bg-gray-50 border p-3">
-                  <div className="text-xs font-semibold text-gray-700">Following</div>
+                  <div className="text-xs font-semibold text-gray-700">
+                    {tr("following_card_title", "Following")}
+                  </div>
                   <div className="text-xs text-gray-600 mt-1">
-                    You’re following <span className="font-semibold">{following.size}</span> creators
+                    {tr("following_count", "You’re following {{count}} creators", { count: following.size })}
                   </div>
                 </div>
               </div>
 
               <div className="rounded-2xl border bg-white p-4">
-                <div className="text-sm font-semibold text-gray-900">How messaging works</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {tr("how_messaging_works_title", "How messaging works")}
+                </div>
                 <div className="text-xs text-gray-600 mt-2 leading-relaxed">
-                  You can message <span className="font-semibold">Agents</span> and{" "}
-                  <span className="font-semibold">Tutors</span>. For{" "}
-                  <span className="font-semibold">Schools</span>, messaging is handled by Admin/Advisor —
-                  follow schools to receive updates.
+                  {tr(
+                    "how_messaging_works_body",
+                    "You can message Agents and Tutors. For Schools, messaging is handled by Admin/Advisor — follow schools to receive updates."
+                  )}
                 </div>
               </div>
             </div>
@@ -450,29 +495,31 @@ export default function StudentDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-900">Explore Updates</div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {tr("explore_updates_title", "Explore Updates")}
+                    </div>
                     <div className="text-xs text-gray-600 mt-1">
-                      Follow creators to get notified when they post next.
+                      {tr("explore_updates_subtitle", "Follow creators to get notified when they post next.")}
                     </div>
                   </div>
-                  <Badge className="bg-zinc-900 text-white">All Posts</Badge>
+                  <Badge className="bg-zinc-900 text-white">{tr("all_posts", "All Posts")}</Badge>
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge variant="secondary" className="border bg-white">
-                    Trending
+                    {tr("trending", "Trending")}
                   </Badge>
                   <Badge variant="secondary" className="border bg-white">
-                    Latest
+                    {tr("latest", "Latest")}
                   </Badge>
                   <Badge variant="secondary" className="border bg-white">
-                    Scholarships
+                    {tr("scholarships", "Scholarships")}
                   </Badge>
                   <Badge variant="secondary" className="border bg-white">
-                    IELTS
+                    {tr("ielts", "IELTS")}
                   </Badge>
                   <Badge variant="secondary" className="border bg-white">
-                    Admissions
+                    {tr("admissions", "Admissions")}
                   </Badge>
                 </div>
               </CardContent>
@@ -481,12 +528,12 @@ export default function StudentDashboard() {
             {loading ? (
               <Card className="rounded-2xl">
                 <CardContent className="p-10 flex items-center justify-center text-gray-500">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading posts…
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" /> {tr("loading_posts", "Loading posts…")}
                 </CardContent>
               </Card>
             ) : posts.length === 0 ? (
               <Card className="rounded-2xl">
-                <CardContent className="p-6 text-sm text-gray-600">No community posts yet.</CardContent>
+                <CardContent className="p-6 text-sm text-gray-600">{tr("no_posts", "No community posts yet.")}</CardContent>
               </Card>
             ) : (
               posts.map((p) => (
@@ -496,6 +543,7 @@ export default function StudentDashboard() {
                   isFollowing={isFollowing(p.authorId)}
                   onToggleFollow={toggleFollow}
                   onMessage={messageCreator}
+                  tr={tr}
                 />
               ))
             )}
@@ -506,21 +554,23 @@ export default function StudentDashboard() {
             <div className="sticky top-4 space-y-4">
               <div className="rounded-2xl border bg-white p-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold text-gray-900">Suggested to follow</div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {tr("suggested_to_follow", "Suggested to follow")}
+                  </div>
                   <Button variant="ghost" size="icon" className="text-gray-500" type="button">
                     <MoreHorizontal className="h-5 w-5" />
                   </Button>
                 </div>
 
                 <div className="mt-3 text-xs text-gray-600">
-                  (Optional) You can later load “Suggested” from Firestore.
+                  {tr("suggested_note", "(Optional) You can later load “Suggested” from Firestore.")}
                 </div>
               </div>
 
               <div className="rounded-2xl border bg-white p-4">
-                <div className="text-sm font-semibold text-gray-900">Tip</div>
+                <div className="text-sm font-semibold text-gray-900">{tr("tip_title", "Tip")}</div>
                 <div className="text-xs text-gray-600 mt-2 leading-relaxed">
-                  Follow creators you trust. You’ll automatically get a notification when they post next.
+                  {tr("tip_body", "Follow creators you trust. You’ll automatically get a notification when they post next.")}
                 </div>
               </div>
             </div>
@@ -531,9 +581,9 @@ export default function StudentDashboard() {
         <div className="lg:hidden mt-6">
           <Card className="rounded-2xl">
             <CardContent className="p-4">
-              <div className="text-sm font-semibold text-gray-900">Tip</div>
+              <div className="text-sm font-semibold text-gray-900">{tr("tip_title", "Tip")}</div>
               <div className="text-xs text-gray-600 mt-1">
-                Follow creators to get notified when they post next.
+                {tr("explore_updates_subtitle", "Follow creators to get notified when they post next.")}
               </div>
             </CardContent>
           </Card>

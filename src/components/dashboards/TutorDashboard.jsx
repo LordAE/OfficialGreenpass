@@ -1,8 +1,10 @@
 // src/pages/TutorDashboard.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TutoringSession, Wallet, Tutor } from "@/api/entities";
 import {
   Calendar,
@@ -22,10 +24,14 @@ import {
   Loader2,
   Video,
   MessageSquare,
+  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
+import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway";
+import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
+import { useTr } from "@/i18n/useTr";
 
 // ✅ Firebase
 import { db, storage } from "@/firebase";
@@ -41,9 +47,11 @@ import {
   onSnapshot,
   writeBatch,
   updateDoc,
+  runTransaction,
+  Timestamp,
+  increment
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-
 /* ✅ SUBSCRIPTION LOGIC */
 function isSubscribedUser(u) {
   if (!u) return false;
@@ -53,14 +61,24 @@ function isSubscribedUser(u) {
   return ok.has(status);
 }
 
-const SubscribeBanner = ({ to, user }) => {
+const SubscribeBanner = ({ to, user, tr }) => {
   const status = String(user?.subscription_status || "").toLowerCase().trim();
+
   const message =
     status === "skipped"
-      ? "You skipped subscription. Subscribe to unlock full tutor features, visibility, and payouts."
+      ? tr(
+          "subscribe_skipped",
+          "You skipped subscription. Subscribe to unlock full tutor features, visibility, and payouts."
+        )
       : status === "expired"
-      ? "Your subscription expired. Renew to regain full tutor features, visibility, and payouts."
-      : "You’re not subscribed yet. Subscribe to unlock full tutor features, visibility, and payouts.";
+      ? tr(
+          "subscribe_expired",
+          "Your subscription expired. Renew to regain full tutor features, visibility, and payouts."
+        )
+      : tr(
+          "subscribe_default",
+          "You’re not subscribed yet. Subscribe to unlock full tutor features, visibility, and payouts."
+        );
 
   return (
     <div className="rounded-2xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -69,21 +87,23 @@ const SubscribeBanner = ({ to, user }) => {
           <CreditCard className="w-5 h-5 text-red-600" />
         </div>
         <div>
-          <p className="font-semibold text-red-800">Subscription required</p>
+          <p className="font-semibold text-red-800">
+            {tr("subscription_required", "Subscription required")}
+          </p>
           <p className="text-sm text-red-700">{message}</p>
         </div>
       </div>
 
       <Link to={to}>
         <Button className="bg-red-600 hover:bg-red-700 w-full sm:w-auto" type="button">
-          Subscribe Now
+          {tr("subscribe_now", "Subscribe Now")}
         </Button>
       </Link>
     </div>
   );
 };
 
-const StatCard = ({ title, value, icon, to, color = "text-blue-600" }) => (
+const StatCard = ({ title, value, icon, to, viewLabel = "View Details", color = "text-blue-600" }) => (
   <Card className="hover:shadow-lg transition-shadow rounded-2xl">
     <CardContent className="p-6">
       <div className="flex items-center justify-between">
@@ -96,7 +116,7 @@ const StatCard = ({ title, value, icon, to, color = "text-blue-600" }) => (
       {to && (
         <Link to={to}>
           <Button variant="ghost" size="sm" className="w-full mt-3" type="button">
-            View Details <ArrowRight className="w-4 h-4 ml-2" />
+            {viewLabel} <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </Link>
       )}
@@ -145,7 +165,7 @@ const Avatar = ({ name = "Tutor", size = "md" }) => {
 };
 
 /* -------------------- Follow Button (no likes/comments/shares) -------------------- */
-function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "" }) {
+function FollowButton({ currentUserId, creatorId, creatorRole, tr, size = "sm", className = ""}) {
   const [following, setFollowing] = useState(false);
   const disabled = !currentUserId || !creatorId || currentUserId === creatorId;
 
@@ -199,13 +219,13 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
       className={className}
       onClick={following ? unfollow : follow}
     >
-      {following ? "Following" : "Follow"}
+      {following ? tr?.("following","Following") : tr?.("follow","Follow")}
     </Button>
   );
 }
 
 /* -------------------- Media grid (REAL) -------------------- */
-const MediaGallery = ({ media = [] }) => {
+const MediaGallery = ({ media = [], tr }) => {
   const items = Array.isArray(media) ? media : [];
   if (!items.length) return null;
 
@@ -226,7 +246,7 @@ const MediaGallery = ({ media = [] }) => {
                 target="_blank"
                 rel="noreferrer"
                 className="block overflow-hidden rounded-2xl border bg-gray-100"
-                title="Open image"
+                title={tr?.("open_image","Open image")}
               >
                 <img
                   src={url}
@@ -261,14 +281,139 @@ const MediaGallery = ({ media = [] }) => {
       </div>
 
       {items.length > 4 ? (
-        <div className="mt-2 text-xs text-gray-500">+{items.length - 4} more</div>
+        <div className="mt-2 text-xs text-gray-500">{tr?.("more_count","+{{count}} more", { count: items.length - 4 })}</div>
       ) : null}
     </div>
   );
 };
 
+
+/* -------------------- Boost Modal -------------------- */
+const BOOST_PLANS = [
+  { days: 7, price: 1.99 },
+  { days: 15, price: 2.99 },
+  { days: 30, price: 3.99 },
+];
+
+function monthKeyUTC(d = new Date()) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+async function ensureMonthlyPostQuota(tx, userRef) {
+  const snap = await tx.get(userRef);
+  const nowKey = monthKeyUTC();
+  const data = snap.exists() ? snap.data() : {};
+  const storedKey = String(data?.post_quota_month || "");
+  if (storedKey !== nowKey) {
+    tx.set(
+      userRef,
+      { post_quota_month: nowKey, post_quota_used: 0, post_quota_updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+    return { used: 0, key: nowKey };
+  }
+  return { used: Number(data?.post_quota_used || 0), key: storedKey || nowKey };
+}
+
+const BoostPostDialog = ({ open, onOpenChange, postId, me, tr }) => {
+  const [plan, setPlan] = useState(BOOST_PLANS[0]);
+  const [processing, setProcessing] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+
+  const payerName = me?.full_name || me?.name || "GreenPass User";
+  const payerEmail = me?.email || "";
+
+  const handleSuccess = async (_method, transactionId, payload) => {
+    if (!postId) return;
+    setProcessing(true);
+    setErr("");
+    try {
+      const until = Timestamp.fromDate(new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000));
+      await updateDoc(doc(db, "posts", postId), {
+        boosted: true,
+        boost_days: plan.days,
+        boost_price_usd: plan.price,
+        boost_currency: "USD",
+        boost_transaction_id: String(transactionId || ""),
+        boost_provider: "paypal",
+        boost_details: payload || null,
+        boosted_at: serverTimestamp(),
+        boosted_until: until,
+      });
+      setDone(true);
+    } catch (e) {
+      console.error("boost update post failed:", e);
+      setErr(tr?.("boost_activate_failed","Payment succeeded, but we couldn't activate the boost. Please contact support."));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => (processing ? null : onOpenChange(v))}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{tr?.("boost_title","Boost your post")}</DialogTitle>
+        </DialogHeader>
+
+        {!done ? (
+          <>
+            <div className="mt-1 text-sm text-gray-600">{tr?.("boost_choose","Choose a boost duration, then pay.")}</div>
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {BOOST_PLANS.map((p) => {
+                const selected = plan?.days === p.days;
+                return (
+                  <Button
+                    key={p.days}
+                    type="button"
+                    variant={selected ? "default" : "outline"}
+                    className="w-full"
+                    onClick={() => setPlan(p)}
+                    disabled={processing}
+                  >
+                    ${p.price.toFixed(2)} • {p.days} days
+                  </Button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4">
+              <SharedPaymentGateway
+                amountUSD={plan.price}
+                itemDescription={`Boost Post (${plan.days} days)`}
+                payerName={payerName}
+                payerEmail={payerEmail}
+                onProcessing={() => setProcessing(true)}
+                onDoneProcessing={() => setProcessing(false)}
+                onError={(e) => {
+                  console.error(e);
+                  setErr(tr?.("payment_failed","Payment failed. Please try again."));
+                }}
+                onCardPaymentSuccess={handleSuccess}
+              />
+            </div>
+
+            {err ? <div className="mt-3 text-sm text-red-600">{err}</div> : null}
+          </>
+        ) : (
+          <div className="mt-4">
+            <div className="text-sm text-emerald-700 font-medium">{tr?.("boost_activated","Boost activated ✅")}</div>
+            <Button type="button" className="w-full mt-3" onClick={() => onOpenChange(false)}>
+              {tr?.("close","Close")}
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 /* -------------------- Post Card (FOLLOW + MESSAGE only) -------------------- */
-const RealPostCard = ({ post, currentUserId }) => {
+const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr }) => {
   const created = post?.createdAt?.seconds
     ? new Date(post.createdAt.seconds * 1000)
     : post?.createdAt?.toDate
@@ -280,6 +425,7 @@ const RealPostCard = ({ post, currentUserId }) => {
   const authorName = post?.authorName || post?.author_name || "Tutor";
 
   const isMine = currentUserId && authorId && currentUserId === authorId;
+  const [boostOpen, setBoostOpen] = useState(false);
 
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
 
@@ -300,14 +446,19 @@ const RealPostCard = ({ post, currentUserId }) => {
                   {String(authorRole || "tutor").toUpperCase()}
                 </Badge>
 
-                {post?.paid ? <Badge className="bg-zinc-900 text-white">Paid Post</Badge> : null}
+                {post?.paid ? <Badge className="bg-zinc-900 text-white">{tr?.("paid_post","Paid Post")}</Badge> : null}
+
+                {post?.boosted_until?.seconds &&
+                new Date(post.boosted_until.seconds * 1000) > new Date() ? (
+                  <Badge className="bg-amber-500 text-white">{tr?.("boosted","BOOSTED")}</Badge>
+                ) : null}
               </div>
 
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>
                 <Globe className="h-3.5 w-3.5" />
-                <span>Public</span>
+                <span>{tr?.("public","Public")}</span>
               </div>
             </div>
           </div>
@@ -321,26 +472,29 @@ const RealPostCard = ({ post, currentUserId }) => {
           <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
         ) : null}
 
-        <MediaGallery media={post?.media || []} />
+        <MediaGallery media={post?.media || []} tr={tr} />
 
         {/* ✅ ONLY FOLLOW + MESSAGE (no like/comment/share) */}
         <div className="px-4 pb-4">
           <div className="mt-3 border-t pt-2 grid grid-cols-2 gap-2">
             <div className="flex">
               {isMine ? (
-                <Button
+                subscriptionModeEnabled ? (
+                  <Button
                   variant="outline"
                   className="w-full justify-center text-gray-700"
                   type="button"
-                  disabled
+                  onClick={() => setBoostOpen(true)}
                 >
-                  This is you
-                </Button>
+                    <Sparkles className="h-4 w-4 mr-2" /> {tr?.("boost_your_post","Boost your post")}
+                  </Button>
+                ) : null
               ) : (
                 <FollowButton
                   currentUserId={currentUserId}
                   creatorId={authorId}
                   creatorRole={authorRole}
+                  tr={tr}
                   className="w-full justify-center"
                 />
               )}
@@ -352,13 +506,23 @@ const RealPostCard = ({ post, currentUserId }) => {
                 className="w-full justify-center text-gray-700"
                 type="button"
                 disabled={!authorId || !currentUserId || isMine}
-                title={!authorId ? "Missing author id" : isMine ? "You can't message yourself" : "Message"}
+                title={!authorId ? tr?.("missing_author_id","Missing author id") : isMine ? tr?.("cant_message_self","You can't message yourself") : tr?.("message","Message")}
               >
-                <MessageSquare className="h-4 w-4 mr-2" /> Message
+                <MessageSquare className="h-4 w-4 mr-2" /> {tr?.("message","Message")}
               </Button>
             </Link>
           </div>
         </div>
+
+        {isMine && subscriptionModeEnabled ? (
+          <BoostPostDialog
+            open={boostOpen}
+            onOpenChange={setBoostOpen}
+            postId={post?.id}
+            me={me}
+            tr={tr}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -389,13 +553,35 @@ export default function TutorDashboard({ user }) {
   // ✅ Posting state
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState("");
+  const [quotaUsed, setQuotaUsed] = useState(0);
+  const [quotaMonth, setQuotaMonth] = useState("");
 
   // ✅ Posts feed (Option B: one community feed including your own posts)
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
 
   const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
+  const { subscriptionModeEnabled } = useSubscriptionMode();
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
+
+  const { tr } = useTr("tutor_dashboard");
+
+
+  // ✅ Posting limit dialog
+  const [limitOpen, setLimitOpen] = useState(false);
+// ✅ Listen to quota fields on the user doc (for disabling Post button + friendly prompt)
+useEffect(() => {
+  if (!userId) return;
+  const meRef = doc(db, "users", userId);
+  const unsub = onSnapshot(meRef, (snap) => {
+    if (!snap.exists()) return;
+    const d = snap.data() || {};
+    setQuotaUsed(Number(d.post_quota_used || 0));
+    setQuotaMonth(String(d.post_quota_month || ""));
+  });
+  return () => unsub();
+}, [userId]);
+
 
   useEffect(() => {
     if (!userId) return;
@@ -466,6 +652,19 @@ export default function TutorDashboard({ user }) {
       q,
       (snap) => {
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const now = new Date();
+        list.sort((a, b) => {
+          const aUntil = a?.boosted_until?.toDate ? a.boosted_until.toDate() : a?.boosted_until?.seconds ? new Date(a.boosted_until.seconds * 1000) : null;
+          const bUntil = b?.boosted_until?.toDate ? b.boosted_until.toDate() : b?.boosted_until?.seconds ? new Date(b.boosted_until.seconds * 1000) : null;
+          const aBoost = aUntil && aUntil > now;
+          const bBoost = bUntil && bUntil > now;
+          if (aBoost !== bBoost) return bBoost ? 1 : -1;
+          const aCreated = a?.createdAt?.toDate ? a.createdAt.toDate() : a?.createdAt?.seconds ? new Date(a.createdAt.seconds * 1000) : null;
+          const bCreated = b?.createdAt?.toDate ? b.createdAt.toDate() : b?.createdAt?.seconds ? new Date(b.createdAt.seconds * 1000) : null;
+          const at = aCreated ? aCreated.getTime() : 0;
+          const bt = bCreated ? bCreated.getTime() : 0;
+          return bt - at;
+        });
         setCommunityPosts(list);
         setCommunityLoading(false);
       },
@@ -557,64 +756,128 @@ export default function TutorDashboard({ user }) {
     if (!text && attachments.length === 0) return;
     if (!userId) return;
 
+  // ✅ Post limit (only when admin enabled subscription mode AND user is not subscribed)
+  if (subscriptionModeEnabled === true && isSubscribed === false) {
+    const nowKey = monthKeyUTC();
+    const used = quotaMonth === nowKey ? quotaUsed : 0;
+    if (used >= 10) {
+      setPostError("You\u2019ve reached the posting limit. Subscribe to post more.");
+      setLimitOpen(true);
+      return;
+    }
+  }
+
     setPosting(true);
     setPostError("");
 
     try {
       const authorName = user?.full_name || "Tutor";
 
-      // 1) Create post doc first
-      const postRef = await addDoc(collection(db, "posts"), {
-        authorId: userId,
-        authorRole: "tutor",
-        authorName,
-        text,
-        media: [],
-        status: "published", // later: draft -> paid -> publish
-        paid: false,
-        createdAt: serverTimestamp(),
-      });
+      const canEnforceLimit = subscriptionModeEnabled === true;
+      const isUnlimited = isSubscribed === true;
 
-      // 2) Upload attachments and update the post doc
-      if (attachments.length > 0) {
-        const uploaded = [];
-        for (let i = 0; i < attachments.length; i++) {
-          uploaded.push(await uploadOne(attachments[i], postRef.id, i));
+      // ✅ Enforce: 10 posts per month for NON-subscribed users (only when admin turned ON subscription mode)
+      let postDocId = null;
+
+      await runTransaction(db, async (tx) => {
+        const meRef = doc(db, "users", userId);
+
+        if (canEnforceLimit && !isUnlimited) {
+          const q = await ensureMonthlyPostQuota(tx, meRef);
+          if (q.used >= 10) {
+            throw new Error("POST_LIMIT_REACHED");
+          }
+          tx.set(
+            meRef,
+            { post_quota_used: increment(1), post_quota_updatedAt: serverTimestamp() },
+            { merge: true }
+          );
         }
 
-        await updateDoc(doc(db, "posts", postRef.id), {
-          media: uploaded,
+        const postRef = doc(collection(db, "posts"));
+        postDocId = postRef.id;
+
+        tx.set(postRef, {
+          authorId: userId,
+          authorRole: "tutor",
+          authorName,
+          text,
+          media: [],
+          status: "published",
+          paid: false,
+          boosted: false,
+          boost_sort: 0,
+          createdAt: serverTimestamp(),
         });
+      });
+
+      // Upload attachments (after post doc exists)
+      if (postDocId && attachments.length > 0) {
+        const uploaded = [];
+        for (let i = 0; i < attachments.length; i++) {
+          uploaded.push(await uploadOne(attachments[i], postDocId, i));
+        }
+        await updateDoc(doc(db, "posts", postDocId), { media: uploaded });
       }
 
       clearComposer();
     } catch (e) {
       console.error("handlePost error:", e);
-      setPostError("Failed to post. Please try again.");
+
+      if (String(e?.message || "").includes("POST_LIMIT_REACHED")) {
+        setLimitOpen(true);
+        setPostError("You\u2019ve reached the posting limit. Subscribe to post more.");
+        setLimitOpen(true);
+      } else {
+        setPostError(tr("post_failed","Failed to post. Please try again."));
+      }
     } finally {
       setPosting(false);
     }
   };
 
+
   if (loading) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400">{tr("loading","Loading...")}</div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* ✅ Posting limit prompt */}
+      <Dialog open={limitOpen} onOpenChange={setLimitOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{tr("posting_limit_title","Posting limit reached")}</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-gray-700">
+            {"You\u2019ve reached the posting limit. Subscribe to post more."}
+          </div>
+          <div className="mt-4 flex gap-2 justify-end">
+            <Button type="button" variant="outline" onClick={() => setLimitOpen(false)}>
+              {tr?.("close","Close")}
+            </Button>
+            <Link to={subscribeUrl}>
+              <Button type="button" className="bg-emerald-600 hover:bg-emerald-700">
+                {tr("subscribe","Subscribe")}
+              </Button>
+            </Link>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="mx-auto max-w-[1800px] space-y-6">
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-                Welcome, {(user?.full_name || "Tutor").split(" ")[0]}
+                {tr("welcome_name","Welcome, {{name}}",{ name: (user?.full_name || "Tutor") })}
               </h1>
-              <p className="text-sm text-gray-600">Tutor dashboard</p>
+              <p className="text-sm text-gray-600">{tr("subtitle","Tutor dashboard")}</p>
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-center">
@@ -626,7 +889,7 @@ export default function TutorDashboard({ user }) {
                     : "bg-yellow-100 text-yellow-800"
                 }
               >
-                {tutorProfile?.verification_status || "pending"}
+                {tutorProfile?.verification_status || tr("pending","pending")}
               </Badge>
 
               {stats.averageRating > 0 && (
@@ -639,38 +902,44 @@ export default function TutorDashboard({ user }) {
           </div>
 
           {/* Subscribe */}
-          {!isSubscribed && <SubscribeBanner to={subscribeUrl} user={user} />}
+          {subscriptionModeEnabled === true && !isSubscribed && (
+            <SubscribeBanner to={subscribeUrl} user={user} tr={tr} />
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-10">
             {/* LEFT: stats */}
             <div className="lg:col-span-3 space-y-4">
               <div className="grid gap-4 grid-cols-2 lg:grid-cols-1">
                 <StatCard
-                  title="Total Sessions"
+                  title={tr("total_sessions","Total Sessions")}
                   value={stats.totalSessions}
                   icon={<Calendar className="h-6 w-6 text-purple-200" />}
                   to={createPageUrl("TutorSessions")}
+                  viewLabel={tr("view_details","View Details")}
                   color="text-purple-600"
                 />
                 <StatCard
-                  title="Students"
+                  title={tr("students","Students")}
                   value={stats.totalStudents}
                   icon={<Users className="h-6 w-6 text-blue-200" />}
                   to={createPageUrl("TutorStudents")}
+                  viewLabel={tr("view_details","View Details")}
                   color="text-blue-600"
                 />
                 <StatCard
-                  title="Total Earnings"
+                  title={tr("total_earnings","Total Earnings")}
                   value={`$${Number(stats.totalEarnings || 0).toFixed(2)}`}
                   icon={<DollarSign className="h-6 w-6 text-green-200" />}
                   to={createPageUrl("TutorEarnings")}
+                  viewLabel={tr("view_details","View Details")}
                   color="text-green-600"
                 />
                 <StatCard
-                  title="Available"
+                  title={tr("available","Available")}
                   value={`$${Number(stats.availableBalance || 0).toFixed(2)}`}
                   icon={<TrendingUp className="h-6 w-6 text-emerald-200" />}
                   to={createPageUrl("TutorEarnings")}
+                  viewLabel={tr("view_details","View Details")}
                   color="text-emerald-600"
                 />
               </div>
@@ -678,20 +947,20 @@ export default function TutorDashboard({ user }) {
               <Card className="rounded-2xl">
                 <CardContent className="p-3 space-y-3">
                   <QuickLink
-                    title="Set Availability"
-                    description="Update your teaching schedule"
+                    title={tr("set_availability","Set Availability")}
+                    description={tr("set_availability_desc","Update your teaching schedule")}
                     to={createPageUrl("TutorAvailability")}
                     icon={<Clock className="w-5 h-5 text-purple-500" />}
                   />
                   <QuickLink
-                    title="My Students"
-                    description="See your student list"
+                    title={tr("my_students","My Students")}
+                    description={tr("my_students_desc","See your student list")}
                     to={createPageUrl("TutorStudents")}
                     icon={<Users className="w-5 h-5 text-blue-500" />}
                   />
                   <QuickLink
-                    title="Update Profile"
-                    description="Edit your tutor profile"
+                    title={tr("update_profile","Update Profile")}
+                    description={tr("update_profile_desc","Edit your tutor profile")}
                     to={createPageUrl("Profile")}
                     icon={<BookOpen className="w-5 h-5 text-orange-500" />}
                   />
@@ -708,13 +977,13 @@ export default function TutorDashboard({ user }) {
                     <Avatar name={user?.full_name || "Tutor"} />
                     <div className="w-full">
                       <div className="text-sm font-semibold text-gray-900">
-                        Share an update, {(user?.full_name || "Tutor").split(" ")[0]}?
+                        {tr("composer_title","Share an update, {{name}}?",{ name: (user?.full_name || "Tutor") })}
                       </div>
 
                       <textarea
                         value={composerText}
                         onChange={(e) => setComposerText(e.target.value)}
-                        placeholder="Post availability, new packages, reminders..."
+                        placeholder={tr("composer_placeholder","Post availability, new packages, reminders...")}
                         className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200 min-h-[90px]"
                       />
 
@@ -730,7 +999,7 @@ export default function TutorDashboard({ user }) {
                       {attachmentPreviews.length > 0 && (
                         <div className="mt-3 space-y-2">
                           <div className="text-xs font-semibold text-gray-500">
-                            Attachments ({attachmentPreviews.length})
+                            {tr("attachments","Attachments")} ({attachmentPreviews.length})
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -769,7 +1038,7 @@ export default function TutorDashboard({ user }) {
                                       {p.name}
                                     </div>
                                     <div className="text-xs text-gray-500">
-                                      {isVideo ? "Video" : "Photo"}
+                                      {isVideo ? tr("video","Video") : tr("photo","Photo")}
                                     </div>
                                   </div>
 
@@ -779,7 +1048,7 @@ export default function TutorDashboard({ user }) {
                                     size="icon"
                                     className="text-gray-500"
                                     onClick={() => removeAttachment(p.id)}
-                                    title="Remove"
+                                    title={tr("remove","Remove")}
                                   >
                                     <X className="h-4 w-4" />
                                   </Button>
@@ -801,7 +1070,7 @@ export default function TutorDashboard({ user }) {
                           disabled={posting}
                         >
                           <ImageIcon className="h-4 w-4 mr-2 text-green-600" />
-                          Photo/video
+                          {tr("photo_video","Photo/Video")}
                         </Button>
 
                         <Button
@@ -816,7 +1085,7 @@ export default function TutorDashboard({ user }) {
                               Posting...
                             </>
                           ) : (
-                            "Post"
+                            tr("post","Post")
                           )}
                         </Button>
                       </div>
@@ -830,7 +1099,7 @@ export default function TutorDashboard({ user }) {
 
                 <div className="border-t px-3 py-2 flex items-center gap-2 text-xs text-gray-500">
                   <Globe className="h-3.5 w-3.5" />
-                  Public
+                  {tr("public","Public")}
                 </div>
               </div>
 
@@ -838,22 +1107,22 @@ export default function TutorDashboard({ user }) {
               <Card className="rounded-2xl">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-gray-900">Posts</div>
+                    <div className="text-sm font-semibold text-gray-900">{tr("posts","Posts")}</div>
                     <Badge variant="secondary" className="border bg-white">
-                      Live
+                      {tr("live","Live")}
                     </Badge>
                   </div>
 
                   {communityLoading ? (
                     <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Loading posts...
+                      <Loader2 className="h-4 w-4 animate-spin" /> {tr("loading_posts","Loading posts...")}
                     </div>
                   ) : communityPosts.length === 0 ? (
-                    <div className="mt-3 text-sm text-gray-600">No community posts yet.</div>
+                    <div className="mt-3 text-sm text-gray-600">{tr("no_posts","No community posts yet.")}</div>
                   ) : (
                     <div className="mt-4 space-y-4">
                       {communityPosts.map((p) => (
-                        <RealPostCard key={p.id} post={p} currentUserId={userId} />
+                        <RealPostCard key={p.id} post={p} currentUserId={userId} me={user} subscriptionModeEnabled={subscriptionModeEnabled} tr={tr} />
                       ))}
                     </div>
                   )}
@@ -867,10 +1136,10 @@ export default function TutorDashboard({ user }) {
                 <Card className="rounded-2xl">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <div className="text-sm font-semibold text-gray-900">Upcoming Sessions</div>
+                      <div className="text-sm font-semibold text-gray-900">{tr("upcoming_sessions","Upcoming Sessions")}</div>
                       <Link to={createPageUrl("TutorSessions")}>
                         <Button variant="ghost" size="sm" type="button">
-                          View <ArrowRight className="h-4 w-4 ml-1" />
+                          {tr("view","View")} <ArrowRight className="h-4 w-4 ml-1" />
                         </Button>
                       </Link>
                     </div>
@@ -880,7 +1149,7 @@ export default function TutorDashboard({ user }) {
                         {upcomingSessions.slice(0, 4).map((session) => (
                           <div key={session.id} className="rounded-2xl border bg-gray-50 p-3">
                             <div className="text-sm font-semibold text-gray-900 truncate">
-                              {session.subject || "Session"}
+                              {session.subject || tr("session","Session")}
                             </div>
                             <div className="text-xs text-gray-600 mt-1">
                               {format(new Date(session.scheduled_date), "MMM dd, h:mm a")}
@@ -895,7 +1164,7 @@ export default function TutorDashboard({ user }) {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-600">No upcoming sessions.</div>
+                      <div className="text-sm text-gray-600">{tr("no_upcoming","No upcoming sessions.")}</div>
                     )}
                   </CardContent>
                 </Card>

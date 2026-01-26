@@ -15,6 +15,7 @@ import {
   doc, getDoc, collection, getDocs, query, where, orderBy, limit, addDoc, serverTimestamp
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { useTr } from "@/i18n/useTr";
 
 const ContactAgentModal = ({ agent, onSend, onCancel }) => {
   const [message, setMessage] = useState('');
@@ -125,6 +126,8 @@ const CaseProgressCard = ({ caseData }) => {
 };
 
 export default function MyAgent() {
+  const { tr } = useTr("myAgent");
+
   const [currentUser, setCurrentUser] = useState(null);
   const [agent, setAgent] = useState(null);           // from 'agents' collection
   const [agentUser, setAgentUser] = useState(null);   // from 'users' collection
