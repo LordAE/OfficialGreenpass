@@ -24,12 +24,14 @@ import {
   Loader2,
   Video,
   MessageSquare,
+  Ticket,
   Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
 import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway";
+import CreateEventDialog from "@/components/events/CreateEventDialog";
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 import { useTr } from "@/i18n/useTr";
 
@@ -564,6 +566,9 @@ export default function TutorDashboard({ user }) {
   const { subscriptionModeEnabled } = useSubscriptionMode();
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
 
+  const [createEventOpen, setCreateEventOpen] = useState(false);
+  const canCreateEvent = !subscriptionModeEnabled || isSubscribed;
+
   const { tr } = useTr("tutor_dashboard");
 
 
@@ -869,6 +874,16 @@ useEffect(() => {
         </DialogContent>
       </Dialog>
 
+      {/* ✅ Create Event */}
+      <CreateEventDialog
+        open={createEventOpen}
+        onOpenChange={setCreateEventOpen}
+        user={user}
+        role="tutor"
+        allowedPlatforms={["nasio"]}
+        disabledReason={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : null}
+      />
+
       <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="mx-auto max-w-[1800px] space-y-6">
           {/* Header */}
@@ -909,42 +924,8 @@ useEffect(() => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-10">
             {/* LEFT: stats */}
             <div className="lg:col-span-3 space-y-4">
-              <div className="grid gap-4 grid-cols-2 lg:grid-cols-1">
-                <StatCard
-                  title={tr("total_sessions","Total Sessions")}
-                  value={stats.totalSessions}
-                  icon={<Calendar className="h-6 w-6 text-purple-200" />}
-                  to={createPageUrl("TutorSessions")}
-                  viewLabel={tr("view_details","View Details")}
-                  color="text-purple-600"
-                />
-                <StatCard
-                  title={tr("students","Students")}
-                  value={stats.totalStudents}
-                  icon={<Users className="h-6 w-6 text-blue-200" />}
-                  to={createPageUrl("TutorStudents")}
-                  viewLabel={tr("view_details","View Details")}
-                  color="text-blue-600"
-                />
-                <StatCard
-                  title={tr("total_earnings","Total Earnings")}
-                  value={`$${Number(stats.totalEarnings || 0).toFixed(2)}`}
-                  icon={<DollarSign className="h-6 w-6 text-green-200" />}
-                  to={createPageUrl("TutorEarnings")}
-                  viewLabel={tr("view_details","View Details")}
-                  color="text-green-600"
-                />
-                <StatCard
-                  title={tr("available","Available")}
-                  value={`$${Number(stats.availableBalance || 0).toFixed(2)}`}
-                  icon={<TrendingUp className="h-6 w-6 text-emerald-200" />}
-                  to={createPageUrl("TutorEarnings")}
-                  viewLabel={tr("view_details","View Details")}
-                  color="text-emerald-600"
-                />
-              </div>
 
-              <Card className="rounded-2xl">
+              <Card className="mt-4 rounded-2xl">
                 <CardContent className="p-3 space-y-3">
                   <QuickLink
                     title={tr("set_availability","Set Availability")}
@@ -964,6 +945,20 @@ useEffect(() => {
                     to={createPageUrl("Profile")}
                     icon={<BookOpen className="w-5 h-5 text-orange-500" />}
                   />
+
+                  <Button
+                    type="button"
+                    className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
+                    onClick={() => setCreateEventOpen(true)}
+                    disabled={!canCreateEvent}
+                    data-testid="create_event_quick_action_btn"
+                    title={!canCreateEvent ? tr("subscription_required","Subscription required") : tr("create_event","Create Event")}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" /> {tr("create_event","Create Event")}
+                  </Button>
+                  <div className="text-xs text-gray-500">
+                    {tr("create_event_desc","Host an event via Nas.io (payments go directly to you).")}
+                  </div>
                 </CardContent>
               </Card>
             </div>

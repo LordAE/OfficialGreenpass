@@ -50,6 +50,7 @@ import StudyUnitedKingdom from "@/pages/countries/StudyUnitedKingdom";
 import StudyUnitedStates from "@/pages/countries/StudyUnitedStates";
 import Messages from "@/pages/Messages";
 import AdminSubscription from "./pages/AdminSubscription";
+import EventDetailsPage from "./pages/EventDetails";
 
 
 // --- Safe import of createPageUrl (with fallback if not exported) ---
@@ -95,6 +96,7 @@ export default function App() {
         <Route path={createPageUrl("StudyUnitedKingdom")} element={<StudyUnitedKingdom />} />
         <Route path={createPageUrl("StudyUnitedStates")} element={<StudyUnitedStates />} />
 
+
         {/* Authenticated shell entry points */}
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="onboarding" element={<Onboarding />} />
@@ -106,6 +108,7 @@ export default function App() {
 
         {/* Events utilities */}
         <Route path="reservationstatus" element={<ReservationStatus />} />
+        <Route path="eventdetails" element={<EventDetailsPage/>}/>
 
         {/* Agent / Student discovery */}
         <Route path="findagent" element={<FindAgent />} />

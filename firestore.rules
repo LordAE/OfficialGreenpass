@@ -785,8 +785,58 @@ service cloud.firestore {
     }
 
     match /events/{docId} {
+      // Public read: events are meant to be discoverable
       allow read: if true;
+
+      // Event ownership (support a few common field names to avoid breaking older docs)
+      function isEventOwnerData(d) {
+        return signedIn() && (
+          (d.host_uid is string && d.host_uid == request.auth.uid) ||
+          (d.user_id is string && d.user_id == request.auth.uid) ||
+          (d.owner_id is string && d.owner_id == request.auth.uid)
+        );
+      }
+      function isEventOwnerResource() { return isEventOwnerData(resource.data); }
+      function isEventOwnerRequest()  { return isEventOwnerData(request.resource.data); }
+
+      // Minimal field validation for create/update (keeps the collection clean)
+      function validPlatform(p) { return ["nasio","eventbrite"].hasAny([p]); }
+      function validUrl(u) {
+        return (u is string) && (u.size() > 10) && (u.matches('^https://.*'));
+      }
+
+      // Role ↔ platform constraints
+      function roleAllowsPlatform(p) {
+        return
+          (userHasType("school") && p == "eventbrite") ||
+          (userHasType("tutor") && p == "nasio") ||
+          (userHasType("agent") && (p == "nasio" || p == "eventbrite"));
+      }
+
+      function validEventWrite() {
+        return signedIn() &&
+          (request.resource.data.title is string) &&
+          (request.resource.data.title.size() > 1) &&
+          (request.resource.data.start != null) &&
+          (request.resource.data.end != null) &&
+          (request.resource.data.platform is string) &&
+          validPlatform(request.resource.data.platform) &&
+          roleAllowsPlatform(request.resource.data.platform) &&
+          (request.resource.data.external_url is string) &&
+          validUrl(request.resource.data.external_url) &&
+          // creator must own the event
+          (request.resource.data.host_uid is string) &&
+          (request.resource.data.host_uid == request.auth.uid);
+      }
+
+      // ✅ Admin has full control
       allow create, update, delete: if isAdmin();
+
+      // ✅ Creators can create events for themselves (external-only)
+      allow create: if isCreatorRole() && validEventWrite();
+
+      // ✅ Creators can update/delete only their own events
+      allow update, delete: if isCreatorRole() && isEventOwnerResource() && isEventOwnerRequest() && validEventWrite();
     }
     match /faqs/{docId} { allow read: if true; allow write: if false; }
 

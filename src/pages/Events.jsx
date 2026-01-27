@@ -2,10 +2,12 @@
 import React, { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Calendar, MapPin, ArrowRight, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { Link, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/components/URLRedirect";
+
 
 /* ---------- Firebase ---------- */
 import { db } from "@/firebase";
@@ -25,6 +27,16 @@ const toJsDate = (v) =>
 
 /* ---------- Small components ---------- */
 const EventCard = ({ event, tr }) => (
+  (() => {
+    const now = new Date();
+    const until = event?.boosted_until;
+    const boosted = !!(
+      until &&
+      ((typeof until?.toDate === "function" && until.toDate() > now) ||
+        (until?.seconds && new Date(until.seconds * 1000) > now) ||
+        (!until?.toDate && !until?.seconds && new Date(until) > now))
+    );
+    return (
   <Card className="hover:shadow-lg transition-shadow duration-300 flex flex-col group">
     <div className="overflow-hidden rounded-t-lg h-48">
       <img
@@ -40,6 +52,18 @@ const EventCard = ({ event, tr }) => (
       <h3 className="font-bold text-lg text-gray-900 mb-2 h-14 overflow-hidden">
         {event.title}
       </h3>
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        {event?.platform ? (
+          <Badge className={String(event.platform).toLowerCase().includes("event") ? "bg-orange-600 text-white" : "bg-emerald-600 text-white"}>
+            {String(event.platform).toLowerCase().includes("event") ? tr("hosted_on_eventbrite","Hosted on Eventbrite") : tr("hosted_on_nasio","Hosted on Nas.io")}
+          </Badge>
+        ) : null}
+        <Badge variant="secondary" className="border">
+          {String(event?.price_type || "free").toLowerCase() === "paid" ? tr("paid","Paid") : tr("free","Free")}
+        </Badge>
+        {boosted ? <Badge className="bg-emerald-700 text-white">{tr("boosted","Boosted")}</Badge> : null}
+      </div>
+
       <div className="flex items-center text-sm text-gray-500 mb-2">
         <Calendar className="w-4 h-4 mr-2" />
         {format(toJsDate(event.start), "MMMM dd, yyyy")}
@@ -49,7 +73,7 @@ const EventCard = ({ event, tr }) => (
         {event.location}
       </div>
       <div className="mt-auto">
-        <Link to={createPageUrl(`EventDetails?id=${event.event_id}`)}>
+        <Link to={createPageUrl("EventDetails", `id=${event.id || event.event_id}`)}>
           <Button
             variant="outline"
             className="w-full group-hover:bg-green-600 group-hover:text-white transition-colors"
@@ -60,6 +84,8 @@ const EventCard = ({ event, tr }) => (
       </div>
     </CardContent>
   </Card>
+    );
+  })()
 );
 
 const PageSkeleton = () => (
@@ -143,8 +169,20 @@ useEffect(() => {
           fetchHeaderContent(),
         ]);
 
-        // sort by sort_order then start
+        const now = new Date();
+        const isBoostActive = (e) => {
+          const until = e?.boosted_until;
+          if (!until) return false;
+          const d = typeof until?.toDate === "function" ? until.toDate() : until?.seconds ? new Date(until.seconds * 1000) : new Date(until);
+          return d > now;
+        };
+
+        // sort: boosted (active) first, then sort_order, then start
         const sorted = [...evs].sort((a, b) => {
+          const aBoost = isBoostActive(a);
+          const bBoost = isBoostActive(b);
+          if (aBoost !== bBoost) return aBoost ? -1 : 1;
+
           const aOrder = a.sort_order ?? 999;
           const bOrder = b.sort_order ?? 999;
           if (aOrder !== bOrder) return aOrder - bOrder;

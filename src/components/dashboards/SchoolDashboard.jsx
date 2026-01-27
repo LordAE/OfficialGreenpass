@@ -29,6 +29,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
 import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway";
+import CreateEventDialog from "@/components/events/CreateEventDialog";
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 
 // ✅ Firebase
@@ -460,7 +461,10 @@ export default function SchoolDashboard({ user }) {
 
 
 
-  // ✅ Posting limit dialog
+  
+  const [createEventOpen, setCreateEventOpen] = useState(false);
+  const canCreateEvent = !subscriptionModeEnabled || isSubscribed;
+// ✅ Posting limit dialog
   const [limitOpen, setLimitOpen] = useState(false);
 // ✅ Listen to quota fields on the user doc (for disabling Post button + friendly prompt)
 useEffect(() => {
@@ -786,6 +790,16 @@ const firstName = useMemo(() => {
         </DialogContent>
       </Dialog>
 
+      {/* ✅ Create Event */}
+      <CreateEventDialog
+        open={createEventOpen}
+        onOpenChange={setCreateEventOpen}
+        user={user}
+        role="school"
+        allowedPlatforms={["eventbrite"]}
+        disabledReason={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : null}
+      />
+
       <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="mx-auto max-w-[1800px]">
           {/* Header */}
@@ -810,7 +824,7 @@ const firstName = useMemo(() => {
             </div>
           </div>
 
-          {subscriptionModeEnabled && isSubscribed && (
+          {subscriptionModeEnabled && !isSubscribed && (
             <div className="mb-4">
               <SubscribeBanner to={subscribeUrl} user={user} />
             </div>
@@ -859,6 +873,31 @@ const firstName = useMemo(() => {
                   </div>
                 </div>
               </div>
+
+                {/* ✅ Create Event CTA (below shortcuts) */}
+                <div className="mt-4 rounded-2xl border bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-gray-900">
+                      {tr("create_event","Create Event")}
+                    </div>
+                    {!canCreateEvent ? (
+                      <Badge className="bg-yellow-100 text-yellow-800">
+                        {tr("pending","Pending")}
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  <Button
+                    type="button"
+                    className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
+                    onClick={() => setCreateEventOpen(true)}
+                    disabled={!canCreateEvent}
+                    title={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : undefined}
+                  >
+                    <Ticket className="h-4 w-4 mr-2" />
+                    {tr("create_event","Create Event")}
+                  </Button>
+                </div>
             </div>
 
             {/* CENTER: Composer + Feed */}

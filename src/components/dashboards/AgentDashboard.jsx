@@ -29,6 +29,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
 import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway";
+import CreateEventDialog from "@/components/events/CreateEventDialog";
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 
 // ✅ Firebase
@@ -141,40 +142,72 @@ const SubscribeBanner = ({ to, user }) => {
 };
 const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
   const { tr } = useTr("agent_dashboard");
+
+  // Keep using shared helper if present, but DO NOT trust its missingFields blindly.
   const completion = useMemo(() => getProfileCompletionData(user, relatedEntity), [user, relatedEntity]);
 
-  if (!completion || completion.isComplete) return null;
-
-  const percent =
-    Number(
-      completion.percent ??
-      completion.percentComplete ??
-      completion.progress ??
-      completion.completion ??
-      completion.completePercent
-    ) || 0;
-
-  const missingRaw = completion.missingFields ?? completion.missing ?? completion.missing_fields ?? [];
-  const missing = Array.isArray(missingRaw) ? missingRaw : [];
-
-  const fieldLabel = (f) => {
-    const key = String(f || "").trim();
-    const map = {
-      "Company Name": "field_company_name",
-      "Business License": "field_business_license",
-      "PayPal Email": "field_paypal_email",
-      "company_name": "field_company_name",
-      "business_license": "field_business_license",
-      "paypal_email": "field_paypal_email",
-    };
-    const k = map[key] || null;
-    return k ? tr(k, key) : key;
+  // ✅ Only show banner if REAL required fields are empty in the actual profile data
+  const isEmpty = (v) => {
+    if (v === null || v === undefined) return true;
+    if (typeof v === "string") return v.trim().length === 0;
+    if (Array.isArray(v)) return v.length === 0;
+    return false;
   };
 
-  const missingText = missing.length
-    ? `${tr("missing_prefix","Missing")}: ${missing.map(fieldLabel).join(", ")}`
-    : tr("complete_profile_msg","Complete your profile to access all platform features.");
+  // Profile.jsx stores agent fields under users/{uid}.agent_profile.{...}
+  const agent = user?.agent_profile || {};
 
+  // Allow fallbacks just in case some older docs stored fields at top-level
+  const companyName = agent.company_name ?? user?.company_name ?? "";
+  const businessLicense =
+    agent.business_license_mst ?? agent.business_license ?? user?.business_license_mst ?? user?.business_license ?? "";
+  const paypalEmail = agent.paypal_email ?? user?.paypal_email ?? "";
+
+  const missing = [];
+  if (isEmpty(user?.full_name)) missing.push({ key: "full_name", label: tr("field_full_name", "Full Name") });
+  if (isEmpty(user?.phone)) missing.push({ key: "phone", label: tr("field_phone", "Phone") });
+  if (isEmpty(user?.country)) missing.push({ key: "country", label: tr("field_country", "Country") });
+
+  if (isEmpty(companyName)) missing.push({ key: "company_name", label: tr("field_company_name", "Company Name") });
+  if (isEmpty(businessLicense)) missing.push({ key: "business_license_mst", label: tr("field_business_license", "Business License (MST)") });
+  if (isEmpty(paypalEmail)) missing.push({ key: "paypal_email", label: tr("field_paypal_email", "PayPal Email") });
+
+  // If nothing is missing, don't show the banner at all.
+  if (missing.length === 0) return null;
+
+  const totalRequired = 6;
+  const percent = Math.max(0, Math.min(100, Math.round(((totalRequired - missing.length) / totalRequired) * 100)));
+
+  const fieldLabel = (f) => {
+    const raw =
+      typeof f === "string"
+        ? f
+        : (f && typeof f === "object" && (f.label || f.name || f.title || f.key || f.field)) || "";
+    const key = String(raw || "").trim();
+
+    const map = {
+      "Full Name": "field_full_name",
+      "Phone": "field_phone",
+      "Country": "field_country",
+      "Company Name": "field_company_name",
+      "Business License": "field_business_license",
+      "Business License (MST)": "field_business_license",
+      "PayPal Email": "field_paypal_email",
+
+      full_name: "field_full_name",
+      phone: "field_phone",
+      country: "field_country",
+      company_name: "field_company_name",
+      business_license: "field_business_license",
+      business_license_mst: "field_business_license",
+      paypal_email: "field_paypal_email",
+    };
+
+    const k = map[key] || null;
+    return k ? tr(k, key) : (key || tr("missing_field", "Missing field"));
+  };
+
+  const missingText = `${tr("missing_prefix", "Missing")}: ${missing.map(fieldLabel).join(", ")}`;
   const onboardingUrl = createPageUrl("Onboarding");
 
   return (
@@ -184,28 +217,26 @@ const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-orange-500" />
             <div className="text-sm font-semibold text-orange-900">
-              {tr("complete_profile_title","Complete Your Profile")}
+              {tr("complete_profile_title", "Complete Your Profile")}
             </div>
           </div>
+
           <div className="mt-1 text-sm text-orange-800">
-            {tr("complete_profile_desc","Complete your profile to access all platform features.")} {missingText}
+            {tr("complete_profile_desc", "Complete your profile to access all platform features.")} {missingText}
           </div>
 
           <div className="mt-3 h-2 w-full rounded-full bg-orange-200 overflow-hidden">
-            <div
-              className="h-full bg-orange-600"
-              style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
-            />
+            <div className="h-full bg-orange-600" style={{ width: `${percent}%` }} />
           </div>
         </div>
 
         <div className="flex items-center gap-3 justify-between sm:justify-end">
           <div className="text-sm font-semibold text-orange-900 whitespace-nowrap">
-            {Math.max(0, Math.min(100, Math.round(percent)))}% {tr("complete","Complete")}
+            {percent}% {tr("complete", "Complete")}
           </div>
           <Link to={onboardingUrl}>
             <Button className="bg-orange-600 hover:bg-orange-700">
-              {tr("complete_profile_cta","Complete Profile")}
+              {tr("complete_profile_cta", "Complete Profile")}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
@@ -680,6 +711,9 @@ setCommunityLoading(false);
   const { subscriptionModeEnabled } = useSubscriptionMode();
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
 
+  const [createEventOpen, setCreateEventOpen] = useState(false);
+  const canCreateEvent = !subscriptionModeEnabled || isSubscribed;
+
 
 
   // ✅ Posting limit dialog
@@ -805,6 +839,16 @@ useEffect(() => {
         </DialogContent>
       </Dialog>
 
+      {/* ✅ Create Event */}
+      <CreateEventDialog
+        open={createEventOpen}
+        onOpenChange={setCreateEventOpen}
+        user={user}
+        role="agent"
+        allowedPlatforms={["nasio","eventbrite"]}
+        disabledReason={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : null}
+      />
+
       <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="mx-auto max-w-[1800px]">
           {/* Header (same style as student) */}
@@ -815,7 +859,6 @@ useEffect(() => {
             </div>
 
             <div className="flex items-center gap-2">
-              
               <Badge variant="outline">{stats.commissionRate}% Commission</Badge>
             </div>
           </div>
@@ -841,10 +884,49 @@ useEffect(() => {
                     <Shortcut to={createPageUrl("VisaCases")} label={tr("cases","Cases")} icon={<FileText className="h-5 w-5 text-purple-600" />} />
                     <Shortcut to={createPageUrl("AgentLeads")} label={tr("find_leads","Find Leads")} icon={<UserPlus className="h-5 w-5 text-orange-600" />} />
                     <Shortcut to={createPageUrl("Events")} label={tr("events","Events")} icon={<Ticket className="h-5 w-5 text-emerald-600" />} />
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-gray-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                      onClick={() => setCreateEventOpen(true)}
+                      disabled={!canCreateEvent}
+                      data-testid="create_event_shortcut_btn"
+                      title={!canCreateEvent ? tr("subscription_required","Subscription required") : tr("create_event","Create Event")}
+                    >
+                      <Ticket className="h-5 w-5 text-emerald-600" />
+                      <div className="text-left">
+                        <div className="text-sm font-medium text-gray-900">{tr("create_event","Create Event")}</div>
+                        <div className="text-xs text-gray-500">{tr("create_event_desc","Publish an upcoming event (Nas.io / Eventbrite)")}</div>
+                      </div>
+                    </button>
                     <Shortcut to={createPageUrl("Directory")} label={tr("directory","Directory")} icon={<Building2 className="h-5 w-5 text-blue-600" />} />
                   </div>
                 </div>
               </div>
+
+                {/* ✅ Create Event CTA (below shortcuts) */}
+                <div className="mt-4 rounded-2xl border bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-gray-900">
+                      {tr("create_event","Create Event")}
+                    </div>
+                    {!canCreateEvent ? (
+                      <Badge className="bg-yellow-100 text-yellow-800">
+                        {tr("pending","Pending")}
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  <Button
+                    type="button"
+                    className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
+                    onClick={() => setCreateEventOpen(true)}
+                    disabled={!canCreateEvent}
+                    title={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : undefined}
+                  >
+                    <Ticket className="h-4 w-4 mr-2" />
+                    {tr("create_event","Create Event")}
+                  </Button>
+                </div>
             </div>
 
             {/* CENTER */}
