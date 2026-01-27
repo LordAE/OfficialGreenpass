@@ -810,12 +810,12 @@ const firstName = useMemo(() => {
             </div>
           </div>
 
-          {!isSubscribed && (
+          {subscriptionModeEnabled && isSubscribed && (
             <div className="mb-4">
               <SubscribeBanner to={subscribeUrl} user={user} />
             </div>
           )}
-
+          
           {permError && (
             <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-800">
               {tr("perm_warning")}
