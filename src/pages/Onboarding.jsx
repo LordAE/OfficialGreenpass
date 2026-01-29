@@ -39,9 +39,10 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
 // 🔥 Firebase
-import { auth, db } from "@/firebase";
+import { auth, db, storage } from "@/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // 🔧 Firestore entities (for creating the first role record after onboarding)
 import { Agent, Tutor, SchoolProfile, Vendor } from "@/api/entities";
@@ -112,6 +113,117 @@ const buildRoleOptions = (tr) => [
 // ✅ Helpers to handle CSV ↔ array safely
 const csvToArray = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
 const arrayToCSV = (v) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
+
+// 📎 Verification doc helpers
+const safeExt = (name = "") => {
+  const m = String(name).toLowerCase().match(/\.(pdf|png|jpg|jpeg|webp)$/);
+  return m ? m[1] : "bin";
+};
+
+const isAllowedVerificationFile = (file) => {
+  const okTypes = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+  ];
+  if (!file) return false;
+  if (okTypes.includes(file.type)) return true;
+  // some browsers may not provide type for certain files; fallback to extension
+  return /\.(pdf|png|jpg|jpeg|webp)$/i.test(file.name || "");
+};
+
+function VerificationUpload({
+  tr,
+  label,
+  hint,
+  required = false,
+  valueUrl,
+  uploading = false,
+  onPick,
+  onClear,
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <span>
+            {label} {required ? "*" : ""}
+          </span>
+        </Label>
+        {valueUrl ? (
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-xs text-gray-500 hover:text-red-600"
+            title={tr("onboarding.verification.remove", "Remove")}
+          >
+            {tr("onboarding.verification.remove", "Remove")}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="rounded-lg border bg-white p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            {valueUrl ? (
+              <a
+                href={valueUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-emerald-700 hover:underline"
+              >
+                {tr("onboarding.verification.view_uploaded", "View uploaded document")}
+              </a>
+            ) : (
+              <div className="text-sm text-gray-700">
+                {tr("onboarding.verification.no_file", "No file uploaded yet")}
+              </div>
+            )}
+
+            {hint ? <div className="text-xs text-gray-500 mt-1">{hint}</div> : null}
+          </div>
+
+          <div className="shrink-0">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="file"
+                accept=".pdf,image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  e.target.value = "";
+                  if (f) onPick?.(f);
+                }}
+                disabled={uploading}
+              />
+              <span
+                className={
+                  "inline-flex items-center rounded-md border px-3 py-2 text-sm " +
+                  (uploading
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "bg-white hover:bg-gray-50 text-gray-900")
+                }
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {tr("onboarding.verification.uploading", "Uploading...")}
+                  </>
+                ) : valueUrl ? (
+                  tr("onboarding.verification.replace", "Replace")
+                ) : (
+                  tr("onboarding.verification.upload", "Upload")
+                )}
+              </span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // 🌍 Country helpers (flags as images + all countries via Intl, with API fallback)
 const flagUrlFromCode = (code) => {
@@ -465,6 +577,10 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // 📎 Verification uploads
+  const [verificationUploading, setVerificationUploading] = useState({});
+  const [verificationError, setVerificationError] = useState("");
+
   // PayPal state (used ONLY for non-user roles)
   const paypalContainerRef = useRef(null);
   const [paypalReady, setPaypalReady] = useState(false);
@@ -473,12 +589,110 @@ export default function Onboarding() {
 
   const PAYPAL_CLIENT_ID = (import.meta?.env?.VITE_PAYPAL_CLIENT_ID || "").trim();
 
-  // ✅ Dynamic step order aligned to: user/student has no ROLE_SPECIFIC & no SUBSCRIPTION
+  const uploadVerificationDoc = async (key, file) => {
+    if (!auth.currentUser) return;
+    setVerificationError("");
+
+    if (!isAllowedVerificationFile(file)) {
+      setVerificationError(
+        tr(
+          "onboarding.verification.invalid_file",
+          "Invalid file. Please upload a PDF or an image (PNG/JPG/WebP)."
+        )
+      );
+      return;
+    }
+
+    const uid = auth.currentUser.uid;
+    const ext = safeExt(file.name);
+    const safeKey = String(key || "doc").replace(/[^a-z0-9_\-]/gi, "_");
+    const path = `verification/${uid}/${safeKey}_${Date.now()}.${ext}`;
+
+    setVerificationUploading((p) => ({ ...p, [key]: true }));
+    try {
+      const r = storageRef(storage, path);
+      await uploadBytes(r, file, {
+        contentType: file.type || undefined,
+      });
+      const url = await getDownloadURL(r);
+
+      formDirtyRef.current = true;
+      setFormData((p) => ({
+        ...p,
+        verification_docs: {
+          ...(p.verification_docs || {}),
+          [key]: url,
+        },
+      }));
+
+      // also persist immediately (so refresh won't lose it)
+      const userRef = doc(db, "users", uid);
+      await updateDoc(userRef, {
+        verification: {
+          status: "pending",
+          submitted_at: serverTimestamp(),
+          role: selectedRole || "",
+          docs: {
+            ...(formData.verification_docs || {}),
+            [key]: url,
+          },
+        },
+        updated_at: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error("Verification upload failed:", e);
+      setVerificationError(
+        tr(
+          "onboarding.verification.upload_failed",
+          "Upload failed. Please try again."
+        )
+      );
+    } finally {
+      setVerificationUploading((p) => ({ ...p, [key]: false }));
+    }
+  };
+
+  const clearVerificationDoc = async (key) => {
+    if (!auth.currentUser) return;
+    formDirtyRef.current = true;
+    setFormData((p) => {
+      const next = { ...(p.verification_docs || {}) };
+      delete next[key];
+      return { ...p, verification_docs: next };
+    });
+
+    try {
+      const uid = auth.currentUser.uid;
+      const userRef = doc(db, "users", uid);
+      const current = { ...(formData.verification_docs || {}) };
+      delete current[key];
+      await updateDoc(userRef, {
+        verification: {
+          status: "pending",
+          submitted_at: serverTimestamp(),
+          role: selectedRole || "",
+          docs: current,
+        },
+        updated_at: serverTimestamp(),
+      });
+    } catch (e) {
+      // non-fatal
+      console.warn("Failed to persist verification doc removal:", e);
+    }
+  };
+
+  // ✅ Dynamic step order aligned to: student needs verification but no subscription
   const STEP_ORDER = useMemo(() => {
     if (selectedRole === "user") {
-      return [STEPS.CHOOSE_ROLE, STEPS.BASIC_INFO, STEPS.COMPLETE];
+      return [STEPS.CHOOSE_ROLE, STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.COMPLETE];
     }
-    return [STEPS.CHOOSE_ROLE, STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.SUBSCRIPTION, STEPS.COMPLETE];
+    return [
+      STEPS.CHOOSE_ROLE,
+      STEPS.BASIC_INFO,
+      STEPS.ROLE_SPECIFIC,
+      STEPS.SUBSCRIPTION,
+      STEPS.COMPLETE,
+    ];
   }, [selectedRole]);
 
   const getStepProgress = () => {
@@ -552,11 +766,11 @@ export default function Onboarding() {
         });
       }
 
-      // ✅ ALIGNMENT: if user role, force next step to BASIC_INFO or COMPLETE only
+      // ✅ ALIGNMENT: user/student has verification (ROLE_SPECIFIC) but no subscription
       if (effectiveRole === "user" && !data.onboarding_completed) {
-        if (nextStep === STEPS.ROLE_SPECIFIC || nextStep === STEPS.SUBSCRIPTION) {
-          nextStep = STEPS.BASIC_INFO;
-          await updateDoc(ref, { onboarding_step: STEPS.BASIC_INFO, updated_at: serverTimestamp() });
+        if (nextStep === STEPS.SUBSCRIPTION) {
+          nextStep = STEPS.ROLE_SPECIFIC;
+          await updateDoc(ref, { onboarding_step: STEPS.ROLE_SPECIFIC, updated_at: serverTimestamp() });
         }
       }
 
@@ -606,6 +820,9 @@ export default function Onboarding() {
 
           business_name: data.vendor_profile?.business_name || "",
           service_categories: data.vendor_profile?.service_categories || [],
+
+          // 📎 Verification docs (saved as URLs in users/{uid}.verification.docs)
+          verification_docs: data.verification?.docs || {},
         };
       });
 
@@ -648,19 +865,42 @@ export default function Onboarding() {
 
   const validateBasicInfo = () => !!(formData.full_name && formData.phone && formData.country);
 
-  const validateRoleSpecificInfo = () => {
-    // ✅ user should never be in role_specific anymore
-    if (selectedRole === "user") return true;
+  const hasDoc = (k) => !!(formData.verification_docs && formData.verification_docs[k]);
 
-    if (selectedRole === "agent") return formData.company_name && formData.business_license_mst && formData.paypal_email;
+  const validateVerification = () => {
+    // Student
+    if (selectedRole === "user") return hasDoc("student_id_front") && hasDoc("student_id_back");
+
+    // Agent
+    if (selectedRole === "agent") return hasDoc("agent_id_front") && hasDoc("agent_id_back") && hasDoc("agent_business_permit");
+
+    // Tutor
+    if (selectedRole === "tutor") return hasDoc("tutor_id_front") && hasDoc("tutor_id_back") && hasDoc("tutor_proof");
+
+    // School
+    if (selectedRole === "school") return hasDoc("school_dli_or_permit");
+
+    // Vendor (optional / not required for now)
+    if (selectedRole === "vendor") return true;
+    return true;
+  };
+
+  const validateRoleSpecificInfo = () => {
+    // ✅ student has verification requirements
+    if (selectedRole === "user") {
+      return validateVerification();
+    }
+
+    if (selectedRole === "agent") return formData.company_name && formData.business_license_mst && formData.paypal_email && validateVerification();
     if (selectedRole === "tutor")
       return (
         csvToArray(formData.specializations).length > 0 &&
         !!formData.experience_years &&
         !!formData.hourly_rate &&
-        !!formData.paypal_email
+        !!formData.paypal_email &&
+        validateVerification()
       );
-    if (selectedRole === "school") return formData.school_name && formData.location && formData.website && formData.type;
+    if (selectedRole === "school") return formData.school_name && formData.location && formData.website && formData.type && validateVerification();
     if (selectedRole === "vendor") return formData.business_name && formData.service_categories?.length > 0 && formData.paypal_email;
     return false;
   };
@@ -679,6 +919,14 @@ export default function Onboarding() {
         onboarding_completed: true,
         onboarding_step: STEPS.COMPLETE,
         updated_at: serverTimestamp(),
+
+        // 📎 Verification payload (for admin review)
+        verification: {
+          status: "pending",
+          role: selectedRole || "",
+          submitted_at: serverTimestamp(),
+          docs: formData.verification_docs || {},
+        },
 
         subscription_active: Boolean(subscriptionActive),
         subscription_status: subscriptionActive ? "active" : skipped ? "skipped" : "none",
@@ -785,19 +1033,13 @@ export default function Onboarding() {
     if (auth.currentUser) {
       const ref = doc(db, "users", auth.currentUser.uid);
       await updateDoc(ref, {
-        onboarding_step: selectedRole === "user" ? STEPS.COMPLETE : STEPS.ROLE_SPECIFIC,
+        onboarding_step: STEPS.ROLE_SPECIFIC,
         full_name: formData.full_name || "",
         phone: formData.phone || "",
         country: formData.country || "",
         country_code: formData.country_code || "",
         updated_at: serverTimestamp(),
       });
-    }
-
-    if (selectedRole === "user") {
-      // ✅ immediate finish for user/student
-      await finalizeOnboarding({ subscriptionActive: false, skipped: true });
-      return;
     }
 
     setCurrentStep(STEPS.ROLE_SPECIFIC);
@@ -807,7 +1049,7 @@ export default function Onboarding() {
     let next = STEPS.CHOOSE_ROLE;
 
     if (currentStep === STEPS.COMPLETE) {
-      next = selectedRole === "user" ? STEPS.BASIC_INFO : STEPS.SUBSCRIPTION;
+      next = selectedRole === "user" ? STEPS.ROLE_SPECIFIC : STEPS.SUBSCRIPTION;
     } else if (currentStep === STEPS.SUBSCRIPTION) next = STEPS.ROLE_SPECIFIC;
     else if (currentStep === STEPS.ROLE_SPECIFIC) next = STEPS.BASIC_INFO;
     else if (currentStep === STEPS.BASIC_INFO) next = roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE;
@@ -825,7 +1067,13 @@ export default function Onboarding() {
    * Save role-specific info then go to subscription (non-user roles only)
    */
   const handleRoleSpecificSubmitGoSubscription = async () => {
-    if (!auth.currentUser || !selectedRole || selectedRole === "user" || !validateRoleSpecificInfo()) return;
+    if (!auth.currentUser || !selectedRole || !validateRoleSpecificInfo()) return;
+
+    // ✅ Student flow: requires ID verification, then finishes onboarding (no subscription step)
+    if (selectedRole === "user") {
+      await finalizeOnboarding({ subscriptionActive: false, skipped: true });
+      return;
+    }
     setSaving(true);
     try {
       const uid = auth.currentUser.uid;
@@ -1141,6 +1389,46 @@ export default function Onboarding() {
           </div>
         </div>
 
+        {verificationError ? (
+          <div className="mb-6 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {verificationError}
+          </div>
+        ) : null}
+
+        {/* Student (Verification) */}
+        {selectedRole === "user" && (
+          <div className="space-y-6">
+            <div className="rounded-lg border bg-emerald-50/40 p-3 text-sm text-gray-700">
+              {tr(
+                "onboarding.verification.student_hint",
+                "Please upload a valid government-issued ID (front and back). Your verification will be reviewed."
+              )}
+            </div>
+
+            <VerificationUpload
+              tr={tr}
+              label={tr("onboarding.verification.student_id_front","Valid ID (Front)")}
+              hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+              required
+              valueUrl={formData.verification_docs?.student_id_front || ""}
+              uploading={!!verificationUploading.student_id_front}
+              onPick={(file) => uploadVerificationDoc("student_id_front", file)}
+              onClear={() => clearVerificationDoc("student_id_front")}
+            />
+
+            <VerificationUpload
+              tr={tr}
+              label={tr("onboarding.verification.student_id_back","Valid ID (Back)")}
+              hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+              required
+              valueUrl={formData.verification_docs?.student_id_back || ""}
+              uploading={!!verificationUploading.student_id_back}
+              onPick={(file) => uploadVerificationDoc("student_id_back", file)}
+              onClear={() => clearVerificationDoc("student_id_back")}
+            />
+          </div>
+        )}
+
         {/* Agent */}
         {selectedRole === "agent" && (
           <div className="space-y-6">
@@ -1201,6 +1489,48 @@ export default function Onboarding() {
                 className="mt-1"
               />
               <p className="text-xs text-gray-500 mt-1">{tr("onboarding.agent.paypal_hint","Required for commission payouts")}</p>
+            </div>
+
+            <div className="space-y-6 pt-2">
+              <div className="rounded-lg border bg-emerald-50/40 p-3 text-sm text-gray-700">
+                {tr(
+                  "onboarding.verification.agent_hint",
+                  "Upload your valid ID and business permit. Your verification will be reviewed."
+                )}
+              </div>
+
+              <VerificationUpload
+                tr={tr}
+                label={tr("onboarding.verification.agent_id_front","Valid ID (Front)")}
+                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+                required
+                valueUrl={formData.verification_docs?.agent_id_front || ""}
+                uploading={!!verificationUploading.agent_id_front}
+                onPick={(file) => uploadVerificationDoc("agent_id_front", file)}
+                onClear={() => clearVerificationDoc("agent_id_front")}
+              />
+
+              <VerificationUpload
+                tr={tr}
+                label={tr("onboarding.verification.agent_id_back","Valid ID (Back)")}
+                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+                required
+                valueUrl={formData.verification_docs?.agent_id_back || ""}
+                uploading={!!verificationUploading.agent_id_back}
+                onPick={(file) => uploadVerificationDoc("agent_id_back", file)}
+                onClear={() => clearVerificationDoc("agent_id_back")}
+              />
+
+              <VerificationUpload
+                tr={tr}
+                label={tr("onboarding.verification.agent_business_permit","Business Permit / Registration")}
+                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+                required
+                valueUrl={formData.verification_docs?.agent_business_permit || ""}
+                uploading={!!verificationUploading.agent_business_permit}
+                onPick={(file) => uploadVerificationDoc("agent_business_permit", file)}
+                onClear={() => clearVerificationDoc("agent_business_permit")}
+              />
             </div>
 
             <BiographyField
@@ -1287,6 +1617,48 @@ export default function Onboarding() {
               />
               <p className="text-xs text-gray-500 mt-1">{tr("onboarding.tutor.paypal_hint","Required for session payouts")}</p>
             </div>
+
+            <div className="space-y-6 pt-2">
+              <div className="rounded-lg border bg-emerald-50/40 p-3 text-sm text-gray-700">
+                {tr(
+                  "onboarding.verification.tutor_hint",
+                  "Upload your valid ID and proof that you are a tutor (certificate, license, school ID, etc.). Your verification will be reviewed."
+                )}
+              </div>
+
+              <VerificationUpload
+                tr={tr}
+                label={tr("onboarding.verification.tutor_id_front","Valid ID (Front)")}
+                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+                required
+                valueUrl={formData.verification_docs?.tutor_id_front || ""}
+                uploading={!!verificationUploading.tutor_id_front}
+                onPick={(file) => uploadVerificationDoc("tutor_id_front", file)}
+                onClear={() => clearVerificationDoc("tutor_id_front")}
+              />
+
+              <VerificationUpload
+                tr={tr}
+                label={tr("onboarding.verification.tutor_id_back","Valid ID (Back)")}
+                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+                required
+                valueUrl={formData.verification_docs?.tutor_id_back || ""}
+                uploading={!!verificationUploading.tutor_id_back}
+                onPick={(file) => uploadVerificationDoc("tutor_id_back", file)}
+                onClear={() => clearVerificationDoc("tutor_id_back")}
+              />
+
+              <VerificationUpload
+                tr={tr}
+                label={tr("onboarding.verification.tutor_proof","Proof as Tutor (certificate/license)")}
+                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+                required
+                valueUrl={formData.verification_docs?.tutor_proof || ""}
+                uploading={!!verificationUploading.tutor_proof}
+                onPick={(file) => uploadVerificationDoc("tutor_proof", file)}
+                onClear={() => clearVerificationDoc("tutor_proof")}
+              />
+            </div>
           </div>
         )}
 
@@ -1365,6 +1737,26 @@ export default function Onboarding() {
                 placeholder="Brief description of your institution..."
                 className="mt-1"
                 rows={3}
+              />
+            </div>
+
+            <div className="space-y-6 pt-2">
+              <div className="rounded-lg border bg-emerald-50/40 p-3 text-sm text-gray-700">
+                {tr(
+                  "onboarding.verification.school_hint",
+                  "Upload your school permit / accreditation document (e.g., DLI, government registration, etc.). Your verification will be reviewed."
+                )}
+              </div>
+
+              <VerificationUpload
+                tr={tr}
+                label={tr("onboarding.verification.school_dli","School Permit / DLI / Accreditation")}
+                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
+                required
+                valueUrl={formData.verification_docs?.school_dli_or_permit || ""}
+                uploading={!!verificationUploading.school_dli_or_permit}
+                onPick={(file) => uploadVerificationDoc("school_dli_or_permit", file)}
+                onClear={() => clearVerificationDoc("school_dli_or_permit")}
               />
             </div>
 

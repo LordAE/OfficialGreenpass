@@ -70,6 +70,103 @@ const VerificationActions = ({ item, onApprove, onReject, entityType }) => (
   </div>
 );
 
+
+/* ---------- Verification Documents helpers ---------- */
+const isHttpUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
+
+const normalizeDocsSources = (item, userDoc) => {
+  const sources = [
+    item?.verification?.docs,
+    item?.verification_docs,
+    item?.documents,
+    item?.docs,
+    userDoc?.verification?.docs,
+    userDoc?.verification_docs,
+    userDoc?.documents,
+    userDoc?.docs,
+  ].filter(Boolean);
+
+  // Also consider direct flat fields (fallback)
+  const flat = {};
+  const candidates = [
+    item,
+    userDoc,
+  ].filter(Boolean);
+
+  for (const obj of candidates) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (isHttpUrl(v)) flat[k] = v;
+    }
+  }
+
+  return { sources, flat };
+};
+
+const resolveRoleDocs = (role, item, userDoc) => {
+  const { sources, flat } = normalizeDocsSources(item, userDoc);
+
+  // merge all maps (later maps override earlier maps)
+  const merged = sources.reduce((acc, m) => ({ ...acc, ...m }), {});
+  const all = { ...merged, ...flat };
+
+  const pick = (keys, label) => {
+    for (const k of keys) {
+      const url = all?.[k];
+      if (isHttpUrl(url)) return { label, url };
+    }
+    return null;
+  };
+
+  const docs = [];
+  if (role === "agent") {
+    docs.push(pick(["agent_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
+    docs.push(pick(["agent_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
+    docs.push(pick(["agent_business_permit", "business_permit_url", "businessPermit", "business_permit", "business_license"], "Business Permit"));
+  } else if (role === "tutor") {
+    docs.push(pick(["tutor_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
+    docs.push(pick(["tutor_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
+    docs.push(pick(["tutor_proof", "tutor_proof_url", "proof_url", "proof", "teaching_proof"], "Tutor Proof"));
+  } else if (role === "school") {
+    docs.push(pick(["school_permit", "school_permit_url", "permit_url", "permit"], "School Permit"));
+    docs.push(pick(["school_dli", "school_dli_url", "dli_url", "dli", "school_accreditation", "accreditation_url"], "DLI / Accreditation"));
+  } else if (role === "vendor") {
+    docs.push(pick(["vendor_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
+    docs.push(pick(["vendor_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
+    docs.push(pick(["vendor_business_permit", "business_permit_url", "businessPermit", "business_permit"], "Business Permit"));
+  } else if (role === "student") {
+    docs.push(pick(["student_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
+    docs.push(pick(["student_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
+  } else if (role === "user") {
+    docs.push(pick(["user_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
+    docs.push(pick(["user_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
+  }
+
+  return docs.filter(Boolean);
+};
+
+const VerificationDocsCell = ({ role, item, userDoc }) => {
+  const docs = resolveRoleDocs(role, item, userDoc);
+  if (!docs.length) return <span className="text-xs text-gray-500">No docs</span>;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {docs.map((d) => (
+        <Button
+          key={d.label}
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => window.open(d.url, "_blank", "noopener,noreferrer")}
+        >
+          View {d.label}
+        </Button>
+      ))}
+    </div>
+  );
+};
+
+
 export default function Verification() {
   const [agents, setAgents] = useState([]);
   const [tutors, setTutors] = useState([]);
@@ -389,6 +486,7 @@ export default function Verification() {
                         <TableHead>Email</TableHead>
                         <TableHead>Country</TableHead>
                         <TableHead>Submitted Date</TableHead>
+                        <TableHead>Documents</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -399,6 +497,9 @@ export default function Verification() {
                           <TableCell>{u.email}</TableCell>
                           <TableCell>{u.country || 'N/A'}</TableCell>
                           <TableCell>{safeFormatDate(u.created_at || u.created_date)}</TableCell>
+                          <TableCell>
+                            <VerificationDocsCell role="user" item={u} userDoc={u} />
+                          </TableCell>
                           <TableCell>
                             <VerificationActions
                               item={u}
@@ -441,6 +542,7 @@ export default function Verification() {
                         <TableHead>Program Enrolled</TableHead>
                         <TableHead>School</TableHead>
                         <TableHead>Submitted Date</TableHead>
+                        <TableHead>Documents</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -452,6 +554,9 @@ export default function Verification() {
                           <TableCell>{s.programId || 'N/A'}</TableCell>
                           <TableCell>{s.schoolId || 'N/A'}</TableCell>
                           <TableCell>{safeFormatDate(s.created_at || s.created_date)}</TableCell>
+                          <TableCell>
+                            <VerificationDocsCell role="student" item={s} userDoc={s} />
+                          </TableCell>
                           <TableCell>
                             <VerificationActions
                               item={s}
@@ -495,6 +600,7 @@ export default function Verification() {
                           <TableHead>Email</TableHead>
                           <TableHead>Business License</TableHead>
                           <TableHead>Submitted</TableHead>
+                          <TableHead>Documents</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -508,6 +614,9 @@ export default function Verification() {
                               <TableCell>{agent.contact_person?.email || u?.email || 'N/A'}</TableCell>
                               <TableCell>{agent.business_license_mst || 'N/A'}</TableCell>
                               <TableCell>{safeFormatDate(agent.created_at || agent.created_date)}</TableCell>
+                              <TableCell>
+                                <VerificationDocsCell role="agent" item={agent} userDoc={u} />
+                              </TableCell>
                               <TableCell>
                                 <VerificationActions
                                   item={agent}
@@ -554,6 +663,7 @@ export default function Verification() {
                           <TableHead>Experience</TableHead>
                           <TableHead>Rate</TableHead>
                           <TableHead>Submitted</TableHead>
+                          <TableHead>Documents</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -568,6 +678,9 @@ export default function Verification() {
                               <TableCell>{tutor.experience_years || 0} years</TableCell>
                               <TableCell>${tutor.hourly_rate || 0}/hr</TableCell>
                               <TableCell>{safeFormatDate(tutor.created_at || tutor.created_date)}</TableCell>
+                              <TableCell>
+                                <VerificationDocsCell role="tutor" item={tutor} userDoc={u} />
+                              </TableCell>
                               <TableCell>
                                 <VerificationActions
                                   item={tutor}
@@ -613,6 +726,7 @@ export default function Verification() {
                           <TableHead>Contact</TableHead>
                           <TableHead>Type</TableHead>
                           <TableHead>Submitted</TableHead>
+                          <TableHead>Documents</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -630,6 +744,9 @@ export default function Verification() {
                                 </Badge>
                               </TableCell>
                               <TableCell>{safeFormatDate(school.created_at || school.created_date)}</TableCell>
+                              <TableCell>
+                                <VerificationDocsCell role="school" item={school} userDoc={u} />
+                              </TableCell>
                               <TableCell>
                                 <VerificationActions
                                   item={school}
@@ -674,6 +791,7 @@ export default function Verification() {
                           <TableHead>Contact</TableHead>
                           <TableHead>Service Categories</TableHead>
                           <TableHead>Submitted</TableHead>
+                          <TableHead>Documents</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -686,6 +804,9 @@ export default function Verification() {
                               <TableCell>{u?.email || 'N/A'}</TableCell>
                               <TableCell>{(vendor.service_categories || []).join(', ')}</TableCell>
                               <TableCell>{safeFormatDate(vendor.created_at || vendor.created_date)}</TableCell>
+                              <TableCell>
+                                <VerificationDocsCell role="vendor" item={vendor} userDoc={u} />
+                              </TableCell>
                               <TableCell>
                                 <VerificationActions
                                   item={vendor}

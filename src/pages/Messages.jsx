@@ -7,7 +7,7 @@ import { auth } from "@/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Send, MessageSquare } from "lucide-react";
+import { Loader2, Send, MessageSquare, ArrowLeft } from "lucide-react";
 
 // ✅ Global toggle: Admin can turn subscription gating ON/OFF
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
@@ -48,8 +48,28 @@ function isSubInactiveForRole(userDoc) {
   return !(s === "active" || s === "trialing");
 }
 
+
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < breakpoint;
+  });
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => window.removeEventListener("resize", onResize);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 export default function Messages() {
   const { tr } = useTr("messages");
+
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileView] = useState("inbox"); // inbox | chat
+
 
   
   const lang = (new URLSearchParams(window.location.search).get("lang") || localStorage.getItem("gp_lang") || "en").trim();
@@ -71,6 +91,15 @@ const location = useLocation();
 
   const [conversations, setConversations] = useState([]);
   const [selectedConv, setSelectedConv] = useState(null);
+
+
+  // ✅ Mobile: switch panes automatically
+  useEffect(() => {
+    if (!isMobile) return;
+    if (selectedConv?.id) setMobileView("chat");
+    else setMobileView("inbox");
+  }, [isMobile, selectedConv?.id]);
+
 
   const [peerCache, setPeerCache] = useState({});
   const [peerDoc, setPeerDoc] = useState(null);
@@ -335,7 +364,13 @@ const location = useLocation();
 
   const handlePickConversation = useCallback((conv) => {
     setSelectedConv(conv);
+    if (isMobile) setMobileView("chat");
+  }, [isMobile]);
+
+  const handleBackToInbox = useCallback(() => {
+    setMobileView("inbox");
   }, []);
+
 
   const handleSend = useCallback(async () => {
     if (!me?.uid || !selectedConv?.id) return;
@@ -458,7 +493,7 @@ const location = useLocation();
   }
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-3 sm:p-4 md:p-6 pb-[calc(env(safe-area-inset-bottom)+16px)]">
       {errorText ? (
         <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {errorText}
@@ -508,113 +543,307 @@ const location = useLocation();
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-        {/* Left: inbox */}
-        <Card className="md:col-span-4 h-[75vh] overflow-hidden">
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
-              Inbox
-            </CardTitle>
-          </CardHeader>
+      {isMobile ? (
+        <div className="h-[calc(100dvh-220px)]">
+          {/* Mobile: single-pane (Inbox OR Chat) */}
+          {mobileView === "inbox" || !selectedConv ? (
+            <Card className="h-full overflow-hidden">
+              <CardHeader className="border-b">
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Inbox
+                </CardTitle>
+              </CardHeader>
 
-          <CardContent className="p-0 h-full overflow-auto">
-            {conversations.length === 0 ? (
-              <div className="p-4 text-sm text-gray-600">No conversations yet.</div>
-            ) : (
-              <div className="divide-y">
-                {conversations.map((c) => {
-                  const parts = Array.isArray(c.participants) ? c.participants : [];
-                  const oid = parts.find((x) => x && x !== me.uid) || "support";
+              <CardContent className="p-0 h-full overflow-auto">
+                {conversations.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-600">No conversations yet.</div>
+                ) : (
+                  <div className="divide-y">
+                    {conversations.map((c) => {
+                      const parts = Array.isArray(c.participants) ? c.participants : [];
+                      const oid = parts.find((x) => x && x !== me.uid) || "support";
 
-                  const oDoc = oid === "support" ? { id: "support", full_name: "Support" } : peerCache[oid];
-                  const title = displayName(oDoc) || (oid === "support" ? "Support" : `Chat (${oid.slice(0, 6)}…)`);
-                  const isActive = selectedConv?.id === c.id;
+                      const oDoc =
+                        oid === "support"
+                          ? { id: "support", full_name: "Support" }
+                          : peerCache[oid];
+                      const title =
+                        displayName(oDoc) ||
+                        (oid === "support"
+                          ? "Support"
+                          : `Chat (${oid.slice(0, 6)}…)`);
+                      const isActive = selectedConv?.id === c.id;
 
-                  return (
-                    <button
-                      key={c.id}
-                      className={`w-full text-left p-4 hover:bg-gray-50 ${isActive ? "bg-gray-50" : ""}`}
-                      onClick={() => handlePickConversation(c)}
+                      return (
+                        <button
+                          key={c.id}
+                          className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${
+                            isActive ? "bg-gray-50" : ""
+                          }`}
+                          onClick={() => handlePickConversation(c)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={avatarUrl(oDoc)}
+                              alt={title}
+                              className="h-10 w-10 rounded-full object-cover border"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-gray-900 truncate">
+                                {title}
+                              </div>
+                              <div className="text-xs text-gray-600 line-clamp-1">
+                                {c.last_message_text || "No messages yet"}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="h-full overflow-hidden flex flex-col">
+              <CardHeader className="border-b sticky top-0 bg-white z-10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="px-2"
+                      onClick={handleBackToInbox}
+                      aria-label="Back to inbox"
                     >
-                      <div className="font-semibold text-gray-900">{title}</div>
-                      <div className="text-xs text-gray-600 line-clamp-1">
-                        {c.last_message_text || "No messages yet"}
+                      <ArrowLeft className="h-5 w-5" />
+                    </Button>
+
+                    <img
+                      src={peerAvatar}
+                      alt={peerName}
+                      className="h-9 w-9 rounded-full object-cover"
+                    />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-gray-900 truncate">
+                        {peerName}
                       </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Right: chat */}
-        <Card className="md:col-span-8 h-[75vh] overflow-hidden flex flex-col">
-          <CardHeader className="border-b">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <img src={peerAvatar} alt={peerName} className="h-10 w-10 rounded-full object-cover" />
-                <div>
-                  <div className="font-semibold text-gray-900">{peerName}</div>
-                  <div className="text-xs text-gray-600 capitalize">{otherRole}</div>
-                </div>
-              </div>
-
-              {canReport ? (
-                <Button variant="outline" onClick={() => setShowReport(true)}>
-                  Report
-                </Button>
-              ) : null}
-            </div>
-          </CardHeader>
-
-          <CardContent ref={listRef} className="flex-1 overflow-auto p-4 bg-white">
-            {!selectedConv ? (
-              <div className="text-sm text-gray-600">Select a conversation to start chatting.</div>
-            ) : msgsLoading ? (
-              <div className="flex items-center gap-2 text-gray-600">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading messages…
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {messages.map((m) => {
-                  const mine = m.sender_id === me.uid;
-                  return (
-                    <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
-                          mine ? "bg-black text-white" : "bg-gray-100 text-gray-900"
-                        }`}
-                      >
-                        {m.text}
+                      <div className="text-xs text-gray-600 capitalize">
+                        {otherRole}
                       </div>
                     </div>
-                  );
-                })}
-                <div ref={endRef} />
-              </div>
-            )}
-          </CardContent>
+                  </div>
 
-          <div className="border-t p-3 flex gap-2">
-            <Input className={(isRTL ? "text-right" : "")} dir={isRTL ? "rtl" : "ltr"}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={selectedConv ? "Type a message…" : "Select a conversation…"}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSend();
-              }}
-              disabled={!selectedConv || locked || showAgreement}
-            />
-            <Button onClick={handleSend} disabled={!selectedConv || locked || showAgreement || !text.trim()}>
-              <Send className={isRTL ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
-              {tr("send","Send")}
-            </Button>
-          </div>
-        </Card>
-      </div>
+                  {canReport ? (
+                    <Button variant="outline" onClick={() => setShowReport(true)}>
+                      Report
+                    </Button>
+                  ) : null}
+                </div>
+              </CardHeader>
+
+              <CardContent
+                ref={listRef}
+                className="flex-1 overflow-auto p-3 bg-white"
+              >
+                {msgsLoading ? (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading messages…
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {messages.map((m) => {
+                      const mine = m.sender_id === me.uid;
+                      return (
+                        <div
+                          key={m.id}
+                          className={`flex ${mine ? "justify-end" : "justify-start"}`}
+                        >
+                          <div
+                            className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                              mine
+                                ? "bg-black text-white"
+                                : "bg-gray-100 text-gray-900"
+                            }`}
+                          >
+                            {m.text}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div ref={endRef} />
+                  </div>
+                )}
+              </CardContent>
+
+              {/* Mobile: sticky composer */}
+              <div className="border-t p-2 flex gap-2 bg-white">
+                <Input
+                  className={isRTL ? "text-right" : ""}
+                  dir={isRTL ? "rtl" : "ltr"}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="Type a message…"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSend();
+                  }}
+                  disabled={locked || showAgreement}
+                />
+                <Button
+                  onClick={handleSend}
+                  disabled={locked || showAgreement || !text.trim()}
+                  className="shrink-0"
+                >
+                  <Send className={isRTL ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
+                  {tr("send", "Send")}
+                </Button>
+              </div>
+            </Card>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+          {/* Left: inbox */}
+          <Card className="md:col-span-4 h-[75vh] overflow-hidden">
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Inbox
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent className="p-0 h-full overflow-auto">
+              {conversations.length === 0 ? (
+                <div className="p-4 text-sm text-gray-600">No conversations yet.</div>
+              ) : (
+                <div className="divide-y">
+                  {conversations.map((c) => {
+                    const parts = Array.isArray(c.participants) ? c.participants : [];
+                    const oid = parts.find((x) => x && x !== me.uid) || "support";
+
+                    const oDoc =
+                      oid === "support"
+                        ? { id: "support", full_name: "Support" }
+                        : peerCache[oid];
+                    const title =
+                      displayName(oDoc) ||
+                      (oid === "support"
+                        ? "Support"
+                        : `Chat (${oid.slice(0, 6)}…)`);
+                    const isActive = selectedConv?.id === c.id;
+
+                    return (
+                      <button
+                        key={c.id}
+                        className={`w-full text-left p-4 hover:bg-gray-50 ${
+                          isActive ? "bg-gray-50" : ""
+                        }`}
+                        onClick={() => handlePickConversation(c)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={avatarUrl(oDoc)}
+                            alt={title}
+                            className="h-10 w-10 rounded-full object-cover border"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-gray-900 truncate">
+                              {title}
+                            </div>
+                            <div className="text-xs text-gray-600 line-clamp-1">
+                              {c.last_message_text || "No messages yet"}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Right: chat */}
+          <Card className="md:col-span-8 h-[75vh] overflow-hidden flex flex-col">
+            <CardHeader className="border-b">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={peerAvatar}
+                    alt={peerName}
+                    className="h-10 w-10 rounded-full object-cover"
+                  />
+                  <div>
+                    <div className="font-semibold text-gray-900">{peerName}</div>
+                    <div className="text-xs text-gray-600 capitalize">{otherRole}</div>
+                  </div>
+                </div>
+
+                {canReport ? (
+                  <Button variant="outline" onClick={() => setShowReport(true)}>
+                    Report
+                  </Button>
+                ) : null}
+              </div>
+            </CardHeader>
+
+            <CardContent ref={listRef} className="flex-1 overflow-auto p-4 bg-white">
+              {!selectedConv ? (
+                <div className="text-sm text-gray-600">
+                  Select a conversation to start chatting.
+                </div>
+              ) : msgsLoading ? (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading messages…
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {messages.map((m) => {
+                    const mine = m.sender_id === me.uid;
+                    return (
+                      <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                        <div
+                          className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                            mine ? "bg-black text-white" : "bg-gray-100 text-gray-900"
+                          }`}
+                        >
+                          {m.text}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={endRef} />
+                </div>
+              )}
+            </CardContent>
+
+            <div className="border-t p-3 flex gap-2">
+              <Input
+                className={isRTL ? "text-right" : ""}
+                dir={isRTL ? "rtl" : "ltr"}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={selectedConv ? "Type a message…" : "Select a conversation…"}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSend();
+                }}
+                disabled={!selectedConv || locked || showAgreement}
+              />
+              <Button
+                onClick={handleSend}
+                disabled={!selectedConv || locked || showAgreement || !text.trim()}
+              >
+                <Send className={isRTL ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
+                {tr("send", "Send")}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
 
       {/* Report modal */}
       {showReport ? (
