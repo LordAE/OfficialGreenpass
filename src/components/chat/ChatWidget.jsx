@@ -64,13 +64,28 @@ export default function ChatWidget() {
     [getSize]
   );
 
+  const snapToSide = React.useCallback(
+    (next) => {
+      const { w, h } = getSize();
+      const maxX = Math.max(PADDING, window.innerWidth - w - PADDING);
+      const maxY = Math.max(PADDING, window.innerHeight - h - PADDING);
+
+      const y = clamp(next.y, PADDING, maxY);
+      // Snap to the nearest side edge.
+      const centerX = next.x + w / 2;
+      const x = centerX < window.innerWidth / 2 ? PADDING : maxX;
+      return { x, y };
+    },
+    [getSize]
+  );
+
   // Keep the widget inside the viewport on resize
   React.useEffect(() => {
     if (!pos) return;
-    const onResize = () => setPos((p) => (p ? clampToViewport(p) : p));
+    const onResize = () => setPos((p) => (p ? snapToSide(p) : p));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [pos, clampToViewport]);
+  }, [pos, snapToSide]);
 
   const onPointerDown = React.useCallback(
     (e) => {
@@ -135,10 +150,12 @@ export default function ChatWidget() {
 
     st.active = false;
 
-    // Persist the last position
+    // Snap to a side edge on release, then persist.
     if (pos) {
+      const snapped = snapToSide(pos);
+      setPos(snapped);
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapped));
       } catch {
         // ignore
       }
@@ -151,7 +168,7 @@ export default function ChatWidget() {
         st.moved = false;
       }, 0);
     }
-  }, [pos]);
+  }, [pos, snapToSide]);
 
   const onClickCapture = React.useCallback((e) => {
     // If user dragged, block the click navigation.
