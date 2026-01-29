@@ -2,15 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Users, BarChart3, Calendar, Building, DollarSign, UserCheck, Loader2, Bell, TrendingUp, Activity } from 'lucide-react';
+import { Users, Calendar, DollarSign, UserCheck, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { format } from 'date-fns';
-
-// Import the Master Seeder
-import MasterDataSeeder from '../admin/MasterDataSeeder';
-
 // Import entities properly
 import { User } from '@/api/entities';
 import { Payment } from '@/api/entities';
@@ -125,7 +120,7 @@ export default function AdminDashboard({ user }) {
   const statCards = [
     { title: "Total Revenue", value: stats.totalRevenue, icon: <DollarSign className="h-4 w-4 text-muted-foreground" />, linkTo: 'AdminPayments' },
     { title: "Total Users", value: stats.totalUsers, icon: <Users className="h-4 w-4 text-muted-foreground" />, linkTo: 'UserManagement' },
-    { title: "Active Events", value: stats.activeEvents, icon: <Calendar className="h-4 w-4 text-muted-foreground" />, linkTo: 'AdminEvents' },
+    { title: "Published Events", value: stats.activeEvents, icon: <Calendar className="h-4 w-4 text-muted-foreground" />, linkTo: 'AdminEvents' },
     { title: "Pending Verifications", value: stats.pendingVerifications + stats.pendingPayments, icon: <UserCheck className="h-4 w-4 text-muted-foreground" />, linkTo: 'Verification' }
   ];
 
@@ -151,7 +146,7 @@ export default function AdminDashboard({ user }) {
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <h1 className="text-2xl md:text-3xl font-bold">Admin Dashboard</h1>
-      <p className="text-muted-foreground text-sm sm:text-base">Welcome back, {user.full_name}. Here's your platform overview.</p>
+      <p className="text-muted-foreground text-sm sm:text-base">Welcome back, {user.full_name}. Here's an overview of your platform activity and system status.</p>
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((card, index) => (
@@ -163,37 +158,26 @@ export default function AdminDashboard({ user }) {
         <Card>
           <CardHeader>
             <CardTitle>Quick Links</CardTitle>
-            <CardDescription>Navigate to key admin sections.</CardDescription>
+            <CardDescription>Jump to key admin sections.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Button asChild variant="outline"><Link to={createPageUrl('UserManagement')}>User Management</Link></Button>
-            <Button asChild variant="outline"><Link to={createPageUrl('AdminSchools')}>Schools</Link></Button>
-            <Button asChild variant="outline"><Link to={createPageUrl('AdminPackages')}>Packages</Link></Button>
-            <Button asChild variant="outline"><Link to={createPageUrl('AdminEvents')}>Events</Link></Button>
-            <Button asChild variant="outline"><Link to={createPageUrl('Verification')}>Verification</Link></Button>
-            <Button asChild variant="outline"><Link to={createPageUrl('AdminPayments')}>Payments</Link></Button>
+            <Button asChild variant="outline"><Link to={createPageUrl('AdminSchools')}>School Directory</Link></Button>
+            <Button asChild variant="outline"><Link to={createPageUrl('AdminPackages')}>Subscription Packages</Link></Button>
+            <Button asChild variant="outline"><Link to={createPageUrl('AdminEvents')}>Manage Events</Link></Button>
+            <Button asChild variant="outline"><Link to={createPageUrl('Verification')}>Verifications</Link></Button>
+            <Button asChild variant="outline"><Link to={createPageUrl('AdminPayments')}>Payments & Transactions</Link></Button>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Overview of recent platform events.</CardDescription>
+            <CardDescription>Overview of recent platform activity.</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">Recent activity feed coming soon.</p>
+            <p className="text-sm text-muted-foreground">Recent platform activity will appear here once available.</p>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Enhanced Master Data Seeder - The Only Seeder */}
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Educational Data System</h2>
-          <p className="text-gray-600">Create a comprehensive, synchronized educational database with institutions, programs, and school profiles.</p>
-        </div>
-        
-        {/* Master Seeder - Only one needed */}
-        <MasterDataSeeder />
       </div>
     </div>
   );

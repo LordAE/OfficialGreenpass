@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Agent } from "@/api/entities";
 import { Case } from "@/api/entities";
 import { User } from "@/api/entities";
-import { Reservation } from "@/api/entities";
 import {
   Users,
   FileText,
@@ -545,36 +544,25 @@ export default function AgentDashboard({ user }) {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [agentData, cases, students, reservations] = await Promise.all([
-          Agent.filter({ user_id: user.id }),
+        const [agentData, cases, students] = await Promise.all([
+Agent.filter({ user_id: user.id }),
           Case.filter({ agent_id: user.id }, "-created_date"),
-          User.filter({ referred_by_agent_id: user.id }),
-          Reservation.filter({ status: "confirmed" }),
-        ]);
+          User.filter({ referred_by_agent_id: user.id })
+]) ;
 
         const agentRecord = agentData.length > 0 ? agentData[0] : null;
         setAgent(agentRecord);
 
         const completion = getProfileCompletionData(user, agentRecord);
         setProfileCompletion(completion);
-
-        const agentReservations = arr(reservations).filter((r) =>
-          arr(students).some((s) => s.id === r.student_id)
-        );
-
         const now = new Date();
         const thisMonth = arr(students).filter((s) => {
           const d = toValidDate(s.created_date);
           return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
         });
 
-        const totalEarnings =
-          agentReservations.reduce(
-            (sum, r) => sum + (Number(r.amount_usd) || 0) * (agentRecord?.commission_rate || 0.1),
-            0
-          ) + arr(cases).filter((c) => c.status === "Approved").length * 500;
-
-        setStats({
+        const totalEarnings = arr(cases).filter((c) => c.status === "Approved").length * 500;
+setStats({
           totalStudents: arr(students).length,
           activeCases: arr(cases).filter((c) => !["Approved", "Rejected"].includes(c.status)).length,
           totalEarnings,

@@ -194,8 +194,8 @@ const WebsiteIconButton = ({ className = "" }) => {
       "w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition",
       className
     )}
-    aria-label={tr("backToWebsite")}
-    title={tr("backToWebsite")}
+    aria-label={tr("backToWebsite", "Back to Website")}
+    title={tr("backToWebsite", "Back to Website")}
   >
     <Globe className="h-6 w-6" />
   </a>
@@ -381,7 +381,7 @@ const AccountDropdown = ({
 
               <div className="my-2 h-px bg-gray-100" />
 
-              <MenuItem onClick={onLogout} Icon={LogOut} label={tr("logOut")} danger />
+              <MenuItem onClick={onLogout} Icon={LogOut} label={tr("logOut", "Logout")} danger />
             </div>
           </motion.div>
         )}
@@ -453,13 +453,13 @@ const MobileBottomNav = ({ nav, isActive }) => {
               "flex flex-col items-center justify-center gap-1 py-2 flex-1",
               moreOpen ? "text-green-700" : "text-gray-600"
             )}
-            aria-label={tr("more")}
-            title={tr("more")}
+            aria-label={tr("more", "More")}
+            title={tr("more", "More")}
           >
             <MoreHorizontal
               className={cn("h-6 w-6", moreOpen ? "text-green-700" : "text-gray-600")}
             />
-            <span className="text-[11px] font-medium leading-none">{tr("more")}</span>
+            <span className="text-[11px] font-medium leading-none">{tr("more", "More")}</span>
           </button>
         </div>
       </div>
@@ -496,7 +496,7 @@ const MobileBottomNav = ({ nav, isActive }) => {
                     className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-gray-50 text-gray-800"
                   >
                     <Globe className="h-5 w-5 text-gray-600" />
-                    <span className="text-sm font-medium">{tr("backToWebsite")}</span>
+                    <span className="text-sm font-medium">{tr("backToWebsite", "Back to Website")}</span>
                     <ChevronRight className="ml-auto h-4 w-4 text-gray-400" />
                   </a>
 
@@ -854,7 +854,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
+                  { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
                 ]}
               />
             </div>
@@ -987,8 +987,8 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-                  { label: tr("leads"), url: createPageUrl("AgentLeads"), icon: UsersIcon, chevron: true },
+                  { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
+                  { label: tr("leads", "Leads"), url: createPageUrl("AgentLeads"), icon: UsersIcon, chevron: true },
                 ]}
               />
             </div>
@@ -1122,8 +1122,8 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-                  { label: tr("availability"), url: createPageUrl("TutorAvailability"), icon: Calendar, chevron: true },
+                  { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
+                  { label: tr("availability", "Availability"), url: createPageUrl("TutorAvailability"), icon: Calendar, chevron: true },
                 ]}
               />
             </div>
@@ -1254,8 +1254,8 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: tr("mySessions"), url: createPageUrl("MySessions"), icon: Calendar, chevron: true },
-                  { label: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
+                  { label: tr("mySessions", "My Sessions"), url: createPageUrl("MySessions"), icon: Calendar, chevron: true },
+                  { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
                 ]}
               />
             </div>
@@ -1299,10 +1299,10 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 
   const centerItems = React.useMemo(
     () => [
-      { title: tr("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+      { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
       { title: "Events", url: createPageUrl("Events"), icon: Calendar },
-      { title: tr("institutionManagement"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
-      { title: tr("userManagement"), url: createPageUrl("UserManagement"), icon: Users },
+      { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
+      { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
       { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
     ],
     []
@@ -1310,23 +1310,23 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 
   const accountSettingsItems = React.useMemo(
     () => [
-      { title: tr("profileSettings"), url: createPageUrl("Profile"), icon: Settings },
-      { title: tr("brandSettings"), url: createPageUrl("AdminBrandSettings"), icon: Palette },
-      { title: tr("bankSettings"), url: createPageUrl("AdminBankSettings"), icon: Building },
-      { title: tr("chatSettings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
+      { title: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
+      { title: tr("brandSettings", "Brand Settings"), url: createPageUrl("AdminBrandSettings"), icon: Palette },
+      { title: tr("bankSettings", "Bank Settings"), url: createPageUrl("AdminBankSettings"), icon: Building },
+      { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
     ],
     []
   );
 
   const leftPanelItems = React.useMemo(
     () => [
-      { title: tr("verifications"), url: createPageUrl("Verification"), icon: UserCheck },
-      { title: tr("paymentVerification"), url: createPageUrl("AdminPaymentVerification"), icon: FileText },
+      { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
+      { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: FileText },
       { title: "Payment Monitoring", url: createPageUrl("AdminPayments"), icon: DollarSign },
-      { title: tr("walletManagement"), url: createPageUrl("AdminWalletManagement"), icon: DollarSign },
-      { title: tr("eventsAdmin"), url: createPageUrl("AdminEvents"), icon: Calendar },
-      { title: tr("schoolManagement"), url: createPageUrl("AdminSchools"), icon: Building },
-      { title: tr("reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
+      { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: DollarSign },
+      { title: tr("eventsAdmin", "Event Management"), url: createPageUrl("AdminEvents"), icon: Calendar },
+      { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: Building },
+      { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
     ],
     []
   );
@@ -1469,7 +1469,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
                   className="mt-2 flex items-center gap-3 rounded-xl px-3 py-2 text-gray-700 hover:bg-gray-100"
                 >
                   <Globe className="h-5 w-5 text-gray-600" />
-                  <span className="text-sm font-medium">{tr("backToWebsite")}</span>
+                  <span className="text-sm font-medium">{tr("backToWebsite", "Back to Website")}</span>
                 </a>
               </div>
             </div>
@@ -1518,7 +1518,7 @@ const Footer = ({ getCompanyName }) => {
     },
     {
       column_title: "Website",
-      links: [{ text: tr("backToWebsite"), url: null }],
+      links: [{ text: tr("backToWebsite", "Back to Website"), url: null }],
     },
   ];
 
@@ -1539,7 +1539,7 @@ const Footer = ({ getCompanyName }) => {
                         rel="noopener noreferrer"
                         className="text-base text-gray-300 hover:text-white"
                       >
-                        {tr("backToWebsite")}
+                        {tr("backToWebsite", "Back to Website")}
                       </a>
                     ) : (
                       <Link to={link.url} className="text-base text-gray-300 hover:text-white">
@@ -1587,17 +1587,17 @@ function buildDesktopNav(currentUser) {
   // ✅ Admin uses the sidebar layout on desktop (so it needs the full admin nav here)
   if (role === "admin") {
     return [
-      { title: tr("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
-      { title: tr("userManagement"), url: createPageUrl("UserManagement"), icon: Users },
+      { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+      { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
       { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
-      { title: tr("schoolManagement"), url: createPageUrl("AdminSchools"), icon: School },
-      { title: tr("institutionManagement"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
+      { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: School },
+      { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
       { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
-      { title: tr("verifications"), url: createPageUrl("Verification"), icon: UserCheck },
-      { title: tr("paymentVerification"), url: createPageUrl("AdminPayments"), icon: DollarSign },
-      { title: tr("reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
+      { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
+      { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPayments"), icon: DollarSign },
+      { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
       { title: "Subscription Mode", url: createPageUrl("AdminSubscription"), icon: DollarSign },
-      { title: tr("chatSettings"), url: createPageUrl("ChatSettings"), icon: MessageSquare },
+      { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("ChatSettings"), icon: MessageSquare },
       { title: "Events", url: createPageUrl("Events"), icon: Calendar },
     ];
   }
@@ -1605,7 +1605,7 @@ function buildDesktopNav(currentUser) {
   // Vendor (sidebar layout)
   if (role === "vendor") {
     return [
-      { title: tr("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+      { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
       { title: "Events", url: createPageUrl("Events"), icon: Calendar },
       { title: "My Services", url: createPageUrl("MyServices"), icon: Store },
       { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
@@ -1614,7 +1614,7 @@ function buildDesktopNav(currentUser) {
 
   // Fallback (should rarely be used)
   return [
-    { title: tr("dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+    { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
     { title: "Events", url: createPageUrl("Events"), icon: Calendar },
   ];
 }
@@ -2056,7 +2056,7 @@ export default function Layout() {
                 <p className="text-xs text-gray-500 capitalize">{currentUser?.user_type}</p>
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout} className="text-red-600">
-                <LogOut className="w-4 h-4 mr-1" /> {tr("logOut")}
+                <LogOut className="w-4 h-4 mr-1" /> {tr("logOut", "Logout")}
               </Button>
             </div>
 
@@ -2067,7 +2067,7 @@ export default function Layout() {
               className="mb-2 flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
             >
               <Globe className="w-5 h-5 text-gray-600" />
-              <span className="text-gray-700">{tr("backToWebsite")}</span>
+              <span className="text-gray-700">{tr("backToWebsite", "Back to Website")}</span>
             </a>
 
             <div className="mb-3">
@@ -2103,7 +2103,7 @@ export default function Layout() {
                   className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
                 >
                   <Settings className="w-5 h-5 text-gray-600" />
-                  <span className="text-gray-700">{tr("profileSettings")}</span>
+                  <span className="text-gray-700">{tr("profileSettings", "Profile Settings")}</span>
                 </Link>
               </SidebarMenuItem>
             </SidebarMenu>
