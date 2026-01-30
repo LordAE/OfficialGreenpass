@@ -433,7 +433,7 @@ const MobileBottomNav = ({ nav, isActive }) => {
 
   return (
     <>
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200">
         <div className="h-[72px] px-2 flex items-stretch">
           {main.slice(0, 3).map((it) => (
             <ItemButton
@@ -470,7 +470,7 @@ const MobileBottomNav = ({ nav, isActive }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="md:hidden fixed inset-0 z-50 bg-black/35"
+            className="lg:hidden fixed inset-0 z-50 bg-black/35"
           >
             <motion.div
               ref={sheetRef}
@@ -863,7 +863,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
       </header>
 
       <main
-        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] md:pb-0"
+        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] lg:pb-0"
         style={{
           paddingTop: headerH,
           visibility: measured ? "visible" : "hidden",
@@ -997,7 +997,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
       </header>
 
       <main
-        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] md:pb-0"
+        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] lg:pb-0"
         style={{
           paddingTop: headerH,
           visibility: measured ? "visible" : "hidden",
@@ -1132,7 +1132,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
       </header>
 
       <main
-        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] md:pb-0"
+        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] lg:pb-0"
         style={{
           paddingTop: headerH,
           visibility: measured ? "visible" : "hidden",
@@ -1264,7 +1264,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
       </header>
 
       <main
-        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] md:pb-0"
+        className="min-h-[100svh] transition-[padding] ease-out overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] lg:pb-0"
         style={{
           paddingTop: headerH,
           visibility: measured ? "visible" : "hidden",
@@ -1477,7 +1477,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
         </aside>
 
         {/* MAIN */}
-        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] md:pb-0">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] lg:pb-0">
           <div className="px-4 sm:px-6 lg:px-8 py-5">
             <Outlet />
           </div>
@@ -2012,7 +2012,12 @@ export default function Layout() {
   return (
     <SidebarProvider>
       <div className="min-h-[100svh] flex w-full bg-gray-50">
-        <Sidebar className="border-r border-gray-200 bg-white hidden md:flex">
+        {/*
+          Mobile/tablet UX:
+          Use `lg` as the breakpoint for the persistent sidebar so the UI still
+          feels "mobile" when the viewport is narrowed (e.g., split-screen, DevTools open).
+        */}
+        <Sidebar className="border-r border-gray-200 bg-white hidden lg:flex">
           <SidebarHeader className="border-b border-gray-200 p-4">
             <Link
               to={createPageUrl("Dashboard")}
@@ -2111,7 +2116,7 @@ export default function Layout() {
         </Sidebar>
 
         <main className="flex-1 flex flex-col min-h-[100svh]">
-          <header className="bg-white/90 backdrop-blur-sm border-b border-gray-200 px-4 py-3 md:hidden sticky top-0 z-40">
+          <header className="bg-white/90 backdrop-blur-sm border-b border-gray-200 px-4 py-3 lg:hidden sticky top-0 z-40">
             <div className="flex items-center justify-between">
               <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 w-auto object-contain" />
@@ -2120,7 +2125,7 @@ export default function Layout() {
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto md:pb-0 pb-[84px]" style={{ WebkitOverflowScrolling: "touch" }}>
+          <div className="flex-1 overflow-y-auto lg:pb-0 pb-[84px]" style={{ WebkitOverflowScrolling: "touch" }}>
             <Outlet />
           </div>
 
