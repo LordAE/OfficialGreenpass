@@ -1886,7 +1886,7 @@ export default function Layout() {
     try {
       await signOut(auth);
       setCurrentUser(null);
-      navigate(createPageUrl(""));
+      navigate(createPageUrl("welcome"));
     } catch {}
   }, [navigate]);
 
