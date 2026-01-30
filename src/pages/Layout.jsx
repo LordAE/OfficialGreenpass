@@ -1091,10 +1091,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("TutorStudents")} Icon={Users} label="My Students" />
                   </div>
-                  <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("TutorSessions")} Icon={Calendar} label="My Sessions" />
-                  </div>
-                </div>
+</div>
               </div>
             </div>
 
@@ -1123,8 +1120,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 title="Account"
                 items={[
                   { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
-                  { label: tr("availability", "Availability"), url: createPageUrl("TutorAvailability"), icon: Calendar, chevron: true },
-                ]}
+]}
               />
             </div>
           </div>
@@ -1645,13 +1641,11 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
     return {
       main: [
         { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-        { title: "Sessions", url: createPageUrl("TutorSessions"), icon: Calendar },
-        { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+{ title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
       ],
       more: [
         { title: "Students", url: createPageUrl("TutorStudents"), icon: Users },
-        { title: "Availability", url: createPageUrl("TutorAvailability"), icon: Calendar },
-        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+{ title: "Events", url: createPageUrl("Events"), icon: Calendar },
         { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
         { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
       ],

@@ -18,6 +18,9 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
+  doc,
+  documentId,
 } from 'firebase/firestore';
 
 export default function MyStudents() {
@@ -26,6 +29,7 @@ export default function MyStudents() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [agentUid, setAgentUid] = useState(null);
+  const [role, setRole] = useState(null);
 
   // Chunk helper for Firestore 'in' queries (max 10)
   const chunk = (arr, size = 10) => {
@@ -65,14 +69,50 @@ export default function MyStudents() {
         }
         setAgentUid(me.uid);
 
-        // 1) Load students referred by this agent
-        const studentsQ = query(
-          collection(db, 'users'),
-          where('referred_by_agent_id', '==', me.uid)
-        );
-        const studentsSnap = await getDocs(studentsQ);
-        const studentDocs = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setStudents(studentDocs);
+        // 1) Detect my role (agent or tutor)
+        const meRef = doc(db, 'users', me.uid);
+        const meSnap = await getDoc(meRef);
+        const meData = meSnap.exists() ? meSnap.data() : {};
+        const myRole = (meData?.role || meData?.user_role || '').toString().toLowerCase();
+        setRole(myRole);
+        setAgentUid(me.uid);
+
+        let studentDocs = [];
+
+        if (myRole === 'tutor') {
+          // ✅ Tutor view: load students from tutor_students relationship
+          const relQ = query(
+            collection(db, 'tutor_students'),
+            where('tutor_id', '==', me.uid)
+          );
+          const relSnap = await getDocs(relQ);
+          const studentIds = relSnap.docs
+            .map(d => d.data()?.student_id)
+            .filter(Boolean);
+
+          if (studentIds.length) {
+            const out = [];
+            for (const batch of chunk(studentIds, 10)) {
+              const usersQ = query(
+                collection(db, 'users'),
+                where(documentId(), 'in', batch)
+              );
+              const usersSnap = await getDocs(usersQ);
+              usersSnap.docs.forEach(u => out.push({ id: u.id, ...u.data() }));
+            }
+            studentDocs = out;
+          }
+          setStudents(studentDocs);
+        } else {
+          // ✅ Agent (default): load students referred by this agent
+          const studentsQ = query(
+            collection(db, 'users'),
+            where('referred_by_agent_id', '==', me.uid)
+          );
+          const studentsSnap = await getDocs(studentsQ);
+          studentDocs = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setStudents(studentDocs);
+        }
 
         // 2) Load cases for those students
         const ids = studentDocs.map(s => s.id);

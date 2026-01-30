@@ -2,12 +2,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/firebase";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Send, MessageSquare, ArrowLeft } from "lucide-react";
+import { Loader2, Send, MessageSquare, ArrowLeft, MoreVertical, Flag, UserPlus } from "lucide-react";
 
 // ✅ Global toggle: Admin can turn subscription gating ON/OFF
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
@@ -69,6 +70,7 @@ export default function Messages() {
 
   const isMobile = useIsMobile();
   const [mobileView, setMobileView] = useState("inbox"); // inbox | chat
+  const [menuOpenId, setMenuOpenId] = useState(null);
 
 
   
@@ -444,10 +446,7 @@ const location = useLocation();
   const otherId = participants.find((x) => x && x !== me?.uid) || "support";
   const otherRole = normalizeRole(selectedConv?.roles?.[otherId] || toRole || "support");
 
-  const canReport =
-    myRole === "student" &&
-    (otherRole === "agent" || otherRole === "tutor" || otherRole === "vendor") &&
-    selectedConv?.id;
+  const canReport = !!selectedConv?.id;
 
   const handleSubmitReport = useCallback(async () => {
     if (!me?.uid || !selectedConv?.id) return;
@@ -576,29 +575,79 @@ const location = useLocation();
                       const isActive = selectedConv?.id === c.id;
 
                       return (
-                        <button
+                        <div
                           key={c.id}
-                          className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${
-                            isActive ? "bg-gray-50" : ""
-                          }`}
-                          onClick={() => handlePickConversation(c)}
+                          className={`w-full px-4 py-3 hover:bg-gray-50 ${isActive ? "bg-gray-50" : ""}`}
                         >
                           <div className="flex items-center gap-3">
-                            <img
-                              src={avatarUrl(oDoc)}
-                              alt={title}
-                              className="h-10 w-10 rounded-full object-cover border"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="font-semibold text-gray-900 truncate">
-                                {title}
+                            <button
+                              type="button"
+                              className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                              onClick={() => handlePickConversation(c)}
+                            >
+                              <img
+                                src={avatarUrl(oDoc)}
+                                alt={title}
+                                className="h-10 w-10 rounded-full object-cover border"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-gray-900 truncate">{title}</div>
+                                <div className="text-xs text-gray-600 line-clamp-1">{c.last_message_text || "No messages yet"}</div>
                               </div>
-                              <div className="text-xs text-gray-600 line-clamp-1">
-                                {c.last_message_text || "No messages yet"}
-                              </div>
+                            </button>
+                        
+                            <div className="relative">
+                              <button
+                                type="button"
+                                className="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-gray-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuOpenId((v) => (v === c.id ? null : c.id));
+                                }}
+                                aria-label="Chat menu"
+                              >
+                                <MoreVertical className="h-5 w-5 text-gray-600" />
+                              </button>
+                        
+                              {menuOpenId === c.id ? (
+                                <div
+                                  className="absolute right-0 mt-2 w-48 rounded-xl border bg-white shadow-lg z-20 overflow-hidden"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {myRole === "tutor" ? (() => {
+                                    const parts2 = Array.isArray(c.participants) ? c.participants : [];
+                                    const otherId2 = parts2.find((x) => x && x !== me.uid) || "support";
+                                    const role2 = normalizeRole(c?.roles?.[otherId2] || "user");
+                                    const isStudent = role2 === "student" || role2 === "user";
+                                    if (!isStudent || otherId2 === "support") return null;
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50"
+                                        onClick={async () => {
+                                          await handleAddStudent(otherId2);
+                                          setMenuOpenId(null);
+                                        }}
+                                      >
+                                        <UserPlus className="h-4 w-4" />
+                                        Add as student
+                                      </button>
+                                    );
+                                  })() : null}
+                        
+                                  <button
+                                    type="button"
+                                    className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50"
+                                    onClick={() => openReportForConversation(c)}
+                                  >
+                                    <Flag className="h-4 w-4" />
+                                    Report
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -735,29 +784,79 @@ const location = useLocation();
                     const isActive = selectedConv?.id === c.id;
 
                     return (
-                      <button
+                      <div
                         key={c.id}
-                        className={`w-full text-left p-4 hover:bg-gray-50 ${
-                          isActive ? "bg-gray-50" : ""
-                        }`}
-                        onClick={() => handlePickConversation(c)}
+                        className={`w-full p-4 hover:bg-gray-50 ${isActive ? "bg-gray-50" : ""}`}
                       >
                         <div className="flex items-center gap-3">
-                          <img
-                            src={avatarUrl(oDoc)}
-                            alt={title}
-                            className="h-10 w-10 rounded-full object-cover border"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-gray-900 truncate">
-                              {title}
+                          <button
+                            type="button"
+                            className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                            onClick={() => handlePickConversation(c)}
+                          >
+                            <img
+                              src={avatarUrl(oDoc)}
+                              alt={title}
+                              className="h-10 w-10 rounded-full object-cover border"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-gray-900 truncate">{title}</div>
+                              <div className="text-xs text-gray-600 line-clamp-1">{c.last_message_text || "No messages yet"}</div>
                             </div>
-                            <div className="text-xs text-gray-600 line-clamp-1">
-                              {c.last_message_text || "No messages yet"}
-                            </div>
+                          </button>
+                      
+                          <div className="relative">
+                            <button
+                              type="button"
+                              className="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-gray-100"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuOpenId((v) => (v === c.id ? null : c.id));
+                              }}
+                              aria-label="Chat menu"
+                            >
+                              <MoreVertical className="h-5 w-5 text-gray-600" />
+                            </button>
+                      
+                            {menuOpenId === c.id ? (
+                              <div
+                                className="absolute right-0 mt-2 w-48 rounded-xl border bg-white shadow-lg z-20 overflow-hidden"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {myRole === "tutor" ? (() => {
+                                  const parts2 = Array.isArray(c.participants) ? c.participants : [];
+                                  const otherId2 = parts2.find((x) => x && x !== me.uid) || "support";
+                                  const role2 = normalizeRole(c?.roles?.[otherId2] || "user");
+                                  const isStudent = role2 === "student" || role2 === "user";
+                                  if (!isStudent || otherId2 === "support") return null;
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50"
+                                      onClick={async () => {
+                                        await handleAddStudent(otherId2);
+                                        setMenuOpenId(null);
+                                      }}
+                                    >
+                                      <UserPlus className="h-4 w-4" />
+                                      Add as student
+                                    </button>
+                                  );
+                                })() : null}
+                      
+                                <button
+                                  type="button"
+                                  className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50"
+                                  onClick={() => openReportForConversation(c)}
+                                >
+                                  <Flag className="h-4 w-4" />
+                                  Report
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>

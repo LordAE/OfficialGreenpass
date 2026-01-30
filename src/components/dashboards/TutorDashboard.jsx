@@ -127,7 +127,7 @@ const StatCard = ({ title, value, icon, to, viewLabel = "View Details", color = 
 );
 
 const QuickLink = ({ title, description, to, icon }) => (
-  <Link to={to}>
+  <Link to={to} className="block">
     <Card className="hover:shadow-md transition-shadow cursor-pointer rounded-2xl">
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
@@ -926,13 +926,7 @@ useEffect(() => {
             <div className="lg:col-span-3 space-y-4">
 
               <Card className="mt-4 rounded-2xl">
-                <CardContent className="p-3 space-y-3">
-                  <QuickLink
-                    title={tr("set_availability","Set Availability")}
-                    description={tr("set_availability_desc","Update your teaching schedule")}
-                    to={createPageUrl("TutorAvailability")}
-                    icon={<Clock className="w-5 h-5 text-purple-500" />}
-                  />
+                <CardContent className="p-3 space-y-4">
                   <QuickLink
                     title={tr("my_students","My Students")}
                     description={tr("my_students_desc","See your student list")}
@@ -948,7 +942,7 @@ useEffect(() => {
 
                   <Button
                     type="button"
-                    className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
+                    className="mt-3 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
                     onClick={() => setCreateEventOpen(true)}
                     disabled={!canCreateEvent}
                     data-testid="create_event_quick_action_btn"
@@ -956,10 +950,7 @@ useEffect(() => {
                   >
                     <Calendar className="h-4 w-4 mr-2" /> {tr("create_event","Create Event")}
                   </Button>
-                  <div className="text-xs text-gray-500">
-                    {tr("create_event_desc","Host an event via Nas.io (payments go directly to you).")}
-                  </div>
-                </CardContent>
+</CardContent>
               </Card>
             </div>
 
