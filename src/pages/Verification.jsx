@@ -13,6 +13,10 @@ import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
+// ✅ Firebase (sync status to users/{uid} so Profile + Onboarding stay consistent)
+import { db } from "@/firebase";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+
 // Required
 import { User } from '@/api/entities';
 
@@ -43,6 +47,24 @@ const dedupeById = (arr) => {
   (arr || []).forEach((x) => { if (x && x.id) map[x.id] = x; });
   return Object.values(map);
 };
+
+const updateUserVerification = async (userId, status, reason = "") => {
+  if (!userId) return;
+  const uref = doc(db, "users", String(userId));
+  const cleanStatus = String(status || "pending").toLowerCase();
+  const cleanReason = String(reason || "");
+  const isVerified = cleanStatus === "verified";
+  await updateDoc(uref, {
+    verification_status: cleanStatus,
+    verification_rejection_reason: cleanStatus === "rejected" ? cleanReason : "",
+    "verification.status": cleanStatus,
+    "verification.reason": cleanStatus === "rejected" ? cleanReason : "",
+    "verification.reviewedAt": serverTimestamp(),
+    is_verified: isVerified,
+    updated_at: serverTimestamp(),
+  });
+};
+
 // ---------- end helpers ----------
 
 const StatusBadge = ({ status }) => {
@@ -287,7 +309,7 @@ export default function Verification() {
   const handleApprove = async (item, entityType) => {
     try {
       // write both forms for compatibility with different docs
-      const updateData = { verification_status: 'verified', is_visible: true, is_verified: true };
+      const updateData = { verification_status: 'verified', is_visible: true, is_verified: true, verification_rejection_reason: '' };
 
       switch (entityType) {
         case 'agent':
@@ -324,7 +346,7 @@ export default function Verification() {
           break;
         case 'user':
         case 'student':
-          await User.update(item.id, { onboarding_completed: true, is_verified: true });
+          await User.update(item.id, { onboarding_completed: true, is_verified: true, verification_status: 'verified', verification_rejection_reason: '' });
           if (entityType === 'user') {
             setUsers((prev) => prev.filter((u) => u.id !== item.id));
           } else {
@@ -334,6 +356,9 @@ export default function Verification() {
         default:
           alert('Unknown entity type.');
       }
+
+      // ✅ Also sync to users/{uid} for Profile page
+      await updateUserVerification(item.user_id || item.userId || item.uid, 'verified', '');
     } catch (err) {
       console.error('Error approving item:', err);
       alert('Failed to approve item. Please try again.');
@@ -342,7 +367,8 @@ export default function Verification() {
 
   const handleReject = async (item, entityType) => {
     try {
-      const updateData = { verification_status: 'rejected', is_visible: false, is_verified: false };
+      const reason = window.prompt('Reason for rejection (shown to user):', '') || '';
+      const updateData = { verification_status: 'rejected', is_visible: false, is_verified: false, verification_rejection_reason: reason };
 
       switch (entityType) {
         case 'agent':
@@ -379,7 +405,7 @@ export default function Verification() {
           break;
         case 'user':
         case 'student':
-          await User.update(item.id, { onboarding_completed: false, is_verified: false });
+          await User.update(item.id, { onboarding_completed: true, is_verified: false, verification_status: 'rejected', verification_rejection_reason: reason });
           if (entityType === 'user') {
             setUsers((prev) => prev.filter((u) => u.id !== item.id));
           } else {
@@ -389,6 +415,9 @@ export default function Verification() {
         default:
           alert('Unknown entity type.');
       }
+
+      // ✅ Also sync to users/{uid} for Profile page
+      await updateUserVerification(item.user_id || item.userId || item.uid, 'rejected', reason);
     } catch (err) {
       console.error('Error rejecting item:', err);
       alert('Failed to reject item. Please try again.');

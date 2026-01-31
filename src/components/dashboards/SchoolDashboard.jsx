@@ -107,7 +107,6 @@ function isSubscribedUser(u) {
   return ok.has(status);
 }
 
-
 /* ✅ School display name helper (matches Profile.jsx fields)
    - Profile "Institution Name" is stored as form.school_name and saved to:
      users/{uid}.school_profile.school_name and school_profiles/{uid}.school_name (and name)
@@ -430,7 +429,6 @@ export default function SchoolDashboard({ user }) {
     availableSeats: 0,
   });
 
-  const [recentLeads, setRecentLeads] = useState([]);
   const [school, setSchool] = useState(null);
 
   const schoolName = useMemo(() => schoolDisplayName(school, user), [school, user]);
@@ -459,8 +457,6 @@ export default function SchoolDashboard({ user }) {
 
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
 
-
-
   
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const canCreateEvent = !subscriptionModeEnabled || isSubscribed;
@@ -478,7 +474,6 @@ useEffect(() => {
   });
   return () => unsub();
 }, [userId]);
-
 
   useEffect(() => {
     if (!userId) return;
@@ -535,7 +530,6 @@ useEffect(() => {
         const confirmed = reservations.filter((r) => r.status === "confirmed");
         if (cancelled) return;
 
-        setRecentLeads(recent);
         setStats({
           totalPrograms: programs.length,
           totalLeads: reservations.length,
@@ -629,7 +623,6 @@ const firstName = useMemo(() => {
   const n = String(schoolName || "").trim();
   return n || "School";
 }, [schoolName]);
-
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
@@ -755,9 +748,6 @@ const firstName = useMemo(() => {
     }
   };
 
-
-
-
   if (loading) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
@@ -849,11 +839,6 @@ const firstName = useMemo(() => {
                       to={createPageUrl("SchoolPrograms")}
                       label={tr("nav_programs")}
                       icon={<BookOpen className="h-5 w-5 text-blue-600" />}
-                    />
-                    <Shortcut
-                      to={createPageUrl("SchoolLeads")}
-                      label={tr("nav_leads")}
-                      icon={<Users className="h-5 w-5 text-green-600" />}
                     />
                     <Shortcut
                       to={createPageUrl("SchoolProfile")}
@@ -1060,76 +1045,14 @@ const firstName = useMemo(() => {
                       <div className="text-lg font-bold text-blue-600">{stats.totalPrograms}</div>
                     </div>
                     <div className="rounded-2xl border bg-gray-50 p-3">
-                      <div className="text-xs text-gray-500">Leads</div>
-                      <div className="text-lg font-bold text-green-600">{stats.totalLeads}</div>
-                    </div>
-                    <div className="rounded-2xl border bg-gray-50 p-3">
                       <div className="text-xs text-gray-500">{tr("reservations")}</div>
                       <div className="text-lg font-bold text-purple-600">
                         {stats.confirmedReservations}
                       </div>
                     </div>
-                    <div className="rounded-2xl border bg-gray-50 p-3">
-                      <div className="text-xs text-gray-500">Open Seats</div>
-                      <div className="text-lg font-bold text-orange-600">{stats.availableSeats}</div>
-                    </div>
-                    <div className="rounded-2xl border bg-gray-50 p-3 col-span-2">
-                      <div className="text-xs text-gray-500">Revenue</div>
-                      <div className="text-lg font-bold text-emerald-600">
-                        ${Number(stats.totalRevenue || 0).toLocaleString()}
-                      </div>
-                    </div>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border bg-white p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm font-semibold text-gray-900">Recent Leads</div>
-                    <Link to={createPageUrl("SchoolLeads")}>
-                      <Button variant="ghost" size="sm" type="button">
-                        {tr("view")} <ArrowRight className="h-4 w-4 ml-1" />
-                      </Button>
-                    </Link>
-                  </div>
-
-                  {recentLeads.length > 0 ? (
-                    <div className="space-y-2">
-                      {recentLeads.slice(0, 4).map((lead) => {
-                        const created = lead.created_at || lead.created_date;
-                        const when = created ? fmt(created, "MMM dd, yyyy") : "—";
-                        const name =
-                          lead.student?.full_name ||
-                          lead.contact_name ||
-                          lead.student_name ||
-                          "Unknown Student";
-
-                        return (
-                          <div key={lead.id} className="rounded-2xl border bg-gray-50 p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="text-sm font-semibold text-gray-900 truncate">
-                                  {name}
-                                </div>
-                                <div className="text-xs text-gray-600 truncate">
-                                  {lead.program_name || "—"}
-                                </div>
-                                <div className="text-xs text-gray-500 mt-1">{when}</div>
-                              </div>
-                              <Badge
-                                variant={lead.status === "confirmed" ? "default" : "secondary"}
-                                className="shrink-0"
-                              >
-                                {lead.status || "pending"}
-                              </Badge>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-600">No leads yet.</div>
-                  )}
-                </div>
               </div>
             </div>
           </div>
@@ -1264,5 +1187,4 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
     </Dialog>
   );
 };
-
 

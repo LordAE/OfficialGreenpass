@@ -128,7 +128,6 @@ function useNavTr() {
   );
 }
 
-
 /* ---------- Social links ---------- */
 const SOCIAL_LINKS = [
   { platform: "YouTube", url: "https://www.youtube.com/@GreenPassGroup" },
@@ -823,9 +822,6 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("SchoolDetails")} Icon={BookOpen} label="Details" />
                   </div>
-                  <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("SchoolLeads")} Icon={Users} label="Leads" />
-                  </div>
                 </div>
               </div>
             </div>
@@ -988,8 +984,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 title="Account"
                 items={[
                   { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
-                  { label: tr("leads", "Leads"), url: createPageUrl("AgentLeads"), icon: UsersIcon, chevron: true },
-                ]}
+                  ]}
               />
             </div>
           </div>
@@ -1250,8 +1245,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 onLogout={onLogout}
                 title="Account"
                 items={[
-                  { label: tr("mySessions", "My Sessions"), url: createPageUrl("MySessions"), icon: Calendar, chevron: true },
-                  { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
+{ label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
                 ]}
               />
             </div>
@@ -1628,7 +1622,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
         { title: "Students", url: createPageUrl("MyStudents"), icon: Users },
       ],
       more: [
-        { title: "Leads", url: createPageUrl("AgentLeads"), icon: UsersIcon },
         { title: "Events", url: createPageUrl("Events"), icon: Calendar },
         { title: "Support", url: createPageUrl("Support"), icon: MessageSquare },
         { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
@@ -1656,7 +1649,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
     return {
       main: [
         { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-        { title: "Leads", url: createPageUrl("SchoolLeads"), icon: Users },
         { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
       ],
       more: [
@@ -1721,7 +1713,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
       url: createPageUrl(currentUser?.assigned_agent_id ? "MyAgent" : "FindAgent"),
       icon: UserCheck,
     },
-    { title: "My Sessions", url: createPageUrl("MySessions"), icon: Calendar },
     { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
     { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
   ];

@@ -83,7 +83,8 @@ const location = useLocation();
   const { subscriptionModeEnabled } = useSubscriptionMode();
 
   const to = params.get("to") || "";
-  const toRole = normalizeRole(params.get("role") || "");
+  const toRoleParam = params.get("toRole") || params.get("role") || "";
+  const toRole = normalizeRole(toRoleParam);
 
   const [me, setMe] = useState(null);
   const [meDoc, setMeDoc] = useState(null);
@@ -230,31 +231,42 @@ const location = useLocation();
       try {
         setErrorText("");
 
-        const conv = await ensureConversation({
-          meId: me.uid,
-          meDoc,
-          targetId: to,
-          targetRole: toRole || "support",
-          source: location?.state?.source || "directory",
-        });
+                // Resolve the peer (target) so we can use the correct role + name
+                let targetDoc = null;
+                if (to && to !== "support") {
+                  try {
+                    targetDoc = await getUserDoc(to);
+                  } catch {}
+                }
 
-        setSelectedConv(conv);
+                const resolvedTargetRole = targetDoc ? resolveUserRole(targetDoc) : null;
 
-        // Load peer
-        const participants = Array.isArray(conv?.participants) ? conv.participants : [];
-        const otherId = participants.find((x) => x && x !== me.uid) || "support";
+                const conv = await ensureConversation({
+                  meId: me.uid,
+                  meDoc,
+                  targetId: to || "support",
+                  // Prefer the actual peer role from their user doc; fall back to query param; last resort: support
+                  targetRole: normalizeRole(resolvedTargetRole || toRole || (to ? "user" : "support")),
+                  source: location?.state?.source || "directory",
+                });
 
-        if (otherId === "support") {
-          const support = { id: "support", full_name: "Support" };
-          setPeerDoc(support);
-          safeSetPeerCache("support", support);
-        } else {
-          const udoc = await getUserDoc(otherId);
-          if (udoc) {
-            setPeerDoc(udoc);
-            safeSetPeerCache(otherId, udoc);
-          }
-        }
+                setSelectedConv(conv);
+
+                // Load peer for header (use the URL "to" first; conversations created by ensureConversation may not yet have participants populated)
+                const peerId = to && to !== "support" ? to : (Array.isArray(conv?.participants) ? (conv.participants.find((x) => x && x !== me.uid) || "support") : "support");
+
+                if (peerId === "support") {
+                  const support = { id: "support", full_name: tr("messages.support", "Support") };
+                  setPeerDoc(support);
+                  safeSetPeerCache("support", support);
+                } else {
+                  const udoc = targetDoc || (await getUserDoc(peerId));
+                  if (udoc) {
+                    setPeerDoc(udoc);
+                    safeSetPeerCache(peerId, udoc);
+                  }
+                }
+
       } catch (e) {
         console.error("ensure/open conversation error:", e);
 

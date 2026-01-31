@@ -41,7 +41,7 @@ import { createPageUrl } from "@/utils";
 // 🔥 Firebase
 import { auth, db, storage } from "@/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteField } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // 🔧 Firestore entities (for creating the first role record after onboarding)
@@ -438,7 +438,6 @@ const normalizeSchoolKey = (s = "") =>
     .replace(/[^a-z0-9]/g, "")
     .trim();
 
-
 function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
   const finalRole = normalizeRole(role);
 
@@ -628,15 +627,15 @@ export default function Onboarding() {
       // also persist immediately (so refresh won't lose it)
       const userRef = doc(db, "users", uid);
       await updateDoc(userRef, {
-        verification: {
-          status: "pending",
-          submitted_at: serverTimestamp(),
-          role: selectedRole || "",
-          docs: {
-            ...(formData.verification_docs || {}),
-            [key]: url,
-          },
-        },
+        "verification.status": "pending",
+        "verification.submitted_at": serverTimestamp(),
+        "verification.role": selectedRole || "",
+        [`verification.docs.${key}`]: url,
+
+        // compatibility fields used elsewhere
+        verification_status: "pending",
+        verification_rejection_reason: "",
+
         updated_at: serverTimestamp(),
       });
     } catch (e) {
@@ -667,12 +666,14 @@ export default function Onboarding() {
       const current = { ...(formData.verification_docs || {}) };
       delete current[key];
       await updateDoc(userRef, {
-        verification: {
-          status: "pending",
-          submitted_at: serverTimestamp(),
-          role: selectedRole || "",
-          docs: current,
-        },
+        "verification.status": "pending",
+        "verification.submitted_at": serverTimestamp(),
+        "verification.role": selectedRole || "",
+        [`verification.docs.${key}`]: deleteField(),
+
+        verification_status: "pending",
+        verification_rejection_reason: "",
+
         updated_at: serverTimestamp(),
       });
     } catch (e) {
@@ -738,7 +739,6 @@ export default function Onboarding() {
 
       // ✅ if role locked from entry and still at choose_role, bump to BASIC_INFO
       let nextStep = data.onboarding_completed ? STEPS.COMPLETE : data.onboarding_step || STEPS.CHOOSE_ROLE;
-
       const needsRoleSync =
         entryRoleLocked &&
         (data.selected_role !== effectiveRole ||
@@ -910,8 +910,7 @@ export default function Onboarding() {
     if (!auth.currentUser || !selectedRole) return;
     setSaving(true);
     try {
-      const uid = auth.currentUser.uid;
-      const ref = doc(db, "users", uid);
+      const ref = doc(db, "users", auth.currentUser.uid);
 
       const plan = SUBSCRIPTION_PRICING[selectedRole] || SUBSCRIPTION_PRICING.user;
 
@@ -927,6 +926,9 @@ export default function Onboarding() {
           submitted_at: serverTimestamp(),
           docs: formData.verification_docs || {},
         },
+
+        verification_status: "pending",
+        verification_rejection_reason: "",
 
         subscription_active: Boolean(subscriptionActive),
         subscription_status: subscriptionActive ? "active" : skipped ? "skipped" : "none",
@@ -1069,6 +1071,11 @@ export default function Onboarding() {
   const handleRoleSpecificSubmitGoSubscription = async () => {
     if (!auth.currentUser || !selectedRole || !validateRoleSpecificInfo()) return;
 
+    const uid = auth.currentUser.uid;
+    const userRef = doc(db, "users", uid);
+
+    
+
     // ✅ Student flow: requires ID verification, then finishes onboarding (no subscription step)
     if (selectedRole === "user") {
       await finalizeOnboarding({ subscriptionActive: false, skipped: true });
@@ -1076,8 +1083,7 @@ export default function Onboarding() {
     }
     setSaving(true);
     try {
-      const uid = auth.currentUser.uid;
-      const ref = doc(db, "users", uid);
+      const ref = userRef;
 
       const updates = {
         selected_role: selectedRole,
@@ -1293,6 +1299,7 @@ export default function Onboarding() {
     const selectedRoleData = roleOptions.find((r) => r.type === selectedRole) || roleOptions[0];
     return (
       <div className="max-w-md mx-auto">
+
         <div className="text-center mb-8">
           <div className={`${selectedRoleData?.color} text-white p-3 rounded-full mb-4 mx-auto w-fit`}>
             {selectedRoleData?.icon}
@@ -1376,8 +1383,10 @@ export default function Onboarding() {
 
   const renderRoleSpecific = () => {
     const selectedRoleData = roleOptions.find((r) => r.type === selectedRole);
+
     return (
       <div className="max-w-md mx-auto">
+
         <div className="text-center mb-8">
           <div className={`${selectedRoleData?.color} text-white p-3 rounded-full mb-4 mx-auto w-fit`}>
             {selectedRoleData?.icon}
@@ -1877,6 +1886,7 @@ export default function Onboarding() {
 
     return (
       <div className="max-w-md mx-auto">
+
         <div className="text-center mb-6">
           <div className="bg-emerald-600 text-white p-3 rounded-full mb-4 mx-auto w-fit">
             <CreditCard className="w-6 h-6" />
@@ -2008,7 +2018,7 @@ export default function Onboarding() {
           <CardContent className="p-0">
             {currentStep === STEPS.CHOOSE_ROLE && renderChooseRole()}
             {currentStep === STEPS.BASIC_INFO && renderBasicInfo()}
-            {currentStep === STEPS.ROLE_SPECIFIC && selectedRole !== "user" && renderRoleSpecific()}
+            {currentStep === STEPS.ROLE_SPECIFIC && renderRoleSpecific()}
             {currentStep === STEPS.SUBSCRIPTION && selectedRole !== "user" && renderSubscription()}
             {currentStep === STEPS.COMPLETE && renderComplete()}
           </CardContent>
