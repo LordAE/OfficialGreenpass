@@ -1189,11 +1189,6 @@ const [uid, setUid] = useState(null);
                 />
               </div>
 
-              {form.institution_id ? (
-                <p className="text-xs text-gray-500">
-                  {tr("linked_institution_id","Linked institution_id:")} <span className="font-mono">{form.institution_id}</span>
-                </p>
-              ) : null}
             </CardContent>
           </Card>
         )}

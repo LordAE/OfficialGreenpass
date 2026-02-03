@@ -955,13 +955,6 @@ alert("Profile saved to both collections successfully!");
             </CardContent>
           </Card>
 
-          {formData.institution_id ? (
-            <p className="text-sm text-gray-500">
-              Linked institution:{" "}
-              <span className="font-mono">{formData.institution_id}</span>
-            </p>
-          ) : null}
-
           {/* Save Button */}
           <div className="flex justify-end">
             <Button
