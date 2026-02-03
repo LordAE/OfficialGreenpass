@@ -5,7 +5,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { School, Reservation, User } from "@/api/entities";
+import { School, User } from "@/api/entities";
 import {
   Building2,
   Users,
@@ -33,9 +33,10 @@ import CreateEventDialog from "@/components/events/CreateEventDialog";
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 
 // ✅ Firebase
-import { db, storage } from "@/firebase";
+import { auth, db, storage } from "@/firebase";
 import {
   collection,
+  getDocs,
   addDoc,
   doc,
   serverTimestamp,
@@ -48,7 +49,8 @@ import {
   updateDoc,
   runTransaction,
   Timestamp,
-  increment
+  increment,
+  getCountFromServer
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useTr } from "@/i18n/useTr";
@@ -423,10 +425,6 @@ export default function SchoolDashboard({ user }) {
 
   const [stats, setStats] = useState({
     totalPrograms: 0,
-    totalLeads: 0,
-    confirmedReservations: 0,
-    totalRevenue: 0,
-    availableSeats: 0,
   });
 
   const [school, setSchool] = useState(null);
@@ -491,56 +489,26 @@ useEffect(() => {
         const s = schoolRows[0];
         if (cancelled) return;
         setSchool(s);
-
-        const programs = Array.isArray(s.programs) ? s.programs : [];
-        const availableSeats = programs.reduce(
-          (sum, p) => sum + (p.available_seats ?? p.open_seats ?? 0),
-          0
-        );
-
-        let reservations = [];
+        // ✅ Programs count (Option A): program docs are in "schools" and owned by the logged-in user's UID
+        let programCount = 0;
         try {
-          reservations = await Reservation.filter({ school_id: s.id });
-        } catch (e) {
-          console.error("Reservations read error:", e);
-          setPermError(true);
-          reservations = [];
-        }
-
-        const sorted = [...reservations].sort((a, b) => {
-          const da = toValidDate(a.created_at || a.created_date)?.getTime() || 0;
-          const db = toValidDate(b.created_at || b.created_date)?.getTime() || 0;
-          return db - da;
-        });
-        const recent = sorted.slice(0, 5);
-
-        try {
-          const studentIds = [...new Set(recent.map((r) => r.student_id).filter(Boolean))];
-          if (studentIds.length) {
-            const users = await User.filter({ id: { $in: studentIds } });
-            const map = Object.fromEntries(users.map((u) => [u.id, u]));
-            recent.forEach((r) => {
-              r.student = map[r.student_id];
-            });
+          const uid = auth.currentUser?.uid || userId;
+          if (uid) {
+            const agg = await getCountFromServer(
+              query(collection(db, "schools"), where("user_id", "==", uid))
+            );
+            programCount = agg?.data()?.count ?? 0;
           }
         } catch (e) {
-          console.warn("User lookup skipped:", e);
+          console.warn("Programs count query (schools.user_id) failed:", e);
         }
 
-        const confirmed = reservations.filter((r) => r.status === "confirmed");
         if (cancelled) return;
 
         setStats({
-          totalPrograms: programs.length,
-          totalLeads: reservations.length,
-          confirmedReservations: confirmed.length,
-          totalRevenue: confirmed.reduce(
-            (sum, r) => sum + (Number(r.amount_usd ?? r.amount) || 0),
-            0
-          ),
-          availableSeats,
+          totalPrograms: programCount,
         });
-      } catch (e) {
+} catch (e) {
         console.error("Error loading dashboard data:", e);
         if (e?.code === "permission-denied") setPermError(true);
       } finally {
@@ -1044,13 +1012,7 @@ const firstName = useMemo(() => {
                       <div className="text-xs text-gray-500">Programs</div>
                       <div className="text-lg font-bold text-blue-600">{stats.totalPrograms}</div>
                     </div>
-                    <div className="rounded-2xl border bg-gray-50 p-3">
-                      <div className="text-xs text-gray-500">{tr("reservations")}</div>
-                      <div className="text-lg font-bold text-purple-600">
-                        {stats.confirmedReservations}
-                      </div>
-                    </div>
-                  </div>
+</div>
                 </div>
 
               </div>

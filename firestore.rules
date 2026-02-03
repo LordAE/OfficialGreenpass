@@ -87,6 +87,14 @@ service cloud.firestore {
       );
     }
 
+
+    function ownsInstitutionId(iid) {
+      return signedIn() && (
+        (exists(/databases/$(database)/documents/institutions/$(iid)) &&
+         get(/databases/$(database)/documents/institutions/$(iid)).data.user_id == request.auth.uid)
+      );
+    }
+
     // NEW: student whose assigned_agent_id points at this agent's user_id
     function isStudentOfAgent(agentRes) {
       return signedIn() &&
@@ -144,26 +152,73 @@ service cloud.firestore {
 
     // ---------- PROGRAM HELPERS ----------
     function validProgramCreate() {
+      // Support legacy fields (schoolId/programTitle/programLevel) and new fields
+      // (institution_id|institutionId, program_title, program_level)
       return signedIn()
-        && (request.resource.data.schoolId is string)
-        && (request.resource.data.programTitle is string)
-        && (request.resource.data.programLevel is string)
-        && (isAdmin() || ownsSchoolId(request.resource.data.schoolId));
+        && (
+          // legacy (school-based)
+          (
+            (request.resource.data.schoolId is string) &&
+            (request.resource.data.programTitle is string) &&
+            (request.resource.data.programLevel is string) &&
+            (isAdmin() || ownsSchoolId(request.resource.data.schoolId))
+          )
+          ||
+          // new (institution-based)
+          (
+            (
+              (request.resource.data.institution_id is string) ||
+              (request.resource.data.institutionId is string)
+            ) &&
+            (request.resource.data.program_title is string) &&
+            (request.resource.data.program_level is string) &&
+            (
+              isAdmin() ||
+              ownsInstitutionId(
+                request.resource.data.institution_id != null ? request.resource.data.institution_id : request.resource.data.institutionId
+              )
+            )
+          )
+        );
     }
 
     function validProgramUpdate() {
       return signedIn()
-        && (isAdmin() ||
+        && (
+          isAdmin()
+          ||
+          // legacy (school-based)
+          (
+            ((resource.data.schoolId is string) || (resource.data.school_id is string)) &&
             (
-              ((resource.data.schoolId is string) || (resource.data.school_id is string)) &&
-              (
-                request.resource.data.schoolId == null ||
-                request.resource.data.schoolId == (
-                  resource.data.schoolId != null ? resource.data.schoolId : resource.data.school_id
-                )
-              ) &&
-              ownsSchoolId(resource.data.schoolId != null ? resource.data.schoolId : resource.data.school_id)
-            )
+              request.resource.data.schoolId == null ||
+              request.resource.data.schoolId == (
+                resource.data.schoolId != null ? resource.data.schoolId : resource.data.school_id
+              )
+            ) &&
+            ownsSchoolId(resource.data.schoolId != null ? resource.data.schoolId : resource.data.school_id)
+          )
+          ||
+          // new (institution-based)
+          (
+            (
+              (resource.data.institution_id is string) ||
+              (resource.data.institutionId is string)
+            ) &&
+            (
+              request.resource.data.institution_id == null ||
+              request.resource.data.institution_id == (
+                resource.data.institution_id != null ? resource.data.institution_id : resource.data.institutionId
+              )
+            ) &&
+            (
+              request.resource.data.institutionId == null ||
+              request.resource.data.institutionId == (
+                resource.data.institution_id != null ? resource.data.institution_id : resource.data.institutionId
+              )
+            ) &&
+            ownsInstitutionId(resource.data.institution_id != null ? resource.data.institution_id : resource.data.institutionId)
+          )
         );
     }
 
@@ -862,26 +917,40 @@ service cloud.firestore {
     match /schools/{docId} {
       allow read: if true;
 
+      // PROGRAM DOCS inside `schools`
+      // - school_id = institutions/{institutionUid}
+      // - user_id   = auth.uid
+      // - optional: record_type = "program"
       allow create: if signedIn() && (
         isAdmin() ||
-        (request.resource.data.user_id == request.auth.uid &&
-         request.resource.data.school_id is string &&
-         ownsSchoolId(request.resource.data.school_id))
+
+        (
+          request.resource.data.user_id == request.auth.uid &&
+          request.resource.data.school_id is string &&
+          ownsInstitutionId(request.resource.data.school_id)
+        )
       );
 
       allow update: if signedIn() && (
         isAdmin() ||
+
         (
           resource.data.user_id == request.auth.uid &&
           resource.data.school_id is string &&
-          (request.resource.data.school_id == null || request.resource.data.school_id == resource.data.school_id) &&
-          ownsSchoolId(resource.data.school_id)
+          ownsInstitutionId(resource.data.school_id) &&
+          // prevent changing the school_id to something else
+          (request.resource.data.school_id == null || request.resource.data.school_id == resource.data.school_id)
         )
       );
 
       allow delete: if signedIn() && (
         isAdmin() ||
-        (resource.data.user_id == request.auth.uid && ownsSchoolId(resource.data.school_id))
+
+        (
+          resource.data.user_id == request.auth.uid &&
+          resource.data.school_id is string &&
+          ownsInstitutionId(resource.data.school_id)
+        )
       );
     }
 

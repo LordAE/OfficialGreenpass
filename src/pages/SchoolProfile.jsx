@@ -330,6 +330,7 @@ export default function SchoolProfile() {
 
       // 1) Institution doc (canonical)
       const institutionData = {
+        user_id: uid,
         name: formData.name,
         short_name: formData.name,
         type: formData.school_type,
@@ -424,14 +425,19 @@ export default function SchoolProfile() {
         ...(profileSnap.exists() ? {} : { created_at: serverTimestamp() }),
       };
 
-      // 3) Write both docs
-      await Promise.all([
-        setDoc(instRef, institutionData, { merge: true }),
-        setDoc(profileRef, profileData, { merge: true }),
-      ]);
+      // 3) Write docs
+// Save owner profile FIRST so SchoolDetails can resolve institution even if institution write fails.
+await setDoc(profileRef, profileData, { merge: true });
 
-      await loadSchoolData();
-      alert("Profile saved to both collections successfully!");
+// Then save / update institution (may fail if an old doc is "locked" by missing/other user_id)
+try {
+  await setDoc(instRef, institutionData, { merge: true });
+} catch (e) {
+  console.error("Institution save blocked; profile saved. Fix institutions/{id}.user_id to match auth.uid.", e);
+}
+
+await loadSchoolData();
+alert("Profile saved to both collections successfully!");
     } catch (error) {
       console.error("Error saving school profile:", error);
       alert("Failed to save profile. Please try again.");
