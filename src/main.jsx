@@ -9,8 +9,12 @@ import { initLangOnBoot } from "@/lib/lang";
 
 initLangOnBoot();
 
+// ✅ Make React Router respect the Vite base path (e.g. /app/)
+// Vite exposes this as import.meta.env.BASE_URL which matches `base` from vite.config.js
+const basename = import.meta.env.BASE_URL || "/";
+
 createRoot(document.getElementById("root")).render(
-  <BrowserRouter>
+  <BrowserRouter basename={basename}>
     <App />
   </BrowserRouter>
 );
