@@ -1871,9 +1871,9 @@ export default function Layout() {
     try {
       await signOut(auth);
       setCurrentUser(null);
-      navigate(createPageUrl("welcome"));
+      window.location.href = getMarketingUrl();
     } catch {}
-  }, [navigate]);
+  }, []);
 
   const getLogoUrl = React.useCallback(
     () =>
