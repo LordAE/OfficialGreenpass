@@ -814,6 +814,10 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                     <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
                   <div className="flex-1 flex justify-center">
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+
+                  <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
                   <div className="flex-1 flex justify-center">
@@ -946,6 +950,10 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
+                  <div className="flex-1 flex justify-center">
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
@@ -1081,6 +1089,10 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                     <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
                   <div className="flex-1 flex justify-center">
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+
+                  <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
                   <div className="flex-1 flex justify-center">
@@ -1211,6 +1223,10 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
+                  <div className="flex-1 flex justify-center">
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
                   </div>
