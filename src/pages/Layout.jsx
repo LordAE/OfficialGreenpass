@@ -1228,9 +1228,6 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                   </div>
 
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
-                  </div>
-                  <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
                 </div>
