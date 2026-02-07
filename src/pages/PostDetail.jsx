@@ -379,7 +379,7 @@ export default function PostDetail() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
           <Link
-            to={createPageUrl("Blog")}
+            to={createPageUrl("Dashboard")}
             className="text-sm font-medium text-green-600 hover:text-green-800 flex items-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
