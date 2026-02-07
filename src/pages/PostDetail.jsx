@@ -358,10 +358,10 @@ export default function PostDetail() {
         <p className="text-gray-600 mb-6">
           {error || "The requested blog post could not be found."}
         </p>
-        <Link to={createPageUrl("Blog")}>
+        <Link to={createPageUrl("Dashboard")}>
           <Button variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Blog
+            Back to Dashboard
           </Button>
         </Link>
       </div>
