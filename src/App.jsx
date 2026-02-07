@@ -51,7 +51,7 @@ import StudyUnitedStates from "@/pages/countries/StudyUnitedStates";
 import Messages from "@/pages/Messages";
 import AdminSubscription from "./pages/AdminSubscription";
 import EventDetailsPage from "./pages/EventDetails";
-import AuthCallback from "@/pages/AuthCallBack";
+
 
 // --- Safe import of createPageUrl (with fallback if not exported) ---
 import * as Utils from "@/utils";
@@ -76,7 +76,6 @@ export default function App() {
         <Route index element={<Welcome />} />
         <Route path="welcome" element={<Welcome />} />
         <Route path="messages" element={<Messages />} />
-        <Route path="auth/callback" element={<AuthCallback />} />
 
         {/* Public site */}
         <Route path="directory" element={<Directory />} />
