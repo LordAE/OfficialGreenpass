@@ -3,6 +3,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   MoreHorizontal,
   Globe,
   UserPlus,
@@ -25,7 +32,9 @@ import { useTr } from "@/i18n/useTr";
 import { db, auth } from "@/firebase";
 import {
   collection,
+  addDoc,
   doc,
+  getDoc,
   onSnapshot,
   query,
   where,
@@ -64,6 +73,13 @@ const timeAgo = (dt) => {
   if (mo < 12) return `${mo}mo`;
   const y = Math.floor(days / 365);
   return `${y}y`;
+};
+
+// 🌍 Country helpers (same as Onboarding)
+const flagUrlFromCode = (code) => {
+  const cc = (code || "").toString().trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) return "";
+  return `https://flagcdn.com/w20/${cc}.png`;
 };
 
 const Avatar = ({ name = "User", role = "user" }) => {
@@ -197,8 +213,58 @@ const MediaGallery = ({ media = [], tr }) => {
 };
 
 /* -------------------- Post Card UI (NO like/comment/share) -------------------- */
-function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage, tr }) {
+function FeedPostCard({
+  post,
+  isFollowing,
+  onToggleFollow,
+  onMessage,
+  tr,
+  currentUserId,
+  authorCountryByUid,
+}) {
   const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
+
+  const authorCountry = authorCountryByUid?.[post.authorId] || null;
+  const authorFlagUrl = flagUrlFromCode(authorCountry?.country_code);
+
+  const postLink = useMemo(() => {
+    const base = typeof window !== "undefined" ? window.location.origin : "";
+    const path = createPageUrl("PostDetail") || "/postdetail";
+    return `${base}${path}?id=${encodeURIComponent(post?.id || "")}`;
+  }, [post?.id]);
+
+  const copyShareLink = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(postLink);
+      } else {
+        const el = document.createElement("textarea");
+        el.value = postLink;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const reportPost = async () => {
+    if (!currentUserId || !post?.id) return;
+    try {
+      await addDoc(collection(db, "reports"), {
+        type: "post",
+        postId: post.id,
+        postAuthorId: post.authorId || null,
+        reporterId: currentUserId,
+        createdAt: serverTimestamp(),
+        status: "pending",
+      });
+    } catch {
+      // ignore
+    }
+  };
 
   return (
     <Card className="overflow-hidden rounded-2xl">
@@ -223,8 +289,24 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage, tr }) {
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
                 <span>{post.timeAgo}</span>
                 <span>•</span>
-                <Globe className="h-3.5 w-3.5" />
-                <span>{tr("public", "Public")}</span>
+                {authorCountry?.country ? (
+                  <>
+                    {authorFlagUrl ? (
+                      <img
+                        src={authorFlagUrl}
+                        alt={authorCountry.country}
+                        className="h-3.5 w-[18px] rounded-sm border object-cover"
+                        loading="lazy"
+                      />
+                    ) : null}
+                    <span className="truncate max-w-[170px]">{authorCountry.country}</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe className="h-3.5 w-3.5" />
+                    <span>{tr("public", "Public")}</span>
+                  </>
+                )}
               </div>
 
               {post.tags?.length ? (
@@ -237,9 +319,19 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage, tr }) {
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-            <MoreHorizontal className="h-5 w-5" />
-          </Button>
+          {/* Students can't edit/delete posts, but can share/report */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-gray-500" type="button">
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={copyShareLink}>{tr("share_link", "Share link")}</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={reportPost}>{tr("report", "Report")}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Body */}
@@ -315,6 +407,9 @@ export default function StudentDashboard() {
   const [posts, setPosts] = useState([]);
   const [following, setFollowing] = useState(() => new Set());
 
+  // ✅ Cache author country selected during onboarding (users/{uid}.country + country_code)
+  const [authorCountryByUid, setAuthorCountryByUid] = useState({});
+
   // ✅ Live following set
   useEffect(() => {
     if (!myUid) return;
@@ -364,6 +459,36 @@ export default function StudentDashboard() {
         });
 
         setPosts(list);
+
+        // Fire-and-forget: load country info for post authors
+        (async () => {
+          try {
+            const uniqueUids = Array.from(
+              new Set(list.map((p) => p.authorId).filter(Boolean))
+            );
+            const missing = uniqueUids.filter((uid) => !authorCountryByUid[uid]);
+            if (!missing.length) return;
+
+            const next = { ...authorCountryByUid };
+            await Promise.all(
+              missing.map(async (uid) => {
+                try {
+                  const snapUser = await getDoc(doc(db, "users", uid));
+                  const ud = snapUser.exists() ? snapUser.data() : null;
+                  const country = ud?.country || ud?.country_name || "";
+                  const country_code = ud?.country_code || ud?.countryCode || ud?.countryISO || "";
+                  next[uid] = { country, country_code };
+                } catch {
+                  next[uid] = { country: "", country_code: "" };
+                }
+              })
+            );
+            setAuthorCountryByUid(next);
+          } catch {
+            // ignore
+          }
+        })();
+
         setLoading(false);
       },
       (err) => {
@@ -544,6 +669,8 @@ export default function StudentDashboard() {
                   onToggleFollow={toggleFollow}
                   onMessage={messageCreator}
                   tr={tr}
+                  currentUserId={myUid}
+                  authorCountryByUid={authorCountryByUid}
                 />
               ))
             )}
