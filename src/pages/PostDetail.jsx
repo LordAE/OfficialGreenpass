@@ -133,7 +133,7 @@ const extractGalleryUrls = (d = {}) => {
       unique.push(u);
     }
   }
-  return unique;
+  return unique.filter((u) => isImageUrl(u));
 };
 
 const firstMediaImage = (d = {}) => {
@@ -143,6 +143,79 @@ const firstMediaImage = (d = {}) => {
   );
   return img?.url || "";
 };
+const isYouTubeUrl = (u = "") => {
+  const s = String(u || "").toLowerCase();
+  return s.includes("youtube.com") || s.includes("youtu.be");
+};
+
+const isVideoUrl = (u = "") => {
+  const s = String(u || "").toLowerCase().split("?")[0].split("#")[0];
+  return (
+    s.endsWith(".mp4") ||
+    s.endsWith(".webm") ||
+    s.endsWith(".mov") ||
+    s.endsWith(".m4v") ||
+    s.endsWith(".ogg") ||
+    s.endsWith(".ogv")
+  );
+};
+
+const isImageUrl = (u = "") => {
+  const s = String(u || "").toLowerCase().split("?")[0].split("#")[0];
+  return (
+    s.endsWith(".jpg") ||
+    s.endsWith(".jpeg") ||
+    s.endsWith(".png") ||
+    s.endsWith(".gif") ||
+    s.endsWith(".webp") ||
+    s.endsWith(".avif") ||
+    s.includes("flagcdn.com/") // allow flags too
+  );
+};
+
+const extractVideoUrls = (d = {}) => {
+  const out = [];
+
+  const add = (u) => {
+    const s = String(u || "").trim();
+    if (!s) return;
+    if (out.includes(s)) return;
+    if (isYouTubeUrl(s) || isVideoUrl(s)) out.push(s);
+  };
+
+  const directCandidates = [
+    d.videoUrl,
+    d.video_url,
+    d.youtube,
+    d.video,
+    d.video_link,
+    d.videos,
+    d.videoUrls,
+    d.video_urls,
+  ];
+  directCandidates.map(toUrlArray).flat().forEach(add);
+
+  const media = Array.isArray(d.media) ? d.media : [];
+  for (const item of media) {
+    const t = String(item?.type || "").toLowerCase();
+    const u = item?.url || item?.src || item?.href || item?.file_url || item?.fileUrl || "";
+    if ((t === "video" || t.includes("video") || isVideoUrl(u) || isYouTubeUrl(u)) && u) add(u);
+  }
+
+  const att = d.attachments || {};
+  const attVid = pickFirst(att.video, att.videos, att.videoUrl, att.video_url, "");
+  toUrlArray(attVid).forEach(add);
+
+  for (const [k, v] of Object.entries(d)) {
+    if (/^video[_\-]?\d+/i.test(k)) {
+      if (typeof v === "string") add(v);
+      else toUrlArray(v).forEach(add);
+    }
+  }
+
+  return out;
+};
+
 
 const makeTitleFromText = (text) => {
   const s = String(text || "").trim();
@@ -188,7 +261,8 @@ const mapDocToPost = (docSnap) => {
     author,
     authorRole: pickFirst(d.authorRole, d.role, ""),
     readTime: pickFirst(d.readTime, d.read_time, ""),
-    videoUrl: pickFirst(d.videoUrl, d.youtube, ""),
+    videoUrl: pickFirst(d.videoUrl, d.video_url, d.youtube, extractVideoUrls(d)[0] || "", ""),
+    videoUrls: extractVideoUrls(d),
     content: pickFirst(d.content, d.body, d.html, d.text, ""),
     text, // keep original
     created_at: d.created_at,
@@ -363,7 +437,8 @@ export default function PostDetail() {
                 excerpt: pickFirst(match.excerpt, match.summary, ""),
                 author: pickFirst(match.author, match.author_name, "—"),
                 readTime: pickFirst(match.readTime, match.read_time, ""),
-                videoUrl: pickFirst(match.videoUrl, match.youtube, ""),
+                videoUrl: pickFirst(d.videoUrl, d.video_url, d.youtube, extractVideoUrls(d)[0] || "", ""),
+    videoUrls: extractVideoUrls(d),
                 content: pickFirst(match.content, match.body, match.html, match.text, ""),
                 text: pickFirst(match.text, ""),
                 created_date: pickFirst(match.created_date, match.createdAt, match.created_at),
@@ -547,12 +622,38 @@ export default function PostDetail() {
           </CardHeader>
 
           <CardContent className="space-y-4">
-            {/* Video */}
-            {post?.videoUrl ? (
-              <div className="rounded-2xl overflow-hidden border border-gray-100 bg-white">
-                <YouTubeEmbed url={post.videoUrl} />
-              </div>
-            ) : null}
+            {/* Videos */}
+            {(() => {
+              const vids =
+                Array.isArray(post?.videoUrls) && post.videoUrls.length
+                  ? post.videoUrls
+                  : post?.videoUrl
+                  ? [post.videoUrl]
+                  : [];
+              if (!vids.length) return null;
+
+              return (
+                <div className="space-y-3">
+                  {vids.map((u, i) => (
+                    <div
+                      key={`${u}-${i}`}
+                      className="rounded-2xl overflow-hidden border border-gray-100 bg-white"
+                    >
+                      {isYouTubeUrl(u) ? (
+                        <YouTubeEmbed url={u} />
+                      ) : (
+                        <video
+                          src={u}
+                          controls
+                          playsInline
+                          className="w-full max-h-[520px] bg-black"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Main content */}
             {post?.text || post?.content ? (

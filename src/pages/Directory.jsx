@@ -759,49 +759,34 @@ const [page, setPage] = useState(1);
     return () => unsub();
   }, [detectRoleFromUserDoc]);
 
-  // ✅ Users directory should ONLY be visible to admin
-  const isAdmin = useMemo(() => {
-    const role = normalizeRole(currentUserRole);
-    if (role === "admin") return true;
-    // support admin flags if role field isn't set
-    return currentUserDoc?.is_admin === true || currentUserDoc?.admin === true;
-  }, [currentUserRole, currentUserDoc, normalizeRole]);
 
   // ✅ tabs visible:
-  // - Always show School
-  // - Hide the same role tab when logged in
-  // - Hide User tab for everyone except admin
+  // - If NOT logged in: show everything
+  // - If logged in: hide the tab that matches your own role
+  //   (school won't see School tab, agent won't see Agent tab, etc.)
+  // - Admin can see everything
   const visibleTabs = useMemo(() => {
     const role = normalizeRole(currentUserRole);
-    return BROWSE_TABS.filter((t) => {
-      if (t.key === "school") return true;
-      if (t.key === "user") return isAdmin;
-      if (!role) return true;
-      return t.key !== role;
-    });
-  }, [currentUserRole, normalizeRole, isAdmin]);
+    if (!role) return BROWSE_TABS;
+    if (role === "admin") return BROWSE_TABS;
+    return BROWSE_TABS.filter((t) => t.key !== role);
+  }, [currentUserRole, normalizeRole, BROWSE_TABS]);
 
-  // ✅ if user is currently on a hidden tab, move them to school
+  // ✅ if current tab is hidden (ex: same-role tab), switch to the first visible tab
   useEffect(() => {
     const role = normalizeRole(currentUserRole);
+    if (!role) return;
 
-    // same-role tab hidden when logged in
-    if (role && browseTab === role) {
-      setBrowseTab("school");
-      setSelectedCountry("all");
-      setSearchTerm("");
-      setSelectedCity("all");
-      return;
-    }
+    const keys = (visibleTabs || []).map((t) => t.key);
+    if (keys.length === 0) return;
 
-    // users tab is admin-only (also hidden for non-logged-in)
-    if (browseTab === "user" && !isAdmin) {
-      setBrowseTab("school");
+    if (!keys.includes(browseTab)) {
+      setBrowseTab(keys[0]);
       setSelectedCountry("all");
       setSearchTerm("");
       setSelectedCity("all");
     }
-  }, [browseTab, currentUserRole, normalizeRole, isAdmin]);
+  }, [browseTab, currentUserRole, normalizeRole, visibleTabs]);
 
   useEffect(() => {
     const p = parseInt(searchParams.get("page") || "1", 10);
@@ -899,12 +884,8 @@ const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (browseTab === "school") return;
-
-    // ✅ HARD GATE: the "user" directory is admin-only
-    if (browseTab === "user" && !isAdmin) return;
-
     fetchUsersForRole(browseTab);
-  }, [browseTab, fetchUsersForRole, isAdmin]);
+  }, [browseTab, fetchUsersForRole]);
 
   /* -----------------------------
      Programs grouped by institution id (school_id)

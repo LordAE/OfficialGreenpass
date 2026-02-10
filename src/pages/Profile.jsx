@@ -13,6 +13,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 
 import { UploadFile } from "@/api/integrations";
 
@@ -25,6 +34,8 @@ import {
   BookOpen,
   Building,
   Store,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
 
 import { auth, db, storage } from "@/firebase";
@@ -44,6 +55,196 @@ const normalizeRole = (r) => {
 const csvToArray = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
 const arrayToCSV = (v) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
 
+
+const LANGUAGE_OPTIONS = [
+  { value: "en", label: "English" },
+  { value: "vi", label: "Tiếng Việt" },
+  { value: "tl", label: "Tagalog" },
+  { value: "ceb", label: "Cebuano" },
+  { value: "zh", label: "中文" },
+  { value: "es", label: "Español" },
+  { value: "fr", label: "Français" },
+  { value: "ar", label: "العربية" },
+];
+
+// 🌍 Country helpers (same behavior as Onboarding.jsx)
+const flagUrlFromCode = (code) => {
+  const cc = (code || "").toString().trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) return "";
+  return `https://flagcdn.com/w20/${cc}.png`;
+};
+
+const getAllCountriesIntl = () => {
+  try {
+    if (typeof Intl === "undefined") return [];
+    if (!Intl.supportedValuesOf) return [];
+
+    const codes = Intl.supportedValuesOf("region") || [];
+    const dn = Intl.DisplayNames ? new Intl.DisplayNames(["en"], { type: "region" }) : null;
+
+    return codes
+      .filter((code) => /^[A-Z]{2}$/.test(code))
+      .map((code) => ({
+        code,
+        name: dn?.of(code) || code,
+        flagUrl: flagUrlFromCode(code),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+};
+
+async function getAllCountriesFallback() {
+  const res = await fetch("https://restcountries.com/v3.1/all?fields=name,cca2");
+  const json = await res.json();
+
+  return (json || [])
+    .filter((x) => x?.cca2 && /^[A-Z]{2}$/.test(x.cca2))
+    .map((x) => ({
+      code: x.cca2,
+      name: x?.name?.common || x.cca2,
+      flagUrl: flagUrlFromCode(x.cca2),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function CountrySelect({ valueCode, valueName, onChange }) {
+  const tr0 = useTr();
+  const tr = React.useCallback((key, fallback) => {
+    if (typeof tr0 === "function") return tr0(key, fallback);
+    if (tr0 && typeof tr0.tr === "function") return tr0.tr(key, fallback);
+    if (tr0 && typeof tr0.t === "function") return tr0.t(key, fallback);
+    return fallback ?? key;
+  }, [tr0]);
+
+  const [open, setOpen] = React.useState(false);
+  const [countries, setCountries] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const intlList = getAllCountriesIntl();
+        if (alive && intlList.length) {
+          setCountries(intlList);
+          return;
+        }
+
+        const apiList = await getAllCountriesFallback();
+        if (alive) setCountries(apiList);
+      } catch (e) {
+        console.error("Country list load failed:", e);
+        if (alive) setCountries([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const selected = React.useMemo(() => {
+    const byCode = valueCode && countries.find((c) => c.code === valueCode.toUpperCase());
+    if (byCode) return byCode;
+
+    const n = (valueName || "").trim().toLowerCase();
+    if (!n) return null;
+
+    return (
+      countries.find((c) => c.name.toLowerCase() === n) ||
+      countries.find((c) => c.name.toLowerCase().startsWith(n)) ||
+      null
+    );
+  }, [countries, valueCode, valueName]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className="w-full justify-between mt-1">
+          <span className="flex items-center gap-2 truncate">
+            {selected ? (
+              <>
+                {selected.flagUrl ? (
+                  <img
+                    src={selected.flagUrl}
+                    alt={`${selected.name} flag`}
+                    width={20}
+                    height={15}
+                    className="rounded-[2px] border"
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : null}
+                <span className="truncate">{selected.name}</span>
+              </>
+            ) : (
+              <span className="text-gray-500">
+                {tr("onboarding.placeholders.select_country", "Select your country")}
+              </span>
+            )}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={tr("search_country", "Search country...")} />
+          <CommandList>
+            <CommandEmpty>
+              {loading ? tr("loading", "Loading...") : tr("no_results", "No results.")}
+            </CommandEmpty>
+
+            <CommandGroup heading={tr("country", "Country")}>
+              {(countries || []).map((c) => (
+                <CommandItem
+                  key={c.code}
+                  value={`${c.name} ${c.code}`}
+                  onSelect={() => {
+                    onChange?.({ code: c.code, name: c.name });
+                    setOpen(false);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Check
+                    className={[
+                      "h-4 w-4",
+                      selected?.code === c.code ? "opacity-100" : "opacity-0",
+                    ].join(" ")}
+                  />
+                  {c.flagUrl ? (
+                    <img
+                      src={c.flagUrl}
+                      alt={`${c.name} flag`}
+                      width={20}
+                      height={15}
+                      className="rounded-[2px] border"
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : null}
+                  <span className="flex-1">{c.name}</span>
+                  <span className="text-xs text-gray-500">{c.code}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // 📎 Verification doc helpers (aligned with Onboarding.jsx)
 const safeExt = (name = "") => {
@@ -170,10 +371,14 @@ const detectType = useCallback((url = "") => {
   if (u.match(/\.(png|jpg|jpeg|webp)(\?|$)/) || u.includes("image%2f")) return "image";
   return "file";
 }, []);
-const { tr } = useTr("profile");
-
-  
-  const { subscriptionModeEnabled, loading: subscriptionModeLoading } = useSubscriptionMode();
+const tr0 = useTr("profile");
+  const tr = useCallback((key, fallback) => {
+    if (typeof tr0 === "function") return tr0(key, fallback);
+    if (tr0 && typeof tr0.tr === "function") return tr0.tr(key, fallback);
+    if (tr0 && typeof tr0.t === "function") return tr0.t(key, fallback);
+    return fallback ?? key;
+  }, [tr0]);
+const { subscriptionModeEnabled, loading: subscriptionModeLoading } = useSubscriptionMode();
 const [uid, setUid] = useState(null);
   const [role, setRole] = useState("user");
   const [userDoc, setUserDoc] = useState(null); // raw user document for badges/status
@@ -186,6 +391,15 @@ const [uid, setUid] = useState(null);
   const [uploadingProfilePic, setUploadingProfilePic] = useState(false);
 
   // ✅ ONE unified state = personal + role-specific
+  const initialLang = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('lang') || localStorage.getItem('gp_lang') || 'en';
+    } catch (e) {
+      return 'en';
+    }
+  })();
+
   const [form, setForm] = useState({
     // Personal Information
     full_name: "",
@@ -193,6 +407,7 @@ const [uid, setUid] = useState(null);
     phone: "",
     country: "",
     country_code: "",
+    lang: initialLang,
     profile_picture: "",
     bio: "",
 
@@ -220,6 +435,14 @@ const [uid, setUid] = useState(null);
     service_categories: [],
   });
 
+  // Keep app language in sync (used by your translation layer)
+  useEffect(() => {
+    const v = form?.lang || "en";
+    try { localStorage.setItem("gp_lang", v); } catch {}
+    window.dispatchEvent(new CustomEvent("gp_lang_changed", { detail: v }));
+  }, [form?.lang]);
+
+
   // ✅ Verification state (used for re-upload/resubmission directly in Profile)
   const [verification, setVerification] = useState({
     status: "unverified", // unverified | pending | verified | rejected | denied
@@ -231,6 +454,36 @@ const [uid, setUid] = useState(null);
 
 
   const setField = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // 🌐 Language selection (applies instantly via reload)
+  const handleLanguageChange = useCallback(async (v) => {
+    if (!v) return;
+
+    // Update form state (so the dropdown reflects the selection)
+    setField("lang", v);
+
+    // Persist immediately for the whole app
+    try {
+      localStorage.setItem("gp_lang", v);
+    } catch {}
+
+    // Keep URL query in sync (some pages read lang from ?lang=)
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("lang", v);
+      window.history.replaceState({}, "", url.toString());
+    } catch {}
+
+    // Persist preference to Firestore (best-effort; no need to click Save)
+    try {
+      if (uid) {
+        await updateDoc(doc(db, "users", uid), { lang: v, language: v });
+      }
+    } catch {}
+
+    // Option A: force translations to apply everywhere immediately
+    window.location.reload();
+  }, [uid]);
 
   const isUserStudent = role === "user";
   const showAgent = role === "agent";
@@ -317,6 +570,7 @@ const [uid, setUid] = useState(null);
         phone: u.phone || "",
         country: u.country || "",
         country_code: u.country_code || "",
+        lang: (typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("lang") || localStorage.getItem("gp_lang")) : null) || u.lang || u.language || "en",
         profile_picture: u.profile_picture || "",
         bio: resolvedBio || "",
 
@@ -575,6 +829,8 @@ const [uid, setUid] = useState(null);
         phone: form.phone || "",
         country: form.country || "",
         country_code: form.country_code || "",
+        lang: form.lang || "en",
+        language: form.lang || "en",
         profile_picture: form.profile_picture || "",
         bio: form.bio || "",
 
@@ -637,6 +893,8 @@ const [uid, setUid] = useState(null);
       }
 
       await updateDoc(uref, updates);
+      try { localStorage.setItem("gp_lang", updates.lang || "en"); } catch {}
+      window.dispatchEvent(new CustomEvent("gp_lang_changed", { detail: updates.lang || "en" }));
       alert(tr("alerts.saved","Saved! All changes were updated."));
       await loadProfile(uid);
     } catch (e) {
@@ -694,7 +952,26 @@ const [uid, setUid] = useState(null);
 
         <Card>
           <CardHeader>
-            <CardTitle>{tr("personal_information","Personal Information")}</CardTitle>
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle>{tr("personal_information","Personal Information")}</CardTitle>
+
+              {/* Language selection (at the top) */}
+              <div className="min-w-[220px]">
+                <Label className="text-xs text-gray-600">{tr("language","Language")}</Label>
+                <Select value={form.lang || "en"} onValueChange={handleLanguageChange}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder={tr("language_select","Select language")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANGUAGE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardHeader>
 
           <CardContent className="space-y-6">
@@ -770,10 +1047,13 @@ const [uid, setUid] = useState(null);
 
               <div>
                 <Label>{tr("country","Country *")}</Label>
-                <Input
-                  value={form.country}
-                  onChange={(e) => setField("country", e.target.value)}
-                  className="mt-1"
+                <CountrySelect
+                  valueCode={form.country_code}
+                  valueName={form.country}
+                  onChange={({ code, name }) => {
+                    setField("country", name || "");
+                    setField("country_code", (code || "").toUpperCase());
+                  }}
                 />
               </div>
             </div>

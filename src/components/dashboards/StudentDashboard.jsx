@@ -694,24 +694,6 @@ export default function StudentDashboard() {
                   </div>
                   <Badge className="bg-zinc-900 text-white">{tr("all_posts", "All Posts")}</Badge>
                 </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Badge variant="secondary" className="border bg-white">
-                    {tr("trending", "Trending")}
-                  </Badge>
-                  <Badge variant="secondary" className="border bg-white">
-                    {tr("latest", "Latest")}
-                  </Badge>
-                  <Badge variant="secondary" className="border bg-white">
-                    {tr("scholarships", "Scholarships")}
-                  </Badge>
-                  <Badge variant="secondary" className="border bg-white">
-                    {tr("ielts", "IELTS")}
-                  </Badge>
-                  <Badge variant="secondary" className="border bg-white">
-                    {tr("admissions", "Admissions")}
-                  </Badge>
-                </div>
               </CardContent>
             </Card>
 

@@ -114,7 +114,6 @@ const FALLBACK_TEXT = {
   logOut: "Log Out",
   profileSettings: "Profile Settings",
   more: "More",
-  backToWebsite: "Back to website",
 };
 
 const fb = (key) => FALLBACK_TEXT[key] || key;
@@ -177,28 +176,6 @@ const iconByPlatform = (platform = "") => {
   const p = platform.toLowerCase().trim();
   if (p === "tiktok" || p === "tik tok") return <TikTokIcon className="h-5 w-5" />;
   return <Globe className="h-5 w-5" />;
-};
-
-/* =========================
-   External link button (Website)
-========================= */
-const WebsiteIconButton = ({ className = "" }) => {
-  const tr = useNavTr();
-  return (
-    <a
-    href={getMarketingUrl()}
-    target="_blank"
-    rel="noopener noreferrer"
-    className={cn(
-      "w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition",
-      className
-    )}
-    aria-label={tr("backToWebsite", "Back to Website")}
-    title={tr("backToWebsite", "Back to Website")}
-  >
-    <Globe className="h-6 w-6" />
-  </a>
-  );
 };
 
 /* =========================
@@ -488,18 +465,7 @@ const MobileBottomNav = ({ nav, isActive }) => {
               <div className="px-3 pb-6 max-h-[65vh] overflow-y-auto">
                 <div className="space-y-1">
                   {/* ✅ Website link first */}
-                  <a
-                    href={getMarketingUrl()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-gray-50 text-gray-800"
-                  >
-                    <Globe className="h-5 w-5 text-gray-600" />
-                    <span className="text-sm font-medium">{tr("backToWebsite", "Back to Website")}</span>
-                    <ChevronRight className="ml-auto h-4 w-4 text-gray-400" />
-                  </a>
-
-                  {more.map((it) => (
+{more.map((it) => (
                     <SheetItem key={it.url} to={it.url} Icon={it.icon} label={it.title} />
                   ))}
                 </div>
@@ -643,8 +609,6 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <WebsiteIconButton />
-
               <Link
                 to={createPageUrl("Directory")}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
@@ -832,8 +796,6 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <WebsiteIconButton />
-
               <button
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
@@ -969,8 +931,6 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <WebsiteIconButton />
-
               <button
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
@@ -1104,8 +1064,6 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <WebsiteIconButton />
-
               <button
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
@@ -1236,8 +1194,6 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <WebsiteIconButton />
-
               <button
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
@@ -1409,8 +1365,6 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 
             {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
-              <WebsiteIconButton />
-
               <button
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
@@ -1465,16 +1419,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
                 </div>
 
                 <div className="mt-3 h-px bg-gray-100" />
-                <a
-                  href={getMarketingUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 flex items-center gap-3 rounded-xl px-3 py-2 text-gray-700 hover:bg-gray-100"
-                >
-                  <Globe className="h-5 w-5 text-gray-600" />
-                  <span className="text-sm font-medium">{tr("backToWebsite", "Back to Website")}</span>
-                </a>
-              </div>
+</div>
             </div>
           </div>
         </aside>
@@ -1519,10 +1464,7 @@ const Footer = ({ getCompanyName }) => {
       column_title: "Legal",
       links: [{ text: "Agent Agreement", url: createPageUrl("AgentAgreement") }],
     },
-    {
-      column_title: "Website",
-      links: [{ text: tr("backToWebsite", "Back to Website"), url: null }],
-    },
+
   ];
 
   return (
@@ -1535,20 +1477,9 @@ const Footer = ({ getCompanyName }) => {
               <ul className="mt-4 space-y-4">
                 {column.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
-                    {column.column_title === "Website" ? (
-                      <a
-                        href={getMarketingUrl()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-base text-gray-300 hover:text-white"
-                      >
-                        {tr("backToWebsite", "Back to Website")}
-                      </a>
-                    ) : (
-                      <Link to={link.url} className="text-base text-gray-300 hover:text-white">
+                    {<Link to={link.url} className="text-base text-gray-300 hover:text-white">
                         {link.text}
-                      </Link>
-                    )}
+                      </Link>}
                   </li>
                 ))}
               </ul>
@@ -1942,7 +1873,7 @@ export default function Layout() {
           getCompanyName={getCompanyName}
           onLogout={handleLogout}
         />
-        <ChatWidget />
+        
       </>
     );
   }
@@ -1956,7 +1887,7 @@ export default function Layout() {
           getCompanyName={getCompanyName}
           onLogout={handleLogout}
         />
-        <ChatWidget />
+        
       </>
     );
   }
@@ -1970,7 +1901,7 @@ export default function Layout() {
           getCompanyName={getCompanyName}
           onLogout={handleLogout}
         />
-        <ChatWidget />
+        
       </>
     );
   }
@@ -1984,7 +1915,7 @@ export default function Layout() {
           getCompanyName={getCompanyName}
           onLogout={handleLogout}
         />
-        <ChatWidget />
+        
       </>
     );
   }
@@ -1998,7 +1929,7 @@ export default function Layout() {
           getCompanyName={getCompanyName}
           onLogout={handleLogout}
         />
-        <ChatWidget />
+        
       </>
     );
   }
@@ -2062,18 +1993,7 @@ export default function Layout() {
                 <LogOut className="w-4 h-4 mr-1" /> {tr("logOut", "Logout")}
               </Button>
             </div>
-
-            <a
-              href={getMarketingUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mb-2 flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
-            >
-              <Globe className="w-5 h-5 text-gray-600" />
-              <span className="text-gray-700">{tr("backToWebsite", "Back to Website")}</span>
-            </a>
-
-            <div className="mb-3">
+<div className="mb-3">
               <div className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-2">
                 <Globe className="w-4 h-4" />
                 {t("common.language", { defaultValue: "Language" })}
@@ -2119,7 +2039,6 @@ export default function Layout() {
               <Link to={createPageUrl("Dashboard")} className="flex items-center gap-2">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 w-auto object-contain" />
               </Link>
-              <WebsiteIconButton className="w-10 h-10" />
             </div>
           </header>
 
@@ -2131,7 +2050,7 @@ export default function Layout() {
         </main>
       </div>
 
-      <ChatWidget />
+      
     </SidebarProvider>
   );
 }

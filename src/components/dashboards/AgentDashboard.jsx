@@ -746,7 +746,7 @@ const authorCountryName = (authorCountry?.country || postCountryName || "").toSt
                 disabled={!authorId || !currentUserId || isMine}
                 title={!authorId ? tr("missing_author_id","Missing author id") : isMine ? tr("cant_message_self","You can\'t message yourself") : tr("message","Message")}
               >
-                <MessageCircle className="h-4 w-4 mr-2" /> Message
+                <MessageCircle className="h-4 w-4 mr-2" /> {tr("message","Message")}
               </Button>
             </Link>
           </div>
@@ -1181,12 +1181,8 @@ useEffect(() => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{tr("welcome","Welcome")}, {firstName}</h1>
-              <p className="text-sm text-gray-600">{tr("subtitle","Newsfeed-style dashboard (agent updates + posts)")}</p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">{stats.commissionRate}% Commission</Badge>
-            </div>
           </div>
 
           {subscriptionModeEnabled && !isSubscribed && (
@@ -1210,20 +1206,6 @@ useEffect(() => {
                     <Shortcut to={createPageUrl("VisaCases")} label={tr("cases","Cases")} icon={<FileText className="h-5 w-5 text-purple-600" />} />
                     <Shortcut to={createPageUrl("AgentLeads")} label={tr("find_leads","Find Leads")} icon={<UserPlus className="h-5 w-5 text-orange-600" />} />
                     <Shortcut to={createPageUrl("Events")} label={tr("events","Events")} icon={<Ticket className="h-5 w-5 text-emerald-600" />} />
-                    <button
-                      type="button"
-                      className="w-full flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-gray-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                      onClick={() => setCreateEventOpen(true)}
-                      disabled={!canCreateEvent}
-                      data-testid="create_event_shortcut_btn"
-                      title={!canCreateEvent ? tr("subscription_required","Subscription required") : tr("create_event","Create Event")}
-                    >
-                      <Ticket className="h-5 w-5 text-emerald-600" />
-                      <div className="text-left">
-                        <div className="text-sm font-medium text-gray-900">{tr("create_event","Create Event")}</div>
-                        <div className="text-xs text-gray-500">{tr("create_event_desc","Publish an upcoming event (Nas.io / Eventbrite)")}</div>
-                      </div>
-                    </button>
                     <Shortcut to={createPageUrl("Directory")} label={tr("directory","Directory")} icon={<Building2 className="h-5 w-5 text-blue-600" />} />
                   </div>
                 </div>
