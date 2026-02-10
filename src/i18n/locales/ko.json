@@ -32,7 +32,54 @@
     "subscription_required": "구독 필요",
     "success_rate": "성공률",
     "this_month": "이번 달",
-    "visa_approvals": "비자 승인"
+    "visa_approvals": "비자 승인",
+    "edit": "편집",
+    "delete": "삭제",
+    "share": "공유",
+    "report": "신고",
+    "save": "저장",
+    "cancel": "취소",
+    "copied": "복사됨!",
+    "edit_post": "게시물 편집",
+    "report_post": "게시물 신고",
+    "confirm_delete_post": "이 게시물을 삭제하시겠습니까?",
+    "delete_failed": "삭제에 실패했습니다. 다시 시도하세요.",
+    "edit_failed": "업데이트에 실패했습니다. 다시 시도하세요.",
+    "report_failed": "신고에 실패했습니다. 다시 시도하세요.",
+    "report_submitted": "감사합니다 — 신고가 제출되었습니다.",
+    "welcome": "환영합니다",
+    "subtitle": "뉴스피드 스타일 대시보드(에이전트 업데이트 + 게시물)",
+    "shortcuts": "바로가기",
+    "my_students": "내 학생",
+    "cases": "케이스",
+    "find_leads": "리드 찾기",
+    "events": "이벤트",
+    "directory": "디렉터리",
+    "highlights": "하이라이트",
+    "students": "학생",
+    "active_cases": "진행 중 케이스",
+    "recent_cases": "최근 케이스",
+    "view": "보기",
+    "contacts": "연락처",
+    "photo_video": "사진/동영상",
+    "composer_placeholder": "학교, 이벤트 또는 에이전시 업데이트를 공유하세요...",
+    "whats_on_your_mind": "무슨 생각을 하고 있나요,",
+    "pending": "대기 중",
+    "block_post_title": "게시가 차단됨",
+    "block_post_msg": "게시하려면 프로필을 완료하거나 구독해야 합니다.",
+    "missing_prefix": "누락:",
+    "missing_field": "필수 항목 누락",
+    "complete_profile_title": "프로필 완료",
+    "complete_profile_desc": "프로필을 완료하여 모든 기능을 잠금 해제하고 신뢰도를 높이세요.",
+    "complete_profile_cta": "지금 완료",
+    "complete": "완료",
+    "field_full_name": "전체 이름",
+    "field_phone": "전화번호",
+    "field_country": "국가",
+    "field_company_name": "회사/에이전시 이름",
+    "field_business_license": "사업자 등록/허가",
+    "field_paypal_email": "PayPal 이메일",
+    "no_cases_yet": "아직 케이스가 없습니다."
   },
   "auth": {
     "confirm_password_placeholder": "비밀번호 확인",
@@ -50,7 +97,72 @@
     "signIn": "로그인",
     "signUp": "회원가입",
     "subtitle": "다시 오신 것을 환영합니다! 대시보드에 로그인하세요.",
-    "title": "당신의 여정은 여기서 시작됩니다"
+    "title": "당신의 여정은 여기서 시작됩니다",
+    "apple_failed_message": "Đăng nhập Apple thất bại.",
+    "apple_failed_title": "Đăng nhập Apple thất bại",
+    "apple_unavailable_message": "Apple Sign-in chưa được bật cho dự án/môi trường này.",
+    "apple_unavailable_title": "Apple Sign-in không khả dụng",
+    "continue_apple": "Tiếp tục với Apple",
+    "continue_google": "Tiếp tục với Google",
+    "create_account": "Tạo tài khoản",
+    "email_already_registered_message": "Email này đã được sử dụng ({{providers}}). Hãy thử đăng nhập.",
+    "email_already_registered_simple": "Email này đã được đăng ký. Hãy thử đăng nhập (Email & mật khẩu, Google hoặc Apple).",
+    "email_already_registered_title": "Email đã được đăng ký",
+    "email_apple_only": "Email này đã đăng ký bằng Apple. Vui lòng dùng “Tiếp tục với Apple”.",
+    "email_check_failed": "Hiện không thể kiểm tra email. Vui lòng thử lại sau.",
+    "email_google_only": "Email này đã đăng ký bằng Google. Vui lòng dùng “Tiếp tục với Google”.",
+    "email_in_use_message": "Email đã được sử dụng.",
+    "email_signin_failed": "Đăng nhập bằng email thất bại.",
+    "forgot_password": "Quên mật khẩu?",
+    "fullname_placeholder": "Họ và tên",
+    "google_failed_message": "Đăng nhập Google thất bại.",
+    "google_failed_title": "Đăng nhập Google thất bại",
+    "have_account": "Đã có tài khoản?",
+    "hide_confirm_password": "Ẩn xác nhận mật khẩu",
+    "hide_password": "Ẩn mật khẩu",
+    "incorrect_password_message": "Mật khẩu bạn nhập không đúng. Vui lòng thử lại.",
+    "incorrect_password_title": "Sai mật khẩu",
+    "invalid_email_message": "Vui lòng nhập địa chỉ email hợp lệ.",
+    "invalid_email_title": "Email không hợp lệ",
+    "missing_name_message": "Vui lòng nhập họ và tên của bạn.",
+    "missing_name_title": "Thiếu họ tên",
+    "no_account": "Chưa có tài khoản?",
+    "no_account_message": "Không tìm thấy tài khoản với email này. Vui lòng tạo tài khoản.",
+    "no_account_title": "Không tìm thấy tài khoản",
+    "or_continue_email": "hoặc tiếp tục bằng email",
+    "password_requirements_label": "Yêu cầu mật khẩu:",
+    "password_requirements_message": "Mật khẩu chưa đáp ứng yêu cầu:",
+    "password_requirements_title": "Yêu cầu mật khẩu",
+    "passwords_no_match_message": "Vui lòng đảm bảo hai mật khẩu giống nhau.",
+    "passwords_no_match_title": "Mật khẩu không khớp",
+    "provider_email": "Email & mật khẩu",
+    "pw_min_len": "• Tối thiểu 8 ký tự",
+    "pw_number": "• Ít nhất 1 chữ số",
+    "pw_rule_len": "Độ dài tối thiểu: 8 ký tự",
+    "pw_rule_number": "Ít nhất 1 chữ số",
+    "pw_rule_special": "Ít nhất 1 ký tự đặc biệt",
+    "pw_rule_upper": "Ít nhất 1 chữ hoa",
+    "pw_special": "• Ít nhất 1 ký tự đặc biệt",
+    "pw_upper": "• Ít nhất 1 chữ hoa",
+    "show_confirm_password": "Hiện xác nhận mật khẩu",
+    "show_password": "Hiện mật khẩu",
+    "signin": "Đăng nhập",
+    "signin_error_message": "Vui lòng thử lại hoặc đặt lại mật khẩu.",
+    "signin_error_title": "Không thể đăng nhập",
+    "signin_error_try_again": "Vui lòng thử lại.",
+    "signin_failed_message": "Đăng nhập thất bại.",
+    "signin_failed_title": "Đăng nhập thất bại",
+    "signup": "Đăng ký",
+    "signup_failed_message": "Đăng ký thất bại.",
+    "signup_failed_title": "Đăng ký thất bại",
+    "use_apple_message": "Email này đã đăng ký bằng Apple. Vui lòng dùng “Tiếp tục với Apple”.",
+    "use_apple_title": "Hãy dùng Apple để đăng nhập",
+    "use_google_message": "Email này đã đăng ký bằng Google. Vui lòng dùng “Tiếp tục với Google”.",
+    "use_google_title": "Hãy dùng Google để đăng nhập",
+    "use_original_method_message_apple": "Email này đã liên kết với phương thức đăng nhập khác. Hãy thử đăng nhập bằng Email & Mật khẩu hoặc Google.",
+    "use_original_method_message_google": "Email này đã liên kết với phương thức đăng nhập khác. Hãy thử đăng nhập bằng Email & Mật khẩu hoặc Apple.",
+    "use_original_method_title": "Hãy dùng phương thức đăng nhập ban đầu",
+    "weak_password_message": "Mật khẩu cần đáp ứng các yêu cầu ở trên."
   },
   "common": {
     "cancel": "취소",
@@ -60,7 +172,19 @@
     "loading": "로딩 중…",
     "open": "열기",
     "save": "저장",
-    "search": "검색"
+    "search": "검색",
+    "edit": "편집",
+    "delete": "삭제",
+    "share": "공유",
+    "report": "신고",
+    "copied": "복사됨!",
+    "edit_post": "게시물 편집",
+    "report_post": "게시물 신고",
+    "confirm_delete_post": "이 게시물을 삭제하시겠습니까?",
+    "delete_failed": "삭제에 실패했습니다. 다시 시도하세요.",
+    "edit_failed": "업데이트에 실패했습니다. 다시 시도하세요.",
+    "report_failed": "신고에 실패했습니다. 다시 시도하세요.",
+    "report_submitted": "감사합니다 — 신고가 제출되었습니다."
   },
   "directory": {
     "all": "전체",
@@ -233,7 +357,10 @@
       "loading_paypal": "PayPal 로딩 중...",
       "pay_with_paypal": "PayPal로 결제",
       "paypal_email": "PayPal 이메일 *",
-      "paypal_placeholder": "payouts@example.com"
+      "paypal_placeholder": "payouts@example.com",
+      "loading": "Đang tải nút PayPal...",
+      "pay": "Thanh toán bằng PayPal",
+      "paypal_hint": "Bắt buộc để nhận thanh toán buổi học"
     },
     "placeholders": {
       "full_name": "전체 이름 입력",
@@ -241,30 +368,11 @@
       "select_country": "국가 선택"
     },
     "roles": {
-      "agent": {
-        "desc": "리드를 관리하고 지원자를 도와주세요.",
-        "subtitle": "유학을 원하는 학생을 돕습니다",
-        "title": "교육 에이전트"
-      },
-      "school": {
-        "desc": "프로그램을 소개하고 리드를 받으세요.",
-        "subtitle": "학교/대학을 대표합니다",
-        "title": "교육 기관"
-      },
-      "student": {
-        "desc": "지원, 채팅, 진행 상황을 관리하세요.",
-        "subtitle": "유학을 원합니다",
-        "title": "학생"
-      },
-      "tutor": {
-        "desc": "튜터링을 제공하고 세션을 관리하세요.",
-        "subtitle": "시험 대비와 언어를 가르칩니다",
-        "title": "튜터"
-      },
-      "vendor": {
-        "subtitle": "학생 서비스를 제공합니다",
-        "title": "서비스 제공자"
-      }
+      "agent": "Đại lý",
+      "school": "Trường",
+      "student": "Học sinh",
+      "tutor": "Gia sư",
+      "vendor": "Nhà cung cấp"
     },
     "school": {
       "about": "학교 소개",
@@ -295,7 +403,8 @@
       "specializations": "전문 분야 *",
       "specializations_hint": "여러 전문 분야는 쉼표로 구분하세요",
       "specializations_placeholder": "IELTS, TOEFL, 일반 영어",
-      "years_experience": "경력 연수 *"
+      "years_experience": "경력 연수 *",
+      "bio_label": "Tiểu sử / Mô tả gia sư"
     },
     "ui": {
       "basic_info_title": "기본 정보",
@@ -314,6 +423,24 @@
       "business_name": "사업명 *",
       "paypal_hint": "서비스 지급에 필요합니다",
       "service_categories": "서비스 카테고리 *"
+    },
+    "badges": {
+      "role_selected": "Vai trò đã chọn:"
+    },
+    "basic": {
+      "subtitle_prefix": "Đang thiết lập hồ sơ",
+      "title": "Thông tin cơ bản"
+    },
+    "common": {
+      "back": "Quay lại",
+      "continue": "Tiếp tục",
+      "logout": "Đăng xuất",
+      "redirecting": "Đang chuyển hướng...",
+      "step_of": "Bước {{step}} / {{total}}"
+    },
+    "profile": {
+      "complete_subtitle": "Chỉ cần thêm vài thông tin để tiếp tục",
+      "complete_title": "Hoàn tất hồ sơ {{role}} của bạn"
     }
   },
   "profile": {
@@ -337,7 +464,11 @@
       "required_website": "웹사이트는 필수입니다.",
       "save_failed": "저장에 실패했습니다. 다시 시도해 주세요.",
       "saved": "저장 완료! 모든 변경 사항이 업데이트되었습니다.",
-      "upload_failed": "프로필 사진 업로드에 실패했습니다. 다시 시도해 주세요."
+      "upload_failed": "프로필 사진 업로드에 실패했습니다. 다시 시도해 주세요.",
+      "required_year_established": "Vui lòng nhập Năm thành lập.",
+      "verification_submitted": "Đã gửi xác minh.",
+      "verification_missing_required": "Thiếu tài liệu bắt buộc để xác minh.",
+      "verification_bad_file": "Tệp không hợp lệ. Vui lòng chọn tệp khác."
     },
     "bio_help": "선택 사항이지만, 프로필 노출을 위해 권장합니다.",
     "bio_label": "소개 / 설명",
@@ -392,7 +523,63 @@
     "upload_picture": "사진 업로드",
     "uploading": "업로드 중…",
     "vendor_details": "벤더 정보",
-    "year_established": "설립 연도"
+    "year_established": "설립 연도",
+    "language": "Ngôn ngữ",
+    "select_language": "Chọn ngôn ngữ",
+    "search_country": "Tìm quốc gia...",
+    "loading": "Đang tải...",
+    "no_results": "Không có kết quả",
+    "subscription": {
+      "subscribed": "Đang đăng ký",
+      "not_subscribed": "Chưa đăng ký"
+    },
+    "onboarding": {
+      "placeholders": {
+        "select_country": "Chọn quốc gia"
+      }
+    },
+    "verification": {
+      "document": "Tài liệu",
+      "submit": "Gửi xác minh",
+      "pending": "Đang chờ duyệt",
+      "denied": "Bị từ chối",
+      "denied_title": "Xác minh bị từ chối",
+      "resubmit": "Gửi lại",
+      "resubmit_hint": "Cập nhật tài liệu và gửi lại để được xét duyệt.",
+      "replace": "Thay thế",
+      "remove": "Xóa",
+      "no_file": "Chưa có tệp",
+      "open_new_tab": "Mở trong tab mới",
+      "cannot_preview": "Không thể xem trước tệp này.",
+      "other_docs": "Tài liệu khác",
+      "other_docs_hint": "Tải lên bất kỳ tài liệu bổ sung nào để hỗ trợ xác minh.",
+      "none_required": "Không yêu cầu tài liệu xác minh cho vai trò này.",
+      "agent_id_front": "CCCD/ID (Mặt trước)",
+      "agent_id_back": "CCCD/ID (Mặt sau)",
+      "agent_business_permit": "Giấy phép kinh doanh",
+      "school_dli_or_permit": "Giấy tờ DLI/Giấy phép trường",
+      "student_id_front": "Thẻ sinh viên (Mặt trước)",
+      "student_id_back": "Thẻ sinh viên (Mặt sau)",
+      "other_docs_label": "Tài liệu bổ sung",
+      "title": "Xác minh",
+      "view": "Xem",
+      "upload": "Tải lên",
+      "uploading": "Đang tải lên...",
+      "uploaded": "Đã tải lên",
+      "submitting": "Đang gửi...",
+      "verified": "Đã xác minh",
+      "unverified": "Chưa xác minh",
+      "tutor_id_front": "CCCD/ID (Mặt trước)",
+      "tutor_id_back": "CCCD/ID (Mặt sau)",
+      "tutor_proof": "Bằng cấp/Chứng chỉ"
+    },
+    "biography": "Tiểu sử / Mô tả",
+    "bio_hint": "Không bắt buộc, nhưng khuyến nghị để tăng khả năng hiển thị hồ sơ.",
+    "verified": "Đã xác minh",
+    "role_label": "Vai trò:",
+    "account": "Tài khoản",
+    "profile_settings": "Cài đặt hồ sơ",
+    "logout": "Đăng xuất"
   },
   "reset": {
     "backToSignIn": "로그인으로 돌아가기",
@@ -461,7 +648,22 @@
     "video": "비디오",
     "view": "보기",
     "visa_approvals": "비자 승인",
-    "welcome_name": "환영합니다, {{name}}"
+    "welcome_name": "환영합니다, {{name}}",
+    "edit": "편집",
+    "delete": "삭제",
+    "share": "공유",
+    "report": "신고",
+    "save": "저장",
+    "cancel": "취소",
+    "copied": "복사됨!",
+    "edit_post": "게시물 편집",
+    "report_post": "게시물 신고",
+    "confirm_delete_post": "이 게시물을 삭제하시겠습니까?",
+    "delete_failed": "삭제에 실패했습니다. 다시 시도하세요.",
+    "edit_failed": "업데이트에 실패했습니다. 다시 시도하세요.",
+    "report_failed": "신고에 실패했습니다. 다시 시도하세요.",
+    "report_submitted": "감사합니다 — 신고가 제출되었습니다.",
+    "highlights": "하이라이트"
   },
   "student_dashboard": {
     "featured": "추천",
@@ -483,7 +685,21 @@
     "schools_cant_be_messaged": "학교에는 직접 메시지를 보낼 수 없습니다. 팔로우하여 업데이트를 받아보세요.",
     "students_cannot_message_schools": "학생은 학교에 메시지를 보낼 수 없습니다. 관리자/어드바이저에게 문의하세요.",
     "suggested_to_follow": "추천 팔로우",
-    "trending": "트렌드"
+    "trending": "트렌드",
+    "edit": "편집",
+    "delete": "삭제",
+    "share": "공유",
+    "report": "신고",
+    "save": "저장",
+    "cancel": "취소",
+    "copied": "복사됨!",
+    "edit_post": "게시물 편집",
+    "report_post": "게시물 신고",
+    "confirm_delete_post": "이 게시물을 삭제하시겠습니까?",
+    "delete_failed": "삭제에 실패했습니다. 다시 시도하세요.",
+    "edit_failed": "업데이트에 실패했습니다. 다시 시도하세요.",
+    "report_failed": "신고에 실패했습니다. 다시 시도하세요.",
+    "report_submitted": "감사합니다 — 신고가 제출되었습니다."
   },
   "tutor_dashboard": {
     "attachments": "첨부파일",
@@ -521,7 +737,7 @@
     "open_media": "미디어 열기",
     "paid_post": "유료 게시물",
     "payment_failed": "결제에 실패했습니다. 다시 시도하세요.",
-    "payment_succeeded_but_failed": "Payment succeeded, but we couldn't activate the boost. Please contact support.",
+    "payment_succeeded_but_failed": "결제는 성공했지만 부스트를 활성화하지 못했습니다. 지원팀에 문의하세요.",
     "pending": "대기 중",
     "performance": "성과",
     "photo": "사진",
@@ -563,6 +779,34 @@
     "view": "보기",
     "view_details": "자세히 보기",
     "visa_approvals": "비자 승인",
-    "welcome_name": "환영합니다, {{name}}"
+    "welcome_name": "환영합니다, {{name}}",
+    "edit": "편집",
+    "delete": "삭제",
+    "share": "공유",
+    "report": "신고",
+    "save": "저장",
+    "cancel": "취소",
+    "copied": "복사됨!",
+    "edit_post": "게시물 편집",
+    "report_post": "게시물 신고",
+    "confirm_delete_post": "이 게시물을 삭제하시겠습니까?",
+    "delete_failed": "삭제에 실패했습니다. 다시 시도하세요.",
+    "edit_failed": "업데이트에 실패했습니다. 다시 시도하세요.",
+    "report_failed": "신고에 실패했습니다. 다시 시도하세요.",
+    "report_submitted": "감사합니다 — 신고가 제출되었습니다."
+  },
+  "brand": {
+    "alt": "GreenPass Super App"
+  },
+  "legal": {
+    "and": "및",
+    "by_continuing": "계속하면 다음에 동의하는 것으로 간주됩니다:",
+    "privacy": "개인정보 처리방침",
+    "terms": "서비스 약관"
+  },
+  "welcome": {
+    "subtitle_signin": "Chào mừng quay lại! Đăng nhập để vào bảng điều khiển.",
+    "subtitle_signup": "Tạo tài khoản để có trải nghiệm được cá nhân hóa.",
+    "title": "Hành trình của bạn bắt đầu từ đây"
   }
 }

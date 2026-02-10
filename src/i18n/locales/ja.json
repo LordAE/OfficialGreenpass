@@ -32,7 +32,54 @@
     "subscription_required": "サブスクリプションが必要です",
     "success_rate": "成功率",
     "this_month": "今月",
-    "visa_approvals": "ビザ承認"
+    "visa_approvals": "ビザ承認",
+    "edit": "編集",
+    "delete": "削除",
+    "share": "共有",
+    "report": "報告",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "copied": "コピーしました！",
+    "edit_post": "投稿を編集",
+    "report_post": "投稿を報告",
+    "confirm_delete_post": "この投稿を削除してもよろしいですか？",
+    "delete_failed": "削除できませんでした。もう一度お試しください。",
+    "edit_failed": "更新できませんでした。もう一度お試しください。",
+    "report_failed": "報告できませんでした。もう一度お試しください。",
+    "report_submitted": "ありがとうございます — 報告が送信されました。",
+    "welcome": "ようこそ",
+    "subtitle": "ニュースフィード形式のダッシュボード（エージェントの更新 + 投稿）",
+    "shortcuts": "ショートカット",
+    "my_students": "自分の学生",
+    "cases": "案件",
+    "find_leads": "リードを探す",
+    "events": "イベント",
+    "directory": "ディレクトリ",
+    "highlights": "ハイライト",
+    "students": "学生",
+    "active_cases": "進行中の案件",
+    "recent_cases": "最近の案件",
+    "view": "表示",
+    "contacts": "連絡先",
+    "photo_video": "写真/動画",
+    "composer_placeholder": "学校、イベント、またはあなたのエージェンシーの最新情報を共有...",
+    "whats_on_your_mind": "何を考えていますか、",
+    "pending": "保留中",
+    "block_post_title": "投稿がブロックされました",
+    "block_post_msg": "投稿するにはプロフィールを完了するか、プランを購読してください。",
+    "missing_prefix": "不足：",
+    "missing_field": "必須項目が不足しています",
+    "complete_profile_title": "プロフィールを完了する",
+    "complete_profile_desc": "プロフィールを完了して、すべての機能を解放し信頼性を高めましょう。",
+    "complete_profile_cta": "今すぐ完了",
+    "complete": "完了",
+    "field_full_name": "氏名",
+    "field_phone": "電話番号",
+    "field_country": "国",
+    "field_company_name": "会社名/エージェンシー名",
+    "field_business_license": "事業許可証",
+    "field_paypal_email": "PayPal メール",
+    "no_cases_yet": "まだ案件はありません。"
   },
   "auth": {
     "confirm_password_placeholder": "パスワードを確認",
@@ -50,7 +97,72 @@
     "signIn": "サインイン",
     "signUp": "サインアップ",
     "subtitle": "お帰りなさい。ダッシュボードにサインインしてください。",
-    "title": "あなたの旅はここから始まる"
+    "title": "あなたの旅はここから始まる",
+    "apple_failed_message": "Đăng nhập Apple thất bại.",
+    "apple_failed_title": "Đăng nhập Apple thất bại",
+    "apple_unavailable_message": "Apple Sign-in chưa được bật cho dự án/môi trường này.",
+    "apple_unavailable_title": "Apple Sign-in không khả dụng",
+    "continue_apple": "Tiếp tục với Apple",
+    "continue_google": "Tiếp tục với Google",
+    "create_account": "Tạo tài khoản",
+    "email_already_registered_message": "Email này đã được sử dụng ({{providers}}). Hãy thử đăng nhập.",
+    "email_already_registered_simple": "Email này đã được đăng ký. Hãy thử đăng nhập (Email & mật khẩu, Google hoặc Apple).",
+    "email_already_registered_title": "Email đã được đăng ký",
+    "email_apple_only": "Email này đã đăng ký bằng Apple. Vui lòng dùng “Tiếp tục với Apple”.",
+    "email_check_failed": "Hiện không thể kiểm tra email. Vui lòng thử lại sau.",
+    "email_google_only": "Email này đã đăng ký bằng Google. Vui lòng dùng “Tiếp tục với Google”.",
+    "email_in_use_message": "Email đã được sử dụng.",
+    "email_signin_failed": "Đăng nhập bằng email thất bại.",
+    "forgot_password": "Quên mật khẩu?",
+    "fullname_placeholder": "Họ và tên",
+    "google_failed_message": "Đăng nhập Google thất bại.",
+    "google_failed_title": "Đăng nhập Google thất bại",
+    "have_account": "Đã có tài khoản?",
+    "hide_confirm_password": "Ẩn xác nhận mật khẩu",
+    "hide_password": "Ẩn mật khẩu",
+    "incorrect_password_message": "Mật khẩu bạn nhập không đúng. Vui lòng thử lại.",
+    "incorrect_password_title": "Sai mật khẩu",
+    "invalid_email_message": "Vui lòng nhập địa chỉ email hợp lệ.",
+    "invalid_email_title": "Email không hợp lệ",
+    "missing_name_message": "Vui lòng nhập họ và tên của bạn.",
+    "missing_name_title": "Thiếu họ tên",
+    "no_account": "Chưa có tài khoản?",
+    "no_account_message": "Không tìm thấy tài khoản với email này. Vui lòng tạo tài khoản.",
+    "no_account_title": "Không tìm thấy tài khoản",
+    "or_continue_email": "hoặc tiếp tục bằng email",
+    "password_requirements_label": "Yêu cầu mật khẩu:",
+    "password_requirements_message": "Mật khẩu chưa đáp ứng yêu cầu:",
+    "password_requirements_title": "Yêu cầu mật khẩu",
+    "passwords_no_match_message": "Vui lòng đảm bảo hai mật khẩu giống nhau.",
+    "passwords_no_match_title": "Mật khẩu không khớp",
+    "provider_email": "Email & mật khẩu",
+    "pw_min_len": "• Tối thiểu 8 ký tự",
+    "pw_number": "• Ít nhất 1 chữ số",
+    "pw_rule_len": "Độ dài tối thiểu: 8 ký tự",
+    "pw_rule_number": "Ít nhất 1 chữ số",
+    "pw_rule_special": "Ít nhất 1 ký tự đặc biệt",
+    "pw_rule_upper": "Ít nhất 1 chữ hoa",
+    "pw_special": "• Ít nhất 1 ký tự đặc biệt",
+    "pw_upper": "• Ít nhất 1 chữ hoa",
+    "show_confirm_password": "Hiện xác nhận mật khẩu",
+    "show_password": "Hiện mật khẩu",
+    "signin": "Đăng nhập",
+    "signin_error_message": "Vui lòng thử lại hoặc đặt lại mật khẩu.",
+    "signin_error_title": "Không thể đăng nhập",
+    "signin_error_try_again": "Vui lòng thử lại.",
+    "signin_failed_message": "Đăng nhập thất bại.",
+    "signin_failed_title": "Đăng nhập thất bại",
+    "signup": "Đăng ký",
+    "signup_failed_message": "Đăng ký thất bại.",
+    "signup_failed_title": "Đăng ký thất bại",
+    "use_apple_message": "Email này đã đăng ký bằng Apple. Vui lòng dùng “Tiếp tục với Apple”.",
+    "use_apple_title": "Hãy dùng Apple để đăng nhập",
+    "use_google_message": "Email này đã đăng ký bằng Google. Vui lòng dùng “Tiếp tục với Google”.",
+    "use_google_title": "Hãy dùng Google để đăng nhập",
+    "use_original_method_message_apple": "Email này đã liên kết với phương thức đăng nhập khác. Hãy thử đăng nhập bằng Email & Mật khẩu hoặc Google.",
+    "use_original_method_message_google": "Email này đã liên kết với phương thức đăng nhập khác. Hãy thử đăng nhập bằng Email & Mật khẩu hoặc Apple.",
+    "use_original_method_title": "Hãy dùng phương thức đăng nhập ban đầu",
+    "weak_password_message": "Mật khẩu cần đáp ứng các yêu cầu ở trên."
   },
   "common": {
     "cancel": "キャンセル",
@@ -60,7 +172,19 @@
     "loading": "読み込み中…",
     "open": "開く",
     "save": "保存",
-    "search": "検索"
+    "search": "検索",
+    "edit": "編集",
+    "delete": "削除",
+    "share": "共有",
+    "report": "報告",
+    "copied": "コピーしました！",
+    "edit_post": "投稿を編集",
+    "report_post": "投稿を報告",
+    "confirm_delete_post": "この投稿を削除してもよろしいですか？",
+    "delete_failed": "削除できませんでした。もう一度お試しください。",
+    "edit_failed": "更新できませんでした。もう一度お試しください。",
+    "report_failed": "報告できませんでした。もう一度お試しください。",
+    "report_submitted": "ありがとうございます — 報告が送信されました。"
   },
   "directory": {
     "all": "すべて",
@@ -233,7 +357,10 @@
       "loading_paypal": "PayPal を読み込み中…",
       "pay_with_paypal": "PayPal で支払う",
       "paypal_email": "PayPal メールアドレス *",
-      "paypal_placeholder": "payouts@example.com"
+      "paypal_placeholder": "payouts@example.com",
+      "loading": "Đang tải nút PayPal...",
+      "pay": "Thanh toán bằng PayPal",
+      "paypal_hint": "Bắt buộc để nhận thanh toán buổi học"
     },
     "placeholders": {
       "full_name": "氏名を入力してください",
@@ -241,30 +368,11 @@
       "select_country": "国を選択してください"
     },
     "roles": {
-      "agent": {
-        "desc": "リード管理と申請者サポートを行います。",
-        "subtitle": "留学を希望する学生を支援します",
-        "title": "教育エージェント"
-      },
-      "school": {
-        "desc": "プログラムを掲載し、リードを受け取ります。",
-        "subtitle": "学校・カレッジを代表します",
-        "title": "教育機関"
-      },
-      "student": {
-        "desc": "申請・チャット・進捗管理ができます。",
-        "subtitle": "留学したいです",
-        "title": "学生"
-      },
-      "tutor": {
-        "desc": "指導を提供し、セッションを管理します。",
-        "subtitle": "試験対策と言語を教えます",
-        "title": "チューター"
-      },
-      "vendor": {
-        "subtitle": "学生向けサービスを提供します",
-        "title": "サービス提供者"
-      }
+      "agent": "Đại lý",
+      "school": "Trường",
+      "student": "Học sinh",
+      "tutor": "Gia sư",
+      "vendor": "Nhà cung cấp"
     },
     "school": {
       "about": "学校について",
@@ -295,7 +403,8 @@
       "specializations": "専門分野 *",
       "specializations_hint": "複数の専門分野はカンマで区切ってください",
       "specializations_placeholder": "IELTS、TOEFL、一般英語",
-      "years_experience": "経験年数 *"
+      "years_experience": "経験年数 *",
+      "bio_label": "Tiểu sử / Mô tả gia sư"
     },
     "ui": {
       "basic_info_title": "基本情報",
@@ -314,6 +423,24 @@
       "business_name": "事業名 *",
       "paypal_hint": "サービスの支払いに必要です",
       "service_categories": "サービスカテゴリー *"
+    },
+    "badges": {
+      "role_selected": "Vai trò đã chọn:"
+    },
+    "basic": {
+      "subtitle_prefix": "Đang thiết lập hồ sơ",
+      "title": "Thông tin cơ bản"
+    },
+    "common": {
+      "back": "Quay lại",
+      "continue": "Tiếp tục",
+      "logout": "Đăng xuất",
+      "redirecting": "Đang chuyển hướng...",
+      "step_of": "Bước {{step}} / {{total}}"
+    },
+    "profile": {
+      "complete_subtitle": "Chỉ cần thêm vài thông tin để tiếp tục",
+      "complete_title": "Hoàn tất hồ sơ {{role}} của bạn"
     }
   },
   "profile": {
@@ -337,7 +464,11 @@
       "required_website": "サイトは必須です。",
       "save_failed": "保存に失敗しました。もう一度お試しください。",
       "saved": "保存しました！すべての変更が更新されました。",
-      "upload_failed": "プロフィール写真のアップロードに失敗しました。もう一度お試しください。"
+      "upload_failed": "プロフィール写真のアップロードに失敗しました。もう一度お試しください。",
+      "required_year_established": "Vui lòng nhập Năm thành lập.",
+      "verification_submitted": "Đã gửi xác minh.",
+      "verification_missing_required": "Thiếu tài liệu bắt buộc để xác minh.",
+      "verification_bad_file": "Tệp không hợp lệ. Vui lòng chọn tệp khác."
     },
     "bio_help": "任意ですが、表示向上のため入力をおすすめします。",
     "bio_label": "自己紹介 / 説明",
@@ -392,7 +523,63 @@
     "upload_picture": "写真をアップロード",
     "uploading": "アップロード中…",
     "vendor_details": "ベンダー情報",
-    "year_established": "設立年"
+    "year_established": "設立年",
+    "language": "Ngôn ngữ",
+    "select_language": "Chọn ngôn ngữ",
+    "search_country": "Tìm quốc gia...",
+    "loading": "Đang tải...",
+    "no_results": "Không có kết quả",
+    "subscription": {
+      "subscribed": "Đang đăng ký",
+      "not_subscribed": "Chưa đăng ký"
+    },
+    "onboarding": {
+      "placeholders": {
+        "select_country": "Chọn quốc gia"
+      }
+    },
+    "verification": {
+      "document": "Tài liệu",
+      "submit": "Gửi xác minh",
+      "pending": "Đang chờ duyệt",
+      "denied": "Bị từ chối",
+      "denied_title": "Xác minh bị từ chối",
+      "resubmit": "Gửi lại",
+      "resubmit_hint": "Cập nhật tài liệu và gửi lại để được xét duyệt.",
+      "replace": "Thay thế",
+      "remove": "Xóa",
+      "no_file": "Chưa có tệp",
+      "open_new_tab": "Mở trong tab mới",
+      "cannot_preview": "Không thể xem trước tệp này.",
+      "other_docs": "Tài liệu khác",
+      "other_docs_hint": "Tải lên bất kỳ tài liệu bổ sung nào để hỗ trợ xác minh.",
+      "none_required": "Không yêu cầu tài liệu xác minh cho vai trò này.",
+      "agent_id_front": "CCCD/ID (Mặt trước)",
+      "agent_id_back": "CCCD/ID (Mặt sau)",
+      "agent_business_permit": "Giấy phép kinh doanh",
+      "school_dli_or_permit": "Giấy tờ DLI/Giấy phép trường",
+      "student_id_front": "Thẻ sinh viên (Mặt trước)",
+      "student_id_back": "Thẻ sinh viên (Mặt sau)",
+      "other_docs_label": "Tài liệu bổ sung",
+      "title": "Xác minh",
+      "view": "Xem",
+      "upload": "Tải lên",
+      "uploading": "Đang tải lên...",
+      "uploaded": "Đã tải lên",
+      "submitting": "Đang gửi...",
+      "verified": "Đã xác minh",
+      "unverified": "Chưa xác minh",
+      "tutor_id_front": "CCCD/ID (Mặt trước)",
+      "tutor_id_back": "CCCD/ID (Mặt sau)",
+      "tutor_proof": "Bằng cấp/Chứng chỉ"
+    },
+    "biography": "Tiểu sử / Mô tả",
+    "bio_hint": "Không bắt buộc, nhưng khuyến nghị để tăng khả năng hiển thị hồ sơ.",
+    "verified": "Đã xác minh",
+    "role_label": "Vai trò:",
+    "account": "Tài khoản",
+    "profile_settings": "Cài đặt hồ sơ",
+    "logout": "Đăng xuất"
   },
   "reset": {
     "backToSignIn": "サインインへ戻る",
@@ -461,7 +648,22 @@
     "video": "動画",
     "view": "表示",
     "visa_approvals": "ビザ承認",
-    "welcome_name": "ようこそ、{{name}}"
+    "welcome_name": "ようこそ、{{name}}",
+    "edit": "編集",
+    "delete": "削除",
+    "share": "共有",
+    "report": "報告",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "copied": "コピーしました！",
+    "edit_post": "投稿を編集",
+    "report_post": "投稿を報告",
+    "confirm_delete_post": "この投稿を削除してもよろしいですか？",
+    "delete_failed": "削除できませんでした。もう一度お試しください。",
+    "edit_failed": "更新できませんでした。もう一度お試しください。",
+    "report_failed": "報告できませんでした。もう一度お試しください。",
+    "report_submitted": "ありがとうございます — 報告が送信されました。",
+    "highlights": "ハイライト"
   },
   "student_dashboard": {
     "featured": "注目",
@@ -483,7 +685,21 @@
     "schools_cant_be_messaged": "学校には直接メッセージを送信できません。フォローして更新を受け取りましょう。",
     "students_cannot_message_schools": "学生は学校に直接メッセージを送信できません。管理者/アドバイザーに連絡してください。",
     "suggested_to_follow": "おすすめ",
-    "trending": "トレンド"
+    "trending": "トレンド",
+    "edit": "編集",
+    "delete": "削除",
+    "share": "共有",
+    "report": "報告",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "copied": "コピーしました！",
+    "edit_post": "投稿を編集",
+    "report_post": "投稿を報告",
+    "confirm_delete_post": "この投稿を削除してもよろしいですか？",
+    "delete_failed": "削除できませんでした。もう一度お試しください。",
+    "edit_failed": "更新できませんでした。もう一度お試しください。",
+    "report_failed": "報告できませんでした。もう一度お試しください。",
+    "report_submitted": "ありがとうございます — 報告が送信されました。"
   },
   "tutor_dashboard": {
     "attachments": "添付ファイル",
@@ -563,6 +779,34 @@
     "view": "表示",
     "view_details": "詳細を見る",
     "visa_approvals": "ビザ承認",
-    "welcome_name": "ようこそ、{{name}}"
+    "welcome_name": "ようこそ、{{name}}",
+    "edit": "編集",
+    "delete": "削除",
+    "share": "共有",
+    "report": "報告",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "copied": "コピーしました！",
+    "edit_post": "投稿を編集",
+    "report_post": "投稿を報告",
+    "confirm_delete_post": "この投稿を削除してもよろしいですか？",
+    "delete_failed": "削除できませんでした。もう一度お試しください。",
+    "edit_failed": "更新できませんでした。もう一度お試しください。",
+    "report_failed": "報告できませんでした。もう一度お試しください。",
+    "report_submitted": "ありがとうございます — 報告が送信されました。"
+  },
+  "brand": {
+    "alt": "GreenPass Super App"
+  },
+  "legal": {
+    "and": "および",
+    "by_continuing": "続行することで、以下に同意したものとみなされます：",
+    "privacy": "プライバシーポリシー",
+    "terms": "利用規約"
+  },
+  "welcome": {
+    "subtitle_signin": "Chào mừng quay lại! Đăng nhập để vào bảng điều khiển.",
+    "subtitle_signup": "Tạo tài khoản để có trải nghiệm được cá nhân hóa.",
+    "title": "Hành trình của bạn bắt đầu từ đây"
   }
 }

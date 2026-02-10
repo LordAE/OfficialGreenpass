@@ -32,7 +32,54 @@
     "subscription_required": "Subscription required",
     "success_rate": "Success Rate",
     "this_month": "This Month",
-    "visa_approvals": "Visa Approvals"
+    "visa_approvals": "Visa Approvals",
+    "edit": "Edit",
+    "delete": "Delete",
+    "share": "Share",
+    "report": "Report",
+    "save": "Save",
+    "cancel": "Cancel",
+    "copied": "Copied",
+    "edit_post": "Edit Post",
+    "report_post": "Report Post",
+    "confirm_delete_post": "Confirm Delete Post",
+    "delete_failed": "Delete Failed",
+    "edit_failed": "Edit Failed",
+    "report_failed": "Report Failed",
+    "report_submitted": "Report Submitted",
+    "welcome": "Welcome",
+    "subtitle": "Subtitle",
+    "shortcuts": "Shortcuts",
+    "my_students": "My Students",
+    "cases": "Cases",
+    "find_leads": "Find Leads",
+    "events": "Events",
+    "directory": "Directory",
+    "highlights": "Highlights",
+    "students": "Students",
+    "active_cases": "Active Cases",
+    "recent_cases": "Recent Cases",
+    "view": "Xem",
+    "contacts": "Contacts",
+    "photo_video": "Photo Video",
+    "composer_placeholder": "Composer Placeholder",
+    "whats_on_your_mind": "Whats On Your Mind",
+    "pending": "Pending",
+    "block_post_title": "Block Post Title",
+    "block_post_msg": "Block Post Msg",
+    "missing_prefix": "Missing Prefix",
+    "missing_field": "Missing Field",
+    "complete_profile_title": "Complete Profile Title",
+    "complete_profile_desc": "Complete Profile Desc",
+    "complete_profile_cta": "Complete Profile Cta",
+    "complete": "Complete",
+    "field_full_name": "Field Full Name",
+    "field_phone": "Field Phone",
+    "field_country": "Field Country",
+    "field_company_name": "Field Company Name",
+    "field_business_license": "Field Business License",
+    "field_paypal_email": "Email PayPal",
+    "no_cases_yet": "No Cases Yet"
   },
   "auth": {
     "confirm_password_placeholder": "Confirm your password",
@@ -50,7 +97,72 @@
     "signIn": "Sign in",
     "signUp": "Sign up",
     "subtitle": "Welcome back! Sign in to your dashboard.",
-    "title": "Your Journey Starts Here"
+    "title": "Your Journey Starts Here",
+    "apple_failed_message": "Apple Failed Message",
+    "apple_failed_title": "Apple Failed Title",
+    "apple_unavailable_message": "Apple Unavailable Message",
+    "apple_unavailable_title": "Apple Unavailable Title",
+    "continue_apple": "Continue Apple",
+    "continue_google": "Continue Google",
+    "create_account": "Create Account",
+    "email_already_registered_message": "Email Already Registered Message",
+    "email_already_registered_simple": "Email Already Registered Simple",
+    "email_already_registered_title": "Email Already Registered Title",
+    "email_apple_only": "Email Apple Only",
+    "email_check_failed": "Email Check Failed",
+    "email_google_only": "Email Google Only",
+    "email_in_use_message": "Email In Use Message",
+    "email_signin_failed": "Email Signin Failed",
+    "forgot_password": "Forgot Password",
+    "fullname_placeholder": "Fullname Placeholder",
+    "google_failed_message": "Google Failed Message",
+    "google_failed_title": "Google Failed Title",
+    "have_account": "Have Account",
+    "hide_confirm_password": "Hide Confirm Password",
+    "hide_password": "Hide Password",
+    "incorrect_password_message": "Incorrect Password Message",
+    "incorrect_password_title": "Incorrect Password Title",
+    "invalid_email_message": "Invalid Email Message",
+    "invalid_email_title": "Invalid Email Title",
+    "missing_name_message": "Missing Name Message",
+    "missing_name_title": "Missing Name Title",
+    "no_account": "No Account",
+    "no_account_message": "No Account Message",
+    "no_account_title": "No Account Title",
+    "or_continue_email": "Or Continue Email",
+    "password_requirements_label": "Password Requirements Label",
+    "password_requirements_message": "Password Requirements Message",
+    "password_requirements_title": "Password Requirements Title",
+    "passwords_no_match_message": "Passwords No Match Message",
+    "passwords_no_match_title": "Passwords No Match Title",
+    "provider_email": "Provider Email",
+    "pw_min_len": "Pw Min Len",
+    "pw_number": "Pw Number",
+    "pw_rule_len": "Pw Rule Len",
+    "pw_rule_number": "Pw Rule Number",
+    "pw_rule_special": "Pw Rule Special",
+    "pw_rule_upper": "Pw Rule Upper",
+    "pw_special": "Pw Special",
+    "pw_upper": "Pw Upper",
+    "show_confirm_password": "Show Confirm Password",
+    "show_password": "Show Password",
+    "signin": "Signin",
+    "signin_error_message": "Signin Error Message",
+    "signin_error_title": "Signin Error Title",
+    "signin_error_try_again": "Signin Error Try Again",
+    "signin_failed_message": "Signin Failed Message",
+    "signin_failed_title": "Signin Failed Title",
+    "signup": "Signup",
+    "signup_failed_message": "Signup Failed Message",
+    "signup_failed_title": "Signup Failed Title",
+    "use_apple_message": "Use Apple Message",
+    "use_apple_title": "Use Apple Title",
+    "use_google_message": "Use Google Message",
+    "use_google_title": "Use Google Title",
+    "use_original_method_message_apple": "Use Original Method Message Apple",
+    "use_original_method_message_google": "Use Original Method Message Google",
+    "use_original_method_title": "Use Original Method Title",
+    "weak_password_message": "Weak Password Message"
   },
   "common": {
     "cancel": "Cancel",
@@ -60,7 +172,19 @@
     "loading": "Loading…",
     "open": "Open",
     "save": "Save",
-    "search": "Search"
+    "search": "Search",
+    "edit": "Edit",
+    "delete": "Delete",
+    "share": "Share",
+    "report": "Report",
+    "copied": "Copied",
+    "edit_post": "Edit Post",
+    "report_post": "Report Post",
+    "confirm_delete_post": "Confirm Delete Post",
+    "delete_failed": "Delete Failed",
+    "edit_failed": "Edit Failed",
+    "report_failed": "Report Failed",
+    "report_submitted": "Report Submitted"
   },
   "directory": {
     "all": "All",
@@ -233,7 +357,10 @@
       "loading_paypal": "Loading PayPal...",
       "pay_with_paypal": "Pay with PayPal",
       "paypal_email": "PayPal Email *",
-      "paypal_placeholder": "payouts@example.com"
+      "paypal_placeholder": "payouts@example.com",
+      "loading": "Loading",
+      "pay": "Thanh toán bằng PayPal",
+      "paypal_hint": "Paypal Hint"
     },
     "placeholders": {
       "full_name": "Enter your full name",
@@ -241,30 +368,11 @@
       "select_country": "Select your country"
     },
     "roles": {
-      "agent": {
-        "desc": "Manage leads and support applicants.",
-        "subtitle": "I help students study abroad",
-        "title": "Education Agent"
-      },
-      "school": {
-        "desc": "Showcase programs and receive leads.",
-        "subtitle": "I represent a school/college",
-        "title": "Educational Institution"
-      },
-      "student": {
-        "desc": "Apply, chat, and track your journey.",
-        "subtitle": "I want to study abroad",
-        "title": "Student"
-      },
-      "tutor": {
-        "desc": "Offer tutoring and manage sessions.",
-        "subtitle": "I teach test prep & languages",
-        "title": "Tutor"
-      },
-      "vendor": {
-        "subtitle": "I offer student services",
-        "title": "Service Provider"
-      }
+      "agent": "Đại lý",
+      "school": "Trường",
+      "student": "Học sinh",
+      "tutor": "Gia sư",
+      "vendor": "Nhà cung cấp"
     },
     "school": {
       "about": "About Your Institution",
@@ -295,7 +403,8 @@
       "specializations": "Specializations *",
       "specializations_hint": "Separate multiple specializations with commas",
       "specializations_placeholder": "IELTS, TOEFL, General English",
-      "years_experience": "Years of Experience *"
+      "years_experience": "Years of Experience *",
+      "bio_label": "Bio Label"
     },
     "ui": {
       "basic_info_title": "Basic Information",
@@ -314,6 +423,24 @@
       "business_name": "Business Name *",
       "paypal_hint": "Required for service payouts",
       "service_categories": "Service Categories *"
+    },
+    "badges": {
+      "role_selected": "Role Selected"
+    },
+    "basic": {
+      "subtitle_prefix": "Subtitle Prefix",
+      "title": "Title"
+    },
+    "common": {
+      "back": "Back",
+      "continue": "Continue",
+      "logout": "Logout",
+      "redirecting": "Redirecting",
+      "step_of": "Step {{step}} / {{total}}"
+    },
+    "profile": {
+      "complete_subtitle": "Complete Subtitle",
+      "complete_title": "Complete Title"
     }
   },
   "profile": {
@@ -337,7 +464,11 @@
       "required_website": "Website is required.",
       "save_failed": "Failed to save changes. Please try again.",
       "saved": "Saved! All changes were updated.",
-      "upload_failed": "Failed to upload profile picture. Please try again."
+      "upload_failed": "Failed to upload profile picture. Please try again.",
+      "required_year_established": "Required Year Established",
+      "verification_submitted": "Verification Submitted",
+      "verification_missing_required": "Verification Missing Required",
+      "verification_bad_file": "Verification Bad File"
     },
     "bio_help": "Optional, but recommended for better profile visibility.",
     "bio_label": "Biography / Description",
@@ -392,7 +523,63 @@
     "upload_picture": "Upload Picture",
     "uploading": "Uploading…",
     "vendor_details": "Vendor Details",
-    "year_established": "Year Established"
+    "year_established": "Year Established",
+    "language": "Language",
+    "select_language": "Select Language",
+    "search_country": "Search Country",
+    "loading": "Loading",
+    "no_results": "No Results",
+    "subscription": {
+      "subscribed": "Subscribed",
+      "not_subscribed": "Not Subscribed"
+    },
+    "onboarding": {
+      "placeholders": {
+        "select_country": "Select Country"
+      }
+    },
+    "verification": {
+      "document": "Document",
+      "submit": "Submit",
+      "pending": "Pending",
+      "denied": "Denied",
+      "denied_title": "Denied Title",
+      "resubmit": "Resubmit",
+      "resubmit_hint": "Resubmit Hint",
+      "replace": "Replace",
+      "remove": "Remove",
+      "no_file": "No File",
+      "open_new_tab": "Open New Tab",
+      "cannot_preview": "Cannot Preview",
+      "other_docs": "Other Docs",
+      "other_docs_hint": "Other Docs Hint",
+      "none_required": "None Required",
+      "agent_id_front": "Agent ID Front",
+      "agent_id_back": "CCCD/ID (Mặt sau)",
+      "agent_business_permit": "Agent Business Permit",
+      "school_dli_or_permit": "School Dli Or Permit",
+      "student_id_front": "Student ID Front",
+      "student_id_back": "Student ID Back",
+      "other_docs_label": "Other Docs Label",
+      "title": "Title",
+      "view": "Xem",
+      "upload": "Upload",
+      "uploading": "Uploading",
+      "uploaded": "Uploaded",
+      "submitting": "Submitting",
+      "verified": "Verified",
+      "unverified": "Unverified",
+      "tutor_id_front": "Tutor ID Front",
+      "tutor_id_back": "CCCD/ID (Mặt sau)",
+      "tutor_proof": "Tutor Proof"
+    },
+    "biography": "Biography",
+    "bio_hint": "Bio Hint",
+    "verified": "Verified",
+    "role_label": "Role Label",
+    "account": "Account",
+    "profile_settings": "Profile Settings",
+    "logout": "Logout"
   },
   "reset": {
     "backToSignIn": "Back to Sign in",
@@ -461,7 +648,22 @@
     "video": "Video",
     "view": "View",
     "visa_approvals": "Visa Approvals",
-    "welcome_name": "Welcome, {{name}}"
+    "welcome_name": "Welcome, {{name}}",
+    "edit": "Edit",
+    "delete": "Delete",
+    "share": "Share",
+    "report": "Report",
+    "save": "Save",
+    "cancel": "Cancel",
+    "copied": "Copied",
+    "edit_post": "Edit Post",
+    "report_post": "Report Post",
+    "confirm_delete_post": "Confirm Delete Post",
+    "delete_failed": "Delete Failed",
+    "edit_failed": "Edit Failed",
+    "report_failed": "Report Failed",
+    "report_submitted": "Report Submitted",
+    "highlights": "Highlights"
   },
   "student_dashboard": {
     "featured": "Featured",
@@ -483,7 +685,21 @@
     "schools_cant_be_messaged": "Schools can’t be messaged directly. Follow them to get updates.",
     "students_cannot_message_schools": "Students cannot message Schools. Please contact Admin/Advisor.",
     "suggested_to_follow": "Suggested to follow",
-    "trending": "Trending"
+    "trending": "Trending",
+    "edit": "Edit",
+    "delete": "Delete",
+    "share": "Share",
+    "report": "Report",
+    "save": "Save",
+    "cancel": "Cancel",
+    "copied": "Copied",
+    "edit_post": "Edit Post",
+    "report_post": "Report Post",
+    "confirm_delete_post": "Confirm Delete Post",
+    "delete_failed": "Delete Failed",
+    "edit_failed": "Edit Failed",
+    "report_failed": "Report Failed",
+    "report_submitted": "Report Submitted"
   },
   "tutor_dashboard": {
     "attachments": "Attachments",
@@ -563,6 +779,34 @@
     "view": "View",
     "view_details": "View Details",
     "visa_approvals": "Visa Approvals",
-    "welcome_name": "Welcome, {{name}}"
+    "welcome_name": "Welcome, {{name}}",
+    "edit": "Edit",
+    "delete": "Delete",
+    "share": "Share",
+    "report": "Report",
+    "save": "Save",
+    "cancel": "Cancel",
+    "copied": "Copied",
+    "edit_post": "Edit Post",
+    "report_post": "Report Post",
+    "confirm_delete_post": "Confirm Delete Post",
+    "delete_failed": "Delete Failed",
+    "edit_failed": "Edit Failed",
+    "report_failed": "Report Failed",
+    "report_submitted": "Report Submitted"
+  },
+  "brand": {
+    "alt": "GreenPass Super App"
+  },
+  "legal": {
+    "and": "And",
+    "by_continuing": "By Continuing",
+    "privacy": "Privacy",
+    "terms": "Terms"
+  },
+  "welcome": {
+    "subtitle_signin": "Subtitle Signin",
+    "subtitle_signup": "Subtitle Signup",
+    "title": "Title"
   }
 }
