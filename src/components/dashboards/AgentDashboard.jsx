@@ -15,6 +15,10 @@ import {
   UserPlus,
   CreditCard,
   MoreHorizontal,
+  Pencil,
+  Trash2,
+  Share2,
+  Flag,
   Globe,
   Image as ImageIcon,
   MessageCircle,
@@ -45,12 +49,22 @@ import {
   onSnapshot,
   writeBatch,
   updateDoc,
+  deleteDoc,
   runTransaction,
   Timestamp,
   increment,
   getDoc
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+
+// ✅ UI Dropdown (3-dots menu)
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 import ProfileCompletionBanner from "../profile/ProfileCompletionBanner";
 import ActionBlocker from "../profile/ActionBlocker";
@@ -432,6 +446,119 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
   const [boostOpen, setBoostOpen] = useState(false);
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
 
+  // ✅ 3-dots menu actions
+  const [editOpen, setEditOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [editText, setEditText] = useState(String(post?.text || ""));
+  const [reportReason, setReportReason] = useState("");
+  const [menuBusy, setMenuBusy] = useState(false);
+  const [menuError, setMenuError] = useState("");
+
+  useEffect(() => {
+    setEditText(String(post?.text || ""));
+  }, [post?.text]);
+
+  const getShareUrl = () => {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("post", String(post?.id || ""));
+      return u.toString();
+    } catch {
+      return "";
+    }
+  };
+
+  const handleShare = async () => {
+    const url = getShareUrl();
+    const title = "GreenPass";
+    const text = String(post?.text || "").slice(0, 200);
+    try {
+      if (navigator.share && url) {
+        await navigator.share({ title, text, url });
+        return;
+      }
+      if (navigator.clipboard && url) {
+        await navigator.clipboard.writeText(url);
+        alert(tr("link_copied", "Link copied"));
+        return;
+      }
+      if (url) {
+        window.prompt(tr("copy_link", "Copy this link:"), url);
+      }
+    } catch (e) {
+      console.error("share failed:", e);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!post?.id || !isMine) return;
+    const ok = window.confirm(tr("confirm_delete_post", "Delete this post?"));
+    if (!ok) return;
+    setMenuBusy(true);
+    setMenuError("");
+    try {
+      await deleteDoc(doc(db, "posts", String(post.id)));
+    } catch (e) {
+      console.error("delete post failed:", e);
+      setMenuError(tr("delete_failed", "Delete failed. Please try again."));
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!post?.id || !isMine) return;
+    const next = String(editText || "").trim();
+    if (!next) {
+      setMenuError(tr("post_cannot_be_empty", "Post cannot be empty."));
+      return;
+    }
+    setMenuBusy(true);
+    setMenuError("");
+    try {
+      await updateDoc(doc(db, "posts", String(post.id)), {
+        text: next,
+        editedAt: serverTimestamp(),
+      });
+      setEditOpen(false);
+    } catch (e) {
+      console.error("edit post failed:", e);
+      setMenuError(tr("edit_failed", "Edit failed. Please try again."));
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
+  const handleSubmitReport = async () => {
+    if (!post?.id || !currentUserId) return;
+    const reason = String(reportReason || "").trim();
+    if (!reason) {
+      setMenuError(tr("report_reason_required", "Please enter a reason."));
+      return;
+    }
+    setMenuBusy(true);
+    setMenuError("");
+    try {
+      await addDoc(collection(db, "post_reports"), {
+        postId: String(post.id),
+        reporterId: String(currentUserId),
+        authorId: String(authorId || ""),
+        authorRole: String(authorRole || ""),
+        reason,
+        status: "open",
+        createdAt: serverTimestamp(),
+      });
+      setReportReason("");
+      setReportOpen(false);
+      alert(tr("report_submitted", "Report submitted"));
+    } catch (e) {
+      console.error("report failed:", e);
+      setMenuError(tr("report_failed", "Report failed. Please try again."));
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
   return (
     <Card className="overflow-hidden rounded-2xl">
       <CardContent className="p-0">
@@ -472,10 +599,96 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-            <MoreHorizontal className="h-5 w-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-gray-500" type="button" disabled={menuBusy}>
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {isMine ? (
+                <>
+                  <DropdownMenuItem onClick={() => setEditOpen(true)} disabled={menuBusy}>
+                    <span className="flex items-center gap-2">
+                      <Pencil className="h-4 w-4" />
+                      {tr("edit", "Edit")}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDelete} disabled={menuBusy} className="text-red-600">
+                    <span className="flex items-center gap-2">
+                      <Trash2 className="h-4 w-4" />
+                      {tr("delete", "Delete")}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
+              <DropdownMenuItem onClick={handleShare} disabled={menuBusy}>
+                <span className="flex items-center gap-2">
+                  <Share2 className="h-4 w-4" />
+                  {tr("share", "Share")}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setReportOpen(true)} disabled={menuBusy}>
+                <span className="flex items-center gap-2">
+                  <Flag className="h-4 w-4" />
+                  {tr("report", "Report")}
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
+
+        {/* ✅ Edit Post */}
+        <Dialog open={editOpen} onOpenChange={(v) => (menuBusy ? null : setEditOpen(v))}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>{tr("edit_post", "Edit post")}</DialogTitle>
+            </DialogHeader>
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200 min-h-[120px]"
+              placeholder={tr("edit_placeholder", "Update your post...")}
+            />
+            {menuError ? <div className="mt-2 text-sm text-red-600">{menuError}</div> : null}
+            <div className="mt-3 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setEditOpen(false)} disabled={menuBusy}>
+                {tr("cancel", "Cancel")}
+              </Button>
+              <Button type="button" onClick={handleSaveEdit} disabled={menuBusy}>
+                {menuBusy ? tr("saving", "Saving...") : tr("save", "Save")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ✅ Report Post */}
+        <Dialog open={reportOpen} onOpenChange={(v) => (menuBusy ? null : setReportOpen(v))}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>{tr("report_post", "Report post")}</DialogTitle>
+            </DialogHeader>
+            <div className="text-sm text-gray-600">
+              {tr("report_help", "Tell us what’s wrong with this post. Our team will review it.")}
+            </div>
+            <textarea
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200 min-h-[120px]"
+              placeholder={tr("report_placeholder", "Reason (spam, harassment, scam, etc.)")}
+            />
+            {menuError ? <div className="mt-2 text-sm text-red-600">{menuError}</div> : null}
+            <div className="mt-3 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setReportOpen(false)} disabled={menuBusy}>
+                {tr("cancel", "Cancel")}
+              </Button>
+              <Button type="button" onClick={handleSubmitReport} disabled={menuBusy || !currentUserId}>
+                {menuBusy ? tr("submitting", "Submitting...") : tr("submit", "Submit")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {post?.text ? (
           <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
@@ -1098,9 +1311,7 @@ useEffect(() => {
                       </div>
                     </div>
 
-                    <Button variant="ghost" size="icon" className="text-gray-500">
-                      <MoreHorizontal className="h-5 w-5" />
-                    </Button>
+                    {/* (Removed) Empty 3-dots menu on composer */}
                   </div>
 
                   <div className="border-t px-3 py-2 flex items-center gap-2 text-xs text-gray-500">
