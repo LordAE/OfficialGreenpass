@@ -5,6 +5,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { School, User } from "@/api/entities";
 import {
   Building2,
@@ -23,7 +30,11 @@ import {
   ExternalLink,
   X,
   Loader2,
-  Sparkles
+  Sparkles,
+  Pencil,
+  Trash2,
+  Share2,
+  Flag
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -37,8 +48,10 @@ import { auth, db, storage } from "@/firebase";
 import {
   collection,
   getDocs,
+  getDoc,
   addDoc,
   doc,
+  deleteDoc,
   serverTimestamp,
   query,
   where,
@@ -321,8 +334,16 @@ const MediaGallery = ({ media = [] }) => {
   );
 };
 
+
+// 🌍 Country helpers (same approach as Onboarding: flagcdn images)
+const flagUrlFromCode = (code) => {
+  const cc = (code || "").toString().trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) return "";
+  return `https://flagcdn.com/w20/${cc}.png`;
+};
+
 /* -------------------- Real Post Card (FOLLOW + MESSAGE only) -------------------- */
-const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled }) => {
+const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, authorCountryByUid }) => {
   const { tr } = useTr("school_dashboard");
 
   const created = post?.createdAt?.seconds
@@ -334,9 +355,91 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled }) => {
   const authorId = post?.authorId || post?.user_id || post?.author_id;
   const authorRole = post?.authorRole || post?.creator_role || "school";
   const authorName = post?.authorName || post?.author_name || "School";
+  const authorCountry = authorId ? authorCountryByUid?.[authorId] : null;
+  const authorCC = authorCountry?.country_code || post?.country_code || post?.author_country_code || "";
+  const authorCountryName = authorCountry?.country || post?.country || post?.author_country || "";
 
   const isMine = currentUserId && authorId && currentUserId === authorId;
   const [boostOpen, setBoostOpen] = useState(false);
+
+  // 3-dots actions
+  const [editOpen, setEditOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [editText, setEditText] = useState(String(post?.text || ""));
+  const [reportReason, setReportReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setEditText(String(post?.text || ""));
+  }, [post?.text]);
+
+  const sharePost = async () => {
+    try {
+      const link = `${window.location.origin}${window.location.pathname}?post=${encodeURIComponent(post?.id || "")}`;
+      if (navigator?.share) {
+        await navigator.share({ title: "Post", text: post?.text || "", url: link });
+      } else if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }
+    } catch (e) {
+      console.warn("share failed", e);
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!isMine || !post?.id) return;
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, "posts", post.id), {
+        text: String(editText || "").trim(),
+        editedAt: serverTimestamp(),
+      });
+      setEditOpen(false);
+    } catch (e) {
+      console.error("edit failed", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deletePost = async () => {
+    if (!isMine || !post?.id) return;
+    const ok = window.confirm(tr("confirm_delete_post", "Delete this post?"));
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await deleteDoc(doc(db, "posts", post.id));
+    } catch (e) {
+      console.error("delete failed", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitReport = async () => {
+    if (!post?.id || !currentUserId) return;
+    setBusy(true);
+    try {
+      await addDoc(collection(db, "post_reports"), {
+        postId: post.id,
+        reporterId: currentUserId,
+        authorId: authorId || "",
+        reason: String(reportReason || "").trim(),
+        status: "open",
+        createdAt: serverTimestamp(),
+      });
+      setReportReason("");
+      setReportOpen(false);
+    } catch (e) {
+      console.error("report failed", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
 
   return (
@@ -358,16 +461,113 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled }) => {
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>
-                <Globe className="h-3.5 w-3.5" />
-                <span>{tr("public","Public")}</span>
+                {authorCC ? (
+                  <>
+                    <img
+                      src={flagUrlFromCode(authorCC)}
+                      alt={authorCC}
+                      className="h-3.5 w-5 rounded-sm object-cover"
+                      loading="lazy"
+                    />
+                    <span>{authorCountryName || authorCC.toUpperCase()}</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe className="h-3.5 w-3.5" />
+                    <span>{tr("public","Public")}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-            <MoreHorizontal className="h-5 w-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-gray-500"
+                type="button"
+                aria-label={tr("post_actions", "Post actions")}
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end" className="w-44">
+              {isMine ? (
+                <>
+                  <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                    <Pencil className="h-4 w-4 mr-2" /> {tr("edit", "Edit")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={deletePost} disabled={busy}>
+                    <Trash2 className="h-4 w-4 mr-2" /> {tr("delete", "Delete")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
+
+              <DropdownMenuItem onClick={sharePost}>
+                <Share2 className="h-4 w-4 mr-2" /> {tr("share", "Share")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setReportOpen(true)} disabled={!currentUserId}>
+                <Flag className="h-4 w-4 mr-2" /> {tr("report", "Report")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
+
+{/* Edit dialog */}
+<Dialog open={editOpen} onOpenChange={setEditOpen}>
+  <DialogContent className="max-w-lg">
+    <DialogHeader>
+      <DialogTitle>{tr("edit_post", "Edit post")}</DialogTitle>
+    </DialogHeader>
+
+    <textarea
+      className="w-full min-h-[140px] rounded-xl border p-3 text-sm"
+      value={editText}
+      onChange={(e) => setEditText(e.target.value)}
+      placeholder={tr("whats_on_your_mind", "What's on your mind?")}
+    />
+
+    <div className="flex justify-end gap-2">
+      <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
+        {tr("cancel", "Cancel")}
+      </Button>
+      <Button type="button" onClick={saveEdit} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+        {tr("save", "Save")}
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
+
+{/* Report dialog */}
+<Dialog open={reportOpen} onOpenChange={setReportOpen}>
+  <DialogContent className="max-w-lg">
+    <DialogHeader>
+      <DialogTitle>{tr("report_post", "Report post")}</DialogTitle>
+    </DialogHeader>
+
+    <textarea
+      className="w-full min-h-[120px] rounded-xl border p-3 text-sm"
+      value={reportReason}
+      onChange={(e) => setReportReason(e.target.value)}
+      placeholder={tr("report_reason", "Tell us what happened")}
+    />
+
+    <div className="flex justify-end gap-2">
+      <Button type="button" variant="ghost" onClick={() => setReportOpen(false)}>
+        {tr("cancel", "Cancel")}
+      </Button>
+      <Button type="button" onClick={submitReport} disabled={busy || !String(reportReason || "").trim()}>
+        {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+        {tr("submit", "Submit")}
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
 
         {post?.text ? (
           <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
@@ -447,6 +647,7 @@ export default function SchoolDashboard({ user }) {
   const [quotaUsed, setQuotaUsed] = useState(0);
   const [quotaMonth, setQuotaMonth] = useState("");
   const [communityPosts, setCommunityPosts] = useState([]);
+  const [authorCountryByUid, setAuthorCountryByUid] = useState({});
   const [communityLoading, setCommunityLoading] = useState(true);
 
   // ✅ subscription based on your user doc fields
@@ -562,6 +763,44 @@ setCommunityLoading(false);
 
     return () => unsub();
   }, [userId]);
+
+// 🌍 Load author countries for posts (so we can show country + flag like Onboarding)
+useEffect(() => {
+  const ids = Array.from(
+    new Set(
+      (communityPosts || [])
+        .map((p) => p?.authorId || p?.user_id || p?.author_id)
+        .filter(Boolean)
+    )
+  );
+  if (!ids.length) return;
+
+  let cancelled = false;
+
+  (async () => {
+    const out = {};
+    for (const uid of ids) {
+      try {
+        const snap = await getDoc(doc(db, "users", uid));
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          out[uid] = {
+            country: data.country || data.school_profile?.country || data.agent_profile?.country || "",
+            country_code: data.country_code || data.school_profile?.country_code || data.agent_profile?.country_code || "",
+          };
+        }
+      } catch (e) {
+        // ignore missing
+      }
+    }
+    if (!cancelled) setAuthorCountryByUid((prev) => ({ ...prev, ...out }));
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [communityPosts]);
+
 
   // Build & cleanup preview URLs
   useEffect(() => {
@@ -978,10 +1217,24 @@ const firstName = useMemo(() => {
                   </Button>
                 </div>
 
-                <div className="border-t px-3 py-2 flex items-center gap-2 text-xs text-gray-500">
-                  <Globe className="h-3.5 w-3.5" />
-                  Public
-                </div>
+<div className="border-t px-3 py-2 flex items-center gap-2 text-xs text-gray-500">
+  {user?.country_code ? (
+    <>
+      <img
+        src={flagUrlFromCode(user.country_code)}
+        alt={user.country_code}
+        className="h-3.5 w-5 rounded-sm object-cover"
+        loading="lazy"
+      />
+      <span>{user?.country || String(user.country_code).toUpperCase()}</span>
+    </>
+  ) : (
+    <>
+      <Globe className="h-3.5 w-3.5" />
+      <span>{tr("public", "Public")}</span>
+    </>
+  )}
+</div>
               </div>
 
               {/* Feed */}
@@ -996,7 +1249,14 @@ const firstName = useMemo(() => {
                   </div>
                 ) : (
                   communityPosts.map((p) => (
-                    <RealPostCard key={p.id} post={p} currentUserId={userId} me={user}  subscriptionModeEnabled={subscriptionModeEnabled}/>
+                    <RealPostCard
+                      key={p.id}
+                      post={p}
+                      currentUserId={userId}
+                      me={user}
+                      subscriptionModeEnabled={subscriptionModeEnabled}
+                      authorCountryByUid={authorCountryByUid}
+                    />
                   ))
                 )}
               </div>

@@ -3,7 +3,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
   MoreHorizontal,
+  Share2,
+  Flag,
   Globe,
   UserPlus,
   UserMinus,
@@ -25,6 +33,7 @@ import { useTr } from "@/i18n/useTr";
 import { db, auth } from "@/firebase";
 import {
   collection,
+  addDoc,
   doc,
   onSnapshot,
   query,
@@ -33,6 +42,7 @@ import {
   limit,
   writeBatch,
   serverTimestamp,
+  getDocs,
 } from "firebase/firestore";
 
 // 💳 Subscription mode toggle
@@ -132,6 +142,13 @@ const StatPill = ({ children }) => (
   </span>
 );
 
+// 🌍 Country helpers (same approach as Onboarding)
+const flagUrlFromCode = (code) => {
+  const cc = String(code || "").trim().toLowerCase();
+  if (!cc) return "";
+  return `https://flagcdn.com/w20/${cc}.png`;
+};
+
 /* ✅ Real media viewer: multiple images/videos */
 const MediaGallery = ({ media = [], tr }) => {
   const items = Array.isArray(media) ? media : [];
@@ -197,8 +214,65 @@ const MediaGallery = ({ media = [], tr }) => {
 };
 
 /* -------------------- Post Card UI (NO like/comment/share) -------------------- */
-function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage, tr }) {
+function FeedPostCard({ post, myUid, isFollowing, onToggleFollow, onMessage, authorCountryByUid, tr }) {
   const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
+
+  // 🌍 Resolve author country (same logic as AgentDashboard)
+  const authorId = post?.authorId;
+  const authorCountry = authorId ? authorCountryByUid?.[authorId] : null;
+  const resolvedCC = String(authorCountry?.country_code || post?.countryCode || "").trim();
+  const resolvedCountryName = String(authorCountry?.country || post?.country || "").trim();
+
+  const sharePost = async () => {
+    try {
+      const url = `${window.location.origin}${createPageUrl("PostDetails")}?id=${encodeURIComponent(post.id)}`;
+      if (navigator.share) {
+        await navigator.share({
+          title: tr("share_post", "Share post"),
+          text: tr("share_post_text", "Check out this post on GreenPass"),
+          url,
+        });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      alert(tr("link_copied", "Link copied"));
+    } catch (e) {
+      console.error("sharePost error", e);
+      try {
+        const url = `${window.location.origin}${createPageUrl("PostDetails")}?id=${encodeURIComponent(post.id)}`;
+        window.prompt(tr("copy_link", "Copy link:"), url);
+      } catch {
+        alert(tr("share_failed", "Share failed"));
+      }
+    }
+  };
+
+  const reportPost = async () => {
+    try {
+      const reason = window.prompt(tr("report_reason_prompt", "Why are you reporting this post?"), "") || "";
+      const cleanReason = reason.trim();
+      if (!cleanReason) return;
+
+      if (!myUid) {
+        alert(tr("login_required", "Please log in first."));
+        return;
+      }
+
+      await addDoc(collection(db, "post_reports"), {
+        postId: post.id,
+        reporterId: myUid,
+        authorId: post.authorId || "",
+        reason: cleanReason,
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+
+      alert(tr("report_submitted", "Report submitted"));
+    } catch (e) {
+      console.error("reportPost error", e);
+      alert(tr("report_failed", "Report failed"));
+    }
+  };
 
   return (
     <Card className="overflow-hidden rounded-2xl">
@@ -220,12 +294,55 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage, tr }) {
                 ) : null}
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                <span>{post.timeAgo}</span>
-                <span>•</span>
-                <Globe className="h-3.5 w-3.5" />
-                <span>{tr("public", "Public")}</span>
-              </div>
+              {(() => {
+                const authorId =
+                  post?.authorId ||
+                  post?.author_id ||
+                  post?.user_id ||
+                  post?.userId ||
+                  "";
+                const authorCountry = authorId ? authorCountryByUid?.[authorId] : null;
+
+                const postCC =
+                  post?.country_code ||
+                  post?.countryCode ||
+                  post?.author_country_code ||
+                  post?.authorCountryCode ||
+                  post?.authorCC ||
+                  "";
+                const postCountryName =
+                  post?.country ||
+                  post?.country_name ||
+                  post?.author_country ||
+                  post?.authorCountry ||
+                  "";
+
+                const authorCC = (authorCountry?.country_code || postCC || "").toString();
+                const authorCountryName = (authorCountry?.country || postCountryName || "").toString();
+
+                return (
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                    <span>{post.timeAgo}</span>
+                    <span>•</span>
+                    {authorCC ? (
+                      <>
+                        <img
+                          src={flagUrlFromCode(authorCC)}
+                          alt={authorCC}
+                          className="h-3.5 w-5 rounded-sm object-cover"
+                          loading="lazy"
+                        />
+                        <span>{authorCountryName || authorCC.toUpperCase()}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Globe className="h-3.5 w-3.5" />
+                        <span>{tr("public", "Public")}</span>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
               {post.tags?.length ? (
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -237,9 +354,25 @@ function FeedPostCard({ post, isFollowing, onToggleFollow, onMessage, tr }) {
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-            <MoreHorizontal className="h-5 w-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-gray-500" type="button" aria-label="Post actions">
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={sharePost}>
+                <Share2 className="h-4 w-4 mr-2" />
+                {tr("share", "Share")}
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={reportPost}>
+                <Flag className="h-4 w-4 mr-2" />
+                {tr("report", "Report")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Body */}
@@ -314,6 +447,8 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   const [following, setFollowing] = useState(() => new Set());
+  const [authorCountryByUid, setAuthorCountryByUid] = useState(() => ({}));
+
 
   // ✅ Live following set
   useEffect(() => {
@@ -355,6 +490,10 @@ export default function StudentDashboard() {
             authorId: data.authorId || data.author_id || data.user_id || data.userId || "",
             authorRole: String(data.authorRole || data.author_role || "").toLowerCase(),
             authorName: data.authorName || data.author_name || "Creator",
+            // 🌍 country display (prefer post snapshot fields; fallback to author_* keys)
+            country: data.country || data.authorCountry || data.author_country || "",
+            countryCode:
+              data.country_code || data.countryCode || data.authorCountryCode || data.author_country_code || "",
             text: data.text || "",
             tags: Array.isArray(data.tags) ? data.tags : [],
             isFeatured: !!data.isFeatured,
@@ -375,6 +514,57 @@ export default function StudentDashboard() {
 
     return () => unsub();
   }, []);
+
+
+  // ✅ Resolve author country for posts that don't store it (matches AgentDashboard behavior)
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        if (!posts?.length) return;
+
+        // unique author ids in feed
+        const ids = Array.from(
+          new Set(posts.map((p) => p?.authorId).filter(Boolean))
+        );
+
+        // only fetch missing entries
+        const missing = ids.filter((uid) => !(uid in authorCountryByUid));
+        if (missing.length === 0) return;
+
+        const next = { ...authorCountryByUid };
+
+        // Firestore "in" query limit = 10
+        for (let i = 0; i < missing.length; i += 10) {
+          const chunk = missing.slice(i, i + 10);
+          const qUsers = query(collection(db, "users"), where("__name__", "in", chunk));
+          const snap = await getDocs(qUsers);
+          snap.forEach((d) => {
+            const data = d.data() || {};
+            const country = data.country || data.authorCountry || data.author_country || "";
+            const country_code =
+              data.country_code || data.countryCode || data.countryCode2 || data.countryCodeISO || "";
+            next[d.id] = { country, country_code };
+          });
+
+          // Ensure all requested ids exist in map (even if missing doc)
+          chunk.forEach((uid) => {
+            if (!(uid in next)) next[uid] = { country: "", country_code: "" };
+          });
+        }
+
+        if (!cancelled) setAuthorCountryByUid(next);
+      } catch (e) {
+        console.error("author country resolve failed:", e);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [posts, authorCountryByUid]);
 
   const isFollowing = (creatorId) => following.has(creatorId);
 
@@ -540,9 +730,11 @@ export default function StudentDashboard() {
                 <FeedPostCard
                   key={p.id}
                   post={p}
+                  myUid={myUid}
                   isFollowing={isFollowing(p.authorId)}
                   onToggleFollow={toggleFollow}
                   onMessage={messageCreator}
+                authorCountryByUid={authorCountryByUid}
                   tr={tr}
                 />
               ))
@@ -557,9 +749,6 @@ export default function StudentDashboard() {
                   <div className="text-sm font-semibold text-gray-900">
                     {tr("suggested_to_follow", "Suggested to follow")}
                   </div>
-                  <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-                    <MoreHorizontal className="h-5 w-5" />
-                  </Button>
                 </div>
 
                 <div className="mt-3 text-xs text-gray-600">

@@ -17,6 +17,10 @@ import {
   TrendingUp,
   CreditCard,
   MoreHorizontal,
+  Pencil,
+  Trash2,
+  Share2,
+  Flag,
   Globe,
   Image as ImageIcon,
   ExternalLink,
@@ -41,6 +45,7 @@ import {
   collection,
   addDoc,
   doc,
+  deleteDoc,
   serverTimestamp,
   query,
   where,
@@ -51,9 +56,18 @@ import {
   updateDoc,
   runTransaction,
   Timestamp,
-  increment
+  increment,
+  getDoc
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 /* ✅ SUBSCRIPTION LOGIC */
 function isSubscribedUser(u) {
   if (!u) return false;
@@ -62,6 +76,14 @@ function isSubscribedUser(u) {
   const ok = new Set(["active", "paid", "trialing"]);
   return ok.has(status);
 }
+
+
+// 🌍 Country flag helper (same approach as Onboarding.jsx)
+const flagUrlFromCode = (code) => {
+  const cc = (code || "").toString().trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) return "";
+  return `https://flagcdn.com/w20/${cc}.png`;
+};
 
 const SubscribeBanner = ({ to, user, tr }) => {
   const status = String(user?.subscription_status || "").toLowerCase().trim();
@@ -415,7 +437,7 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me, tr }) => {
 };
 
 /* -------------------- Post Card (FOLLOW + MESSAGE only) -------------------- */
-const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr }) => {
+const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, authorCountryByUid }) => {
   const created = post?.createdAt?.seconds
     ? new Date(post.createdAt.seconds * 1000)
     : post?.createdAt?.toDate
@@ -426,8 +448,137 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr }) 
   const authorRole = post?.authorRole || post?.creator_role || "tutor";
   const authorName = post?.authorName || post?.author_name || "Tutor";
 
-  const isMine = currentUserId && authorId && currentUserId === authorId;
+  const isMine = !!(currentUserId && authorId && currentUserId === authorId);
   const [boostOpen, setBoostOpen] = useState(false);
+
+  // ✅ 3-dots actions (edit/share/delete/report)
+  const [editOpen, setEditOpen] = useState(false);
+  const [editText, setEditText] = useState(String(post?.text || ""));
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionErr, setActionErr] = useState("");
+
+  useEffect(() => {
+    setEditText(String(post?.text || ""));
+  }, [post?.id]);
+
+  const postDetailsUrl = useMemo(() => {
+    const id = post?.id || "";
+    if (!id) return "";
+    try {
+      // Use your existing page registry if PostDetails exists there.
+      return `${window.location.origin}${createPageUrl("PostDetails")}?id=${encodeURIComponent(id)}`;
+    } catch {
+      // Safe fallback if createPageUrl doesn't know PostDetails.
+      return `${window.location.origin}/postdetails?id=${encodeURIComponent(id)}`;
+    }
+  }, [post?.id]);
+
+  const handleShare = async () => {
+    if (!postDetailsUrl) return;
+    setActionErr("");
+    try {
+      if (navigator?.share) {
+        await navigator.share({
+          title: tr?.("post","Post") || "Post",
+          text: tr?.("share_post","Check out this post") || "Check out this post",
+          url: postDetailsUrl,
+        });
+        return;
+      }
+
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(postDetailsUrl);
+      } else {
+        // Fallback copy
+        const ta = document.createElement("textarea");
+        ta.value = postDetailsUrl;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+
+      alert(tr?.("link_copied","Link copied") || "Link copied");
+    } catch (e) {
+      console.error("share error:", e);
+      setActionErr(tr?.("share_failed","Failed to share") || "Failed to share");
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!isMine || !post?.id) return;
+    const next = String(editText || "").trim();
+    if (next.length === 0) {
+      setActionErr(tr?.("post_empty","Post cannot be empty") || "Post cannot be empty");
+      return;
+    }
+
+    setActionBusy(true);
+    setActionErr("");
+    try {
+      await updateDoc(doc(db, "posts", post.id), {
+        text: next,
+        editedAt: serverTimestamp(),
+      });
+      setEditOpen(false);
+    } catch (e) {
+      console.error("edit post error:", e);
+      setActionErr(tr?.("edit_failed","Failed to edit post") || "Failed to edit post");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!isMine || !post?.id) return;
+    const ok = window.confirm(tr?.("confirm_delete","Delete this post?") || "Delete this post?");
+    if (!ok) return;
+
+    setActionBusy(true);
+    setActionErr("");
+    try {
+      await deleteDoc(doc(db, "posts", post.id));
+    } catch (e) {
+      console.error("delete post error:", e);
+      setActionErr(tr?.("delete_failed","Failed to delete post") || "Failed to delete post");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleReport = async () => {
+    if (!post?.id) return;
+    const reason = String(reportReason || "").trim();
+    if (reason.length < 3) {
+      setActionErr(tr?.("report_reason_short","Please enter a short reason") || "Please enter a short reason");
+      return;
+    }
+
+    setActionBusy(true);
+    setActionErr("");
+    try {
+      await addDoc(collection(db, "post_reports"), {
+        postId: post.id,
+        reporterId: currentUserId || null,
+        authorId: authorId || null,
+        reason,
+        status: "open",
+        createdAt: serverTimestamp(),
+      });
+      setReportReason("");
+      setReportOpen(false);
+      alert(tr?.("report_submitted","Report submitted") || "Report submitted");
+    } catch (e) {
+      console.error("report post error:", e);
+      setActionErr(tr?.("report_failed","Failed to submit report") || "Failed to submit report");
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
 
@@ -459,15 +610,73 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr }) 
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>
-                <Globe className="h-3.5 w-3.5" />
-                <span>{tr?.("public","Public")}</span>
+                {(() => {
+                  const c = authorCountryByUid?.[authorId] || {};
+                  const cc = (c.country_code || "").toString().trim();
+                  const name = (c.country || "").toString().trim();
+                  const flagUrl = flagUrlFromCode(cc);
+
+                  if (flagUrl || name) {
+                    return (
+                      <span className="inline-flex items-center gap-2">
+                        {flagUrl ? (
+                          <img
+                            src={flagUrl}
+                            alt={name ? `${name} flag` : "Country flag"}
+                            className="h-3.5 w-5 rounded-sm object-cover"
+                            loading="lazy"
+                          />
+                        ) : null}
+                        <span>{name || cc.toUpperCase() || tr?.("public","Public")}</span>
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <>
+                      <Globe className="h-3.5 w-3.5" />
+                      <span>{tr?.("public","Public")}</span>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-            <MoreHorizontal className="h-5 w-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-gray-500"
+                type="button"
+                aria-label={tr?.("post_actions","Post actions") || "Post actions"}
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end" className="w-44">
+              {isMine ? (
+                <>
+                  <DropdownMenuItem onClick={() => { setActionErr(""); setEditOpen(true); }}>
+                    <Pencil className="h-4 w-4 mr-2" /> {tr?.("edit","Edit") || "Edit"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDelete} disabled={actionBusy}>
+                    <Trash2 className="h-4 w-4 mr-2" /> {tr?.("delete","Delete") || "Delete"}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
+
+              <DropdownMenuItem onClick={handleShare}>
+                <Share2 className="h-4 w-4 mr-2" /> {tr?.("share","Share") || "Share"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setActionErr(""); setReportOpen(true); }}>
+                <Flag className="h-4 w-4 mr-2" /> {tr?.("report","Report") || "Report"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {post?.text ? (
@@ -516,6 +725,76 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr }) 
           </div>
         </div>
 
+        {actionErr ? (
+          <div className="px-4 pb-3 text-sm text-red-600">{actionErr}</div>
+        ) : null}
+
+        {/* ✅ Edit post dialog (owner only) */}
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{tr?.("edit_post","Edit post") || "Edit post"}</DialogTitle>
+            </DialogHeader>
+            <textarea
+              className="min-h-[140px] w-full rounded-xl border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              placeholder={tr?.("write_something","Write something...") || "Write something..."}
+            />
+
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={actionBusy}>
+                {tr?.("cancel","Cancel") || "Cancel"}
+              </Button>
+              <Button type="button" onClick={handleSaveEdit} disabled={actionBusy}>
+                {actionBusy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> {tr?.("saving","Saving...") || "Saving..."}
+                  </>
+                ) : (
+                  tr?.("save","Save") || "Save"
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ✅ Report post dialog */}
+        <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{tr?.("report_post","Report post") || "Report post"}</DialogTitle>
+            </DialogHeader>
+
+            <div className="text-sm text-gray-600">
+              {tr?.("report_help","Tell us what\'s wrong (spam, scam, harassment, etc.).") ||
+                "Tell us what's wrong (spam, scam, harassment, etc.)."}
+            </div>
+
+            <textarea
+              className="min-h-[120px] w-full rounded-xl border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              placeholder={tr?.("report_reason","Reason") || "Reason"}
+            />
+
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setReportOpen(false)} disabled={actionBusy}>
+                {tr?.("cancel","Cancel") || "Cancel"}
+              </Button>
+              <Button type="button" onClick={handleReport} disabled={actionBusy}>
+                {actionBusy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> {tr?.("submitting","Submitting...") || "Submitting..."}
+                  </>
+                ) : (
+                  tr?.("submit","Submit") || "Submit"
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {isMine && subscriptionModeEnabled ? (
           <BoostPostDialog
             open={boostOpen}
@@ -561,8 +840,63 @@ export default function TutorDashboard({ user }) {
   // ✅ Posts feed (Option B: one community feed including your own posts)
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
+  const [authorCountryByUid, setAuthorCountryByUid] = useState({});
 
-  const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
+  
+  // ✅ Cache author country (from users/{uid}) so posts show 🇨🇦 Canada instead of 🌐 Public
+  useEffect(() => {
+    let alive = true;
+
+    const ids = Array.from(
+      new Set(
+        (communityPosts || [])
+          .map((p) => p?.author_id || p?.authorId || p?.user_id || p?.uid || p?.created_by)
+          .filter(Boolean)
+      )
+    );
+
+    const missing = ids.filter((uid) => !authorCountryByUid?.[uid]);
+    if (!missing.length) return () => { alive = false; };
+
+    (async () => {
+      const updates = {};
+      await Promise.all(
+        missing.map(async (uid) => {
+          try {
+            const snap = await getDoc(doc(db, "users", uid));
+            if (!snap.exists()) return;
+
+            const d = snap.data() || {};
+            const cc =
+              d.country_code ||
+              d.countryCode ||
+              d.country?.code ||
+              d.country?.country_code ||
+              d.country?.countryCode ||
+              "";
+            const name =
+              d.country ||
+              d.country_name ||
+              d.countryName ||
+              d.country?.name ||
+              "";
+
+            updates[uid] = { country_code: cc, country: name };
+          } catch {
+            // ignore
+          }
+        })
+      );
+
+      if (alive && Object.keys(updates).length) {
+        setAuthorCountryByUid((prev) => ({ ...(prev || {}), ...updates }));
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [communityPosts, authorCountryByUid]);
+
+const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
   const { subscriptionModeEnabled } = useSubscriptionMode();
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
 
@@ -1078,9 +1412,7 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-                    <MoreHorizontal className="h-5 w-5" />
-                  </Button>
+                  {/* (removed empty 3-dots button for composer) */}
                 </div>
 
                 <div className="border-t px-3 py-2 flex items-center gap-2 text-xs text-gray-500">
@@ -1108,7 +1440,7 @@ useEffect(() => {
                   ) : (
                     <div className="mt-4 space-y-4">
                       {communityPosts.map((p) => (
-                        <RealPostCard key={p.id} post={p} currentUserId={userId} me={user} subscriptionModeEnabled={subscriptionModeEnabled} tr={tr} />
+                        <RealPostCard key={p.id} post={p} currentUserId={userId} me={user} subscriptionModeEnabled={subscriptionModeEnabled} tr={tr} authorCountryByUid={authorCountryByUid} />
                       ))}
                     </div>
                   )}

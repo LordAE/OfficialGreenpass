@@ -15,6 +15,10 @@ import {
   UserPlus,
   CreditCard,
   MoreHorizontal,
+  Pencil,
+  Trash2,
+  Share2,
+  Flag,
   Globe,
   Image as ImageIcon,
   MessageCircle,
@@ -45,11 +49,23 @@ import {
   onSnapshot,
   writeBatch,
   updateDoc,
+  deleteDoc,
   runTransaction,
   Timestamp,
-  increment
+  increment,
+  getDoc,
+  getDocs
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+
+// ✅ UI Dropdown (3-dots menu)
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 import ProfileCompletionBanner from "../profile/ProfileCompletionBanner";
 import ActionBlocker from "../profile/ActionBlocker";
@@ -283,6 +299,13 @@ const Avatar = ({ name = "User", size = "md" }) => {
   );
 };
 
+// 🌍 Country helpers (same approach as Onboarding: flagcdn images)
+const flagUrlFromCode = (code) => {
+  const cc = (code || "").toString().trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) return "";
+  return `https://flagcdn.com/w20/${cc}.png`;
+};
+
 /* -------------------- Follow Button (no likes/comments/shares) -------------------- */
 function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "", }) {
   const { tr } = useTr("agent_dashboard");
@@ -404,7 +427,7 @@ const MediaGallery = ({ media = [], }) => {
 };
 
 /* -------------------- Real Post Card (FOLLOW + MESSAGE only) -------------------- */
-const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, }) => {
+const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, authorCountryByUid }) => {
   const { tr } = useTr("agent_dashboard");
 
   const created = post?.createdAt?.seconds
@@ -416,10 +439,143 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, }) => 
   const authorId = post?.authorId || post?.user_id || post?.author_id;
   const authorRole = post?.authorRole || post?.creator_role || "agent";
   const authorName = post?.authorName || post?.author_name || "Agent";
+  const authorCountry = authorId ? authorCountryByUid?.[authorId] : null;
+
+// Fallback to post-stored country fields (older behavior)
+const postCC =
+  post?.country_code ||
+  post?.countryCode ||
+  post?.author_country_code ||
+  post?.authorCountryCode ||
+  post?.authorCC ||
+  "";
+
+const postCountryName =
+  post?.country ||
+  post?.country_name ||
+  post?.author_country ||
+  post?.authorCountry ||
+  "";
+
+const authorCC = (authorCountry?.country_code || postCC || "").toString();
+const authorCountryName = (authorCountry?.country || postCountryName || "").toString();
 
   const isMine = currentUserId && authorId && currentUserId === authorId;
   const [boostOpen, setBoostOpen] = useState(false);
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
+
+  // ✅ 3-dots menu actions
+  const [editOpen, setEditOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [editText, setEditText] = useState(String(post?.text || ""));
+  const [reportReason, setReportReason] = useState("");
+  const [menuBusy, setMenuBusy] = useState(false);
+  const [menuError, setMenuError] = useState("");
+
+  useEffect(() => {
+    setEditText(String(post?.text || ""));
+  }, [post?.text]);
+
+  const getShareUrl = () => {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("post", String(post?.id || ""));
+      return u.toString();
+    } catch {
+      return "";
+    }
+  };
+
+  const handleShare = async () => {
+    const url = getShareUrl();
+    const title = "GreenPass";
+    const text = String(post?.text || "").slice(0, 200);
+    try {
+      if (navigator.share && url) {
+        await navigator.share({ title, text, url });
+        return;
+      }
+      if (navigator.clipboard && url) {
+        await navigator.clipboard.writeText(url);
+        alert(tr("link_copied", "Link copied"));
+        return;
+      }
+      if (url) {
+        window.prompt(tr("copy_link", "Copy this link:"), url);
+      }
+    } catch (e) {
+      console.error("share failed:", e);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!post?.id || !isMine) return;
+    const ok = window.confirm(tr("confirm_delete_post", "Delete this post?"));
+    if (!ok) return;
+    setMenuBusy(true);
+    setMenuError("");
+    try {
+      await deleteDoc(doc(db, "posts", String(post.id)));
+    } catch (e) {
+      console.error("delete post failed:", e);
+      setMenuError(tr("delete_failed", "Delete failed. Please try again."));
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!post?.id || !isMine) return;
+    const next = String(editText || "").trim();
+    if (!next) {
+      setMenuError(tr("post_cannot_be_empty", "Post cannot be empty."));
+      return;
+    }
+    setMenuBusy(true);
+    setMenuError("");
+    try {
+      await updateDoc(doc(db, "posts", String(post.id)), {
+        text: next,
+        editedAt: serverTimestamp(),
+      });
+      setEditOpen(false);
+    } catch (e) {
+      console.error("edit post failed:", e);
+      setMenuError(tr("edit_failed", "Edit failed. Please try again."));
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
+  const handleSubmitReport = async () => {
+    if (!post?.id || !currentUserId) return;
+    const reason = String(reportReason || "").trim();
+    if (!reason) {
+      setMenuError(tr("report_reason_required", "Please enter a reason."));
+      return;
+    }
+    setMenuBusy(true);
+    setMenuError("");
+    try {
+      await addDoc(collection(db, "post_reports"), {
+        postId: String(post.id),
+        reporterId: String(currentUserId),
+        authorId: String(authorId || ""),
+        authorRole: String(authorRole || ""),
+        reason,
+        status: "open",
+        createdAt: serverTimestamp(),
+      });
+      setReportReason("");
+      setReportOpen(false);
+      alert(tr("report_submitted", "Report submitted"));
+    } catch (e) {
+      console.error("report failed:", e);
+      setMenuError(tr("report_failed", "Report failed. Please try again."));
+    } finally {
+      setMenuBusy(false);
+    }
+  };
 
   return (
     <Card className="overflow-hidden rounded-2xl">
@@ -441,16 +597,116 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, }) => 
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>
-                <Globe className="h-3.5 w-3.5" />
-                <span>{tr("public","Public")}</span>
+                {authorCC ? (
+                  <>
+                    <img
+                      src={flagUrlFromCode(authorCC)}
+                      alt={authorCC}
+                      className="h-3.5 w-5 rounded-sm object-cover"
+                      loading="lazy"
+                    />
+                    <span>{authorCountryName || authorCC.toUpperCase()}</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe className="h-3.5 w-3.5" />
+                    <span>{tr("public", "Public")}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-            <MoreHorizontal className="h-5 w-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-gray-500" type="button" disabled={menuBusy}>
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {isMine ? (
+                <>
+                  <DropdownMenuItem onClick={() => setEditOpen(true)} disabled={menuBusy}>
+                    <span className="flex items-center gap-2">
+                      <Pencil className="h-4 w-4" />
+                      {tr("edit", "Edit")}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDelete} disabled={menuBusy} className="text-red-600">
+                    <span className="flex items-center gap-2">
+                      <Trash2 className="h-4 w-4" />
+                      {tr("delete", "Delete")}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
+              <DropdownMenuItem onClick={handleShare} disabled={menuBusy}>
+                <span className="flex items-center gap-2">
+                  <Share2 className="h-4 w-4" />
+                  {tr("share", "Share")}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setReportOpen(true)} disabled={menuBusy}>
+                <span className="flex items-center gap-2">
+                  <Flag className="h-4 w-4" />
+                  {tr("report", "Report")}
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
+
+        {/* ✅ Edit Post */}
+        <Dialog open={editOpen} onOpenChange={(v) => (menuBusy ? null : setEditOpen(v))}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>{tr("edit_post", "Edit post")}</DialogTitle>
+            </DialogHeader>
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200 min-h-[120px]"
+              placeholder={tr("edit_placeholder", "Update your post...")}
+            />
+            {menuError ? <div className="mt-2 text-sm text-red-600">{menuError}</div> : null}
+            <div className="mt-3 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setEditOpen(false)} disabled={menuBusy}>
+                {tr("cancel", "Cancel")}
+              </Button>
+              <Button type="button" onClick={handleSaveEdit} disabled={menuBusy}>
+                {menuBusy ? tr("saving", "Saving...") : tr("save", "Save")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ✅ Report Post */}
+        <Dialog open={reportOpen} onOpenChange={(v) => (menuBusy ? null : setReportOpen(v))}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>{tr("report_post", "Report post")}</DialogTitle>
+            </DialogHeader>
+            <div className="text-sm text-gray-600">
+              {tr("report_help", "Tell us what’s wrong with this post. Our team will review it.")}
+            </div>
+            <textarea
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200 min-h-[120px]"
+              placeholder={tr("report_placeholder", "Reason (spam, harassment, scam, etc.)")}
+            />
+            {menuError ? <div className="mt-2 text-sm text-red-600">{menuError}</div> : null}
+            <div className="mt-3 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setReportOpen(false)} disabled={menuBusy}>
+                {tr("cancel", "Cancel")}
+              </Button>
+              <Button type="button" onClick={handleSubmitReport} disabled={menuBusy || !currentUserId}>
+                {menuBusy ? tr("submitting", "Submitting...") : tr("submit", "Submit")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {post?.text ? (
           <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
@@ -541,6 +797,9 @@ export default function AgentDashboard({ user }) {
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
 
+  // Cache: author uid -> { country, country_code }
+  const [authorCountryByUid, setAuthorCountryByUid] = useState({});
+
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
@@ -625,6 +884,85 @@ setCommunityLoading(false);
 
     return () => unsub();
   }, [userId]);
+
+  // ✅ Resolve author country from users/{uid} (picked during Onboarding)
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(
+        (communityPosts || [])
+          .map((p) => p?.authorId || p?.user_id || p?.author_id)
+          .filter(Boolean)
+      )
+    );
+
+    const missing = ids.filter((uid) => !authorCountryByUid?.[uid]);
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const entries = await Promise.all(
+          missing.map(async (uid) => {
+            try {
+              // 1) Fast path: users/{uid}
+              let d = {};
+              try {
+                const snap = await getDoc(doc(db, "users", uid));
+                if (snap.exists()) d = snap.data() || {};
+              } catch (e) {
+                // ignore
+              }
+
+              // 2) Fallback: users where uid == <uid>
+              if (!d || Object.keys(d).length === 0) {
+                try {
+                  const q1 = query(collection(db, "users"), where("uid", "==", uid), limit(1));
+                  const s1 = await getDocs(q1);
+                  if (!s1.empty) d = s1.docs[0].data() || {};
+                } catch (e) {
+                  // ignore
+                }
+              }
+
+              // 3) Fallback: users where user_id == <uid>
+              if (!d || Object.keys(d).length === 0) {
+                try {
+                  const q2 = query(collection(db, "users"), where("user_id", "==", uid), limit(1));
+                  const s2 = await getDocs(q2);
+                  if (!s2.empty) d = s2.docs[0].data() || {};
+                } catch (e) {
+                  // ignore
+                }
+              }
+
+              const country = d.country || d.country_name || "";
+              const country_code = d.country_code || d.countryCode || d.countryCode2 || d.countryCodeISO || "";
+              return [uid, { country, country_code }];
+            } catch {
+              return [uid, { country: "", country_code: "" }];
+            }
+          })
+        );
+
+        if (cancelled) return;
+        setAuthorCountryByUid((prev) => {
+          const next = { ...(prev || {}) };
+          entries.forEach(([uid, val]) => {
+            next[uid] = val;
+          });
+          return next;
+        });
+      } catch (e) {
+        // fail silently
+        console.warn("author country lookup failed", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [communityPosts, authorCountryByUid]);
 
   // ✅ Build & cleanup preview URLs
   useEffect(() => {
@@ -1020,9 +1358,7 @@ useEffect(() => {
                       </div>
                     </div>
 
-                    <Button variant="ghost" size="icon" className="text-gray-500">
-                      <MoreHorizontal className="h-5 w-5" />
-                    </Button>
+                    {/* (Removed) Empty 3-dots menu on composer */}
                   </div>
 
                   <div className="border-t px-3 py-2 flex items-center gap-2 text-xs text-gray-500">
@@ -1041,7 +1377,16 @@ useEffect(() => {
                     No posts yet. Be the first to post an update.
                   </div>
                 ) : (
-                  communityPosts.map((p) => <RealPostCard key={p.id} post={p} currentUserId={userId} me={user}  subscriptionModeEnabled={subscriptionModeEnabled}/>)
+                  communityPosts.map((p) => (
+                    <RealPostCard
+                      key={p.id}
+                      post={p}
+                      currentUserId={userId}
+                      me={user}
+                      subscriptionModeEnabled={subscriptionModeEnabled}
+                      authorCountryByUid={authorCountryByUid}
+                    />
+                  ))
                 )}
               </div>
             </div>
