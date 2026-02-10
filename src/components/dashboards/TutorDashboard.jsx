@@ -51,8 +51,7 @@ import {
   updateDoc,
   runTransaction,
   Timestamp,
-  increment,
-  getDoc
+  increment
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 /* ✅ SUBSCRIPTION LOGIC */
@@ -63,14 +62,6 @@ function isSubscribedUser(u) {
   const ok = new Set(["active", "paid", "trialing"]);
   return ok.has(status);
 }
-
-
-// 🌍 Country flag helper (same approach as Onboarding.jsx)
-const flagUrlFromCode = (code) => {
-  const cc = (code || "").toString().trim().toLowerCase();
-  if (!/^[a-z]{2}$/.test(cc)) return "";
-  return `https://flagcdn.com/w20/${cc}.png`;
-};
 
 const SubscribeBanner = ({ to, user, tr }) => {
   const status = String(user?.subscription_status || "").toLowerCase().trim();
@@ -424,7 +415,7 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me, tr }) => {
 };
 
 /* -------------------- Post Card (FOLLOW + MESSAGE only) -------------------- */
-const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, authorCountryByUid }) => {
+const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr }) => {
   const created = post?.createdAt?.seconds
     ? new Date(post.createdAt.seconds * 1000)
     : post?.createdAt?.toDate
@@ -468,35 +459,8 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>
-                {(() => {
-                  const c = authorCountryByUid?.[authorId] || {};
-                  const cc = (c.country_code || "").toString().trim();
-                  const name = (c.country || "").toString().trim();
-                  const flagUrl = flagUrlFromCode(cc);
-
-                  if (flagUrl || name) {
-                    return (
-                      <span className="inline-flex items-center gap-2">
-                        {flagUrl ? (
-                          <img
-                            src={flagUrl}
-                            alt={name ? `${name} flag` : "Country flag"}
-                            className="h-3.5 w-5 rounded-sm object-cover"
-                            loading="lazy"
-                          />
-                        ) : null}
-                        <span>{name || cc.toUpperCase() || tr?.("public","Public")}</span>
-                      </span>
-                    );
-                  }
-
-                  return (
-                    <>
-                      <Globe className="h-3.5 w-3.5" />
-                      <span>{tr?.("public","Public")}</span>
-                    </>
-                  );
-                })()}
+                <Globe className="h-3.5 w-3.5" />
+                <span>{tr?.("public","Public")}</span>
               </div>
             </div>
           </div>
@@ -597,63 +561,8 @@ export default function TutorDashboard({ user }) {
   // ✅ Posts feed (Option B: one community feed including your own posts)
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
-  const [authorCountryByUid, setAuthorCountryByUid] = useState({});
 
-  
-  // ✅ Cache author country (from users/{uid}) so posts show 🇨🇦 Canada instead of 🌐 Public
-  useEffect(() => {
-    let alive = true;
-
-    const ids = Array.from(
-      new Set(
-        (communityPosts || [])
-          .map((p) => p?.author_id || p?.authorId || p?.user_id || p?.uid || p?.created_by)
-          .filter(Boolean)
-      )
-    );
-
-    const missing = ids.filter((uid) => !authorCountryByUid?.[uid]);
-    if (!missing.length) return () => { alive = false; };
-
-    (async () => {
-      const updates = {};
-      await Promise.all(
-        missing.map(async (uid) => {
-          try {
-            const snap = await getDoc(doc(db, "users", uid));
-            if (!snap.exists()) return;
-
-            const d = snap.data() || {};
-            const cc =
-              d.country_code ||
-              d.countryCode ||
-              d.country?.code ||
-              d.country?.country_code ||
-              d.country?.countryCode ||
-              "";
-            const name =
-              d.country ||
-              d.country_name ||
-              d.countryName ||
-              d.country?.name ||
-              "";
-
-            updates[uid] = { country_code: cc, country: name };
-          } catch {
-            // ignore
-          }
-        })
-      );
-
-      if (alive && Object.keys(updates).length) {
-        setAuthorCountryByUid((prev) => ({ ...(prev || {}), ...updates }));
-      }
-    })();
-
-    return () => { alive = false; };
-  }, [communityPosts, authorCountryByUid]);
-
-const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
+  const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
   const { subscriptionModeEnabled } = useSubscriptionMode();
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
 
@@ -1199,7 +1108,7 @@ useEffect(() => {
                   ) : (
                     <div className="mt-4 space-y-4">
                       {communityPosts.map((p) => (
-                        <RealPostCard key={p.id} post={p} currentUserId={userId} me={user} subscriptionModeEnabled={subscriptionModeEnabled} tr={tr} authorCountryByUid={authorCountryByUid} />
+                        <RealPostCard key={p.id} post={p} currentUserId={userId} me={user} subscriptionModeEnabled={subscriptionModeEnabled} tr={tr} />
                       ))}
                     </div>
                   )}

@@ -47,8 +47,7 @@ import {
   updateDoc,
   runTransaction,
   Timestamp,
-  increment,
-  getDoc
+  increment
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -284,13 +283,6 @@ const Avatar = ({ name = "User", size = "md" }) => {
   );
 };
 
-// 🌍 Country helpers (same approach as Onboarding: flagcdn images)
-const flagUrlFromCode = (code) => {
-  const cc = (code || "").toString().trim().toLowerCase();
-  if (!/^[a-z]{2}$/.test(cc)) return "";
-  return `https://flagcdn.com/w20/${cc}.png`;
-};
-
 /* -------------------- Follow Button (no likes/comments/shares) -------------------- */
 function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "", }) {
   const { tr } = useTr("agent_dashboard");
@@ -412,7 +404,7 @@ const MediaGallery = ({ media = [], }) => {
 };
 
 /* -------------------- Real Post Card (FOLLOW + MESSAGE only) -------------------- */
-const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, authorCountryByUid }) => {
+const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, }) => {
   const { tr } = useTr("agent_dashboard");
 
   const created = post?.createdAt?.seconds
@@ -424,9 +416,6 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
   const authorId = post?.authorId || post?.user_id || post?.author_id;
   const authorRole = post?.authorRole || post?.creator_role || "agent";
   const authorName = post?.authorName || post?.author_name || "Agent";
-  const authorCountry = authorId ? authorCountryByUid?.[authorId] : null;
-  const authorCC = authorCountry?.country_code || "";
-  const authorCountryName = authorCountry?.country || "";
 
   const isMine = currentUserId && authorId && currentUserId === authorId;
   const [boostOpen, setBoostOpen] = useState(false);
@@ -452,22 +441,8 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>
-                {authorCC ? (
-                  <>
-                    <img
-                      src={flagUrlFromCode(authorCC)}
-                      alt={authorCC}
-                      className="h-3.5 w-5 rounded-sm object-cover"
-                      loading="lazy"
-                    />
-                    <span>{authorCountryName || authorCC.toUpperCase()}</span>
-                  </>
-                ) : (
-                  <>
-                    <Globe className="h-3.5 w-3.5" />
-                    <span>{tr("public", "Public")}</span>
-                  </>
-                )}
+                <Globe className="h-3.5 w-3.5" />
+                <span>{tr("public","Public")}</span>
               </div>
             </div>
           </div>
@@ -566,9 +541,6 @@ export default function AgentDashboard({ user }) {
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
 
-  // Cache: author uid -> { country, country_code }
-  const [authorCountryByUid, setAuthorCountryByUid] = useState({});
-
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
@@ -653,56 +625,6 @@ setCommunityLoading(false);
 
     return () => unsub();
   }, [userId]);
-
-  // ✅ Resolve author country from users/{uid} (picked during Onboarding)
-  useEffect(() => {
-    const ids = Array.from(
-      new Set(
-        (communityPosts || [])
-          .map((p) => p?.authorId || p?.user_id || p?.author_id)
-          .filter(Boolean)
-      )
-    );
-
-    const missing = ids.filter((uid) => !authorCountryByUid?.[uid]);
-    if (missing.length === 0) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const entries = await Promise.all(
-          missing.map(async (uid) => {
-            try {
-              const snap = await getDoc(doc(db, "users", uid));
-              const d = snap.exists() ? snap.data() || {} : {};
-              const country = d.country || d.country_name || "";
-              const country_code = d.country_code || d.countryCode || d.countryCode2 || "";
-              return [uid, { country, country_code }];
-            } catch {
-              return [uid, { country: "", country_code: "" }];
-            }
-          })
-        );
-
-        if (cancelled) return;
-        setAuthorCountryByUid((prev) => {
-          const next = { ...(prev || {}) };
-          entries.forEach(([uid, val]) => {
-            next[uid] = val;
-          });
-          return next;
-        });
-      } catch (e) {
-        // fail silently
-        console.warn("author country lookup failed", e);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [communityPosts, authorCountryByUid]);
 
   // ✅ Build & cleanup preview URLs
   useEffect(() => {
@@ -1119,16 +1041,7 @@ useEffect(() => {
                     No posts yet. Be the first to post an update.
                   </div>
                 ) : (
-                  communityPosts.map((p) => (
-                    <RealPostCard
-                      key={p.id}
-                      post={p}
-                      currentUserId={userId}
-                      me={user}
-                      subscriptionModeEnabled={subscriptionModeEnabled}
-                      authorCountryByUid={authorCountryByUid}
-                    />
-                  ))
+                  communityPosts.map((p) => <RealPostCard key={p.id} post={p} currentUserId={userId} me={user}  subscriptionModeEnabled={subscriptionModeEnabled}/>)
                 )}
               </div>
             </div>

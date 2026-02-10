@@ -5,23 +5,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from "@/components/ui/alert-dialog";
 import { School, User } from "@/api/entities";
 import {
   Building2,
@@ -54,8 +37,7 @@ import { auth, db, storage } from "@/firebase";
 import {
   collection,
   getDocs,
-    getDoc,
-addDoc,
+  addDoc,
   doc,
   serverTimestamp,
   query,
@@ -65,7 +47,6 @@ addDoc,
   onSnapshot,
   writeBatch,
   updateDoc,
-  deleteDoc,
   runTransaction,
   Timestamp,
   increment,
@@ -114,15 +95,6 @@ const fmt = (v, fmtStr = "MMM dd, h:mm a") => {
   }
 };
 /* --------------------------------------------------------------------- */
-
-
-// 🌍 Flag helper (same as Onboarding.jsx)
-const flagUrlFromCode = (code) => {
-  const cc = (code || "").toString().trim().toLowerCase();
-  if (!/^[a-z]{2}$/.test(cc)) return "";
-  return `https://flagcdn.com/w20/${cc}.png`;
-};
-
 
 /* ✅ Uses your REAL user doc fields:
    - subscription_active (boolean)
@@ -350,7 +322,7 @@ const MediaGallery = ({ media = [] }) => {
 };
 
 /* -------------------- Real Post Card (FOLLOW + MESSAGE only) -------------------- */
-const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, authorCountryByUid }) => {
+const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled }) => {
   const { tr } = useTr("school_dashboard");
 
   const created = post?.createdAt?.seconds
@@ -365,82 +337,6 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
 
   const isMine = currentUserId && authorId && currentUserId === authorId;
   const [boostOpen, setBoostOpen] = useState(false);
-
-// ✅ 3-dots actions
-const [editOpen, setEditOpen] = useState(false);
-const [editText, setEditText] = useState(String(post?.text || ""));
-const [deleteOpen, setDeleteOpen] = useState(false);
-const [deleting, setDeleting] = useState(false);
-
-useEffect(() => {
-  // keep edit text in sync if post changes
-  setEditText(String(post?.text || ""));
-}, [post?.id]);
-
-const postLink = useMemo(() => {
-  const base = typeof window !== "undefined" ? window.location.origin : "";
-  const path = createPageUrl("PostDetails") || "/postdetails";
-  return `${base}${path}?id=${encodeURIComponent(post?.id || "")}`;
-}, [post?.id]);
-
-const copyShareLink = async () => {
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(postLink);
-    } else {
-      const el = document.createElement("textarea");
-      el.value = postLink;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand("copy");
-      document.body.removeChild(el);
-    }
-  } catch {
-    // ignore
-  }
-};
-
-const reportPost = async () => {
-  if (!currentUserId || !post?.id) return;
-  try {
-    await addDoc(collection(db, "reports"), {
-      type: "post",
-      postId: post.id,
-      postAuthorId: authorId || null,
-      reporterId: currentUserId,
-      createdAt: serverTimestamp(),
-      status: "pending",
-    });
-  } catch {
-    // ignore
-  }
-};
-
-const saveEdit = async () => {
-  if (!isMine || !post?.id) return;
-  try {
-    await updateDoc(doc(db, "posts", post.id), {
-      text: String(editText || "").trim(),
-      updatedAt: serverTimestamp(),
-    });
-    setEditOpen(false);
-  } catch {
-    // ignore
-  }
-};
-
-const confirmDelete = async () => {
-  if (!isMine || !post?.id) return;
-  setDeleting(true);
-  try {
-    await deleteDoc(doc(db, "posts", post.id));
-    setDeleteOpen(false);
-  } catch {
-    // ignore
-  } finally {
-    setDeleting(false);
-  }
-};
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
 
   return (
@@ -462,72 +358,15 @@ const confirmDelete = async () => {
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>
-                {(() => {
-                  const c = authorId ? authorCountryByUid?.[authorId] : null;
-                  const cc = c?.country_code || "";
-                  const name = c?.country || "";
-                  const flagUrl = flagUrlFromCode(cc);
-                  if (flagUrl && name) {
-                    return (
-                      <>
-                        <img
-                          src={flagUrl}
-                          alt={`${name} flag`}
-                          className="h-3.5 w-5 rounded-sm object-cover"
-                          loading="lazy"
-                        />
-                        <span>{name}</span>
-                      </>
-                    );
-                  }
-                  return (
-                    <>
-                      <Globe className="h-3.5 w-3.5" />
-                      <span>{tr("public", "Public")}</span>
-                    </>
-                  );
-                })()}
+                <Globe className="h-3.5 w-3.5" />
+                <span>{tr("public","Public")}</span>
               </div>
             </div>
           </div>
 
-<DropdownMenu>
-  <DropdownMenuTrigger asChild>
-    <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-      <MoreHorizontal className="h-5 w-5" />
-    </Button>
-  </DropdownMenuTrigger>
-  <DropdownMenuContent align="end" className="w-44">
-    {isMine ? (
-      <>
-        <DropdownMenuItem onClick={() => setEditOpen(true)}>
-          {tr("edit","Edit")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={copyShareLink}>
-          {tr("share_link","Share link")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="text-red-600 focus:text-red-700"
-          onClick={() => setDeleteOpen(true)}
-        >
-          {tr("delete","Delete")}
-        </DropdownMenuItem>
-      </>
-    ) : (
-      <>
-        <DropdownMenuItem onClick={copyShareLink}>
-          {tr("share_link","Share link")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={reportPost}>
-          {tr("report","Report")}
-        </DropdownMenuItem>
-      </>
-    )}
-  </DropdownMenuContent>
-</DropdownMenu>
-
+          <Button variant="ghost" size="icon" className="text-gray-500" type="button">
+            <MoreHorizontal className="h-5 w-5" />
+          </Button>
         </div>
 
         {post?.text ? (
@@ -575,61 +414,7 @@ const confirmDelete = async () => {
             me={me}
           />
         ) : null}
-      
-{/* ✅ Edit post dialog */}
-<Dialog open={editOpen} onOpenChange={setEditOpen}>
-  <DialogContent className="sm:max-w-lg">
-    <DialogHeader>
-      <DialogTitle>{tr("edit_post","Edit post")}</DialogTitle>
-    </DialogHeader>
-
-    <div className="space-y-3">
-      <textarea
-        className="min-h-[140px] w-full rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500"
-        value={editText}
-        onChange={(e) => setEditText(e.target.value)}
-        placeholder={tr("write_something","Write something...")}
-      />
-
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
-          {tr("cancel","Cancel")}
-        </Button>
-        <Button type="button" onClick={saveEdit} disabled={!String(editText || "").trim()}>
-          {tr("save","Save")}
-        </Button>
-      </div>
-    </div>
-  </DialogContent>
-</Dialog>
-
-{/* ✅ Delete confirmation dialog */}
-<AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>{tr("delete_post","Delete post?")}</AlertDialogTitle>
-      <AlertDialogDescription>
-        {tr("delete_post_desc","This will permanently delete this post. This can’t be undone.")}
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel disabled={deleting}>
-        {tr("cancel","Cancel")}
-      </AlertDialogCancel>
-      <AlertDialogAction
-        disabled={deleting}
-        onClick={(e) => {
-          e.preventDefault();
-          confirmDelete();
-        }}
-        className="bg-red-600 hover:bg-red-700"
-      >
-        {deleting ? tr("deleting","Deleting...") : tr("delete","Delete")}
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
-</CardContent>
+      </CardContent>
     </Card>
   );
 };
@@ -663,9 +448,6 @@ export default function SchoolDashboard({ user }) {
   const [quotaMonth, setQuotaMonth] = useState("");
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
-
-  // ✅ Cache: author uid -> { country, country_code } (from users/{uid})
-  const [authorCountryByUid, setAuthorCountryByUid] = useState({});
 
   // ✅ subscription based on your user doc fields
   const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
@@ -780,67 +562,6 @@ setCommunityLoading(false);
 
     return () => unsub();
   }, [userId]);
-
-
-  // ✅ Load post-author countries from users/{uid} (country chosen in Onboarding)
-  useEffect(() => {
-    if (!communityPosts || communityPosts.length === 0) return;
-
-    const uids = Array.from(
-      new Set(
-        communityPosts
-          .map((p) => p?.authorId || p?.user_id || p?.author_id)
-          .filter(Boolean)
-      )
-    );
-
-    const missing = uids.filter((uid) => !authorCountryByUid?.[uid]);
-    if (missing.length === 0) return;
-
-    let cancelled = false;
-
-    (async () => {
-      const updates = {};
-      await Promise.all(
-        missing.map(async (uid) => {
-          try {
-            const snap = await getDoc(doc(db, "users", uid));
-            if (!snap.exists()) return;
-
-            const d = snap.data() || {};
-            const cc =
-              d.country_code ||
-              d.countryCode ||
-              d?.country?.code ||
-              d?.country?.cca2 ||
-              "";
-            const name =
-              d.country ||
-              d.country_name ||
-              d.countryName ||
-              d?.country?.name ||
-              "";
-
-            updates[uid] = {
-              country_code: cc ? String(cc).trim() : "",
-              country: name ? String(name).trim() : "",
-            };
-          } catch {
-            // ignore
-          }
-        })
-      );
-
-      if (cancelled) return;
-      if (Object.keys(updates).length) {
-        setAuthorCountryByUid((prev) => ({ ...prev, ...updates }));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [communityPosts, authorCountryByUid]);
 
   // Build & cleanup preview URLs
   useEffect(() => {
@@ -1275,7 +996,7 @@ const firstName = useMemo(() => {
                   </div>
                 ) : (
                   communityPosts.map((p) => (
-                    <RealPostCard key={p.id} post={p} currentUserId={userId} me={user} subscriptionModeEnabled={subscriptionModeEnabled} authorCountryByUid={authorCountryByUid} />
+                    <RealPostCard key={p.id} post={p} currentUserId={userId} me={user}  subscriptionModeEnabled={subscriptionModeEnabled}/>
                   ))
                 )}
               </div>
