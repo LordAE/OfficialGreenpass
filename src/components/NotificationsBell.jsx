@@ -167,13 +167,18 @@ export default function NotificationsBell({
             transition={{ duration: 0.12 }}
             role="menu"
             className={cn(
-              // ✅ "Facebook-style" panel (not a route)
-              "right-0 mt-2 w-[380px] max-w-[92vw] rounded-2xl bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5 z-[9999] overflow-hidden",
+              // ✅ Mobile: fixed, centered panel; Desktop: dropdown (or fixed when expanded)
+              "fixed inset-x-0 top-14 z-[9999] px-3",
               expanded
-                ? "fixed top-16 sm:top-14 right-3 sm:right-4"
-                : "absolute"
+                ? "sm:fixed sm:top-14 sm:right-4 sm:left-auto sm:px-0"
+                : "sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:px-0"
             )}
           >
+            <div
+              className={cn(
+                "mx-auto w-full max-w-[420px] sm:mx-0 sm:w-[380px] rounded-2xl bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5 overflow-hidden"
+              )}
+            >
             <div className="p-3 flex items-center justify-between">
               <div className="text-base font-bold text-gray-900">Notifications</div>
               <div className="flex items-center gap-2">
@@ -294,6 +299,7 @@ export default function NotificationsBell({
                 See previous notifications
               </button>
             </div>
+                      </div>
           </motion.div>
         )}
       </AnimatePresence>
