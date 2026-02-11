@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { auth, db } from "@/firebase";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,6 +84,7 @@ const location = useLocation();
 
   const to = params.get("to") || "";
   const toRoleParam = params.get("toRole") || params.get("role") || "";
+  const convIdParam = params.get("c") || params.get("conversation") || params.get("conversationId") || "";
   const toRole = normalizeRole(toRoleParam);
 
   const [me, setMe] = useState(null);
@@ -221,6 +222,38 @@ const location = useLocation();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.uid, selectedConv?.id, safeSetPeerCache]);
+
+  // ✅ Open via notification link (?c=<conversationId>)
+  useEffect(() => {
+    if (!me?.uid || !meDoc) return;
+    if (!convIdParam) return;
+
+    const existing = (conversations || []).find((c) => c?.id === convIdParam);
+    if (existing) {
+      setSelectedConv(existing);
+      if (isMobile) setMobileView("chat");
+      return;
+    }
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "conversations", convIdParam));
+        if (!snap.exists()) return;
+
+        const conv = { id: snap.id, ...snap.data() };
+
+        // Safety: ensure I'm a participant
+        const parts = Array.isArray(conv?.participants) ? conv.participants : [];
+        if (!parts.includes(me.uid)) return;
+
+        setSelectedConv(conv);
+        if (isMobile) setMobileView("chat");
+      } catch (e) {
+        console.error("open conversation by id error:", e);
+      }
+    })();
+  }, [me?.uid, meDoc, convIdParam, conversations, isMobile]);
+
 
   // First-time open via ?to=
   useEffect(() => {

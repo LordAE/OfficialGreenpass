@@ -203,3 +203,69 @@ exports.notifyFollowersOnPostPublished = onDocumentUpdated("posts/{postId}", asy
 
   await fanoutNewPostNotification({ postId, post: after });
 });
+
+/**
+ * =========================================================
+ * 2B) Notifications: User gets notified when someone follows them
+ * =========================================================
+ *
+ * Trigger:
+ * - users/{followeeId}/followers/{followerId} (onCreate)
+ *
+ * Writes:
+ * - users/{followeeId}/notifications/{notifId}
+ *
+ * Notes:
+ * - No route/link needed (NotificationsBell already supports link-less notifs)
+ * - Deterministic notif id prevents duplicates
+ */
+exports.notifyUserOnFollow = onDocumentCreated(
+  "users/{followeeId}/followers/{followerId}",
+  async (event) => {
+    try {
+      const followeeId = event.params.followeeId;
+      const followerId = event.params.followerId;
+
+      if (!followeeId || !followerId) return;
+      if (followeeId === followerId) return; // ignore self-follow
+
+      const notifId = `follow_${followeeId}_${followerId}`;
+      const notifRef = admin
+        .firestore()
+        .doc(`users/${followeeId}/notifications/${notifId}`);
+
+      // Pull follower profile for display (best-effort)
+      let followerName = "Someone";
+      let followerRole = null;
+      let followerPhoto = "";
+
+      const followerDoc = await admin.firestore().doc(`users/${followerId}`).get();
+      if (followerDoc.exists) {
+        const u = followerDoc.data() || {};
+        followerName = u.full_name || u.displayName || u.name || followerName;
+        followerRole = u.role || u.selected_role || u.user_type || u.userType || followerRole;
+        followerPhoto = u.profile_picture || u.photoURL || u.photo_url || followerPhoto;
+      }
+
+      await notifRef.set(
+        {
+          type: "follow",
+          followerId,
+          followerName,
+          followerRole,
+          followerPhoto,
+          title: "New follower",
+          body: `${followerName} started following you`,
+
+          // matches your notification rules pattern
+          seen: false,
+          readAt: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("notifyUserOnFollow error:", err);
+    }
+  }
+);

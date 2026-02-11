@@ -1199,11 +1199,13 @@ const [page, setPage] = useState(1);
       if (!uid) return;
 
       const targetId = String(profileUser?.id || "").trim();
+      // ✅ Determine actual role from profile doc first (roleKey is ONLY a fallback)
       const rRaw = String(
-        roleKey ||
+        profileUser?.role ||
+          profileUser?.selected_role ||
           profileUser?.user_type ||
           profileUser?.userType ||
-          profileUser?.role ||
+          roleKey ||
           "support"
       );
       const targetRole = normalizeRole(rRaw);
@@ -1313,12 +1315,13 @@ const [page, setPage] = useState(1);
       }
 
       const me = myRole || "";
+      // ✅ Determine the *actual* role of the clicked profile (do NOT let browseTab override real role)
       const targetRole = normalizeRole(
-        browseTab ||
-          profileUser?.role ||
+        profileUser?.role ||
           profileUser?.selected_role ||
           profileUser?.user_type ||
           profileUser?.userType ||
+          browseTab ||
           ""
       );
 

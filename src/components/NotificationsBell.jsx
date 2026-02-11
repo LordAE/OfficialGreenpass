@@ -16,6 +16,104 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
+/* ------------------------------------------------------------
+ * Avatar helpers (image when available, initials fallback)
+ * ---------------------------------------------------------- */
+function getInitials(input) {
+  const s = String(input || "").trim();
+  if (!s) return "GP";
+  const parts = s
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "GP";
+  const a = parts[0]?.[0] || "G";
+  const b = parts.length > 1 ? parts[parts.length - 1]?.[0] : parts[0]?.[1];
+  return (a + (b || "P")).toUpperCase();
+}
+
+function pickFirst(obj, keys) {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+function getNotifName(n) {
+  return (
+    pickFirst(n, [
+      "actorName",
+      "senderName",
+      "fromName",
+      "displayName",
+      "userName",
+      "authorName",
+      "schoolName",
+      "name",
+    ]) ||
+    pickFirst(n?.actor, ["name", "displayName"]) ||
+    pickFirst(n?.sender, ["name", "displayName"]) ||
+    "GreenPass"
+  );
+}
+
+function getNotifPhoto(n) {
+  return (
+    pickFirst(n, [
+      "photoURL",
+      "photoUrl",
+      "avatarUrl",
+      "avatarURL",
+      "senderPhoto",
+      "senderAvatar",
+      "actorPhoto",
+      "actorAvatar",
+      "userPhoto",
+      "userAvatar",
+      "authorPhoto",
+      "authorAvatar",
+      "profilePhoto",
+      "image",
+      "iconUrl",
+    ]) ||
+    pickFirst(n?.actor, ["photoURL", "photoUrl", "avatarUrl"]) ||
+    pickFirst(n?.sender, ["photoURL", "photoUrl", "avatarUrl"]) ||
+    ""
+  );
+}
+
+function NotificationAvatar({ name, src, className = "" }) {
+  const [broken, setBroken] = React.useState(false);
+  const initials = React.useMemo(() => getInitials(name), [name]);
+
+  if (src && !broken) {
+    return (
+      <img
+        src={src}
+        alt={name || "Avatar"}
+        className={cn("w-10 h-10 rounded-full object-cover shrink-0", className)}
+        onError={() => setBroken(true)}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "w-10 h-10 rounded-full bg-teal-600 text-white flex items-center justify-center font-bold text-xs shrink-0",
+        className
+      )}
+      aria-label={name ? `Avatar ${name}` : "Avatar"}
+      title={name || ""}
+    >
+      {initials}
+    </div>
+  );
+}
+
 /* click-outside */
 function useClickOutside(ref, handler, when = true) {
   React.useEffect(() => {
@@ -256,6 +354,8 @@ export default function NotificationsBell({
                     const title = String(n.title || "").trim() || "Notification";
                     const body = String(n.body || "").trim();
                     const isUnread = n.seen === false;
+                    const name = getNotifName(n);
+                    const photo = getNotifPhoto(n);
 
                     return (
                       <button
@@ -268,7 +368,7 @@ export default function NotificationsBell({
                         )}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gray-200 shrink-0" />
+                          <NotificationAvatar name={name} src={photo} />
                           <div className="min-w-0">
                             <div className="text-sm font-semibold text-gray-900 truncate">
                               {title}

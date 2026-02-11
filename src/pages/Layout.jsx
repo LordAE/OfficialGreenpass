@@ -835,7 +835,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
         <Outlet />
       </main>
 
-      <Footer getCompanyName={getCompanyName} />
+      {!currentUser && <Footer getCompanyName={getCompanyName} />}
       <MobileBottomNav nav={mobileNav} isActive={isActive} />
     </div>
   );
@@ -970,7 +970,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
         <Outlet />
       </main>
 
-      <Footer getCompanyName={getCompanyName} />
+      {!currentUser && <Footer getCompanyName={getCompanyName} />}
       <MobileBottomNav nav={mobileNav} isActive={isActive} />
     </div>
   );
@@ -1103,7 +1103,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
         <Outlet />
       </main>
 
-      <Footer getCompanyName={getCompanyName} />
+      {!currentUser && <Footer getCompanyName={getCompanyName} />}
       <MobileBottomNav nav={mobileNav} isActive={isActive} />
     </div>
   );
@@ -1233,7 +1233,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
         <Outlet />
       </main>
 
-      <Footer getCompanyName={getCompanyName} />
+      {!currentUser && <Footer getCompanyName={getCompanyName} />}
       <MobileBottomNav nav={mobileNav} isActive={isActive} />
     </div>
   );
@@ -1432,7 +1432,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
         </main>
       </div>
 
-      <Footer getCompanyName={getCompanyName} />
+      {!currentUser && <Footer getCompanyName={getCompanyName} />}
       <MobileBottomNav nav={mobileNav} isActive={isActive} />
     </div>
   );
@@ -1828,7 +1828,7 @@ export default function Layout() {
 
   const getLogoUrl = React.useCallback(
     () =>
-      "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/rawdatas%2FGreenPass%20Superapp.png?alt=media&token=987ad375-1aeb-4e1f-af08-7d89eb0ee2d8",
+      "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/rawdatas%2FGreenPass%20Official.png?alt=media&token=809da08b-22f6-4049-bbbf-9b82342630e8",
     []
   );
   const getCompanyName = React.useCallback(() => "GreenPass", []);
