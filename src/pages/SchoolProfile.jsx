@@ -233,84 +233,12 @@ export default function SchoolProfile() {
     });
   };
 
-  // ✅ Every field required
-  const REQUIRED_FIELDS = useMemo(
-    () => [
-      { key: "name", label: "School Name", type: "text" },
-      { key: "school_level", label: "School Level", type: "select" },
-      { key: "location", label: "City", type: "text" },
-      { key: "province", label: "Province/State", type: "text" },
-      { key: "country", label: "Country", type: "text" },
-      { key: "address", label: "Full Address", type: "text" },
-      { key: "founded_year", label: "Founded Year", type: "number" },
-      { key: "website", label: "Website", type: "text" },
-      { key: "is_public", label: "Public / Private", type: "select" },
 
-      { key: "email", label: "Email", type: "text" },
-      { key: "phone", label: "Phone", type: "text" },
-      { key: "school_type", label: "Institution Type", type: "select" },
-
-      { key: "pgwp_available", label: "PGWP Available", type: "select" },
-      { key: "has_coop", label: "Co-op Offered", type: "select" },
-      { key: "is_dli", label: "DLI", type: "select" },
-      { key: "dli_number", label: "DLI Number", type: "text" },
-
-      { key: "logo_url", label: "Logo", type: "text" },
-      { key: "banner_url", label: "Banner / Hero", type: "text" },
-      { key: "image_urls", label: "Additional Images", type: "array" },
-
-      { key: "about", label: "Description", type: "text" },
-
-      { key: "tuition_fees", label: "Tuition Fees", type: "number" },
-      { key: "application_fee", label: "Application Fee", type: "number" },
-      { key: "cost_of_living", label: "Cost of Living", type: "number" },
-
-      { key: "rating", label: "Overall Rating", type: "number" },
-      { key: "acceptance_rate", label: "Acceptance Rate", type: "number" },
-    ],
-    []
-  );
-
-  const isMissingField = useCallback(
-    (fieldDef) => {
-      const v = formData[fieldDef.key];
-
-      if (fieldDef.type === "array") {
-        return !Array.isArray(v) || v.filter(Boolean).length === 0;
-      }
-
-      if (fieldDef.type === "number") {
-        if (v === "" || v === null || v === undefined) return true;
-        const n = Number(v);
-        return Number.isNaN(n);
-      }
-
-      if (v === null || v === undefined) return true;
-      return String(v).trim().length === 0;
-    },
-    [formData]
-  );
-
-  const missingFields = useMemo(
-    () => REQUIRED_FIELDS.filter(isMissingField),
-    [REQUIRED_FIELDS, isMissingField]
-  );
-  const hasMissing = missingFields.length > 0;
-
-  const validate = () => {
-    if (!hasMissing) return null;
-    const first = missingFields[0]?.label || "Some fields";
-    return `Profile incomplete. Missing: ${first}${
-      missingFields.length > 1 ? ` (+${missingFields.length - 1} more)` : ""
-    }.`;
-  };
+  // ✅ Allow partial saves (no required-field blocking)
+  // We still keep gentle input styling but never prevent saving.
+  const inputClass = (_key) => "";
 
   const handleSave = async () => {
-    const err = validate();
-    if (err) {
-      alert(err);
-      return;
-    }
 
     setSaving(true);
     try {
@@ -320,8 +248,8 @@ export default function SchoolProfile() {
       // Determine institutionId (reuse if present)
       let institutionId = formData.institution_id?.trim();
       if (!institutionId) {
-        const slug = slugify(formData.name);
         const shortUid = uid.substring(0, 6);
+        const slug = slugify(formData.name) || "school";
         institutionId = `${slug}-${shortUid}`;
       }
 
@@ -446,11 +374,6 @@ alert("Profile saved to both collections successfully!");
     }
   };
 
-  const missingKeys = useMemo(() => new Set(missingFields.map((f) => f.key)), [missingFields]);
-
-  const inputClass = (key) =>
-    missingKeys.has(key) ? "border-red-500 focus-visible:ring-red-500" : "";
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -460,7 +383,7 @@ alert("Profile saved to both collections successfully!");
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-gray-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-gray-100 p-4 sm:p-6">
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-4 mb-2">
           <Building className="w-8 h-8 text-blue-700" />
@@ -468,20 +391,6 @@ alert("Profile saved to both collections successfully!");
         </div>
 
         {/* ✅ Red warning below title */}
-        {hasMissing && (
-          <div className="mb-6 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-red-700">
-            <div className="font-semibold">
-              Profile incomplete — {missingFields.length} required{" "}
-              {missingFields.length === 1 ? "field is" : "fields are"} missing.
-            </div>
-            <div className="text-sm mt-1">
-              Missing:{" "}
-              <span className="font-medium">
-                {missingFields.map((f) => f.label).join(", ")}
-              </span>
-            </div>
-          </div>
-        )}
 
         <div className="space-y-8">
           {/* Basic Information */}
@@ -490,9 +399,9 @@ alert("Profile saved to both collections successfully!");
               <CardTitle>Basic Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="name">School Name *</Label>
+                  <Label htmlFor="name">School Name</Label>
                   <Input
                     id="name"
                     className={inputClass("name")}
@@ -501,7 +410,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="school_level">School Level *</Label>
+                  <Label htmlFor="school_level">School Level</Label>
                   <Select
                     value={formData.school_level}
                     onValueChange={(value) => {
@@ -528,9 +437,9 @@ alert("Profile saved to both collections successfully!");
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="location">City *</Label>
+                  <Label htmlFor="location">City</Label>
                   <Input
                     id="location"
                     className={inputClass("location")}
@@ -539,7 +448,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="province">Province/State *</Label>
+                  <Label htmlFor="province">Province/State</Label>
                   <Input
                     id="province"
                     className={inputClass("province")}
@@ -548,7 +457,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="country">Country *</Label>
+                  <Label htmlFor="country">Country</Label>
                   <Input
                     id="country"
                     className={inputClass("country")}
@@ -559,7 +468,7 @@ alert("Profile saved to both collections successfully!");
               </div>
 
               <div>
-                <Label htmlFor="address">Full Address *</Label>
+                <Label htmlFor="address">Full Address</Label>
                 <Textarea
                   id="address"
                   className={inputClass("address")}
@@ -569,9 +478,9 @@ alert("Profile saved to both collections successfully!");
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="founded_year">Founded Year *</Label>
+                  <Label htmlFor="founded_year">Founded Year</Label>
                   <Input
                     id="founded_year"
                     type="number"
@@ -581,7 +490,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="website">Website *</Label>
+                  <Label htmlFor="website">Website</Label>
                   <Input
                     id="website"
                     className={inputClass("website")}
@@ -591,7 +500,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="is_public">Public / Private *</Label>
+                  <Label htmlFor="is_public">Public / Private</Label>
                   <Select value={formData.is_public} onValueChange={(v) => handleInputChange("is_public", v)}>
                     <SelectTrigger className={inputClass("is_public")}>
                       <SelectValue placeholder="Select" />
@@ -604,9 +513,9 @@ alert("Profile saved to both collections successfully!");
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="email">Email *</Label>
+                  <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
                     className={inputClass("email")}
@@ -616,7 +525,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="phone">Phone *</Label>
+                  <Label htmlFor="phone">Phone</Label>
                   <Input
                     id="phone"
                     className={inputClass("phone")}
@@ -626,7 +535,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="school_type">Institution Type *</Label>
+                  <Label htmlFor="school_type">Institution Type</Label>
                   <Select value={formData.school_type} onValueChange={(v) => handleInputChange("school_type", v)}>
                     <SelectTrigger className={inputClass("school_type")}>
                       <SelectValue placeholder="Select" />
@@ -641,9 +550,9 @@ alert("Profile saved to both collections successfully!");
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <Label htmlFor="pgwp_available">PGWP Available *</Label>
+                  <Label htmlFor="pgwp_available">PGWP Available</Label>
                   <Select value={String(formData.pgwp_available)} onValueChange={(v) => handleInputChange("pgwp_available", v)}>
                     <SelectTrigger className={inputClass("pgwp_available")}>
                       <SelectValue />
@@ -655,7 +564,7 @@ alert("Profile saved to both collections successfully!");
                   </Select>
                 </div>
                 <div>
-                  <Label htmlFor="has_coop">Co-op Offered *</Label>
+                  <Label htmlFor="has_coop">Co-op Offered</Label>
                   <Select value={String(formData.has_coop)} onValueChange={(v) => handleInputChange("has_coop", v)}>
                     <SelectTrigger className={inputClass("has_coop")}>
                       <SelectValue />
@@ -667,7 +576,7 @@ alert("Profile saved to both collections successfully!");
                   </Select>
                 </div>
                 <div>
-                  <Label htmlFor="is_dli">DLI *</Label>
+                  <Label htmlFor="is_dli">DLI</Label>
                   <Select value={String(formData.is_dli)} onValueChange={(v) => handleInputChange("is_dli", v)}>
                     <SelectTrigger className={inputClass("is_dli")}>
                       <SelectValue />
@@ -679,7 +588,7 @@ alert("Profile saved to both collections successfully!");
                   </Select>
                 </div>
                 <div>
-                  <Label htmlFor="dli_number">DLI Number *</Label>
+                  <Label htmlFor="dli_number">DLI Number</Label>
                   <Input
                     id="dli_number"
                     className={inputClass("dli_number")}
@@ -699,8 +608,8 @@ alert("Profile saved to both collections successfully!");
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
-                <Label htmlFor="logo">Logo *</Label>
-                <div className="flex items-center gap-4 mt-2">
+                <Label htmlFor="logo">Logo</Label>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-2">
                   <input
                     type="file"
                     id="logo"
@@ -713,7 +622,7 @@ alert("Profile saved to both collections successfully!");
                     variant="outline"
                     onClick={() => document.getElementById("logo").click()}
                     disabled={uploadingLogo}
-                    className={missingKeys.has("logo_url") ? "border-red-500" : ""}
+                    className="w-full sm:w-auto"
                   >
                     {uploadingLogo ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -733,8 +642,8 @@ alert("Profile saved to both collections successfully!");
               </div>
 
               <div>
-                <Label htmlFor="banner">Banner / Hero *</Label>
-                <div className="flex items-center gap-4 mt-2">
+                <Label htmlFor="banner">Banner / Hero</Label>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-2">
                   <input
                     type="file"
                     id="banner"
@@ -747,7 +656,7 @@ alert("Profile saved to both collections successfully!");
                     variant="outline"
                     onClick={() => document.getElementById("banner").click()}
                     disabled={uploadingBanner}
-                    className={missingKeys.has("banner_url") ? "border-red-500" : ""}
+                    className="w-full sm:w-auto"
                   >
                     {uploadingBanner ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -768,9 +677,9 @@ alert("Profile saved to both collections successfully!");
 
               {/* ✅ Multiple Additional Images */}
               <div>
-                <Label htmlFor="additional_images">Additional Images *</Label>
+                <Label htmlFor="additional_images">Additional Images</Label>
 
-                <div className="flex items-center gap-4 mt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-2">
                   <input
                     type="file"
                     id="additional_images"
@@ -785,7 +694,7 @@ alert("Profile saved to both collections successfully!");
                     variant="outline"
                     onClick={() => document.getElementById("additional_images").click()}
                     disabled={uploadingImages}
-                    className={missingKeys.has("image_urls") ? "border-red-500" : ""}
+                    className="w-full sm:w-auto"
                   >
                     {uploadingImages ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -850,12 +759,6 @@ alert("Profile saved to both collections successfully!");
                     ))}
                   </div>
                 )}
-
-                {missingKeys.has("image_urls") && (
-                  <p className="mt-2 text-sm text-red-600">
-                    At least 1 additional image is required.
-                  </p>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -866,7 +769,7 @@ alert("Profile saved to both collections successfully!");
               <CardTitle>About the School</CardTitle>
             </CardHeader>
             <CardContent>
-              <Label htmlFor="about">Description *</Label>
+              <Label htmlFor="about">Description</Label>
               <Textarea
                 id="about"
                 className={inputClass("about")}
@@ -884,9 +787,9 @@ alert("Profile saved to both collections successfully!");
               <CardTitle>Financial Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="tuition_fees">Tuition Fees (per year) *</Label>
+                  <Label htmlFor="tuition_fees">Tuition Fees (per year)</Label>
                   <Input
                     id="tuition_fees"
                     type="number"
@@ -896,7 +799,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="application_fee">Application Fee *</Label>
+                  <Label htmlFor="application_fee">Application Fee</Label>
                   <Input
                     id="application_fee"
                     type="number"
@@ -906,7 +809,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="cost_of_living">Cost of Living (per year) *</Label>
+                  <Label htmlFor="cost_of_living">Cost of Living (per year)</Label>
                   <Input
                     id="cost_of_living"
                     type="number"
@@ -925,9 +828,9 @@ alert("Profile saved to both collections successfully!");
               <CardTitle>School Statistics</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="rating">Overall Rating (out of 5) *</Label>
+                  <Label htmlFor="rating">Overall Rating (out of 5)</Label>
                   <Input
                     id="rating"
                     type="number"
@@ -940,7 +843,7 @@ alert("Profile saved to both collections successfully!");
                   />
                 </div>
                 <div>
-                  <Label htmlFor="acceptance_rate">Acceptance Rate (%) *</Label>
+                  <Label htmlFor="acceptance_rate">Acceptance Rate (%)</Label>
                   <Input
                     id="acceptance_rate"
                     type="number"
