@@ -699,7 +699,29 @@
     "delete_failed": "Hindi natanggal. Pakisubukan ulit.",
     "edit_failed": "Hindi na-update. Pakisubukan ulit.",
     "report_failed": "Hindi na-report. Pakisubukan ulit.",
-    "report_submitted": "Salamat — naipasa na ang iyong report."
+    "report_submitted": "Salamat — naipasa na ang iyong report.",
+    "discover_title": "Tuklasin",
+    "discover_subtitle": "Tingnan ang mga post mula sa mga Ahente, Tutor, at Paaralan.",
+    "directory": "Direktoryo",
+    "following_card_title": "Sinusundan",
+    "following_count": "Sinusundan mo ang {{count}} na tao",
+    "how_messaging_works_title": "Paano gumagana ang pagmemensahe",
+    "explore_updates_title": "Mga Update",
+    "explore_updates_subtitle": "Sundan sila para makatanggap ng abiso kapag nag-post sila muli.",
+    "all_posts": "Lahat ng post",
+    "suggested_note": "(Opsyonal) Maaari mong i-load ang “Mga Mungkahi” mula sa Firestore sa susunod.",
+    "tip_title": "Tip",
+    "tip_body": "Sundan ang mga taong pinagkakatiwalaan mo. Awtomatiko kang makakatanggap ng abiso kapag nag-post sila muli.",
+    "share_post": "Ibahagi ang post",
+    "share_post_text": "Kopyahin ang link para maipadala sa iyong mga kaibigan.",
+    "copy_link": "Kopyahin ang link",
+    "link_copied": "Nakopya na!",
+    "login_required": "Mag-log in muna para magpatuloy.",
+    "subscription_required_title": "Kailangan ng subscription",
+    "subscription_required_body": "Kailangan ng subscription para magamit ang feature na ito.",
+    "subscribe_now": "Mag-subscribe ngayon",
+    "share_failed": "Hindi naibahagi",
+    "report_reason_prompt": "Pumili ng dahilan ng pag-report."
   },
   "tutor_dashboard": {
     "attachments": "Mga Attachment",
@@ -805,8 +827,8 @@
     "terms": "Mga Tuntunin ng Serbisyo"
   },
   "welcome": {
-    "subtitle_signin": "Chào mừng quay lại! Đăng nhập để vào bảng điều khiển.",
-    "subtitle_signup": "Tạo tài khoản để có trải nghiệm được cá nhân hóa.",
-    "title": "Hành trình của bạn bắt đầu từ đây"
+    "subtitle_signin": "Maligayang pagbabalik! Mag-log in para makapasok sa iyong dashboard.",
+    "subtitle_signup": "Gumawa ng account para sa mas personalisadong karanasan.",
+    "title": "Dito nagsisimula ang iyong journey"
   }
 }

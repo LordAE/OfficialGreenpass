@@ -396,26 +396,31 @@
       "agent": {
         "desc": "Dumala sa leads ug tabangi ang applicants.",
         "subtitle": "I help students study abroad",
-        "title": "Education Ahente"
+        "title": "Education Ahente",
+        "label": "Ahente"
       },
       "school": {
         "desc": "Ipakita ang programs ug dawata ang leads.",
         "subtitle": "I represent a school/college",
-        "title": "Educational Institution"
+        "title": "Educational Institution",
+        "label": "Eskwelahan"
       },
       "student": {
         "desc": "Mag-apply, makig-chat, ug subaybayan ang imong biyahe.",
         "subtitle": "I want to study abroad",
-        "title": "Student"
+        "title": "Student",
+        "label": "Estudyante"
       },
       "tutor": {
         "desc": "Maghatag og tutoring ug dumala sa sessions.",
         "subtitle": "I teach test prep & languages",
-        "title": "Tutor"
+        "title": "Tutor",
+        "label": "Tutor"
       },
       "vendor": {
         "subtitle": "I offer student services",
-        "title": "Service Provider"
+        "title": "Service Provider",
+        "label": "Tagahatag og Serbisyo"
       }
     },
     "school": {
@@ -713,7 +718,29 @@
     "delete_failed": "Dili matangtang. Palihug sulayi pag-usab.",
     "edit_failed": "Dili ma-update. Palihug sulayi pag-usab.",
     "report_failed": "Dili ma-report. Palihug sulayi pag-usab.",
-    "report_submitted": "Salamat — naipadala na ang imong report."
+    "report_submitted": "Salamat — naipadala na ang imong report.",
+    "discover_title": "Diskubre",
+    "discover_subtitle": "Tan-awa ang mga post gikan sa Ahente, Tutor ug Eskwelahan.",
+    "directory": "Direktoryo",
+    "following_card_title": "Gina-follow",
+    "following_count": "Gina-follow nimo ang {{count}} ka tawo",
+    "how_messaging_works_title": "Giunsa pagtrabaho ang pag-mensahe",
+    "explore_updates_title": "Mga update",
+    "explore_updates_subtitle": "I-follow sila aron makadawat og pahibalo kung mo-post sila sunod.",
+    "all_posts": "Tanan nga posts",
+    "suggested_note": "(Opsyonal) Mahimo nimo unya kuhaon ang “Girekomenda” gikan sa Firestore.",
+    "tip_title": "Tip",
+    "tip_body": "I-follow ang mga tawo nga imong gisaligan. Awtomatiko ka makadawat og pahibalo kung mo-post sila sunod.",
+    "share_post": "Ipaambit ang post",
+    "share_post_text": "Kopyaha ang link aron ipadala sa imong mga higala.",
+    "copy_link": "Kopyaha ang link",
+    "link_copied": "Nakopya na!",
+    "login_required": "Palihug pag-login aron makapadayon.",
+    "subscription_required_title": "Kinahanglan og subscription",
+    "subscription_required_body": "Kining feature kinahanglan og subscription aron magamit.",
+    "subscribe_now": "Mag-subscribe Karon",
+    "share_failed": "Napakyas ang pagpaambit",
+    "report_reason_prompt": "Palihug pili og rason sa pag-report."
   },
   "tutor_dashboard": {
     "attachments": "Attachments",
@@ -807,7 +834,7 @@
     "delete_failed": "Dili matangtang. Palihug sulayi pag-usab.",
     "edit_failed": "Dili ma-update. Palihug sulayi pag-usab.",
     "report_failed": "Dili ma-report. Palihug sulayi pag-usab.",
-    "report_submitted": "Salamat — naipadala na ang imong report."
+    "report_submitted": "Salamat! naipadala na ang imong report."
   },
   "welcome": {
     "subtitle_signin": "Maayong pagbalik! Pag-login aron mosulod sa dashboard.",
