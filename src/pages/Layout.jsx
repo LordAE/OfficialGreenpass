@@ -114,6 +114,11 @@ const FALLBACK_TEXT = {
   logOut: "Log Out",
   profileSettings: "Profile Settings",
   more: "More",
+  // role-specific dropdown labels
+  schoolProfile: "School Profile",
+  schoolDetails: "School Details",
+  myStudents: "My Students",
+  leads: "Leads",
 };
 
 const fb = (key) => FALLBACK_TEXT[key] || key;
@@ -122,7 +127,10 @@ const fb = (key) => FALLBACK_TEXT[key] || key;
 function useNavTr() {
   const { t } = useTranslation();
   return React.useCallback(
-    (key) => t(`nav.${key}`, { defaultValue: fb(key) }),
+    (key, defaultValue) =>
+      t(`nav.${key}`, {
+        defaultValue: defaultValue ?? fb(key),
+      }),
     [t]
   );
 }
@@ -366,6 +374,37 @@ const AccountDropdown = ({
   );
 };
 
+/* ---------- Account menu items (put "extra" navs here) ---------- */
+function buildAccountMenuItems(currentUser, tr) {
+  const role = String(currentUser?.user_type || currentUser?.role || "student").toLowerCase();
+
+  const items = [
+    { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
+  ];
+
+  if (role === "agent") {
+    items.unshift(
+      { label: tr("myStudents", "My Students"), url: createPageUrl("MyStudents"), icon: Users },
+      { label: tr("leads", "Leads"), url: createPageUrl("AgentLeads"), icon: UsersIcon }
+    );
+  }
+
+  if (role === "tutor") {
+    items.unshift(
+      { label: tr("myStudents", "My Students"), url: createPageUrl("TutorStudents"), icon: Users }
+    );
+  }
+
+  if (role === "school") {
+    items.unshift(
+      { label: tr("schoolProfile", "School Profile"), url: createPageUrl("SchoolProfile"), icon: Building },
+      { label: tr("schoolDetails", "School Details"), url: createPageUrl("SchoolDetails"), icon: BookOpen }
+    );
+  }
+
+  return items;
+}
+
 /* =========================
    ✅ Mobile Bottom Nav (restored)
    NOTE: Notifications route removed from "More" (popover is in top bar)
@@ -589,17 +628,13 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("")} Icon={Home} label="Home" />
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <CountriesMegaMenuIcon
-                      createPageUrl={createPageUrl}
-                      iconSizeClass="h-6 w-6 sm:h-7 sm:w-7"
-                    />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
@@ -780,17 +815,12 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+                  <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
-                  </div>
-                  <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("SchoolProfile")} Icon={Building} label="Profile" />
-                  </div>
-                  <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("SchoolDetails")} Icon={BookOpen} label="Details" />
                   </div>
                 </div>
               </div>
@@ -817,9 +847,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
                 title="Account"
-                items={[
-                  { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
-                ]}
+                items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
           </div>
@@ -916,17 +944,12 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+                  <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
-                  </div>
-                  <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("MyStudents")} Icon={Users} label="My Students" />
-                  </div>
-                  <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("AgentLeads")} Icon={UsersIcon} label="Leads" />
                   </div>
                 </div>
               </div>
@@ -953,9 +976,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
                 title="Account"
-                items={[
-                  { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
-                  ]}
+                items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
           </div>
@@ -1053,16 +1074,14 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+                  <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
-                  <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("TutorStudents")} Icon={Users} label="My Students" />
-                  </div>
-</div>
+                </div>
               </div>
             </div>
 
@@ -1087,9 +1106,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
                 title="Account"
-                items={[
-                  { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
-]}
+                items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
           </div>
@@ -1187,9 +1204,10 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+                  <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
-
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
                   </div>
@@ -1218,9 +1236,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
                 title="Account"
-                items={[
-{ label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
-                ]}
+                items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
           </div>
@@ -1359,11 +1375,18 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[620px] md:w-[720px] lg:w-[820px]">
                 <div className="flex w-full">
-                  {centerItems.map((it) => (
-                    <div key={it.url} className="flex-1 flex justify-center">
-                      <AdminTopLink item={it} />
-                    </div>
-                  ))}
+                  <div className="flex-1 flex justify-center">
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
+                  </div>
+                  <div className="flex-1 flex justify-center">
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                  </div>
+                  <div className="flex-1 flex justify-center">
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
+                  </div>
+                  <div className="flex-1 flex justify-center">
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1570,6 +1593,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
       main: [
         { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
         { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
+        { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
         { title: "Events", url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
@@ -1587,6 +1611,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
       main: [
         { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
         { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
+        { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
         { title: "Events", url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
@@ -1603,6 +1628,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
       main: [
         { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
         { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
+        { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
         { title: "Events", url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
@@ -1621,6 +1647,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
         { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
         { title: "Users", url: createPageUrl("UserManagement"), icon: Users },
         { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
         { title: "Schools", url: createPageUrl("AdminSchools"), icon: School },
@@ -1643,10 +1670,12 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
     return {
       main: [
         { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
+        { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
+        { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
         { title: "Events", url: createPageUrl("Events"), icon: Calendar },
-        { title: "Services", url: createPageUrl("MyServices"), icon: Store },
       ],
       more: [
+        { title: "Services", url: createPageUrl("MyServices"), icon: Store },
         { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
         { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
         { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
@@ -1657,7 +1686,8 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
   // Default: Student/User (match desktop center icons: Dashboard / Directory / Events)
   const main = [
     { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-    { title: "Directory", url: createPageUrl("Directory"), icon: School },
+    { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
+    { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
     { title: "Events", url: createPageUrl("Events"), icon: Calendar },
   ];
 
