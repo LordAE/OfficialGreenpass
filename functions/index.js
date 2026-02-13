@@ -5,7 +5,7 @@ const OpenAI = require("openai");
 
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
-const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
 
 admin.initializeApp();
 
@@ -269,3 +269,220 @@ exports.notifyUserOnFollow = onDocumentCreated(
     }
   }
 );
+
+// ---------------------------------------------------------
+// 3) FOLLOW REQUESTS (Instagram-style)
+// ---------------------------------------------------------
+
+function pickUserName(u) {
+  return (
+    u?.full_name ||
+    u?.displayName ||
+    u?.name ||
+    u?.firstName ||
+    u?.first_name ||
+    "Someone"
+  );
+}
+
+function pickUserRole(u) {
+  return u?.role || u?.selected_role || u?.user_type || u?.userType || null;
+}
+
+function pickUserPhoto(u) {
+  return u?.profile_picture || u?.photoURL || u?.photo_url || "";
+}
+
+async function getUserProfile(uid) {
+  try {
+    const snap = await admin.firestore().doc(`users/${uid}`).get();
+    if (!snap.exists) return { uid, name: "Someone", role: null, photo: "" };
+    const u = snap.data() || {};
+    return { uid, name: pickUserName(u), role: pickUserRole(u), photo: pickUserPhoto(u) };
+  } catch {
+    return { uid, name: "Someone", role: null, photo: "" };
+  }
+}
+
+// 3A) When a follow request is created, notify the followee + create outgoing mirror
+exports.notifyUserOnFollowRequest = onDocumentCreated(
+  "users/{followeeId}/follow_requests/{followerId}",
+  async (event) => {
+    try {
+      const followeeId = event.params.followeeId;
+      const followerId = event.params.followerId;
+      if (!followeeId || !followerId) return;
+      if (followeeId === followerId) return;
+
+      const req = event.data?.data?.() || {};
+      const status = String(req.status || "pending").toLowerCase();
+      if (status !== "pending") return;
+
+      const follower = await getUserProfile(followerId);
+
+      // Notification for followee (matches your NotificationsBell.jsx)
+      const notifId = `follow_request_${followeeId}_${followerId}`;
+      const notifRef = admin.firestore().doc(`users/${followeeId}/notifications/${notifId}`);
+      await notifRef.set(
+        {
+          type: "follow_request",
+          fromUserId: followerId,
+          toUserId: followeeId,
+          followerId,
+          followerName: follower.name,
+          followerRole: follower.role,
+          followerPhoto: follower.photo,
+          title: "Follow request",
+          body: `${follower.name} sent you a follow request`,
+          link: "/connections?tab=requests",
+          seen: false,
+          readAt: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // Outgoing mirror doc for sender UI (optional)
+      const mirrorRef = admin
+        .firestore()
+        .doc(`users/${followerId}/follow_requests_sent/${followeeId}`);
+      await mirrorRef.set(
+        {
+          follower_id: followerId,
+          followee_id: followeeId,
+          status: "pending",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("notifyUserOnFollowRequest error:", err);
+    }
+  }
+);
+
+// 3B) When followee accepts/declines, create relationships + notify follower
+exports.handleFollowRequestDecision = onDocumentUpdated(
+  "users/{followeeId}/follow_requests/{followerId}",
+  async (event) => {
+    try {
+      const followeeId = event.params.followeeId;
+      const followerId = event.params.followerId;
+      if (!followeeId || !followerId) return;
+      if (followeeId === followerId) return;
+
+      const before = event.data?.before?.data?.() || {};
+      const after = event.data?.after?.data?.() || {};
+
+      const beforeStatus = String(before.status || "pending").toLowerCase();
+      const afterStatus = String(after.status || "pending").toLowerCase();
+      if (beforeStatus === afterStatus) return;
+      if (afterStatus !== "accepted" && afterStatus !== "declined") return;
+
+      const followee = await getUserProfile(followeeId);
+
+      const db = admin.firestore();
+      const now = admin.firestore.FieldValue.serverTimestamp();
+
+      // Always remove outgoing mirror
+      const mirrorRef = db.doc(`users/${followerId}/follow_requests_sent/${followeeId}`);
+
+      if (afterStatus === "accepted") {
+        const followerRef = db.doc(`users/${followeeId}/followers/${followerId}`);
+        const followingRef = db.doc(`users/${followerId}/following/${followeeId}`);
+
+        // Create follower/following docs (server-only)
+        await db.runTransaction(async (tx) => {
+          tx.set(
+            followerRef,
+            {
+              follower_id: followerId,
+              followee_id: followeeId,
+              createdAt: now,
+            },
+            { merge: true }
+          );
+
+          tx.set(
+            followingRef,
+            {
+              follower_id: followerId,
+              followee_id: followeeId,
+              createdAt: now,
+            },
+            { merge: true }
+          );
+
+          tx.delete(event.data.after.ref); // delete request
+          tx.delete(mirrorRef);
+        });
+
+        // Notify follower: accepted
+        const notifId = `follow_request_accepted_${followeeId}_${followerId}`;
+        const notifRef = db.doc(`users/${followerId}/notifications/${notifId}`);
+        await notifRef.set(
+          {
+            type: "follow_request_accepted",
+            fromUserId: followeeId,
+            toUserId: followerId,
+            title: "Follow request accepted",
+            body: `${followee.name} accepted your follow request`,
+            link: `/profile/${followeeId}`,
+            seen: false,
+            readAt: null,
+            createdAt: now,
+          },
+          { merge: true }
+        );
+      } else {
+        // declined: delete request + mirror
+        await db.runTransaction(async (tx) => {
+          tx.delete(event.data.after.ref);
+          tx.delete(mirrorRef);
+        });
+
+        // Notify follower: declined
+        const notifId = `follow_request_declined_${followeeId}_${followerId}`;
+        const notifRef = db.doc(`users/${followerId}/notifications/${notifId}`);
+        await notifRef.set(
+          {
+            type: "follow_request_declined",
+            fromUserId: followeeId,
+            toUserId: followerId,
+            title: "Follow request declined",
+            body: `${followee.name} declined your follow request`,
+            link: "/connections",
+            seen: false,
+            readAt: null,
+            createdAt: now,
+          },
+          { merge: true }
+        );
+      }
+    } catch (err) {
+      console.error("handleFollowRequestDecision error:", err);
+    }
+  }
+);
+
+// 3C) If a request is deleted (canceled), remove sender mirror and the followee notification
+exports.cleanupOnFollowRequestDeleted = onDocumentDeleted(
+  "users/{followeeId}/follow_requests/{followerId}",
+  async (event) => {
+    try {
+      const followeeId = event.params.followeeId;
+      const followerId = event.params.followerId;
+      if (!followeeId || !followerId) return;
+
+      const db = admin.firestore();
+      await Promise.allSettled([
+        db.doc(`users/${followerId}/follow_requests_sent/${followeeId}`).delete(),
+        db.doc(`users/${followeeId}/notifications/follow_request_${followeeId}_${followerId}`).delete(),
+      ]);
+    } catch (err) {
+      console.error("cleanupOnFollowRequestDeleted error:", err);
+    }
+  }
+);
+
+

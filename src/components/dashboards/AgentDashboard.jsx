@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Agent } from "@/api/entities";
-import { Case } from "@/api/entities";
 import { User } from "@/api/entities";
+import { listenFollowState, sendFollowRequest, cancelFollowRequest, unfollowUser } from "@/api/follow";
 import {
   Users,
   FileText,
@@ -306,57 +306,53 @@ const flagUrlFromCode = (code) => {
   return `https://flagcdn.com/w20/${cc}.png`;
 };
 
-/* -------------------- Follow Button (no likes/comments/shares) -------------------- */
+/* -------------------- Follow Button (Follow Request / Instagram-style) -------------------- */
 function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "", }) {
   const { tr } = useTr("agent_dashboard");
 
-  const [following, setFollowing] = useState(false);
+  const [state, setState] = useState({ following: false, requested: false });
   const disabled = !currentUserId || !creatorId || currentUserId === creatorId;
 
   useEffect(() => {
     if (disabled) {
-      setFollowing(false);
+      setState({ following: false, requested: false });
       return;
     }
-    const ref = doc(db, "users", currentUserId, "following", creatorId);
-    const unsub = onSnapshot(ref, (snap) => setFollowing(snap.exists()));
-    return () => unsub();
+    return listenFollowState({ meId: currentUserId, targetId: creatorId }, setState);
   }, [currentUserId, creatorId, disabled]);
 
-  const follow = async () => {
+  const onClick = async () => {
     if (disabled) return;
-    const batch = writeBatch(db);
-    batch.set(
-      doc(db, "users", currentUserId, "following", creatorId),
-      { followee_id: creatorId, followee_role: creatorRole || null, createdAt: serverTimestamp() },
-      { merge: true }
-    );
-    batch.set(
-      doc(db, "users", creatorId, "followers", currentUserId),
-      { follower_id: currentUserId, createdAt: serverTimestamp() },
-      { merge: true }
-    );
-    await batch.commit();
+
+    if (state.following) {
+      await unfollowUser({ followerId: currentUserId, followeeId: creatorId });
+      return;
+    }
+
+    if (state.requested) {
+      await cancelFollowRequest({ followerId: currentUserId, followeeId: creatorId });
+      return;
+    }
+
+    await sendFollowRequest({ followerId: currentUserId, followeeId: creatorId });
   };
 
-  const unfollow = async () => {
-    if (disabled) return;
-    const batch = writeBatch(db);
-    batch.delete(doc(db, "users", currentUserId, "following", creatorId));
-    batch.delete(doc(db, "users", creatorId, "followers", currentUserId));
-    await batch.commit();
-  };
+  const label = state.following
+    ? tr("following", "Following")
+    : state.requested
+    ? tr("requested", "Requested")
+    : tr("follow", "Follow");
 
   return (
     <Button
       type="button"
       size={size}
-      variant={following ? "outline" : "default"}
+      variant={state.following || state.requested ? "outline" : "default"}
       disabled={disabled}
       className={className}
-      onClick={following ? unfollow : follow}
+      onClick={onClick}
     >
-      {following ? tr("following","Following") : tr("follow","Follow")}
+      {label}
     </Button>
   );
 }
@@ -770,16 +766,13 @@ export default function AgentDashboard({ user }) {
   const userId = user?.id || user?.uid || user?.user_id;
   const [stats, setStats] = useState({
     totalStudents: 0,
-    activeCases: 0,
     totalEarnings: 0,
     pendingPayout: 0,
-    approvedCases: 0,
     thisMonthReferrals: 0,
     commissionRate: 10,
     referralCode: "",
   });
-  const [recentCases, setRecentCases] = useState([]);
-  const [agent, setAgent] = useState(null);
+const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileCompletion, setProfileCompletion] = useState({ isComplete: true });
 
@@ -803,11 +796,10 @@ export default function AgentDashboard({ user }) {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [agentData, cases, students] = await Promise.all([
-Agent.filter({ user_id: user.id }),
-          Case.filter({ agent_id: user.id }, "-created_date"),
+        const [agentData, students] = await Promise.all([
+          Agent.filter({ user_id: user.id }),
           User.filter({ referred_by_agent_id: user.id })
-]) ;
+        ]);
 
         const agentRecord = agentData.length > 0 ? agentData[0] : null;
         setAgent(agentRecord);
@@ -820,19 +812,15 @@ Agent.filter({ user_id: user.id }),
           return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
         });
 
-        const totalEarnings = arr(cases).filter((c) => c.status === "Approved").length * 500;
-setStats({
+        const totalEarnings = 0;
+        setStats({
           totalStudents: arr(students).length,
-          activeCases: arr(cases).filter((c) => !["Approved", "Rejected"].includes(c.status)).length,
           totalEarnings,
           pendingPayout: agentRecord?.pending_payout || 0,
-          approvedCases: arr(cases).filter((c) => c.status === "Approved").length,
           thisMonthReferrals: thisMonth.length,
           commissionRate: (agentRecord?.commission_rate || 0.1) * 100,
           referralCode: agentRecord?.referral_code || "",
         });
-
-        setRecentCases(arr(cases).slice(0, 5));
       } catch (error) {
         console.error("Error loading dashboard data:", error);
       } finally {
@@ -1203,7 +1191,6 @@ useEffect(() => {
                   <div className="px-2 py-2 text-xs font-semibold text-gray-500">{tr("shortcuts","Shortcuts")}</div>
                   <div className="space-y-1">
                     <Shortcut to={createPageUrl("MyStudents")} label={tr("my_students","My Students")} icon={<Users className="h-5 w-5 text-blue-600" />} />
-                    <Shortcut to={createPageUrl("VisaCases")} label={tr("cases","Cases")} icon={<FileText className="h-5 w-5 text-purple-600" />} />
                     <Shortcut to={createPageUrl("AgentLeads")} label={tr("find_leads","Find Leads")} icon={<UserPlus className="h-5 w-5 text-orange-600" />} />
                     <Shortcut to={createPageUrl("Events")} label={tr("events","Events")} icon={<Ticket className="h-5 w-5 text-emerald-600" />} />
                     <Shortcut to={createPageUrl("Directory")} label={tr("directory","Directory")} icon={<Building2 className="h-5 w-5 text-blue-600" />} />
@@ -1384,38 +1371,7 @@ useEffect(() => {
                       <div className="text-xs text-gray-500">{tr("students","Students")}</div>
                       <div className="text-lg font-bold text-blue-600">{stats.totalStudents}</div>
                     </div>
-                    <div className="rounded-2xl border bg-gray-50 p-3">
-                      <div className="text-xs text-gray-500">{tr("active_cases","Active Cases")}</div>
-                      <div className="text-lg font-bold text-purple-600">{stats.activeCases}</div>
-                    </div>
-
                   </div>
-                </div>
-                {/* Recent cases widget */}
-                <div className="rounded-2xl border bg-white p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm font-semibold text-gray-900">{tr("recent_cases","Recent Cases")}</div>
-                    <Link to={createPageUrl("VisaCases")}>
-                      <Button variant="ghost" size="sm">{tr("view","View")}<ArrowRight className="h-4 w-4 ml-1" />
-                      </Button>
-                    </Link>
-                  </div>
-
-                  {recentCases.length > 0 ? (
-                    <div className="space-y-2">
-                      {recentCases.slice(0, 3).map((c) => (
-                        <div key={c.id} className="rounded-2xl border bg-gray-50 p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm font-semibold text-gray-900">{c.case_type || "Case"}</div>
-                            <Badge variant={c.status === "Approved" ? "default" : "secondary"}>{c.status || "—"}</Badge>
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">{fmt(c.created_date, "MMM dd, yyyy")}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-600">No cases yet.</div>
-                  )}
                 </div>
 
                 {/* Contacts */}

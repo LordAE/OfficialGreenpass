@@ -23,6 +23,7 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 import { School, User } from "@/api/entities";
+import { listenFollowState, sendFollowRequest, cancelFollowRequest, unfollowUser } from "@/api/follow";
 import {
   Building2,
   Users,
@@ -229,57 +230,53 @@ const Avatar = ({ name = "School", size = "md" }) => {
   );
 };
 
-/* -------------------- Follow Button (no likes/comments/shares) -------------------- */
-function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "" }) {
+/* -------------------- Follow Button (Follow Request / Instagram-style) -------------------- */
+function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "", }) {
   const { tr } = useTr("school_dashboard");
 
-  const [following, setFollowing] = useState(false);
+  const [state, setState] = useState({ following: false, requested: false });
   const disabled = !currentUserId || !creatorId || currentUserId === creatorId;
 
   useEffect(() => {
     if (disabled) {
-      setFollowing(false);
+      setState({ following: false, requested: false });
       return;
     }
-    const ref = doc(db, "users", currentUserId, "following", creatorId);
-    const unsub = onSnapshot(ref, (snap) => setFollowing(snap.exists()));
-    return () => unsub();
+    return listenFollowState({ meId: currentUserId, targetId: creatorId }, setState);
   }, [currentUserId, creatorId, disabled]);
 
-  const follow = async () => {
+  const onClick = async () => {
     if (disabled) return;
-    const batch = writeBatch(db);
-    batch.set(
-      doc(db, "users", currentUserId, "following", creatorId),
-      { followee_id: creatorId, followee_role: creatorRole || null, createdAt: serverTimestamp() },
-      { merge: true }
-    );
-    batch.set(
-      doc(db, "users", creatorId, "followers", currentUserId),
-      { follower_id: currentUserId, createdAt: serverTimestamp() },
-      { merge: true }
-    );
-    await batch.commit();
+
+    if (state.following) {
+      await unfollowUser({ followerId: currentUserId, followeeId: creatorId });
+      return;
+    }
+
+    if (state.requested) {
+      await cancelFollowRequest({ followerId: currentUserId, followeeId: creatorId });
+      return;
+    }
+
+    await sendFollowRequest({ followerId: currentUserId, followeeId: creatorId });
   };
 
-  const unfollow = async () => {
-    if (disabled) return;
-    const batch = writeBatch(db);
-    batch.delete(doc(db, "users", currentUserId, "following", creatorId));
-    batch.delete(doc(db, "users", creatorId, "followers", currentUserId));
-    await batch.commit();
-  };
+  const label = state.following
+    ? tr("following", "Following")
+    : state.requested
+    ? tr("requested", "Requested")
+    : tr("follow", "Follow");
 
   return (
     <Button
       type="button"
       size={size}
-      variant={following ? "outline" : "default"}
+      variant={state.following || state.requested ? "outline" : "default"}
       disabled={disabled}
       className={className}
-      onClick={following ? unfollow : follow}
+      onClick={onClick}
     >
-      {following ? tr("following","Following") : tr("follow","Follow")}
+      {label}
     </Button>
   );
 }

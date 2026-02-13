@@ -214,7 +214,7 @@ const MediaGallery = ({ media = [], tr }) => {
 };
 
 /* -------------------- Post Card UI (NO like/comment/share) -------------------- */
-function FeedPostCard({ post, myUid, isFollowing, onToggleFollow, onMessage, authorCountryByUid, tr }) {
+function FeedPostCard({ post, myUid, isFollowing, isRequested, onToggleFollow, onMessage, authorCountryByUid, tr }) {
   const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
 
   // 🌍 Resolve author country (same logic as AgentDashboard)
@@ -388,7 +388,7 @@ function FeedPostCard({ post, myUid, isFollowing, onToggleFollow, onMessage, aut
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Button
               className="rounded-xl"
-              variant={isFollowing ? "outline" : "default"}
+              variant={isFollowing || isRequested ? "outline" : "default"}
               onClick={() => onToggleFollow(post.authorId)}
               type="button"
               disabled={!post.authorId}
@@ -396,6 +396,10 @@ function FeedPostCard({ post, myUid, isFollowing, onToggleFollow, onMessage, aut
               {isFollowing ? (
                 <>
                   <UserMinus className="h-4 w-4 mr-2" /> {tr("following", "Following")}
+                </>
+              ) : isRequested ? (
+                <>
+                  <UserPlus className="h-4 w-4 mr-2" /> {tr("requested", "Requested")}
                 </>
               ) : (
                 <>
@@ -447,6 +451,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   const [following, setFollowing] = useState(() => new Set());
+  const [requested, setRequested] = useState(() => new Set());
   const [authorCountryByUid, setAuthorCountryByUid] = useState(() => ({}));
 
 
@@ -461,6 +466,24 @@ export default function StudentDashboard() {
         const next = new Set();
         snap.forEach((d) => next.add(d.id));
         setFollowing(next);
+      },
+      () => {}
+    );
+
+    return () => unsub();
+  }, [myUid]);
+
+  // ✅ Live sent-request set (for "Requested" state)
+  useEffect(() => {
+    if (!myUid) return;
+
+    const ref = collection(db, "users", myUid, "follow_requests_sent");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const next = new Set();
+        snap.forEach((d) => next.add(d.id));
+        setRequested(next);
       },
       () => {}
     );
@@ -567,33 +590,28 @@ export default function StudentDashboard() {
   }, [posts, authorCountryByUid]);
 
   const isFollowing = (creatorId) => following.has(creatorId);
+  const isRequested = (creatorId) => requested.has(creatorId);
 
   const toggleFollow = async (creatorId) => {
     if (!myUid || !creatorId || creatorId === myUid) return;
 
     const followed = following.has(creatorId);
-    const batch = writeBatch(db);
+    const req = requested.has(creatorId);
 
-    const myFollowingRef = doc(db, "users", myUid, "following", creatorId);
-    const creatorFollowersRef = doc(db, "users", creatorId, "followers", myUid);
-
+    // Unfollow: delete your own following doc (backend cleanup removes mirror)
     if (followed) {
-      batch.delete(myFollowingRef);
-      batch.delete(creatorFollowersRef);
-    } else {
-      batch.set(myFollowingRef, {
-        followee_id: creatorId,
-        follower_id: myUid,
-        createdAt: serverTimestamp(),
-      });
-      batch.set(creatorFollowersRef, {
-        follower_id: myUid,
-        followee_id: creatorId,
-        createdAt: serverTimestamp(),
-      });
+      await unfollowUser({ followerId: myUid, followeeId: creatorId });
+      return;
     }
 
-    await batch.commit();
+    // Cancel request
+    if (req) {
+      await cancelFollowRequest({ followerId: myUid, followeeId: creatorId });
+      return;
+    }
+
+    // Send request
+    await sendFollowRequest({ followerId: myUid, followeeId: creatorId });
   };
 
   const messageCreator = (post) => {

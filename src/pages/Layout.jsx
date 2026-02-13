@@ -593,6 +593,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
                   <div className="flex-1 flex justify-center">
                     <CountriesMegaMenuIcon
@@ -779,6 +780,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
 
                   <div className="flex-1 flex justify-center">
@@ -914,6 +916,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
 
                   <div className="flex-1 flex justify-center">
@@ -1050,6 +1053,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
 
                   <div className="flex-1 flex justify-center">
@@ -1183,6 +1187,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                   </div>
                   <div className="flex-1 flex justify-center">
                     <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
                   </div>
 
                   <div className="flex-1 flex justify-center">

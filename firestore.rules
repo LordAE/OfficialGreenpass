@@ -538,12 +538,14 @@ service cloud.firestore {
     match /cases/{docId} {
       allow create: if signedIn() && (
         request.resource.data.student_id == request.auth.uid ||
-        request.resource.data.user_id == request.auth.uid
+        request.resource.data.user_id == request.auth.uid ||
+        request.resource.data.agent_id == request.auth.uid
       );
 
       allow read, update, delete: if signedIn() && (
         resource.data.student_id == request.auth.uid ||
         resource.data.user_id == request.auth.uid ||
+        resource.data.agent_id == request.auth.uid ||
         isAdmin()
       );
     }
@@ -982,20 +984,54 @@ service cloud.firestore {
 
       match /following/{creatorId} {
         allow get, list: if signedIn() && request.auth.uid == docId;
-        allow create, update: if signedIn()
-          && request.auth.uid == docId
-          && request.resource.data.followee_id == creatorId;
+        // Server-only: created by Cloud Functions on accepted follow requests
+        allow create, update: if false;
         allow delete: if signedIn() && request.auth.uid == docId;
       }
 
       match /followers/{followerId} {
         allow get, list: if signedIn() && (request.auth.uid == docId || request.auth.uid == followerId || isAdmin());
-        allow create, update: if signedIn()
-          && request.auth.uid == followerId
-          && request.resource.data.follower_id == followerId;
+        // Server-only: created by Cloud Functions on accepted follow requests
+        allow create, update: if false;
         allow delete: if signedIn() && (request.auth.uid == followerId || request.auth.uid == docId || isAdmin());
       }
+// ---------- FOLLOW REQUESTS (Instagram-style) ----------
+// A follow starts as a request:
+// users/{followee}/follow_requests/{follower}
+// Followee can accept/decline by updating status.
+match /follow_requests/{followerId} {
+  // Followee sees incoming requests; follower can read their own request doc (to show "Requested")
+  allow get, list: if signedIn() && (request.auth.uid == docId || request.auth.uid == followerId || isAdmin());
 
+  // Follower creates a pending request under the followee
+  allow create: if signedIn()
+    && request.auth.uid == followerId
+    && request.resource.data.follower_id == followerId
+    && request.resource.data.followee_id == docId
+    && request.resource.data.status == "pending";
+
+  // Followee accepts/declines
+  allow update: if signedIn()
+    && request.auth.uid == docId
+    && request.resource.data.follower_id == followerId
+    && request.resource.data.followee_id == docId
+    && (request.resource.data.status == "accepted" || request.resource.data.status == "declined");
+
+  // Either side can cancel/delete the request
+  allow delete: if signedIn() && (request.auth.uid == docId || request.auth.uid == followerId || isAdmin());
+}
+
+// Outgoing requests mirror for sender UI (optional).
+// users/{follower}/follow_requests_sent/{followee}
+match /follow_requests_sent/{followeeId} {
+  allow get, list: if signedIn() && (request.auth.uid == docId || isAdmin());
+
+  // Allow sender to create/delete their own mirror doc (if your UI writes it).
+  // If you want this server-only, change these two lines to "if false;"
+  allow create: if signedIn() && request.auth.uid == docId && request.resource.data.followee_id == followeeId;
+  allow delete: if signedIn() && request.auth.uid == docId;
+  allow update: if false;
+}
       match /feed/{postId} {
         allow get, list: if signedIn() && request.auth.uid == docId;
         allow create, update, delete: if false; // server only

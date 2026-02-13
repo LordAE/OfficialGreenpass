@@ -51,6 +51,7 @@ import StudyUnitedStates from "@/pages/countries/StudyUnitedStates";
 import Messages from "@/pages/Messages";
 import AdminSubscription from "./pages/AdminSubscription";
 import EventDetailsPage from "./pages/EventDetails";
+import Connections from "./pages/Connections";
 
 
 // --- Safe import of createPageUrl (with fallback if not exported) ---
@@ -86,6 +87,7 @@ export default function App() {
         {/* normalized to relative (no leading slash) */}
         <Route path="resetpassword" element={<ResetPassword />} />
         <Route path="postdetail" element={<PostDetail />} />
+        <Route path="connections" element={<Connections />}/> 
 
         {/* Countries (MSM-style) */}
         <Route path={createPageUrl("StudyCanada")} element={<StudyCanada />} />
