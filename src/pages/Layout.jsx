@@ -762,22 +762,27 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
     [q, navigate]
   );
 
-  const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
-    const active = isActive(to);
-    return (
-      <Link
-        to={to}
-        className={cn(
-          "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
-          active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-        )}
-        aria-label={label}
-        title={label}
-      >
-        <Icon className={iconClass} />
-      </Link>
-    );
-  };
+  // ✅ FIX: IconLink was used below but not defined in the Admin layout scope
+const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
+  const active = isActive(to);
+
+  return (
+    <Link
+      to={to}
+      className={
+        "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition " +
+        (active
+          ? "bg-green-100 text-green-700"
+          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")
+      }
+      aria-label={label}
+      title={label}
+    >
+      <Icon className={iconClass} />
+    </Link>
+  );
+};
+
 
   const mobileNav = buildMobileNav(currentUser, false, null);
 
@@ -1277,7 +1282,26 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [acctOpen, setAcctOpen] = React.useState(false);
 
-  const centerItems = React.useMemo(
+  
+
+  // ✅ FIX: IconLink was used below but not defined in the Admin layout scope
+  const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
+    const active = isActive(to);
+    return (
+      <Link
+        to={to}
+        className={cn(
+          "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
+          active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+        )}
+        aria-label={label}
+        title={label}
+      >
+        <Icon className={iconClass} />
+      </Link>
+    );
+  };
+const centerItems = React.useMemo(
     () => [
       { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
       { title: "Events", url: createPageUrl("Events"), icon: Calendar },
