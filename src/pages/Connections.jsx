@@ -310,7 +310,7 @@ export default function Connections() {
 
     return (
       <div className="flex items-center justify-between gap-3 py-3">
-        <div className="min-w-0 flex items-center gap-3">
+        <div className="min-w-0 flex items-center gap-3 cursor-pointer" role="button" tabIndex={0} onClick={() => navigate(`/view-profile/${uid}`)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate(`/view-profile/${uid}`); }}>
           <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-700">
             {String(name).trim().slice(0, 1).toUpperCase()}
           </div>

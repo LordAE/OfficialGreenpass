@@ -54,6 +54,7 @@ import Messages from "@/pages/Messages";
 import AdminSubscription from "./pages/AdminSubscription";
 import EventDetailsPage from "./pages/EventDetails";
 import Connections from "./pages/Connections";
+import ViewProfile from "./pages/ViewProfile";
 
 /* ---------- Firebase auth/profile (lightweight for route-guards) ---------- */
 import { auth, db } from "@/firebase";
@@ -184,6 +185,14 @@ export default function App() {
           element={
             <RequireAuth currentUser={currentUser} loading={loading}>
               <Connections />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="view-profile/:uid"
+          element={
+            <RequireAuth currentUser={currentUser} loading={loading}>
+              <ViewProfile />
             </RequireAuth>
           }
         />
