@@ -86,6 +86,8 @@ export default function Connections() {
 
   const [roleFilter, setRoleFilter] = useState("all"); // all | agent | tutor | school | student
 
+  const [myRole, setMyRole] = useState("user"); // resolved role of logged-in user
+
   const [requests, setRequests] = useState([]); // { id: followerId, ...data }
   const [followers, setFollowers] = useState([]); // { id, ...data }
   const [following, setFollowing] = useState([]);
@@ -173,15 +175,53 @@ export default function Connections() {
     setMassText("");
   }, [tab, roleFilter]);
 
+  // Load my role once we know uid
+  useEffect(() => {
+    if (!myUid) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const meDoc = await getUserDoc(myUid);
+        const r = resolveRole(meDoc);
+        if (!cancelled) setMyRole(r);
+      } catch (e) {
+        console.error("failed to load my role", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [myUid]);
+
+  // Students should not be able to view/select "student" role filter
+  useEffect(() => {
+    if (myRole === "student" && roleFilter === "student") {
+      setRoleFilter("all");
+    }
+  }, [myRole, roleFilter]);
+
+
   const filteredList = useMemo(() => {
     const base = tab === "followers" ? followers : tab === "following" ? following : requests;
 
-    if (roleFilter === "all") return base;
-    return base.filter((item) => {
+    // If I'm a student/user, don't show other students in connections lists
+    const roleSafeBase =
+      myRole === "student"
+        ? base.filter((item) => {
+            const u = usersById[item.id] || {};
+            return resolveRole(u) !== "student";
+          })
+        : base;
+
+    if (roleFilter === "all") return roleSafeBase;
+    return roleSafeBase.filter((item) => {
       const u = usersById[item.id] || {};
       return resolveRole(u) === roleFilter;
     });
-  }, [tab, followers, following, requests, roleFilter, usersById]);
+  }, [tab, followers, following, requests, roleFilter, usersById, myRole]);
+
 
   const toggleSelect = (uid) => {
     setSelectedIds((prev) => {
@@ -349,14 +389,25 @@ export default function Connections() {
                       >
                         {tr("schools", "Schools")}
                       </Button>
-                      <Button
-                        type="button"
-                        variant={roleFilter === "student" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setRoleFilter("student")}
-                      >
-                        {tr("students", "Students")}
-                      </Button>
+                      {myRole !== "student" && (
+
+                        <Button
+
+                          type="button"
+
+                          variant={roleFilter === "student" ? "default" : "outline"}
+
+                          size="sm"
+
+                          onClick={() => setRoleFilter("student")}
+
+                        >
+
+                          {tr("students", "Students")}
+
+                        </Button>
+
+                      )}
                     </div>
                   </div>
 
