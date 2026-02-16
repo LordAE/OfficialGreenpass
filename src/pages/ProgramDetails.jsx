@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { db } from '@/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { School } from '@/api/entities';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
@@ -66,6 +68,7 @@ const formatLocation = (city, province, country) => {
 
 export default function ProgramDetail() {
   const [program, setProgram] = useState(null);
+  const [schoolInfo, setSchoolInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -154,6 +157,46 @@ export default function ProgramDetail() {
     loadProgramDetails();
   }, [loadProgramDetails]);
 
+  // Fetch school/institution media (logo + image) from SchoolDetails data
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (!program) {
+          setSchoolInfo(null);
+          return;
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const schoolId =
+          urlParams.get('schoolId') ||
+          urlParams.get('schoolid') ||
+          urlParams.get('school') ||
+          safeGet(program, 'school_id', '') ||
+          safeGet(program, 'schoolId', '') ||
+          safeGet(program, 'institution_id', '') || safeGet(program, 'institutionId', '');
+
+        if (!schoolId) {
+          setSchoolInfo(null);
+          return;
+        }
+
+        const snap = await getDoc(doc(db, 'institutions', schoolId));
+        if (!cancelled) {
+          if (snap.exists()) setSchoolInfo({ id: schoolId, ...snap.data() });
+          else setSchoolInfo(null);
+        }
+      } catch (e) {
+        if (!cancelled) setSchoolInfo(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [program]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -233,7 +276,7 @@ export default function ProgramDetail() {
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
                 <img
-                  src={program.institution_logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=100&h=100&fit=crop'}
+                  src={schoolInfo?.logo_url || schoolInfo?.logoUrl || program.institution_logo_url || program.logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=100&h=100&fit=crop'}
                   alt={`${institutionName} logo`}
                   className="w-20 h-20 object-contain bg-white border rounded-lg p-2"
                 />
@@ -409,7 +452,7 @@ export default function ProgramDetail() {
               <Card className="shadow-lg">
                 <CardHeader className="p-0">
                   <img
-                    src={program.school_image_url || program.institution_logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=400&h=250&fit=crop'}
+                    src={schoolInfo?.image_url || schoolInfo?.imageUrl || schoolInfo?.banner_url || schoolInfo?.bannerUrl || program.school_image_url || program.image_url || program.banner_url || program.institution_logo_url || 'https://images.unsplash.com/photo-1562774053-701939374585?w=400&h=250&fit=crop'}
                     alt={schoolName}
                     className="w-full h-40 object-cover rounded-t-lg"
                   />
