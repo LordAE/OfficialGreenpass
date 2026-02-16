@@ -16,6 +16,18 @@ import {
  */
 export async function sendFollowRequest({ followerId, followeeId }) {
   if (!followerId || !followeeId || followerId === followeeId) return;
+  // Write a local "sent" mirror doc immediately so the UI updates instantly.
+  // (Previously this relied on a backend mirror/trigger, which can feel delayed.)
+  await setDoc(
+    doc(db, "users", followerId, "follow_requests_sent", followeeId),
+    {
+      follower_id: followerId,
+      followee_id: followeeId,
+      status: "pending",
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
   await setDoc(
     doc(db, "users", followeeId, "follow_requests", followerId),
     {
@@ -33,6 +45,8 @@ export async function sendFollowRequest({ followerId, followeeId }) {
  */
 export async function cancelFollowRequest({ followerId, followeeId }) {
   if (!followerId || !followeeId || followerId === followeeId) return;
+  // Remove the local "sent" mirror doc so the UI updates immediately.
+  await deleteDoc(doc(db, "users", followerId, "follow_requests_sent", followeeId));
   await deleteDoc(doc(db, "users", followeeId, "follow_requests", followerId));
 }
 
