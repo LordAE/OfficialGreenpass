@@ -240,6 +240,8 @@ const UserAvatar = ({
 };
 
 const AccountTrigger = ({ currentUser, open, onClick }) => {
+  const { t } = useTranslation();
+  const accountLabel = t("profile.account", { defaultValue: "Account" });
   return (
     <button
       type="button"
@@ -250,8 +252,8 @@ const AccountTrigger = ({ currentUser, open, onClick }) => {
           ? "bg-green-100 text-green-700 ring-1 ring-green-200"
           : "bg-gray-100 hover:bg-gray-200 text-gray-700"
       )}
-      aria-label="Account"
-      title="Account"
+      aria-label={accountLabel}
+      title={accountLabel}
       aria-expanded={open}
       aria-haspopup="menu"
     >
@@ -261,7 +263,7 @@ const AccountTrigger = ({ currentUser, open, onClick }) => {
         textClass="text-base"
       />
       <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 opacity-80" />
-    </button>
+        </button>
   );
 };
 
@@ -365,7 +367,7 @@ const AccountDropdown = ({
 
               <div className="my-2 h-px bg-gray-100" />
 
-              <MenuItem onClick={onLogout} Icon={LogOut} label={tr("logOut", "Logout")} danger />
+              <MenuItem onClick={onLogout} Icon={LogOut} label={t("nav.logOut", { defaultValue: "Logout" })} danger />
             </div>
           </motion.div>
         )}
@@ -521,6 +523,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const { t } = useTranslation();
+
   const headerRef = React.useRef(null);
   const [headerH, setHeaderH] = React.useState(72);
   const [measured, setMeasured] = React.useState(false);
@@ -614,9 +618,9 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search..."
+                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label="Search"
+                    aria-label={t("nav.search", { defaultValue: "Search" })}
                   />
                 </div>
               </form>
@@ -627,16 +631,16 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
                   </div>
                 </div>
               </div>
@@ -647,8 +651,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               <Link
                 to={createPageUrl("Directory")}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Apps"
-                title="Apps"
+                aria-label={t("nav.apps", { defaultValue: "Apps" })}
+                title={t("nav.apps", { defaultValue: "Apps" })}
               >
                 <Dots9Icon className="h-6 w-6" />
               </Link>
@@ -656,8 +660,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               <Link
                 to={createPageUrl("Welcome")}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Login"
-                title="Login"
+                aria-label={t("nav.login", { defaultValue: "Login" })}
+                title={t("nav.login", { defaultValue: "Login" })}
               >
                 <UserCheck className="h-6 w-6" />
               </Link>
@@ -802,9 +806,9 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search..."
+                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label="Search"
+                    aria-label={t("nav.search", { defaultValue: "Search" })}
                   />
                 </div>
               </form>
@@ -815,16 +819,16 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
               <div className="pointer-events-auto w-[560px] md:w-[640px] lg:w-[720px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
                   </div>
                 </div>
               </div>
@@ -836,8 +840,8 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Messages"
-                title="Messages"
+                aria-label={t("nav.messages", { defaultValue: "Messages" })}
+                title={t("nav.messages", { defaultValue: "Messages" })}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -850,7 +854,7 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title="Account"
+                title={t("profile.account", { defaultValue: "Account" })}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -931,9 +935,9 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search..."
+                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label="Search"
+                    aria-label={t("nav.search", { defaultValue: "Search" })}
                   />
                 </div>
               </form>
@@ -944,16 +948,16 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
                   </div>
                 </div>
               </div>
@@ -965,8 +969,8 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Messages"
-                title="Messages"
+                aria-label={t("nav.messages", { defaultValue: "Messages" })}
+                title={t("nav.messages", { defaultValue: "Messages" })}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -979,7 +983,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title="Account"
+                title={t("profile.account", { defaultValue: "Account" })}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1061,9 +1065,9 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search..."
+                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label="Search"
+                    aria-label={t("nav.search", { defaultValue: "Search" })}
                   />
                 </div>
               </form>
@@ -1074,16 +1078,16 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
                   </div>
                 </div>
               </div>
@@ -1095,8 +1099,8 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Messages"
-                title="Messages"
+                aria-label={t("nav.messages", { defaultValue: "Messages" })}
+                title={t("nav.messages", { defaultValue: "Messages" })}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -1109,7 +1113,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title="Account"
+                title={t("profile.account", { defaultValue: "Account" })}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1191,9 +1195,9 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search..."
+                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label="Search"
+                    aria-label={t("nav.search", { defaultValue: "Search" })}
                   />
                 </div>
               </form>
@@ -1204,16 +1208,16 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
                   </div>
                 </div>
               </div>
@@ -1225,8 +1229,8 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Messages"
-                title="Messages"
+                aria-label={t("nav.messages", { defaultValue: "Messages" })}
+                title={t("nav.messages", { defaultValue: "Messages" })}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -1239,7 +1243,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title="Account"
+                title={t("profile.account", { defaultValue: "Account" })}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1399,16 +1403,16 @@ const centerItems = React.useMemo(
               <div className="pointer-events-auto w-[620px] md:w-[720px] lg:w-[820px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label="Dashboard" />
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label="Directory" />
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label="Connections" />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label="Events" />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
                   </div>
                 </div>
               </div>
@@ -1420,8 +1424,8 @@ const centerItems = React.useMemo(
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label="Messages"
-                title="Messages"
+                aria-label={t("nav.messages", { defaultValue: "Messages" })}
+                title={t("nav.messages", { defaultValue: "Messages" })}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -2054,7 +2058,7 @@ export default function Layout() {
                 <p className="text-xs text-gray-500 capitalize">{currentUser?.user_type}</p>
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout} className="text-red-600">
-                <LogOut className="w-4 h-4 mr-1" /> {tr("logOut", "Logout")}
+                <LogOut className="w-4 h-4 mr-1" /> {t("nav.logOut", { defaultValue: "Logout" })}
               </Button>
             </div>
 <div className="mb-3">

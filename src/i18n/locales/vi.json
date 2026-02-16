@@ -307,7 +307,11 @@
   "footer": {
     "copyright": "© GreenPass. Đã đăng ký bản quyền.",
     "privacy": "Chính sách quyền riêng tư",
-    "terms": "Điều khoản dịch vụ"
+    "terms": "Điều khoản dịch vụ",
+    "explore": "Khám phá",
+    "account": "Tài khoản",
+    "legal": "Pháp lý",
+    "agentAgreement": "Thỏa thuận đại lý"
   },
   "legal": {
     "and": "và",
@@ -332,7 +336,38 @@
     "profileSettings": "Cài đặt hồ sơ",
     "schools": "Trường học",
     "services": "Dịch vụ",
-    "tutors": "Gia sư"
+    "tutors": "Gia sư",
+    "apps": "Ứng dụng",
+    "login": "Đăng nhập",
+    "account": "Tài khoản",
+    "accountSettings": "Cài đặt tài khoản",
+    "connections": "Kết nối",
+    "more": "Thêm",
+    "myStudents": "Sinh viên của tôi",
+    "schoolProfile": "Hồ sơ trường",
+    "schoolDetails": "Chi tiết trường",
+    "bankSettings": "Cài đặt ngân hàng",
+    "brandSettings": "Cài đặt thương hiệu",
+    "chatSettings": "Cài đặt chat",
+    "eventsAdmin": "Quản lý sự kiện",
+    "institutionManagement": "Quản lý tổ chức",
+    "paymentVerification": "Xác minh thanh toán",
+    "reports": "Báo cáo",
+    "schoolManagement": "Quản lý trường",
+    "userManagement": "Người dùng",
+    "verifications": "Xác minh",
+    "walletManagement": "Quản lý ví",
+    "paymentMonitoring": "Giám sát thanh toán",
+    "agentAssignments": "Phân công đại lý",
+    "subscriptionMode": "Chế độ đăng ký",
+    "myServices": "Dịch vụ của tôi",
+    "profile": "Hồ sơ",
+    "payments": "Thanh toán",
+    "seatReservations": "Đặt chỗ",
+    "myAgent": "Đại lý của tôi",
+    "findAgent": "Tìm đại lý",
+    "search": "Tìm kiếm",
+    "searchPlaceholder": "Tìm kiếm..."
   },
   "onboarding": {
     "agent": {
