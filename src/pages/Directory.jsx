@@ -1144,7 +1144,10 @@ const [page, setPage] = useState(1);
     ({ studentId, targetId, targetRole }) => {
       const qs = new URLSearchParams();
       if (targetId) qs.set("to", String(targetId));
-      if (targetRole) qs.set("role", String(targetRole));
+      if (targetRole) {
+        const r = String(targetRole);
+        qs.set("role", r === "user" ? "student" : r);
+      }
       const url = `/messages?${qs.toString()}`;
 
       navigate(url, {
@@ -1329,12 +1332,6 @@ const [page, setPage] = useState(1);
       if (me === "school" && targetRole === "user") {
         window.alert("Schools cannot message students. Schools can only contact Admin/Advisor (GP Team).");
         navToMessages({ studentId: currentUser.uid, targetId: "support", targetRole: "support" });
-        return;
-      }
-
-      // 🔒 Subscription gate: agent/tutor must be subscribed to use messaging
-      if ((me === "agent" || me === "tutor") && !hasActiveSubscription(currentUserDoc)) {
-        navigate(`/checkout?plan=${encodeURIComponent(`${me}_yearly`)}`);
         return;
       }
 
