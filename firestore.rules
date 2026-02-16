@@ -1185,7 +1185,48 @@ match /follow_requests_sent/{followeeId} {
       allow write: if false; // only server (Admin SDK) writes
     }
 
+
+    match /tutor_students/{relId} {
+      // Tutor ↔ Student relationship
+      // Doc shape: { tutor_id: string, student_id: string, ... }
+
+      function myAppUserId() {
+        return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id is string)
+          ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
+          : "";
+      }
+
+      function isTutorOwner() {
+        return signedIn() && (
+          resource.data.tutor_id == request.auth.uid ||
+          (myAppUserId() != "" && resource.data.tutor_id == myAppUserId())
+        );
+      }
+
+      allow create: if signedIn()
+        && (
+          request.resource.data.tutor_id == request.auth.uid ||
+          (myAppUserId() != "" && request.resource.data.tutor_id == myAppUserId())
+        )
+        && request.resource.data.student_id is string;
+
+      allow read: if signedIn()
+        && (isTutorOwner()
+            || resource.data.student_id == request.auth.uid
+            || isAdmin());
+
+      // Update: tutor owner only, and cannot change tutor_id/student_id
+      allow update: if isTutorOwner()
+        && request.resource.data.tutor_id == resource.data.tutor_id
+        && request.resource.data.student_id == resource.data.student_id;
+
+      // Delete: tutor owner (no request.resource.data)
+      allow delete: if isTutorOwner() || isAdmin();
+    }
+
     // final catch-all
     match /{document=**} { allow read, write: if false; }
   }
+
 }

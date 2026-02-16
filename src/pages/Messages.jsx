@@ -1,9 +1,17 @@
+
+const normalizeIncomingRoleParam = (r) => {
+  const role = String(r || "").toLowerCase().trim();
+  if (!role) return "student";
+  if (role === "user") return "student";
+  return role;
+};
 // src/pages/Messages.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { auth, db } from "@/firebase";
+import { createPageUrl } from "@/utils";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -130,6 +138,67 @@ const location = useLocation();
   const [reportReason, setReportReason] = useState("");
 
   const myRole = useMemo(() => resolveUserRole(meDoc), [meDoc]);
+
+
+  // ✅ Add as student (Tutor only) -> writes to tutor_students so it appears in MyStudents
+  const handleAddStudent = useCallback(async (studentId) => {
+    try {
+      const tutorId = me?.uid;
+      if (!tutorId) {
+        console.warn("Add as student: not authenticated");
+        return;
+      }
+      if (!studentId) {
+        console.warn("Add as student: missing studentId");
+        return;
+      }
+
+      const roleLower = String(myRole || "").toLowerCase().trim();
+      if (roleLower !== "tutor") {
+        console.warn("Add as student: not a tutor", roleLower);
+        return;
+      }
+
+      const relId = `${tutorId}_${studentId}`;
+      await setDoc(
+        doc(db, "tutor_students", relId),
+        {
+          tutor_id: tutorId,
+          student_id: studentId,
+          created_at: serverTimestamp(),
+
+          // ✅ Scheduling scaffold for MyStudents page
+          schedule_status: "needs_schedule", // needs_schedule | scheduled | paused
+          next_session_at: null, // Firestore Timestamp
+          session_frequency: "weekly", // weekly | biweekly | monthly | ad_hoc
+          session_notes: "",
+          updated_at: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // lightweight feedback (non-blocking)
+      setErrorText("Student added ✅");
+      setTimeout(() => setErrorText(""), 2000);
+
+
+      // ✅ Auto-open scheduling on MyStudents page
+      try {
+        navigate(createPageUrl(`TutorStudents?openschedule=${studentId}`), {
+          state: { openScheduleStudentId: studentId },
+        });
+      } catch (navErr) {
+        // Fallback (if createPageUrl isn't available for some reason)
+        navigate(`/tutorstudents?openschedule=${studentId}`, {
+          state: { openScheduleStudentId: studentId },
+        });
+      }
+    } catch (e) {
+      console.error("Add as student failed:", e);
+      setErrorText(e?.message || "Failed to add student");
+      setTimeout(() => setErrorText(""), 3000);
+    }
+  }, [me?.uid, myRole]);
 
   const safeSetPeerCache = useCallback((uid, docu) => {
     if (!uid) return;
