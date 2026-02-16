@@ -199,6 +199,51 @@ const location = useLocation();
       setTimeout(() => setErrorText(""), 3000);
     }
   }, [me?.uid, myRole]);
+// ✅ Add as a client (Agent only) -> writes to agent_students so it appears in MyStudents
+const handleAddClient = useCallback(async (studentId) => {
+  try {
+    const agentId = me?.uid;
+    if (!agentId) {
+      console.warn("Add as client: not authenticated");
+      return;
+    }
+    if (!studentId) {
+      console.warn("Add as client: missing studentId");
+      return;
+    }
+
+    const roleLower = String(myRole || "").toLowerCase().trim();
+    if (roleLower !== "agent") {
+      console.warn("Add as client: not an agent", roleLower);
+      return;
+    }
+
+    const relId = `${agentId}_${studentId}`;
+    await setDoc(
+      doc(db, "agent_students", relId),
+      {
+        agent_id: agentId,
+        student_id: studentId,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    setErrorText("Client added ✅");
+    setTimeout(() => setErrorText(""), 2000);
+
+    // Optional: jump user straight to MyStudents (Agent)
+    try {
+      navigate(createPageUrl("MyStudents"));
+    } catch {}
+  } catch (e) {
+    console.error("Add as client failed:", e);
+    setErrorText(e?.message || "Failed to add client");
+    setTimeout(() => setErrorText(""), 3000);
+  }
+}, [me?.uid, myRole]);
+
 
   const safeSetPeerCache = useCallback((uid, docu) => {
     if (!uid) return;
@@ -728,23 +773,40 @@ const location = useLocation();
                                   className="absolute right-0 mt-2 w-48 rounded-xl border bg-white shadow-lg z-20 overflow-hidden"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  {myRole === "tutor" ? (() => {
+                                  {(myRole === "tutor" || myRole === "agent") ? (() => {
                                     const parts2 = Array.isArray(c.participants) ? c.participants : [];
                                     const otherId2 = parts2.find((x) => x && x !== me.uid) || "support";
                                     const role2 = normalizeRole(c?.roles?.[otherId2] || "user");
                                     const isStudent = role2 === "student" || role2 === "user";
                                     if (!isStudent || otherId2 === "support") return null;
+
+                                    if (myRole === "tutor") {
+                                      return (
+                                        <button
+                                          type="button"
+                                          className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50"
+                                          onClick={async () => {
+                                            await handleAddStudent(otherId2);
+                                            setMenuOpenId(null);
+                                          }}
+                                        >
+                                          <UserPlus className="h-4 w-4" />
+                                          Add as student
+                                        </button>
+                                      );
+                                    }
+
                                     return (
                                       <button
                                         type="button"
                                         className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50"
                                         onClick={async () => {
-                                          await handleAddStudent(otherId2);
+                                          await handleAddClient(otherId2);
                                           setMenuOpenId(null);
                                         }}
                                       >
                                         <UserPlus className="h-4 w-4" />
-                                        Add as student
+                                        Add as a client
                                       </button>
                                     );
                                   })() : null}
@@ -937,23 +999,40 @@ const location = useLocation();
                                 className="absolute right-0 mt-2 w-48 rounded-xl border bg-white shadow-lg z-20 overflow-hidden"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                {myRole === "tutor" ? (() => {
+                                {(myRole === "tutor" || myRole === "agent") ? (() => {
                                   const parts2 = Array.isArray(c.participants) ? c.participants : [];
                                   const otherId2 = parts2.find((x) => x && x !== me.uid) || "support";
                                   const role2 = normalizeRole(c?.roles?.[otherId2] || "user");
                                   const isStudent = role2 === "student" || role2 === "user";
                                   if (!isStudent || otherId2 === "support") return null;
+
+                                  if (myRole === "tutor") {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50"
+                                        onClick={async () => {
+                                          await handleAddStudent(otherId2);
+                                          setMenuOpenId(null);
+                                        }}
+                                      >
+                                        <UserPlus className="h-4 w-4" />
+                                        Add as student
+                                      </button>
+                                    );
+                                  }
+
                                   return (
                                     <button
                                       type="button"
                                       className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50"
                                       onClick={async () => {
-                                        await handleAddStudent(otherId2);
+                                        await handleAddClient(otherId2);
                                         setMenuOpenId(null);
                                       }}
                                     >
                                       <UserPlus className="h-4 w-4" />
-                                      Add as student
+                                      Add as a client
                                     </button>
                                   );
                                 })() : null}

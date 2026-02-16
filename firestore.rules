@@ -536,13 +536,35 @@ service cloud.firestore {
     }
 
     match /cases/{docId} {
+
+      function isAgentOfStudent(studentId) {
+        return signedIn() && (
+          // Manually-added client relationship
+          exists(/databases/$(database)/documents/agent_students/$(request.auth.uid + "_" + studentId))
+          // OR referral-based assignment
+          || (
+            exists(/databases/$(database)/documents/users/$(studentId)) &&
+            get(/databases/$(database)/documents/users/$(studentId)).data.referred_by_agent_id == request.auth.uid
+          )
+        );
+      }
+
       allow create: if signedIn() && (
         request.resource.data.student_id == request.auth.uid ||
         request.resource.data.user_id == request.auth.uid ||
-        request.resource.data.agent_id == request.auth.uid
+        request.resource.data.agent_id == request.auth.uid ||
+        isAdmin()
       );
 
-      allow read, update, delete: if signedIn() && (
+      allow read: if signedIn() && (
+        resource.data.student_id == request.auth.uid ||
+        resource.data.user_id == request.auth.uid ||
+        resource.data.agent_id == request.auth.uid ||
+        isAgentOfStudent(resource.data.student_id) ||
+        isAdmin()
+      );
+
+      allow update, delete: if signedIn() && (
         resource.data.student_id == request.auth.uid ||
         resource.data.user_id == request.auth.uid ||
         resource.data.agent_id == request.auth.uid ||
@@ -1225,7 +1247,67 @@ match /follow_requests_sent/{followeeId} {
       allow delete: if isTutorOwner() || isAdmin();
     }
 
+
+    match /agent_students/{relId} {
+      // Agent ↔ Student (Client) relationship
+      // Doc shape: { agent_id: string, student_id: string, ... }
+
+      function myAppUserId() {
+        return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id is string)
+          ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
+          : "";
+      }
+
+      function isAgentOwner() {
+        return signedIn() && (
+          resource.data.agent_id == request.auth.uid ||
+          (myAppUserId() != "" && resource.data.agent_id == myAppUserId())
+        );
+      }
+
+      allow create: if signedIn()
+        && (
+          request.resource.data.agent_id == request.auth.uid ||
+          (myAppUserId() != "" && request.resource.data.agent_id == myAppUserId())
+        )
+        && request.resource.data.student_id is string;
+
+      allow read: if signedIn()
+        && (isAgentOwner()
+            || resource.data.student_id == request.auth.uid
+            || isAdmin());
+
+      // Update: agent owner only, and cannot change agent_id/student_id
+      allow update: if isAgentOwner()
+        && request.resource.data.agent_id == resource.data.agent_id
+        && request.resource.data.student_id == resource.data.student_id;
+
+      // Delete: agent owner (no request.resource.data)
+      allow delete: if isAgentOwner() || isAdmin();
+    }
+
     // final catch-all
+
+    // ✅ Agent document checklist per client
+    // Collection: agent_client_checklists/{agentId}_{clientId}
+    // Fields: { agent_id, client_id, documents: [{id,name,submitted,...}], ... }
+    match /agent_client_checklists/{docId} {
+      allow create: if signedIn() && (
+        request.resource.data.agent_id == request.auth.uid || isAdmin()
+      );
+
+      allow read: if signedIn() && (
+        resource.data.agent_id == request.auth.uid ||
+        resource.data.client_id == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow update, delete: if signedIn() && (
+        resource.data.agent_id == request.auth.uid || isAdmin()
+      );
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 
