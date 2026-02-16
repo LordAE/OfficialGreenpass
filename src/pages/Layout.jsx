@@ -384,8 +384,7 @@ function buildAccountMenuItems(currentUser, tr) {
 
   if (role === "agent") {
     items.unshift(
-      { label: tr("myStudents", "My Students"), url: createPageUrl("MyStudents"), icon: Users },
-      { label: tr("leads", "Leads"), url: createPageUrl("AgentLeads"), icon: UsersIcon }
+      { label: tr("myStudents", "My Students"), url: createPageUrl("MyStudents"), icon: Users }
     );
   }
 
@@ -1611,7 +1610,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
   // ✅ IMPORTANT: Removed Notifications route items from all "more" menus.
   // Notifications are ONLY via <NotificationsBell /> in the top bar (popover).
 
-  // Agent (match desktop center icons: Dashboard / Directory / Events / My Students / Leads)
+  // Agent (match desktop center icons: Dashboard / Directory / Events / My Students)
   if (role === "agent") {
     return {
       main: [
@@ -1622,7 +1621,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
       ],
       more: [
         { title: "My Students", url: createPageUrl("MyStudents"), icon: Users },
-        { title: "Leads", url: createPageUrl("AgentLeads"), icon: UsersIcon },
         { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
         { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
       ],
