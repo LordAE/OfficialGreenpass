@@ -49,7 +49,8 @@ import {
  limit,
  setDoc,
  serverTimestamp,
- addDoc
+ addDoc,
+ deleteDoc
 } from "firebase/firestore";
 
 /* ---------- helpers ---------- */
@@ -474,7 +475,8 @@ export default function SchoolDetails() {
  // Add Program dialog
  const [programDialogOpen, setProgramDialogOpen] = useState(false);
  const [programSaving, setProgramSaving] = useState(false);
- // own-school-only: default to school
+ // Program edit helpers
+ const [editingProgram, setEditingProgram] = useState(null);
 
  useEffect(() => {
  const unsub = onAuthStateChanged(auth, (u) => {
@@ -703,8 +705,31 @@ export default function SchoolDetails() {
  const nextPage = useMemo(() => "SchoolDetails", []);
 
  const openAddProgram = () => {
+ setEditingProgram(null);
  setProgramDialogOpen(true);
  };
+
+
+const openEditProgram = (p) => {
+ setEditingProgram(p || null);
+ setProgramDialogOpen(true);
+};
+
+const handleRemoveProgram = async (p) => {
+ if (!p?.id) return;
+ if (!fbUser?.uid) return;
+
+ const ok = window.confirm("Remove this program? This cannot be undone.");
+ if (!ok) return;
+
+ try {
+  await deleteDoc(doc(db, "schools", p.id));
+  setPrograms((prev) => prev.filter((x) => x.id !== p.id));
+ } catch (e) {
+  console.error("Remove program failed:", e);
+  alert("Failed to remove program. Check console for details.");
+ }
+};
 
  const handleSaveProgram = async (data) => {
  if (!fbUser?.uid) return;
@@ -713,77 +738,74 @@ export default function SchoolDetails() {
  setProgramSaving(true);
 
  try {
- // Save program documents in "schools" collection
- // Requirement: user_id must equal logged-in school user's UID
- const payload = {
- user_id: fbUser.uid,
+  const basePayload = {
+   user_id: fbUser.uid,
+   school_id: school.id,
 
- // ✅ REQUIRED BY FIRESTORE RULES
- school_id: school.id,
+   institution_id: school.id,
+   institutionId: school.id,
+   institution_name: school.name,
+   school_name: school.name,
 
- // link back to institution (optional but useful)
- institution_id: school.id,
- institutionId: school.id,
- institution_name: school.name,
- school_name: school.name,
+   program_title: data?.program_title || "",
+   program_level: data?.program_level || "",
+   field_of_study: data?.field_of_study || "",
+   duration_display: data?.duration_display || "",
+   tuition_fee_cad: Number(data?.tuition_fee_cad) || 0,
+   application_fee: Number(data?.application_fee) || 0,
+   intake_dates: Array.isArray(data?.intake_dates) ? data.intake_dates : [],
+   program_overview: data?.program_overview || "",
+   is_featured: !!data?.is_featured,
 
- // Program fields (SchoolForm output)
- program_title: data?.program_title || "",
- program_level: data?.program_level || "",
- field_of_study: data?.field_of_study || "",
- duration_display: data?.duration_display || "",
- tuition_fee_cad: Number(data?.tuition_fee_cad) || 0,
- application_fee: Number(data?.application_fee) || 0,
- intake_dates: Array.isArray(data?.intake_dates) ? data.intake_dates : [],
- program_overview: data?.program_overview || "",
- is_featured: !!data?.is_featured,
+   updated_at: serverTimestamp(),
+  };
 
- created_at: serverTimestamp(),
- updated_at: serverTimestamp(),
- };
+  if (editingProgram?.id) {
+   await setDoc(doc(db, "schools", editingProgram.id), basePayload, { merge: true });
+  } else {
+   await addDoc(collection(db, "schools"), { ...basePayload, created_at: serverTimestamp() });
+  }
 
- await addDoc(collection(db, "schools"), payload);
+  const programsFound = [];
 
- // Refresh programs list from "schools" (same logic as page)
- const programsFound = [];
+  try {
+   const q1 = query(collection(db, "schools"), where("user_id", "==", fbUser.uid), limit(500));
+   const snap1 = await getDocs(q1);
+   snap1.forEach((d) => programsFound.push({ id: d.id, ...d.data() }));
+  } catch (e) {
+   console.warn("Refresh programs by user_id failed:", e);
+  }
 
- try {
- const q1 = query(collection(db, "schools"), where("user_id", "==", fbUser.uid), limit(500));
- const snap1 = await getDocs(q1);
- snap1.forEach((d) => programsFound.push({ id: d.id, ...d.data() }));
+  try {
+   const q2 = query(collection(db, "schools"), where("institution_id", "==", school.id), limit(500));
+   const snap2 = await getDocs(q2);
+   snap2.forEach((d) => {
+    if (!programsFound.find((p) => p.id === d.id)) programsFound.push({ id: d.id, ...d.data() });
+   });
+  } catch {}
+
+  try {
+   const q3 = query(collection(db, "schools"), where("institutionId", "==", school.id), limit(500));
+   const snap3 = await getDocs(q3);
+   snap3.forEach((d) => {
+    if (!programsFound.find((p) => p.id === d.id)) programsFound.push({ id: d.id, ...d.data() });
+   });
+  } catch {}
+
+  setPrograms(programsFound);
+  setProgramsPage(1);
+  setProgramDialogOpen(false);
+  setEditingProgram(null);
  } catch (e) {
- console.warn("Refresh programs by user_id failed:", e);
- }
-
- try {
- const q2 = query(collection(db, "schools"), where("institution_id", "==", school.id), limit(500));
- const snap2 = await getDocs(q2);
- snap2.forEach((d) => {
- if (!programsFound.find((p) => p.id === d.id)) programsFound.push({ id: d.id, ...d.data() });
- });
- } catch {}
-
- try {
- const q3 = query(collection(db, "schools"), where("institutionId", "==", school.id), limit(500));
- const snap3 = await getDocs(q3);
- snap3.forEach((d) => {
- if (!programsFound.find((p) => p.id === d.id)) programsFound.push({ id: d.id, ...d.data() });
- });
- } catch {}
-
- setPrograms(programsFound);
- setProgramsPage(1);
- setProgramDialogOpen(false);
- } catch (e) {
- console.error("Add program failed:", e);
- alert("Failed to add program. Check console for details.");
+  console.error(editingProgram?.id ? "Edit program failed:" : "Add program failed:", e);
+  alert("Failed to save program. Check console for details.");
  } finally {
- setProgramSaving(false);
+  setProgramSaving(false);
  }
- };
+};
 
 
- const formatLocation = (s) => {
+const formatLocation = (s) => {
  const parts = [s?.location, s?.province, s?.country].filter(Boolean);
  return parts.join(", ");
  };
@@ -970,9 +992,32 @@ export default function SchoolDetails() {
  </div>
 
  <div className="flex items-center gap-2">
- <Button variant="outline" onClick={() => navigate(createPageUrl("Programs"))}>
- View all
+ <Button
+ variant="outline"
+ onClick={() => {
+ // Navigate to Program Details (pass program data via router state for instant rendering)
+ const pid = pickFirst(p.id, p.program_id, p.programId);
+ const qs = new URLSearchParams();
+ if (pid) qs.set("programId", pid);
+ // schoolId comes from the loaded school object (or optional URL param)
+ const sid = pickFirst(school?.id, schoolIdParam);
+ if (sid) qs.set("schoolId", sid);
+ navigate(`${createPageUrl("ProgramDetails")}?${qs.toString()}`, { state: { program: p, school } });
+ }}
+ >
+ View details
  </Button>
+
+      {isSignedIn && role === "school" && (
+       <>
+        <Button variant="outline" onClick={() => openEditProgram(p)}>
+         Edit
+        </Button>
+        <Button variant="destructive" onClick={() => handleRemoveProgram(p)}>
+         Remove
+        </Button>
+       </>
+      )}
  </div>
  </div>
  </div>
@@ -1012,13 +1057,13 @@ export default function SchoolDetails() {
  <Dialog open={programDialogOpen} onOpenChange={setProgramDialogOpen}>
  <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
  <DialogHeader>
- <DialogTitle>Add Program</DialogTitle>
- <DialogDescription>Create a new program under this school.</DialogDescription>
+ <DialogTitle>{editingProgram ? "Edit Program" : "Add Program"}</DialogTitle>
+ <DialogDescription>{editingProgram ? "Update this program." : "Create a new program under this school."}</DialogDescription>
  </DialogHeader>
 
  <div className="pb-2">
  <SchoolForm
- school={{
+school={{
  institution_name: school?.name || "",
  institution_type: (school?.type || "University").toString().replace(/^\w/, (c) => c.toUpperCase()),
  institution_logo_url: school?.logo_url || "",
@@ -1026,18 +1071,19 @@ export default function SchoolDetails() {
  school_country: school?.country || "Canada",
  school_province: school?.province || "",
  school_city: school?.location || "",
- program_title: "",
- program_level: "bachelor",
- field_of_study: "",
- duration_display: "",
- tuition_fee_cad: 0,
- application_fee: 0,
- intake_dates: [],
- program_overview: "",
- is_featured: false,
- }}
- onSave={handleSaveProgram}
- onCancel={() => setProgramDialogOpen(false)}
+
+ program_title: pickFirst(editingProgram?.program_title, editingProgram?.title, editingProgram?.program_name, "") || "",
+ program_level: pickFirst(editingProgram?.program_level, editingProgram?.level, "bachelor") || "bachelor",
+ field_of_study: pickFirst(editingProgram?.field_of_study, "") || "",
+ duration_display: pickFirst(editingProgram?.duration_display, editingProgram?.duration, "") || "",
+ tuition_fee_cad: Number(pickFirst(editingProgram?.tuition_fee_cad, editingProgram?.tuition, 0)) || 0,
+ application_fee: Number(pickFirst(editingProgram?.application_fee, 0)) || 0,
+ intake_dates: Array.isArray(editingProgram?.intake_dates) ? editingProgram.intake_dates : [],
+ program_overview: pickFirst(editingProgram?.program_overview, editingProgram?.overview, editingProgram?.description, "") || "",
+ is_featured: !!editingProgram?.is_featured,
+}}
+onSave={handleSaveProgram}
+ onCancel={() => { setProgramDialogOpen(false); setEditingProgram(null); }}
  />
 
  {programSaving && (

@@ -19,6 +19,7 @@ import TutorDetails from "@/pages/TutorDetails";
 import SchoolProfile from "@/pages/SchoolProfile";
 import SchoolLeads from "@/pages/SchoolLeads";
 import SchoolDetails from "@/pages/SchoolDetails";
+import ProgramDetails from "@/pages/ProgramDetails";
 import MyServices from "@/pages/MyServices";
 import UserManagement from "@/pages/UserManagement";
 import AdminSchools from "@/pages/AdminSchools";
@@ -331,7 +332,16 @@ export default function App() {
           }
         />
 
-        {/* Vendor-only (kept for future; blocks student/tutor/agent/school/admin) */}
+        <Route
+          path="programdetails"
+          element={
+            <RequireRole currentUser={currentUser} loading={loading} allow={["school"]}>
+              <ProgramDetails />
+            </RequireRole>
+          }
+        />
+
+{/* Vendor-only (kept for future; blocks student/tutor/agent/school/admin) */}
         <Route
           path="myservices"
           element={
