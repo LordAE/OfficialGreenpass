@@ -283,8 +283,8 @@ const buildVerificationFieldsForRole = (role, tr) => {
   // user/student
   if (r === "user") {
     return [
-      { key: "student_id_front", label: tr("verification.student_id_front", "Valid ID (Front)"), required: true },
-      { key: "student_id_back", label: tr("verification.student_id_back", "Valid ID (Back)"), required: true },
+          { key: "student_id_front", label: "Valid ID (Front)", required: true },
+          { key: "student_id_back", label: "Valid ID (Back)", required: true },
     ];
   }
   // vendor: none required in your onboarding
