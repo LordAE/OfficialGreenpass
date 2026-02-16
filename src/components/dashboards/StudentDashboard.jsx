@@ -26,6 +26,9 @@ import {
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
+// 🤝 Follow helpers
+import { listenFollowState, sendFollowRequest, cancelFollowRequest, unfollowUser } from "@/api/follow";
+
 // 🌍 i18n
 import { useTr } from "@/i18n/useTr";
 
@@ -213,8 +216,70 @@ const MediaGallery = ({ media = [], tr }) => {
   );
 };
 
+/* -------------------- Follow Button (same behavior as SchoolDashboard) -------------------- */
+function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "" }) {
+  const { tr } = useTr("student_dashboard");
+  const [state, setState] = useState({ following: false, requested: false });
+  const disabled = !currentUserId || !creatorId || currentUserId === creatorId;
+
+  useEffect(() => {
+    if (disabled) {
+      setState({ following: false, requested: false });
+      return;
+    }
+    return listenFollowState({ meId: currentUserId, targetId: creatorId }, setState);
+  }, [currentUserId, creatorId, disabled]);
+
+  const onClick = async () => {
+    if (disabled) return;
+
+    if (state.following) {
+      await unfollowUser({ followerId: currentUserId, followeeId: creatorId });
+      return;
+    }
+
+    if (state.requested) {
+      await cancelFollowRequest({ followerId: currentUserId, followeeId: creatorId });
+      return;
+    }
+
+    await sendFollowRequest({ followerId: currentUserId, followeeId: creatorId });
+  };
+
+  const label = state.following
+    ? tr("following", "Following")
+    : state.requested
+    ? tr("requested", "Requested")
+    : tr("follow", "Follow");
+
+  return (
+    <Button
+      type="button"
+      size={size}
+      variant={state.following || state.requested ? "outline" : "default"}
+      disabled={disabled}
+      className={className}
+      onClick={onClick}
+    >
+      {state.following ? (
+        <>
+          <UserMinus className="h-4 w-4 mr-2" /> {label}
+        </>
+      ) : state.requested ? (
+        <>
+          <UserPlus className="h-4 w-4 mr-2" /> {label}
+        </>
+      ) : (
+        <>
+          <UserPlus className="h-4 w-4 mr-2" /> {label}
+        </>
+      )}
+    </Button>
+  );
+}
+
 /* -------------------- Post Card UI (NO like/comment/share) -------------------- */
-function FeedPostCard({ post, myUid, isFollowing, isRequested, onToggleFollow, onMessage, authorCountryByUid, tr }) {
+function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
   const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
 
   // 🌍 Resolve author country (same logic as AgentDashboard)
@@ -386,27 +451,13 @@ function FeedPostCard({ post, myUid, isFollowing, isRequested, onToggleFollow, o
         {/* Follow + Message row */}
         <div className="px-4 pb-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <Button
-              className="rounded-xl"
-              variant={isFollowing || isRequested ? "outline" : "default"}
-              onClick={() => onToggleFollow(post.authorId)}
-              type="button"
-              disabled={!post.authorId}
-            >
-              {isFollowing ? (
-                <>
-                  <UserMinus className="h-4 w-4 mr-2" /> {tr("following", "Following")}
-                </>
-              ) : isRequested ? (
-                <>
-                  <UserPlus className="h-4 w-4 mr-2" /> {tr("requested", "Requested")}
-                </>
-              ) : (
-                <>
-                  <UserPlus className="h-4 w-4 mr-2" /> {tr("follow", "Follow")}
-                </>
-              )}
-            </Button>
+            <FollowButton
+              currentUserId={myUid}
+              creatorId={post.authorId}
+              creatorRole={post.authorRole}
+              size="sm"
+              className="rounded-xl w-full"
+/>
 
             <Button
               className="rounded-xl"
@@ -440,13 +491,11 @@ function FeedPostCard({ post, myUid, isFollowing, isRequested, onToggleFollow, o
 }
 
 /* -------------------- REAL Student Dashboard (FB-style) -------------------- */
-export default function StudentDashboard() {
+export default function StudentDashboard({ user }) {
   const { tr } = useTr("student_dashboard");
   const { subscriptionModeEnabled, loading: subscriptionLoading } = useSubscriptionMode();
-
   const navigate = useNavigate();
-  const me = auth?.currentUser;
-  const myUid = me?.uid;
+  const myUid = user?.id || user?.uid || user?.user_id || auth?.currentUser?.uid || null;
 
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState([]);
@@ -730,10 +779,7 @@ export default function StudentDashboard() {
                 <FeedPostCard
                   key={p.id}
                   post={p}
-                  myUid={myUid}
-                  isFollowing={isFollowing(p.authorId)}
-                  onToggleFollow={toggleFollow}
-                  onMessage={messageCreator}
+                  myUid={myUid}                  onMessage={messageCreator}
                 authorCountryByUid={authorCountryByUid}
                   tr={tr}
                 />
