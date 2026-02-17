@@ -489,7 +489,14 @@ service cloud.firestore {
     }
 
     match /reports/{docId} {
-      allow create: if signedIn() && request.resource.data.reporter_id == request.auth.uid;
+      // Allow any signed-in user to create a report ABOUT A CONVERSATION,
+      // but only if they are the reporter (supports both snake_case and camelCase fields).
+      allow create: if signedIn() && (
+        (request.resource.data.reporter_id == request.auth.uid) ||
+        (request.resource.data.reporterId == request.auth.uid)
+      );
+
+      // Only admins can view/triage reports
       allow read, update, delete: if isAdmin();
     }
 

@@ -16,6 +16,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 /* ===============================
    CONSTANTS
@@ -33,6 +34,55 @@ export const MESSAGING_LIMITS = {
   FREE_STUDENT_MAX_MESSAGES_PER_CONVO: 3,
   PRO_MAX_OUTBOUND_UNTIL_REPLY: 3,
 };
+
+
+/* ===============================
+   FILE UPLOAD (ATTACHMENTS)
+================================ */
+
+function safeFileName(name) {
+  return String(name || "file")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .slice(0, 120);
+}
+
+export async function uploadMessageAttachments({ conversationId, senderId, files }) {
+  if (!conversationId || !senderId) throw new Error("Missing conversationId/senderId");
+  const list = Array.isArray(files) ? files : [];
+  if (list.length === 0) return [];
+
+  const storage = getStorage();
+
+  // Upload sequentially to keep it simple and predictable
+  const out = [];
+  for (const f of list) {
+    const fname = safeFileName(f?.name);
+    const path = `message_uploads/${conversationId}/${Date.now()}_${senderId}_${fname}`;
+    const r = storageRef(storage, path);
+
+    await uploadBytes(r, f, {
+      contentType: f?.type || "application/octet-stream",
+      customMetadata: {
+        conversation_id: conversationId,
+        sender_id: senderId,
+        original_name: f?.name || "",
+      },
+    });
+
+    const url = await getDownloadURL(r);
+
+    out.push({
+      name: f?.name || fname,
+      size: Number(f?.size || 0),
+      content_type: f?.type || "application/octet-stream",
+      url,
+      path,
+      created_at: Date.now(),
+    });
+  }
+
+  return out;
+}
 
 /* ===============================
    ROLE + SUBSCRIPTION HELPERS
@@ -193,21 +243,26 @@ export async function ensureConversation({
 
 export async function sendMessage({
   conversationId,
+  conversation_id,
   conversationDoc,
   senderId,
   senderDoc,
   text,
+  attachments = [],
 }) {
+  const cid = conversationId || conversation_id;
   const t = String(text || "").trim();
-  if (!conversationId || !senderId || !t) return;
+  const atts = Array.isArray(attachments) ? attachments.filter(Boolean) : [];
+
+  if (!cid || !senderId || (!t && atts.length === 0)) return;
 
   const senderRole = resolveUserRole(senderDoc);
   const subscriptionModeEnabled = await getSubscriptionModeEnabled();
 
-  // Free student cap
+  // Free student cap (counts messages, including attachments)
   if (isFreeStudent(senderDoc) && senderRole === "student") {
     const qMine = query(
-      collection(db, "conversations", conversationId, "messages"),
+      collection(db, "conversations", cid, "messages"),
       where("sender_id", "==", senderId),
       limit(MESSAGING_LIMITS.FREE_STUDENT_MAX_MESSAGES_PER_CONVO)
     );
@@ -233,20 +288,36 @@ export async function sendMessage({
   const parts = conversationDoc?.participants || [];
   const toUserId = parts.find((x) => x !== senderId) || "support";
 
-  await addDoc(collection(db, "conversations", conversationId, "messages"), {
-    conversation_id: conversationId,
+  const messageType =
+    atts.length > 0
+      ? (atts.length === 1 && String(atts[0]?.content_type || "").startsWith("image/") ? "image" : "file")
+      : "text";
+
+  await addDoc(collection(db, "conversations", cid, "messages"), {
+    conversation_id: cid,
     sender_id: senderId,
     to_user_id: toUserId,
     text: t,
+    attachments: atts,
+    message_type: messageType,
     created_at: serverTimestamp(),
   });
 
-  await updateDoc(doc(db, "conversations", conversationId), {
+  const lastText =
+    t ||
+    (atts.length === 1
+      ? `📎 ${atts[0]?.name || "Attachment"}`
+      : atts.length > 1
+      ? `📎 ${atts.length} attachments`
+      : "");
+
+  await updateDoc(doc(db, "conversations", cid), {
     last_message_at: serverTimestamp(),
-    last_message_text: t,
+    last_message_text: lastText,
     updated_at: serverTimestamp(),
   });
 }
+
 
 /* ===============================
    REPORTING
@@ -254,17 +325,26 @@ export async function sendMessage({
 
 export async function createReport({
   reporterId,
+  reporter_id,
   reporterDoc,
   conversationId,
+  conversation_id,
   reportedUserId,
+  reported_user_id,
   reportedRole,
   reason = "",
 }) {
+  const rid = reporterId || reporter_id;
+  const cid = conversationId || conversation_id;
+  const ruid = reportedUserId || reported_user_id;
+
+  if (!rid || !cid || !ruid) throw new Error("Missing report fields");
+
   await addDoc(collection(db, "reports"), {
-    reporter_id: reporterId,
+    reporter_id: rid,
     reporter_role: resolveUserRole(reporterDoc),
-    conversation_id: conversationId,
-    reported_user_id: reportedUserId,
+    conversation_id: cid,
+    reported_user_id: ruid,
     reported_role: normalizeRole(reportedRole),
     reason,
     status: "open",
@@ -272,6 +352,7 @@ export async function createReport({
     updated_at: serverTimestamp(),
   });
 }
+
 
 /* ===============================
    AGREEMENT (FIX — RESTORED)

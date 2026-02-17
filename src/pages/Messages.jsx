@@ -16,7 +16,7 @@ import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Send, MessageSquare, ArrowLeft, MoreVertical, Flag, UserPlus } from "lucide-react";
+import { Loader2, Send, MessageSquare, ArrowLeft, MoreVertical, Flag, UserPlus, Paperclip, FileText, Image as ImageIcon } from "lucide-react";
 
 // ✅ Global toggle: Admin can turn subscription gating ON/OFF
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
@@ -27,6 +27,7 @@ import {
   resolveUserRole,
   normalizeRole,
   sendMessage,
+  uploadMessageAttachments,
   listenToMessages,
   listenToMyConversations,
   createReport,
@@ -120,6 +121,9 @@ const location = useLocation();
   const [messages, setMessages] = useState([]);
 
   const [text, setText] = useState("");
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const filePickerRef = useRef(null);
+
   const endRef = useRef(null);
 
   const msgsUnsubRef = useRef(null);
@@ -528,6 +532,17 @@ const handleAddClient = useCallback(async (studentId) => {
     if (isMobile) setMobileView("chat");
   }, [isMobile]);
 
+  // ✅ Report from inbox (3-dots menu)
+  // This was referenced in the UI but missing, causing: openReportForConversation is not defined
+  const openReportForConversation = useCallback((conv) => {
+    if (!conv) return;
+    setSelectedConv(conv);
+    if (isMobile) setMobileView("chat");
+    setMenuOpenId(null);
+    setReportReason("");
+    setShowReport(true);
+  }, [isMobile]);
+
   const handleBackToInbox = useCallback(() => {
     setMobileView("inbox");
   }, []);
@@ -537,11 +552,21 @@ const handleAddClient = useCallback(async (studentId) => {
     if (!me?.uid || !selectedConv?.id) return;
 
     const t = text.trim();
-    if (!t) return;
+    if (!t && pendingFiles.length === 0) return;
 
     try {
       setErrorText("");
       setText("");
+
+      let attachments = [];
+      if (pendingFiles.length > 0) {
+        attachments = await uploadMessageAttachments({
+          conversationId: selectedConv.id,
+          senderId: me.uid,
+          files: pendingFiles,
+        });
+        setPendingFiles([]);
+      }
 
       await sendMessage({
         conversationId: selectedConv.id,
@@ -549,6 +574,7 @@ const handleAddClient = useCallback(async (studentId) => {
         senderId: me.uid,
         senderDoc: meDoc,
         text: t,
+        attachments,
       });
     } catch (e) {
       console.error("send message error:", e);
@@ -557,31 +583,52 @@ const handleAddClient = useCallback(async (studentId) => {
         if (subscriptionModeEnabled) {
           setErrorText("Messaging is locked. Please activate your subscription to continue.");
         } else {
-          // Subscription mode is OFF, but backend still rejected.
-          // This means your messaging backend (api/messaging or functions) still enforces subscription.
-          setErrorText(
-            "Subscription mode is OFF, but messaging is still being enforced by the backend. Update your messaging backend to honor app_config/subscription.enabled."
-          );
+          setErrorText("Messaging is currently locked.");
         }
         return;
       }
 
-      if (e?.code === "WAIT_FOR_REPLY") {
-        setErrorText(
-          `You can send up to ${MESSAGING_LIMITS.PRO_MAX_OUTBOUND_UNTIL_REPLY} messages until the other user replies.`
-        );
+      if (e?.code === "FREE_STUDENT_MESSAGE_LIMIT") {
+        setErrorText("Free users can only send a few messages per conversation. Please upgrade to continue.");
         return;
       }
 
       setErrorText(e?.message || "Failed to send message.");
     }
-  }, [me?.uid, selectedConv, text, meDoc, subscriptionModeEnabled]);
+  }, [me?.uid, selectedConv, text, pendingFiles, meDoc, subscriptionModeEnabled]);
 
   // Agreement banner: uses timestamp in your doc
   const showAgreement =
     myRole === "student" &&
     meDoc &&
     !meDoc?.messaging_agreement_accepted_at;
+
+  // Subscription lock state for agent/tutor/school
+  // ✅ Only applies when admin has subscription mode ENABLED
+  const locked = subscriptionModeEnabled ? isSubInactiveForRole(meDoc) : false;
+
+  const openFilePicker = useCallback(() => {
+    if (locked || showAgreement) return;
+    filePickerRef.current?.click();
+  }, [locked, showAgreement]);
+
+  const onPickFiles = useCallback((e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    // Cap single selection to prevent huge accidental uploads
+    const capped = files.slice(0, 10);
+    setPendingFiles((prev) => [...prev, ...capped]);
+
+    // allow picking same file again
+    e.target.value = "";
+  }, []);
+
+  const removePendingFile = useCallback((idx) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+
 
   const handleAcceptAgreement = useCallback(async () => {
     if (!me?.uid) return;
@@ -594,9 +641,6 @@ const handleAddClient = useCallback(async (studentId) => {
     }
   }, [me?.uid, meDoc]);
 
-  // Subscription lock state for agent/tutor/school
-  // ✅ Only applies when admin has subscription mode ENABLED
-  const locked = subscriptionModeEnabled ? isSubInactiveForRole(meDoc) : false;
 
   const peerName = displayName(peerDoc);
   const peerAvatar = avatarUrl(peerDoc);
@@ -881,49 +925,144 @@ const handleAddClient = useCallback(async (studentId) => {
                   <div className="space-y-2">
                     {messages.map((m) => {
                       const mine = m.sender_id === me.uid;
+                      const atts = Array.isArray(m.attachments) ? m.attachments : [];
                       return (
                         <div
                           key={m.id}
                           className={`flex ${mine ? "justify-end" : "justify-start"}`}
                         >
                           <div
-                            className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                              mine
-                                ? "bg-black text-white"
-                                : "bg-gray-100 text-gray-900"
+                            className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm border ${
+                              mine ? "bg-blue-50 border-blue-100" : "bg-white border-gray-200"
                             }`}
                           >
-                            {m.text}
+                            {m.text ? <div className="whitespace-pre-wrap">{m.text}</div> : null}
+
+                            {atts.length > 0 ? (
+                              <div className="mt-2 space-y-2">
+                                {atts.map((a, idx) => {
+                                  const isImg = String(a?.content_type || a?.mime || "").startsWith("image/");
+                                  const url = a?.url || a?.downloadUrl;
+                                  const name = a?.name || "attachment";
+                                  if (!url) return null;
+
+                                  return (
+                                    <div key={idx} className="rounded-lg border bg-white overflow-hidden">
+                                      {isImg ? (
+                                        <a href={url} target="_blank" rel="noreferrer">
+                                          <img
+                                            src={url}
+                                            alt={name}
+                                            className="block max-h-72 w-auto object-contain"
+                                          />
+                                        </a>
+                                      ) : (
+                                        <div className="flex items-center justify-between gap-3 p-2">
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <FileText className="h-4 w-4 shrink-0" />
+                                            <span className="truncate">{name}</span>
+                                          </div>
+                                          <a
+                                            href={url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-600 hover:underline shrink-0"
+                                          >
+                                            {tr("download", "Download")}
+                                          </a>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       );
                     })}
-                    <div ref={endRef} />
                   </div>
                 )}
               </CardContent>
 
               {/* Mobile: sticky composer */}
-              <div className="border-t p-2 flex gap-2 bg-white">
-                <Input
-                  className={isRTL ? "text-right" : ""}
-                  dir={isRTL ? "rtl" : "ltr"}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="Type a message…"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSend();
-                  }}
-                  disabled={locked || showAgreement}
+              <div className="border-t p-2 bg-white">
+                {/* Hidden file picker (images + docs) */}
+                <input
+                  ref={filePickerRef}
+                  type="file"
+                  multiple
+                  onChange={onPickFiles}
+                  className="hidden"
                 />
-                <Button
-                  onClick={handleSend}
-                  disabled={locked || showAgreement || !text.trim()}
-                  className="shrink-0"
-                >
-                  <Send className={isRTL ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
-                  {tr("send", "Send")}
-                </Button>
+
+                {/* Pending attachments preview */}
+                {pendingFiles.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {pendingFiles.map((f, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                      >
+                        <FileText className="h-3 w-3" />
+                        <span className="max-w-[180px] truncate">{f.name}</span>
+                        <button
+                          type="button"
+                          className="text-gray-500 hover:text-gray-900"
+                          onClick={() => removePendingFile(idx)}
+                          disabled={locked || showAgreement}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={openFilePicker}
+                    disabled={locked || showAgreement}
+                    title={tr("attach_file") || "Attach file"}
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {}}
+                    disabled
+                    title={tr("emoji") || "Emoji"}
+                  >
+                    🙂
+                  </Button>
+
+                  <Input
+                    className={isRTL ? "text-right" : ""}
+                    dir={isRTL ? "rtl" : "ltr"}
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="Type a message…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSend();
+                    }}
+                    disabled={locked || showAgreement}
+                  />
+
+                  <Button
+                    onClick={handleSend}
+                    disabled={locked || showAgreement || (!text.trim() && pendingFiles.length === 0)}
+                    className="shrink-0"
+                  >
+                    <Send className={isRTL ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
+                    {tr("send")}
+                  </Button>
+                </div>
               </div>
             </Card>
           )}
@@ -1102,7 +1241,40 @@ const handleAddClient = useCallback(async (studentId) => {
                             mine ? "bg-black text-white" : "bg-gray-100 text-gray-900"
                           }`}
                         >
-                          {m.text}
+                          {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
+                          {Array.isArray(m.attachments) && m.attachments.length > 0 && (
+                            <div className="mt-2 space-y-2">
+                              {m.attachments.map((a, idx) => {
+                                const isImg = String(a?.content_type || a?.mime || "").startsWith("image/");
+                                if (isImg && a?.url) {
+                                  return (
+                                    <a key={idx} href={a.url} target="_blank" rel="noreferrer" className="block">
+                                      <img src={a.url} alt={a.name || "image"} className="max-w-[220px] rounded-lg border" />
+                                    </a>
+                                  );
+                                }
+                                return (
+                                  <div key={idx} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 ${mine ? "border-white/30" : ""}`}>
+                                    <div className="min-w-0">
+                                      <div className="truncate text-xs font-medium">{a.name || "File"}</div>
+                                      <div className="text-[11px] opacity-70">{(a.content_type || a.mime || "file")}{a.size ? ` • ${Math.round(a.size / 1024)} KB` : ""}</div>
+                                    </div>
+                                    {a?.url ? (
+                                      <a
+                                        href={a.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className={`text-xs font-semibold ${mine ? "text-white" : "text-blue-600"}`}
+                                        download
+                                      >
+                                        {tr("download") || "Download"}
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1112,26 +1284,73 @@ const handleAddClient = useCallback(async (studentId) => {
               )}
             </CardContent>
 
-            <div className="border-t p-3 flex gap-2">
-              <Input
-                className={isRTL ? "text-right" : ""}
-                dir={isRTL ? "rtl" : "ltr"}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={selectedConv ? "Type a message…" : "Select a conversation…"}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSend();
-                }}
-                disabled={!selectedConv || locked || showAgreement}
+                        <div className="border-t p-3 bg-white">
+              {/* Hidden file picker (images + docs) */}
+              <input
+                ref={filePickerRef}
+                type="file"
+                multiple
+                onChange={onPickFiles}
+                className="hidden"
               />
-              <Button
-                onClick={handleSend}
-                disabled={!selectedConv || locked || showAgreement || !text.trim()}
-              >
-                <Send className={isRTL ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
-                {tr("send", "Send")}
-              </Button>
+
+              {pendingFiles.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {pendingFiles.map((f, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                    >
+                      <FileText className="h-3 w-3" />
+                      <span className="max-w-[260px] truncate">{f.name}</span>
+                      <button
+                        type="button"
+                        className="text-gray-500 hover:text-gray-900"
+                        onClick={() => removePendingFile(idx)}
+                        disabled={locked || showAgreement}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={openFilePicker}
+                  disabled={locked || showAgreement}
+                  title={tr("attach_file") || "Attach file"}
+                >
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+
+                <Input
+                  className={isRTL ? "text-right" : ""}
+                  dir={isRTL ? "rtl" : "ltr"}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="Type a message…"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSend();
+                  }}
+                  disabled={locked || showAgreement}
+                />
+
+                <Button
+                  onClick={handleSend}
+                  disabled={locked || showAgreement || (!text.trim() && pendingFiles.length === 0)}
+                  className="shrink-0"
+                >
+                  <Send className={isRTL ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
+                  {tr("send")}
+                </Button>
+              </div>
             </div>
+
           </Card>
         </div>
       )}

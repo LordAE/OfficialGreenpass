@@ -458,33 +458,20 @@ function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
               size="sm"
               className="rounded-xl w-full"
 />
-
-            <Button
-              className="rounded-xl"
-              variant="outline"
-              disabled={!canMessage}
-              onClick={() => onMessage(post)}
-              type="button"
-              title={
-                canMessage
-                  ? tr("message_this_creator", "Message this creator")
-                  : tr(
-                      "students_cannot_message_schools",
-                      "Students cannot message Schools. Please contact Admin/Advisor."
-                    )
-              }
-            >
-              <Send className="h-4 w-4 mr-2" />
-              {canMessage ? tr("message", "Message") : tr("message_not_allowed", "Message (Not allowed)")}
-            </Button>
+            {canMessage ? (
+              <Button
+                className="rounded-xl"
+                variant="outline"
+                onClick={() => onMessage(post)}
+                type="button"
+                title={tr("message_this_creator", "Message this creator")}
+              >
+                <Send className="h-4 w-4 mr-2" />
+                {tr("message", "Message")}
+              </Button>
+            ) : null}
           </div>
-
-          {!canMessage ? (
-            <div className="mt-2 text-xs text-gray-500">
-              {tr("schools_cant_be_messaged", "Schools can’t be messaged directly. Follow them to get updates.")}
-            </div>
-          ) : null}
-        </div>
+</div>
       </CardContent>
     </Card>
   );
