@@ -43,6 +43,7 @@ import {
   LogOut,
   Globe,
   DollarSign,
+  Wallet,
   Search,
   MessageSquare,
   UsersIcon,
@@ -787,7 +788,7 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
 };
 
 
-  const mobileNav = buildMobileNav(currentUser, false, null);
+  const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
     <div className="min-h-[100svh] bg-white font-sans text-gray-800">
@@ -916,7 +917,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
     );
   };
 
-  const mobileNav = buildMobileNav(currentUser, false, null);
+  const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
     <div className="min-h-[100svh] bg-white font-sans text-gray-800">
@@ -1046,7 +1047,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
     );
   };
 
-  const mobileNav = buildMobileNav(currentUser, false, null);
+  const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
     <div className="min-h-[100svh] bg-white font-sans text-gray-800">
@@ -1176,7 +1177,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
     );
   };
 
-  const mobileNav = buildMobileNav(currentUser, false, null);
+  const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
     <div className="min-h-[100svh] bg-white font-sans text-gray-800">
@@ -1307,22 +1308,23 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 const centerItems = React.useMemo(
     () => [
       { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
-      { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+      { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
       { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
-      { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
+      { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
     ],
-    []
+    [tr]
   );
 
   const accountSettingsItems = React.useMemo(
     () => [
       { title: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
       { title: tr("brandSettings", "Brand Settings"), url: createPageUrl("AdminBrandSettings"), icon: Palette },
+      { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: DollarSign },
       { title: tr("bankSettings", "Bank Settings"), url: createPageUrl("AdminBankSettings"), icon: Building },
       { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
     ],
-    []
+    [tr]
   );
 
   const leftPanelItems = React.useMemo(
@@ -1335,7 +1337,7 @@ const centerItems = React.useMemo(
       { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: Building },
       { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
     ],
-    []
+    [tr]
   );
 
   const AdminTopLink = ({ item }) => {
@@ -1371,7 +1373,7 @@ const centerItems = React.useMemo(
     );
   };
 
-  const mobileNav = buildMobileNav(currentUser, false, null);
+  const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
     <div className="min-h-[100svh] bg-gray-50 font-sans text-gray-800">
@@ -1578,37 +1580,46 @@ function buildDesktopNav(currentUser) {
     return [
       { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
       { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
-      { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+      { title: tr("messages", "Messages"), url: createPageUrl("Messages"), icon: MessageSquare },
+
       { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: School },
       { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
-      { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
+      { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
+
       { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
-      { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPayments"), icon: DollarSign },
+      { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: DollarSign },
+      { title: tr("payments", "Payments"), url: createPageUrl("AdminPayments"), icon: DollarSign },
+      { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
+
+      { title: tr("events", "Events"), url: createPageUrl("AdminEvents"), icon: Calendar },
       { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
-      { title: "Subscription Mode", url: createPageUrl("AdminSubscription"), icon: DollarSign },
-      { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("ChatSettings"), icon: MessageSquare },
-      { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+      { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: DollarSign },
+
+      { title: tr("brandSettings", "Brand Settings"), url: createPageUrl("AdminBrandSettings"), icon: Settings },
+      { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
+      { title: tr("bankSettings", "Bank Settings"), url: createPageUrl("AdminBankSettings"), icon: Landmark },
     ];
   }
 
-  // Vendor (sidebar layout)
+// Vendor (sidebar layout)
   if (role === "vendor") {
     return [
       { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
-      { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+      { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       { title: "My Services", url: createPageUrl("MyServices"), icon: Store },
-      { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
+      { title: tr("messages", "Messages"), url: createPageUrl("Messages"), icon: MessageSquare },
     ];
   }
 
   // Fallback (should rarely be used)
   return [
     { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
-    { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+    { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
   ];
 }
 
-function buildMobileNav(currentUser, hasReservation, latestReservationId) {
+function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) {
+  const tr = typeof trFn === "function" ? trFn : (key, def) => def;
   const role = (currentUser?.user_type || "student").toLowerCase();
 
   // ✅ IMPORTANT: Removed Notifications route items from all "more" menus.
@@ -1618,15 +1629,15 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
   if (role === "agent") {
     return {
       main: [
-        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-        { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
-        { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
-        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+        { title: tr("directory", "Directory"), url: createPageUrl("Directory"), icon: UsersIcon },
+        { title: tr("connections", "Connections"), url: createPageUrl("Connections"), icon: UserCheck },
+        { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
-        { title: "My Students", url: createPageUrl("MyStudents"), icon: Users },
-        { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+        { title: tr("myStudents", "My Students"), url: createPageUrl("MyStudents"), icon: Users },
+        { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
+        { title: tr("logOut", "Log Out"), url: createPageUrl("Logout"), icon: LogOut },
       ],
     };
   }
@@ -1635,15 +1646,15 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
   if (role === "tutor") {
     return {
       main: [
-        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-        { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
-        { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
-        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+        { title: tr("directory", "Directory"), url: createPageUrl("Directory"), icon: UsersIcon },
+        { title: tr("connections", "Connections"), url: createPageUrl("Connections"), icon: UserCheck },
+        { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
-        { title: "My Students", url: createPageUrl("TutorStudents"), icon: Users },
-        { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+        { title: tr("myStudents", "My Students"), url: createPageUrl("TutorStudents"), icon: Users },
+        { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
+        { title: tr("logOut", "Log Out"), url: createPageUrl("Logout"), icon: LogOut },
       ],
     };
   }
@@ -1652,41 +1663,49 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
   if (role === "school") {
     return {
       main: [
-        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-        { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
-        { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
-        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+        { title: tr("directory", "Directory"), url: createPageUrl("Directory"), icon: UsersIcon },
+        { title: tr("connections", "Connections"), url: createPageUrl("Connections"), icon: UserCheck },
+        { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
-        { title: "School Profile", url: createPageUrl("SchoolProfile"), icon: Building },
-        { title: "School Details", url: createPageUrl("SchoolDetails"), icon: BookOpen },
-        { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+        { title: tr("schoolProfile", "School Profile"), url: createPageUrl("SchoolProfile"), icon: Building },
+        { title: tr("schoolDetails", "School Details"), url: createPageUrl("SchoolDetails"), icon: BookOpen },
+        { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
+        { title: tr("logOut", "Log Out"), url: createPageUrl("Logout"), icon: LogOut },
       ],
     };
   }
 
   // Admin (desktop uses sidebar; keep a compact but complete mobile mapping)
+  // Admin (desktop uses sidebar; keep a compact but complete mobile mapping)
   if (role === "admin") {
     return {
       main: [
-        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-        { title: "Users", url: createPageUrl("UserManagement"), icon: Users },
-        { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
-        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+        { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
+        { title: tr("messages", "Messages"), url: createPageUrl("Messages"), icon: MessageSquare },
+        { title: tr("events", "Events"), url: createPageUrl("AdminEvents"), icon: Calendar },
       ],
       more: [
-        { title: "Schools", url: createPageUrl("AdminSchools"), icon: School },
-        { title: "Institutions", url: createPageUrl("AdminInstitutions"), icon: Landmark },
-        { title: "Agent Assignments", url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
-        { title: "Verify", url: createPageUrl("Verification"), icon: UserCheck },
-        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
-        { title: "Payments", url: createPageUrl("AdminPayments"), icon: DollarSign },
-        { title: "Reports", url: createPageUrl("AdminReports"), icon: BarChart3 },
-        { title: "Subscription Mode", url: createPageUrl("AdminSubscription"), icon: DollarSign },
-        { title: "Chat Settings", url: createPageUrl("ChatSettings"), icon: MessageSquare },
-        { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+        { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: School },
+        { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
+        { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
+
+        { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
+        { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: DollarSign },
+        { title: tr("payments", "Payments"), url: createPageUrl("AdminPayments"), icon: DollarSign },
+        { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
+
+        { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
+        { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: DollarSign },
+
+        { title: tr("brandSettings", "Brand Settings"), url: createPageUrl("AdminBrandSettings"), icon: Settings },
+        { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
+        { title: tr("bankSettings", "Bank Settings"), url: createPageUrl("AdminBankSettings"), icon: Landmark },
+
+        { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
+        { title: tr("signOut", "Sign Out"), url: createPageUrl("Logout"), icon: LogOut },
       ],
     };
   }
@@ -1695,43 +1714,43 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId) {
   if (role === "vendor") {
     return {
       main: [
-        { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-        { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
-        { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
-        { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+        { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+        { title: tr("directory", "Directory"), url: createPageUrl("Directory"), icon: UsersIcon },
+        { title: tr("connections", "Connections"), url: createPageUrl("Connections"), icon: UserCheck },
+        { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
-        { title: "Services", url: createPageUrl("MyServices"), icon: Store },
-        { title: "Messages", url: createPageUrl("Messages"), icon: MessageSquare },
-        { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-        { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+        { title: tr("myServices", "My Services"), url: createPageUrl("MyServices"), icon: Store },
+        { title: tr("messages", "Messages"), url: createPageUrl("Messages"), icon: MessageSquare },
+        { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
+        { title: tr("logOut", "Log Out"), url: createPageUrl("Logout"), icon: LogOut },
       ],
     };
   }
 
   // Default: Student/User (match desktop center icons: Dashboard / Directory / Events)
   const main = [
-    { title: "Home", url: createPageUrl("Dashboard"), icon: Home },
-    { title: "Directory", url: createPageUrl("Directory"), icon: UsersIcon },
-    { title: "Connections", url: createPageUrl("Connections"), icon: UserCheck },
-    { title: "Events", url: createPageUrl("Events"), icon: Calendar },
+    { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+    { title: tr("directory", "Directory"), url: createPageUrl("Directory"), icon: UsersIcon },
+    { title: tr("connections", "Connections"), url: createPageUrl("Connections"), icon: UserCheck },
+    { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
   ];
 
   const more = [
-    { title: "Tutors", url: createPageUrl("Tutors"), icon: BookOpen },
+    { title: tr("tutors", "Tutors"), url: createPageUrl("Tutors"), icon: BookOpen },
     {
-      title: currentUser?.assigned_agent_id ? "My Agent" : "Find Agent",
+      title: currentUser?.assigned_agent_id ? tr("myAgent", "My Agent") : tr("findAgent", "Find Agent"),
       url: createPageUrl(currentUser?.assigned_agent_id ? "MyAgent" : "FindAgent"),
       icon: UserCheck,
     },
-    { title: "Profile", url: createPageUrl("Profile"), icon: Settings },
-    { title: "Sign Out", url: createPageUrl("Logout"), icon: LogOut },
+    { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
+    { title: tr("logOut", "Log Out"), url: createPageUrl("Logout"), icon: LogOut },
   ];
 
   if (hasReservation && latestReservationId) {
     // Insert after Agent item (index 2)
     more.splice(2, 0, {
-      title: "Seat Reservations",
+      title: tr("seatReservations", "Seat Reservations"),
       url: `${createPageUrl("ReservationStatus")}?reservationId=${encodeURIComponent(latestReservationId)}`,
       icon: Package,
     });
@@ -2004,7 +2023,7 @@ export default function Layout() {
 
   // everything else (sidebar layout: vendor/etc.)
   const navigationItems = buildDesktopNav(currentUser);
-  const mobileNav = buildMobileNav(currentUser, hasReservation, latestReservationId);
+  const mobileNav = buildMobileNav(currentUser, hasReservation, latestReservationId, tr);
 
   return (
     <SidebarProvider>
