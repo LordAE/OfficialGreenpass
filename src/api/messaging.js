@@ -90,7 +90,9 @@ export async function uploadMessageAttachments({ conversationId, senderId, files
 
 export function normalizeRole(r) {
   const v = String(r || "").toLowerCase().trim();
-  if (v === "student" || v === "users") return "student";
+  // In GreenPass, many student accounts are stored as role "user"/"users".
+  // Normalize all of these to "student" for app-level logic (rules may still map to "user").
+  if (v === "student" || v === "students" || v === "user" || v === "users") return "student";
   if (v === "tutors") return "tutor";
   if (v === "agents") return "agent";
   if (v === "schools") return "school";

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { auth, db } from "@/firebase";
 import {
@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 import { useTr } from "@/i18n/useTr";
-import { ensureConversation, getUserDoc, sendMessage } from "@/api/messaging";
+import { ensureConversation, getUserDoc, sendMessage, uploadMessageAttachments } from "@/api/messaging";
 import { cancelFollowRequest, respondToFollowRequest, unfollowUser } from "@/api/follow";
 
 function useQueryParams() {
@@ -96,7 +96,10 @@ export default function Connections() {
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [massText, setMassText] = useState("");
+  const [massFiles, setMassFiles] = useState([]); // File[]
   const [sending, setSending] = useState(false);
+
+  const massFileInputRef = useRef(null);
 
   // Listen: follow requests (incoming)
   useEffect(() => {
@@ -173,6 +176,7 @@ export default function Connections() {
   useEffect(() => {
     setSelectedIds(new Set());
     setMassText("");
+    setMassFiles([]);
   }, [tab, roleFilter]);
 
   // Load my role once we know uid
@@ -262,10 +266,35 @@ export default function Connections() {
 
   const canMassMessage = tab === "followers" || tab === "following";
 
+  const onPickMassFiles = (e) => {
+    const list = Array.from(e?.target?.files || []);
+    if (!list.length) return;
+    setMassFiles((prev) => {
+      const next = [...(prev || []), ...list];
+      // de-dupe by name+size+lastModified
+      const seen = new Set();
+      return next.filter((f) => {
+        const k = `${f.name}__${f.size}__${f.lastModified}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    });
+    // allow selecting same file again later
+    try {
+      e.target.value = "";
+    } catch {}
+  };
+
+  const removeMassFile = (idx) => {
+    setMassFiles((prev) => (prev || []).filter((_, i) => i !== idx));
+  };
+
   const sendMass = async () => {
     if (!myUid) return;
     const text = String(massText || "").trim();
-    if (!text) return;
+    const files = Array.isArray(massFiles) ? massFiles : [];
+    if (!text && files.length === 0) return;
 
     const targets = Array.from(selectedIds);
     if (!targets.length) return;
@@ -284,16 +313,22 @@ export default function Connections() {
           source: "connections_mass_message",
         });
 
+        const atts = files.length
+          ? await uploadMessageAttachments({ conversationId: convo.id, senderId: myUid, files })
+          : [];
+
         await sendMessage({
           conversationId: convo.id,
           conversationDoc: convo,
           senderId: myUid,
           senderDoc: meDoc,
           text,
+          attachments: atts,
         });
       }
 
       setMassText("");
+      setMassFiles([]);
       setSelectedIds(new Set());
     } catch (e) {
       console.error("mass message failed", e);
@@ -484,8 +519,53 @@ export default function Connections() {
                         placeholder={tr("type_message", "Type your message...")}
                         className="rounded-xl"
                       />
+                      <input
+                        ref={massFileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={onPickMassFiles}
+                      />
+
+                      {massFiles?.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {massFiles.map((f, idx) => (
+                            <div
+                              key={`${f.name}-${f.size}-${f.lastModified}-${idx}`}
+                              className="flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                            >
+                              <span className="max-w-[220px] truncate">{f.name}</span>
+                              <button
+                                type="button"
+                                className="text-gray-500 hover:text-gray-900"
+                                onClick={() => removeMassFile(idx)}
+                                aria-label={tr("remove", "Remove")}
+                                title={tr("remove", "Remove")}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+
                       <div className="mt-3 flex items-center justify-end">
-                        <Button disabled={sending || selectedIds.size === 0 || !String(massText).trim()} onClick={sendMass}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="mr-2"
+                          onClick={() => massFileInputRef.current?.click()}
+                        >
+                          {tr("attach", "Attach")}
+                        </Button>
+                        <Button
+                          disabled={
+                            sending ||
+                            selectedIds.size === 0 ||
+                            (!String(massText).trim() && (massFiles?.length || 0) === 0)
+                          }
+                          onClick={sendMass}
+                        >
                           {sending ? tr("sending", "Sending...") : tr("send", "Send")}
                         </Button>
                       </div>
@@ -534,8 +614,53 @@ export default function Connections() {
                         placeholder={tr("type_message", "Type your message...")}
                         className="rounded-xl"
                       />
+                      <input
+                        ref={massFileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={onPickMassFiles}
+                      />
+
+                      {massFiles?.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {massFiles.map((f, idx) => (
+                            <div
+                              key={`${f.name}-${f.size}-${f.lastModified}-${idx}`}
+                              className="flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                            >
+                              <span className="max-w-[220px] truncate">{f.name}</span>
+                              <button
+                                type="button"
+                                className="text-gray-500 hover:text-gray-900"
+                                onClick={() => removeMassFile(idx)}
+                                aria-label={tr("remove", "Remove")}
+                                title={tr("remove", "Remove")}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+
                       <div className="mt-3 flex items-center justify-end">
-                        <Button disabled={sending || selectedIds.size === 0 || !String(massText).trim()} onClick={sendMass}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="mr-2"
+                          onClick={() => massFileInputRef.current?.click()}
+                        >
+                          {tr("attach", "Attach")}
+                        </Button>
+                        <Button
+                          disabled={
+                            sending ||
+                            selectedIds.size === 0 ||
+                            (!String(massText).trim() && (massFiles?.length || 0) === 0)
+                          }
+                          onClick={sendMass}
+                        >
                           {sending ? tr("sending", "Sending...") : tr("send", "Send")}
                         </Button>
                       </div>
