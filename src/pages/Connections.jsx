@@ -19,6 +19,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
+import { Paperclip } from "lucide-react";
+
 import { useTr } from "@/i18n/useTr";
 import { ensureConversation, getUserDoc, sendMessage, uploadMessageAttachments } from "@/api/messaging";
 import { cancelFollowRequest, respondToFollowRequest, unfollowUser } from "@/api/follow";
@@ -98,8 +100,8 @@ export default function Connections() {
   const [massText, setMassText] = useState("");
   const [massFiles, setMassFiles] = useState([]); // File[]
   const [sending, setSending] = useState(false);
-
-  const massFileInputRef = useRef(null);
+  const followersFileInputRef = useRef(null);
+  const followingFileInputRef = useRef(null);
 
   // Listen: follow requests (incoming)
   useEffect(() => {
@@ -520,10 +522,10 @@ export default function Connections() {
                         className="rounded-xl"
                       />
                       <input
-                        ref={massFileInputRef}
+                        ref={followersFileInputRef}
                         type="file"
                         multiple
-                        className="hidden"
+                        className="sr-only"
                         onChange={onPickMassFiles}
                       />
 
@@ -552,11 +554,13 @@ export default function Connections() {
                       <div className="mt-3 flex items-center justify-end">
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="ghost"
+                          size="icon"
                           className="mr-2"
-                          onClick={() => massFileInputRef.current?.click()}
+                          onClick={() => followersFileInputRef.current?.click()}
+                          title={tr("attach_file", "Attach file")}
                         >
-                          {tr("attach", "Attach")}
+                          <Paperclip className="h-5 w-5" />
                         </Button>
                         <Button
                           disabled={
@@ -615,10 +619,10 @@ export default function Connections() {
                         className="rounded-xl"
                       />
                       <input
-                        ref={massFileInputRef}
+                        ref={followingFileInputRef}
                         type="file"
                         multiple
-                        className="hidden"
+                        className="sr-only"
                         onChange={onPickMassFiles}
                       />
 
@@ -647,11 +651,13 @@ export default function Connections() {
                       <div className="mt-3 flex items-center justify-end">
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="ghost"
+                          size="icon"
                           className="mr-2"
-                          onClick={() => massFileInputRef.current?.click()}
+                          onClick={() => followingFileInputRef.current?.click()}
+                          title={tr("attach_file", "Attach file")}
                         >
-                          {tr("attach", "Attach")}
+                          <Paperclip className="h-5 w-5" />
                         </Button>
                         <Button
                           disabled={
