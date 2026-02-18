@@ -383,6 +383,7 @@ function buildAccountMenuItems(currentUser, tr) {
 
   const items = [
     { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
+    { label: tr("contactSupport", "Contact Support"), url: withLang("/messages?to=support&role=support"), icon: MessageSquare },
   ];
 
   if (role === "agent") {
@@ -2066,6 +2067,25 @@ export default function Layout() {
                   </SidebarMenuItem>
                 );
               })}
+              <SidebarMenuItem className="rounded-lg">
+                <Link
+                  to={withLang("/messages?to=support&role=support")}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
+                >
+                  <MessageSquare className="w-5 h-5 text-gray-600" />
+                  <span className="text-gray-700">{tr("contactSupport", "Contact Support")}</span>
+                </Link>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <Link
+                  to={withLang("/messages?to=support&role=support")}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
+                >
+                  <MessageSquare className="w-5 h-5 text-gray-600" />
+                  <span className="text-gray-700">{tr("contactSupport", "Contact Support")}</span>
+                </Link>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarContent>
 
