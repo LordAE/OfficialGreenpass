@@ -122,6 +122,7 @@ const location = useLocation();
 
   const [text, setText] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
+  const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB per file
   const filePickerRef = useRef(null);
 
   const endRef = useRef(null);
@@ -612,17 +613,51 @@ const handleAddClient = useCallback(async (studentId) => {
     filePickerRef.current?.click();
   }, [locked, showAgreement]);
 
-  const onPickFiles = useCallback((e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+  const onPickFiles = useCallback(
+    (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
 
-    // Cap single selection to prevent huge accidental uploads
-    const capped = files.slice(0, 10);
-    setPendingFiles((prev) => [...prev, ...capped]);
+      const tooBig = files.filter((f) => (f?.size || 0) > MAX_ATTACHMENT_BYTES);
+      const ok = files.filter((f) => (f?.size || 0) <= MAX_ATTACHMENT_BYTES);
 
-    // allow picking same file again
-    e.target.value = "";
-  }, []);
+      if (tooBig.length) {
+        const names = tooBig.slice(0, 3).map((f) => f.name).join(", ");
+        const more = tooBig.length > 3 ? ` (+${tooBig.length - 3} more)` : "";
+        setErrorText(
+          tr(
+            "file_too_large_4mb",
+            `Some files are larger than 4MB and were not added: ${names}${more}`
+          )
+        );
+      }
+
+      if (!ok.length) {
+        // allow picking same file again
+        e.target.value = "";
+        return;
+      }
+
+      // Cap single selection to prevent huge accidental uploads
+      const capped = ok.slice(0, 10);
+
+      setPendingFiles((prev) => {
+        const next = [...(prev || []), ...capped];
+        // de-dupe by name+size+lastModified
+        const seen = new Set();
+        return next.filter((f) => {
+          const k = `${f.name}__${f.size}__${f.lastModified}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+      });
+
+      // allow picking same file again
+      e.target.value = "";
+    },
+    [MAX_ATTACHMENT_BYTES, tr]
+  );
 
   const removePendingFile = useCallback((idx) => {
     setPendingFiles((prev) => prev.filter((_, i) => i !== idx));

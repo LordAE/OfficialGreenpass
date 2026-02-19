@@ -266,13 +266,37 @@ export default function Connections() {
     await cancelFollowRequest({ followerId: myUid, followeeId });
   };
 
+  const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB per file
+
   const canMassMessage = tab === "followers" || tab === "following";
 
   const onPickMassFiles = (e) => {
     const list = Array.from(e?.target?.files || []);
     if (!list.length) return;
+
+    const tooBig = list.filter((f) => (f?.size || 0) > MAX_ATTACHMENT_BYTES);
+    const ok = list.filter((f) => (f?.size || 0) <= MAX_ATTACHMENT_BYTES);
+
+    if (tooBig.length) {
+      const names = tooBig.slice(0, 3).map((f) => f.name).join(", ");
+      const more = tooBig.length > 3 ? ` (+${tooBig.length - 3} more)` : "";
+      alert(
+        tr(
+          "file_too_large_4mb",
+          `Some files are larger than 4MB and were not added: ${names}${more}`
+        )
+      );
+    }
+
+    if (!ok.length) {
+      try {
+        e.target.value = "";
+      } catch {}
+      return;
+    }
+
     setMassFiles((prev) => {
-      const next = [...(prev || []), ...list];
+      const next = [...(prev || []), ...ok];
       // de-dupe by name+size+lastModified
       const seen = new Set();
       return next.filter((f) => {
@@ -282,6 +306,7 @@ export default function Connections() {
         return true;
       });
     });
+
     // allow selecting same file again later
     try {
       e.target.value = "";
