@@ -154,15 +154,25 @@ export async function getUserDoc(uid) {
    REALTIME LISTENERS
 ================================ */
 
-export function listenToMyConversations(myUid, callback) {
+export function listenToMyConversations(myUid, callback, options = {}) {
   if (!myUid) return () => {};
 
-  const q = query(
+  const inbox = String(options?.inbox || "my").toLowerCase().trim();
+  const lim = Number(options?.limit || 50);
+
+  // "my" -> conversations where I am a participant
+  // "support" -> support inbox (participants contains the string "support")
+  // "all" -> admin/debug (ordered list)
+  const participantKey = inbox === "support" ? "support" : myUid;
+
+  const base = [
     collection(db, "conversations"),
-    where("participants", "array-contains", myUid),
+    where("participants", "array-contains", participantKey),
     orderBy("last_message_at", "desc"),
-    limit(50)
-  );
+    limit(lim)
+  ];
+
+  const q = query(...base);
 
   return onSnapshot(
     q,

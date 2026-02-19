@@ -380,10 +380,13 @@ const AccountDropdown = ({
 /* ---------- Account menu items (put "extra" navs here) ---------- */
 function buildAccountMenuItems(currentUser, tr) {
   const role = String(currentUser?.user_type || currentUser?.role || "student").toLowerCase();
+  const supportMessagesUrl = role === "admin" ? withLang("/messages?inbox=support") : withLang("/messages?to=support&role=support");
 
   const items = [
     { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
-    { label: tr("contactSupport", "Contact Support"), url: withLang("/messages?to=support&role=support"), icon: MessageSquare },
+    role === "admin"
+      ? { label: tr("supportInbox", "Support Inbox"), url: withLang("/messages?inbox=support"), icon: MessageSquare }
+      : { label: tr("contactSupport", "Contact Support"), url: withLang("/messages?to=support&role=support"), icon: MessageSquare },
   ];
 
   if (role === "agent") {
@@ -1281,6 +1284,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 }) => {
   const { t, i18n } = useTranslation();
   const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+  const supportMessagesUrl = withLang("/messages?inbox=support");
 
   const navigate = useNavigate(); // ✅ FIX: was missing (your admin used navigate without declaring)
   const isActive = useIsActive();
@@ -2069,7 +2073,7 @@ export default function Layout() {
               })}
               <SidebarMenuItem className="rounded-lg">
                 <Link
-                  to={withLang("/messages?to=support&role=support")}
+                  to={supportMessagesUrl}
                   className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
                 >
                   <MessageSquare className="w-5 h-5 text-gray-600" />
@@ -2079,7 +2083,7 @@ export default function Layout() {
 
               <SidebarMenuItem>
                 <Link
-                  to={withLang("/messages?to=support&role=support")}
+                  to={supportMessagesUrl}
                   className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
                 >
                   <MessageSquare className="w-5 h-5 text-gray-600" />

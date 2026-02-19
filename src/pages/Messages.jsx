@@ -94,6 +94,7 @@ const location = useLocation();
   const to = params.get("to") || "";
   const toRoleParam = params.get("toRole") || params.get("role") || "";
   const convIdParam = params.get("c") || params.get("conversation") || params.get("conversationId") || "";
+  const inboxParam = (params.get("inbox") || "").toLowerCase();
   const toRole = normalizeRole(toRoleParam);
 
   const [me, setMe] = useState(null);
@@ -143,6 +144,16 @@ const location = useLocation();
   const [reportReason, setReportReason] = useState("");
 
   const myRole = useMemo(() => resolveUserRole(meDoc), [meDoc]);
+
+  // Support is handled by admins listed in chat_settings/support.support_admin_uids,
+  // but some admin accounts may still have role/selected_role = "user".
+  // So detect admin/support-admin using user_type/userType as well.
+  const isSupportAdmin = useMemo(() => {
+    const r = String(meDoc?.role || meDoc?.selected_role || "").toLowerCase().trim();
+    const ut = String(meDoc?.user_type || meDoc?.userType || "").toLowerCase().trim();
+    return r === "admin" || ut === "admin";
+  }, [meDoc]);
+
 
 
   // ✅ Add as student (Tutor only) -> writes to tutor_students so it appears in MyStudents
@@ -295,6 +306,10 @@ const handleAddClient = useCallback(async (studentId) => {
 
     if (convoUnsubRef.current) convoUnsubRef.current();
 
+
+    const inboxMode = isSupportAdmin ? (inboxParam || "support") : "my";
+    const inboxOptions = { inbox: inboxMode, limit: isSupportAdmin ? 100 : 50 };
+
     convoUnsubRef.current = listenToMyConversations(me.uid, async (list, err) => {
       if (err) {
         setErrorText(err?.message || "Failed to listen to conversations.");
@@ -333,7 +348,7 @@ const handleAddClient = useCallback(async (studentId) => {
           })
         );
       }
-    });
+    }, inboxOptions);
 
     return () => {
       if (convoUnsubRef.current) convoUnsubRef.current();
@@ -382,6 +397,14 @@ const handleAddClient = useCallback(async (studentId) => {
     (async () => {
       try {
         setErrorText("");
+
+        // If this account is an admin handling Support, do not auto-create/open a "me <-> support" thread.
+        // Admins should use the Support inbox (conversations where participants contains "support").
+        if (isSupportAdmin && (!convIdParam) && (!to || to === "support")) {
+          // Just stay in inbox view; selecting a conversation happens when user clicks one in the list.
+          return;
+        }
+
 
                 // Resolve the peer (target) so we can use the correct role + name
                 let targetDoc = null;
