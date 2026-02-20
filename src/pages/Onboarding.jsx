@@ -746,7 +746,8 @@ export default function Onboarding() {
           data.userType !== effectiveRole ||
           data.role !== effectiveRole);
 
-      if (entryRoleLocked && nextStep === STEPS.CHOOSE_ROLE) {
+      // If the role was provided by the entry URL (SEO) or explicitly locked, skip the role picker.
+      if ((entryRoleLocked || entryRoleFromUrl) && nextStep === STEPS.CHOOSE_ROLE) {
         nextStep = STEPS.BASIC_INFO;
         await updateDoc(ref, {
           selected_role: effectiveRole,
