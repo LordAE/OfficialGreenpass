@@ -1903,12 +1903,56 @@ export default function Layout() {
     checkReservations();
   }, [currentUser?.id]);
 
+  const clearAuthClientState = async () => {
+    try { window?.sessionStorage?.clear?.(); } catch {}
+    try { window?.localStorage?.removeItem?.("gp_user_role"); } catch {}
+    try { window?.localStorage?.removeItem?.("gp_role"); } catch {}
+    try { window?.localStorage?.removeItem?.("gp_user"); } catch {}
+    // Keep language keys (gp_lang / i18nextLng) on purpose.
+
+    // Best-effort: clear Firebase IndexedDB caches so a "back" navigation won't resurrect state.
+    try {
+      if (window?.indexedDB?.databases) {
+        const dbs = await window.indexedDB.databases();
+        await Promise.all(
+          (dbs || [])
+            .map((d) => d?.name)
+            .filter(Boolean)
+            .map(
+              (name) =>
+                new Promise((resolve) => {
+                  const req = window.indexedDB.deleteDatabase(name);
+                  req.onsuccess = () => resolve(true);
+                  req.onerror = () => resolve(false);
+                  req.onblocked = () => resolve(false);
+                })
+            )
+        );
+      }
+    } catch {}
+  };
+
+  const getMarketingLogoutUrl = () => {
+    try {
+      const u = new URL(getMarketingUrl());
+      u.pathname = "/logout";
+      u.searchParams.set("from", "app");
+      return u.toString();
+    } catch {
+      return "https://greenpassgroup.com/logout?from=app";
+    }
+  };
+
   const handleLogout = React.useCallback(async () => {
     try {
       await signOut(auth);
-      setCurrentUser(null);
-      window.location.href = getMarketingUrl();
     } catch {}
+    try {
+      setCurrentUser(null);
+    } catch {}
+    await clearAuthClientState();
+    // Replace (not href) so Back won't return to authenticated app.
+    window.location.replace(getMarketingLogoutUrl());
   }, []);
 
   const getLogoUrl = React.useCallback(

@@ -1235,6 +1235,58 @@ export default function Onboarding() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, selectedRole, PAYPAL_CLIENT_ID]);
 
+  const getMarketingBaseUrl = () => {
+    try {
+      return (import.meta?.env?.VITE_MARKETING_URL || "https://greenpassgroup.com").replace(/\/+$/, "");
+    } catch {
+      return "https://greenpassgroup.com";
+    }
+  };
+
+  const getMarketingLogoutUrl = () => {
+    try {
+      const base = getMarketingBaseUrl();
+      const lang = window?.localStorage?.getItem?.("gp_lang") || window?.localStorage?.getItem?.("i18nextLng") || "en";
+      const u = new URL(base);
+      u.pathname = "/logout";
+      u.searchParams.set("lang", lang);
+      u.searchParams.set("from", "app");
+      return u.toString();
+    } catch {
+      return "https://greenpassgroup.com/logout?from=app";
+    }
+  };
+
+  const clearAuthClientState = async () => {
+    try { window?.sessionStorage?.clear?.(); } catch {}
+    try {
+      // Keep language keys; clear auth-related caches.
+      window?.localStorage?.removeItem?.("gp_user_role");
+      window?.localStorage?.removeItem?.("gp_role");
+      window?.localStorage?.removeItem?.("gp_user");
+    } catch {}
+
+    try {
+      if (window?.indexedDB?.databases) {
+        const dbs = await window.indexedDB.databases();
+        await Promise.all(
+          (dbs || [])
+            .map((d) => d?.name)
+            .filter(Boolean)
+            .map(
+              (name) =>
+                new Promise((resolve) => {
+                  const req = window.indexedDB.deleteDatabase(name);
+                  req.onsuccess = () => resolve(true);
+                  req.onerror = () => resolve(false);
+                  req.onblocked = () => resolve(false);
+                })
+            )
+        );
+      }
+    } catch {}
+  };
+
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
@@ -1242,10 +1294,10 @@ export default function Onboarding() {
       await signOut(auth);
     } catch (e) {
       // ignore
-    } finally {
-      navigate(createPageUrl("Welcome"), { replace: true });
-      setLoggingOut(false);
     }
+    await clearAuthClientState();
+    window.location.replace(getMarketingLogoutUrl());
+    // no setLoggingOut(false) needed because we're leaving the site
   };
 
   const RoleLockedPill = ({ role }) => {
