@@ -1,96 +1,145 @@
+// src/pages/AuthBridge.jsx
 import React from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { auth } from "@/firebase";
-import {
-  signInWithCustomToken,
-  setPersistence,
-  browserLocalPersistence,
-  onAuthStateChanged,
-} from "firebase/auth";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { signInWithCustomToken } from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/firebase";
 
-function getFunctionsBase() {
-  // Prefer explicit env
-  const explicit = import.meta.env.VITE_FUNCTIONS_BASE;
-  if (explicit) return explicit.replace(/\/+$/, "");
-
-  // Fallback to standard Firebase Functions URL
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-  if (!projectId) throw new Error("Missing VITE_FUNCTIONS_BASE or VITE_FIREBASE_PROJECT_ID");
-  return `https://us-central1-${projectId}.cloudfunctions.net`;
-}
-
-// Wait until Firebase auth state is updated (prevents immediate redirect to /login due to guard timing)
-function waitForAuthUser(timeoutMs = 15000) {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => {
-      try { unsub?.(); } catch {}
-      reject(new Error("Timed out waiting for auth state."));
-    }, timeoutMs);
-
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        clearTimeout(t);
-        try { unsub(); } catch {}
-        resolve(u);
-      }
-    });
-  });
-}
-
+/**
+ * Rules:
+ * - If user doc does NOT exist => create it => go /onboarding
+ * - If user doc exists and onboarding_completed === true => go /dashboard
+ * - Else => go /onboarding
+ *
+ * Query:
+ * - code=... (required)
+ * - next=/onboarding or /dashboard (optional; used only as a hint, not authority)
+ * - lang=en (optional)
+ */
 export default function AuthBridge() {
-  const nav = useNavigate();
   const [params] = useSearchParams();
-  const [error, setError] = React.useState("");
-  const [status, setStatus] = React.useState("Signing you in…");
+  const navigate = useNavigate();
+  const [status, setStatus] = React.useState("Exchanging sign-in code...");
+
+  const code = params.get("code");
+  const lang = params.get("lang") || "en";
+
+  // optional hint only (we still decide based on Firestore)
+  const nextHint = params.get("next") || "/onboarding";
+
+  const safeInternalPath = (p) => {
+    if (!p) return null;
+    // allow only internal relative paths like "/onboarding"
+    if (typeof p !== "string") return null;
+    if (!p.startsWith("/")) return null;
+    if (p.startsWith("//")) return null;
+    if (p.includes("http://") || p.includes("https://")) return null;
+    return p;
+  };
+
+  const exchangeUrl =
+    import.meta.env?.VITE_EXCHANGE_AUTH_BRIDGE_URL ||
+    "https://us-central1-greenpass-dc92d.cloudfunctions.net/exchangeAuthBridgeCode";
 
   React.useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
       try {
-        const code = params.get("code");
-        const next = params.get("next") || "/dashboard";
-
         if (!code) {
-          setError("Missing bridge code.");
+          setStatus("Missing sign-in code.");
+          // send them back to login
+          navigate(`/login?mode=login&lang=${encodeURIComponent(lang)}`, { replace: true });
           return;
         }
 
-        // Ensure the auth session persists (prevents instant “logged out” state)
-        // In incognito, this persists for the incognito session.
-        await setPersistence(auth, browserLocalPersistence);
-
-        const base = getFunctionsBase();
-        setStatus("Exchanging sign-in code…");
-
-        const r = await fetch(`${base}/exchangeAuthBridgeCode`, {
+        // 1) Exchange code -> customToken
+        const res = await fetch(exchangeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code }),
         });
 
-        if (!r.ok) {
-          const msg = await r.text();
-          throw new Error(msg || "Exchange failed");
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(`exchangeAuthBridgeCode failed (${res.status}): ${txt}`);
         }
 
-        const { customToken } = await r.json();
-        if (!customToken) throw new Error("Missing customToken");
+        const data = await res.json();
+        const customToken = data?.customToken || data?.token;
 
-        setStatus("Finalizing sign-in…");
+        if (!customToken) {
+          throw new Error("No customToken returned from exchangeAuthBridgeCode.");
+        }
+
+        if (cancelled) return;
+
+        setStatus("Signing you in...");
+
+        // 2) Sign in with the custom token
         await signInWithCustomToken(auth, customToken);
 
-        // IMPORTANT: wait for auth state to settle before navigating,
-        // otherwise RequireAuth can briefly see currentUser=null and redirect to /login.
-        await waitForAuthUser();
+        if (cancelled) return;
+
+        const fbUser = auth.currentUser;
+        if (!fbUser?.uid) {
+          throw new Error("Signed in but auth.currentUser is missing.");
+        }
+
+        setStatus("Checking your profile...");
+
+        // 3) Check/create user doc
+        const userRef = doc(db, "users", fbUser.uid);
+        const snap = await getDoc(userRef);
+
+        let goTo = "/onboarding";
+
+        if (!snap.exists()) {
+          // New user => create doc
+          await setDoc(
+            userRef,
+            {
+              uid: fbUser.uid,
+              email: fbUser.email || "",
+              user_type: "student",
+              onboarding_completed: false,
+              onboarding_step: 0,
+              created_at: serverTimestamp(),
+              updated_at: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          goTo = "/onboarding";
+        } else {
+          const u = snap.data() || {};
+          if (u.onboarding_completed === true) goTo = "/dashboard";
+          else goTo = "/onboarding";
+        }
+
+        // optional hint: if they are NOT completed, allow /onboarding
+        // but NEVER force onboarding for completed users
+        const hint = safeInternalPath(nextHint);
+        if (hint && goTo !== "/dashboard") {
+          goTo = hint; // only applies when not completed
+        }
 
         if (cancelled) return;
 
-        // Navigate inside SPA
-        nav(next, { replace: true });
-      } catch (e) {
+        setStatus("Redirecting...");
+
+        // Use hard navigation so app state resets cleanly after auth
+        window.location.replace(`${goTo}?lang=${encodeURIComponent(lang)}`);
+      } catch (err) {
+        console.error("[AuthBridge] error:", err);
         if (cancelled) return;
-        setError(e?.message || "Auth bridge failed.");
+
+        setStatus("Sign-in failed. Redirecting to login...");
+        // Back to login with a simple error flag
+        setTimeout(() => {
+          navigate(`/login?mode=login&lang=${encodeURIComponent(lang)}&bridge=fail`, {
+            replace: true,
+          });
+        }, 600);
       }
     };
 
@@ -98,17 +147,11 @@ export default function AuthBridge() {
     return () => {
       cancelled = true;
     };
-  }, [params, nav]);
+  }, [code, exchangeUrl, lang, nextHint, navigate]);
 
-  if (error) {
-    return (
-      <div style={{ padding: 24 }}>
-        <h2>Sign-in handoff failed</h2>
-        <pre style={{ whiteSpace: "pre-wrap" }}>{error}</pre>
-        <p>Go back and login again from greenpassgroup.com.</p>
-      </div>
-    );
-  }
-
-  return <div style={{ padding: 24 }}>{status}</div>;
+  return (
+    <div style={{ padding: 24 }}>
+      <p>{status}</p>
+    </div>
+  );
 }
