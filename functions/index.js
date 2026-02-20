@@ -486,3 +486,79 @@ exports.cleanupOnFollowRequestDeleted = onDocumentDeleted(
 );
 
 
+// ============================
+// Auth Bridge (SEO -> App)
+// ============================
+
+const AUTH_BRIDGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function randomCode(len = 48) {
+  return crypto.randomBytes(len).toString("hex"); // 96 chars
+}
+
+// POST /createAuthBridgeCode
+// Header: Authorization: Bearer <Firebase ID token>
+exports.createAuthBridgeCode = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+      const authHeader = req.headers.authorization || "";
+      const match = authHeader.match(/^Bearer\s+(.+)$/i);
+      const idToken = match?.[1];
+
+      if (!idToken) return res.status(401).json({ error: "Missing Authorization Bearer token" });
+
+      const decoded = await admin.auth().verifyIdToken(idToken);
+      const uid = decoded.uid;
+
+      const code = randomCode(24);
+      const now = Date.now();
+
+      await admin.firestore().collection("auth_bridge_codes").doc(code).set({
+        uid,
+        createdAt: now,
+        expiresAt: now + AUTH_BRIDGE_TTL_MS,
+        used: false,
+      });
+
+      return res.json({ code, expiresInMs: AUTH_BRIDGE_TTL_MS });
+    } catch (e) {
+      console.error("createAuthBridgeCode error:", e);
+      return res.status(500).json({ error: "Failed to create bridge code" });
+    }
+  });
+});
+
+// POST /exchangeAuthBridgeCode
+// Body: { code: string }
+exports.exchangeAuthBridgeCode = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+      const { code } = req.body || {};
+      if (!code || typeof code !== "string") return res.status(400).json({ error: "Missing code" });
+
+      const ref = admin.firestore().collection("auth_bridge_codes").doc(code);
+      const snap = await ref.get();
+
+      if (!snap.exists) return res.status(400).json({ error: "Invalid code" });
+
+      const data = snap.data() || {};
+      const now = Date.now();
+
+      if (data.used) return res.status(400).json({ error: "Code already used" });
+      if (!data.expiresAt || now > data.expiresAt) return res.status(400).json({ error: "Code expired" });
+
+      // Mark used first (prevents replays)
+      await ref.set({ used: true, usedAt: now }, { merge: true });
+
+      const customToken = await admin.auth().createCustomToken(data.uid);
+      return res.json({ customToken });
+    } catch (e) {
+      console.error("exchangeAuthBridgeCode error:", e);
+      return res.status(500).json({ error: "Failed to exchange bridge code" });
+    }
+  });
+});

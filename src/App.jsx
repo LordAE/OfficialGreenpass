@@ -55,6 +55,7 @@ import AdminSubscription from "./pages/AdminSubscription";
 import EventDetailsPage from "./pages/EventDetails";
 import Connections from "./pages/Connections";
 import ViewProfile from "./pages/ViewProfile";
+import AuthBridge from "./pages/AuthBridge";
 
 /* ---------- Firebase auth/profile (lightweight for route-guards) ---------- */
 import { auth, db } from "@/firebase";
@@ -152,6 +153,7 @@ export default function App() {
 
         {/* Public site */}
         <Route path="directory" element={<Directory />} />
+        <Route path="auth-bridge" element={<AuthBridge />} />
         <Route path="events" element={<EventsPage />} />
         <Route path={createPageUrl("StudyCanada")} element={<StudyCanada />} />
         <Route path={createPageUrl("StudyNewZealand")} element={<StudyNewZealand />} />
