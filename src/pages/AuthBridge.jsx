@@ -1,105 +1,157 @@
+// src/pages/AuthBridge.jsx
 import React from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { auth } from "@/firebase";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { signInWithCustomToken } from "firebase/auth";
-import { getFirestore, doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/firebase";
 
-function getFunctionsBase() {
-  // Prefer explicit env
-  const explicit = import.meta.env.VITE_FUNCTIONS_BASE;
-  if (explicit) return explicit.replace(/\/+$/, "");
-
-  // Fallback to standard Firebase Functions URL
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-  if (!projectId) throw new Error("Missing VITE_FUNCTIONS_BASE or VITE_FIREBASE_PROJECT_ID");
-  return `https://us-central1-${projectId}.cloudfunctions.net`;
-}
-
+/**
+ * Rules:
+ * - If user doc does NOT exist => create it => go /onboarding
+ * - If user doc exists and onboarding_completed === true => go /dashboard
+ * - Else => go /onboarding
+ *
+ * Query:
+ * - code=... (required)
+ * - next=/onboarding or /dashboard (optional; used only as a hint, not authority)
+ * - lang=en (optional)
+ */
 export default function AuthBridge() {
-  const nav = useNavigate();
   const [params] = useSearchParams();
-  const [error, setError] = React.useState("");
+  const navigate = useNavigate();
+  const [status, setStatus] = React.useState("Exchanging sign-in code...");
+
+  const code = params.get("code");
+  const lang = params.get("lang") || "en";
+
+  // optional hint only (we still decide based on Firestore)
+  const nextHint = params.get("next") || "/onboarding";
+
+  const safeInternalPath = (p) => {
+    if (!p) return null;
+    // allow only internal relative paths like "/onboarding"
+    if (typeof p !== "string") return null;
+    if (!p.startsWith("/")) return null;
+    if (p.startsWith("//")) return null;
+    if (p.includes("http://") || p.includes("https://")) return null;
+    return p;
+  };
+
+  const exchangeUrl =
+    import.meta.env?.VITE_EXCHANGE_AUTH_BRIDGE_URL ||
+    "https://us-central1-greenpass-dc92d.cloudfunctions.net/exchangeAuthBridgeCode";
 
   React.useEffect(() => {
+    let cancelled = false;
+
     const run = async () => {
       try {
-        const code = params.get("code");
-        const next = params.get("next") || "/dashboard";
-
         if (!code) {
-          setError("Missing bridge code.");
+          setStatus("Missing sign-in code.");
+          // send them back to login
+          navigate(`/login?mode=login&lang=${encodeURIComponent(lang)}`, { replace: true });
           return;
         }
 
-        const base = getFunctionsBase();
-        const r = await fetch(`${base}/exchangeAuthBridgeCode`, {
+        // 1) Exchange code -> customToken
+        const res = await fetch(exchangeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code }),
         });
 
-        if (!r.ok) {
-          const msg = await r.text();
-          throw new Error(msg || "Exchange failed");
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(`exchangeAuthBridgeCode failed (${res.status}): ${txt}`);
         }
 
-        const { customToken } = await r.json();
-        if (!customToken) throw new Error("Missing customToken");
+        const data = await res.json();
+        const customToken = data?.customToken || data?.token;
 
-        const cred = await signInWithCustomToken(auth, customToken);
-
-        // Decide where to go:
-        // - If user is already onboarded, always go to dashboard.
-        // - If user is new/not onboarded, go to onboarding.
-        // - If a `next` is provided, respect it unless it points to onboarding for an already-onboarded user.
-        let finalNext = next || "/dashboard";
-        try {
-          const uid = cred?.user?.uid;
-          if (uid) {
-            const db = getFirestore();
-            const snap = await getDoc(doc(db, "users", uid));
-            const data = snap.exists() ? snap.data() : null;
-
-            const isOnboarded = !!data?.onboarding_completed;
-
-            if (isOnboarded) {
-              // If `next` was onboarding (common from marketing flow), override.
-              if (!finalNext || finalNext.startsWith("/onboarding")) finalNext = "/dashboard";
-            } else {
-              // Not onboarded yet → send to onboarding unless a different next was explicitly provided.
-              if (!finalNext || finalNext === "/dashboard") finalNext = "/onboarding";
-            }
-          }
-        } catch (err) {
-          // If anything goes wrong deciding, fall back to `next` (or dashboard).
-          console.warn("AuthBridge redirect decision failed:", err);
+        if (!customToken) {
+          throw new Error("No customToken returned from exchangeAuthBridgeCode.");
         }
 
-        // Preserve ?lang= if present on the bridge URL
-        const lang = params.get("lang");
-        if (lang && !finalNext.includes("lang=")) {
-          finalNext += finalNext.includes("?") ? `&lang=${encodeURIComponent(lang)}` : `?lang=${encodeURIComponent(lang)}`;
+        if (cancelled) return;
+
+        setStatus("Signing you in...");
+
+        // 2) Sign in with the custom token
+        await signInWithCustomToken(auth, customToken);
+
+        if (cancelled) return;
+
+        const fbUser = auth.currentUser;
+        if (!fbUser?.uid) {
+          throw new Error("Signed in but auth.currentUser is missing.");
         }
 
-        // Important: navigate inside SPA
-        nav(finalNext, { replace: true });
-      } catch (e) {
-        setError(e?.message || "Auth bridge failed.");
+        setStatus("Checking your profile...");
+
+        // 3) Check/create user doc
+        const userRef = doc(db, "users", fbUser.uid);
+        const snap = await getDoc(userRef);
+
+        let goTo = "/onboarding";
+
+        if (!snap.exists()) {
+          // New user => create doc
+          await setDoc(
+            userRef,
+            {
+              uid: fbUser.uid,
+              email: fbUser.email || "",
+              user_type: "student",
+              onboarding_completed: false,
+              onboarding_step: 0,
+              created_at: serverTimestamp(),
+              updated_at: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          goTo = "/onboarding";
+        } else {
+          const u = snap.data() || {};
+          if (u.onboarding_completed === true) goTo = "/dashboard";
+          else goTo = "/onboarding";
+        }
+
+        // optional hint: if they are NOT completed, allow /onboarding
+        // but NEVER force onboarding for completed users
+        const hint = safeInternalPath(nextHint);
+        if (hint && goTo !== "/dashboard") {
+          goTo = hint; // only applies when not completed
+        }
+
+        if (cancelled) return;
+
+        setStatus("Redirecting...");
+
+        // Use hard navigation so app state resets cleanly after auth
+        window.location.replace(`${goTo}?lang=${encodeURIComponent(lang)}`);
+      } catch (err) {
+        console.error("[AuthBridge] error:", err);
+        if (cancelled) return;
+
+        setStatus("Sign-in failed. Redirecting to login...");
+        // Back to login with a simple error flag
+        setTimeout(() => {
+          navigate(`/login?mode=login&lang=${encodeURIComponent(lang)}&bridge=fail`, {
+            replace: true,
+          });
+        }, 600);
       }
     };
 
     run();
-  }, [params, nav]);
+    return () => {
+      cancelled = true;
+    };
+  }, [code, exchangeUrl, lang, nextHint, navigate]);
 
-  if (error) {
-    return (
-      <div style={{ padding: 24 }}>
-        <h2>Sign-in handoff failed</h2>
-        <pre style={{ whiteSpace: "pre-wrap" }}>{error}</pre>
-        <p>Go back and login again from greenpassgroup.com.</p>
-      </div>
-    );
-  }
-
-  return <div style={{ padding: 24 }}>Signing you in…</div>;
+  return (
+    <div style={{ padding: 24 }}>
+      <p>{status}</p>
+    </div>
+  );
 }
