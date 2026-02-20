@@ -18,6 +18,7 @@ import { auth, db } from "@/firebase";
  */
 export default function AuthBridge() {
   const [params] = useSearchParams();
+  const role = params.get("role"); // optional: student | agent | tutor | school | institution | provider
   const navigate = useNavigate();
   const [status, setStatus] = React.useState("Exchanging sign-in code...");
 
@@ -101,9 +102,13 @@ export default function AuthBridge() {
             {
               uid: fbUser.uid,
               email: fbUser.email || "",
-              user_type: "student",
+              full_name: fbUser.displayName || "",
+              selected_role: role || "student",
+              user_type: role || "student",
+              userType: role || "student",
+              role: role || "student",
               onboarding_completed: false,
-              onboarding_step: 0,
+              onboarding_step: "basic_info",
               created_at: serverTimestamp(),
               updated_at: serverTimestamp(),
             },

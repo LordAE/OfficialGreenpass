@@ -567,7 +567,9 @@ export default function Onboarding() {
 
   const formDirtyRef = useRef(false);
 
-  const [currentStep, setCurrentStep] = useState(STEPS.CHOOSE_ROLE);
+  const [skipChooseRole, setSkipChooseRole] = useState(roleLockedFromEntry);
+
+  const [currentStep, setCurrentStep] = useState(roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE);
   const [selectedRole, setSelectedRole] = useState(null);
   const [formData, setFormData] = useState({});
   const [profile, setProfile] = useState(null);
@@ -684,17 +686,13 @@ export default function Onboarding() {
 
   // ✅ Dynamic step order aligned to: student needs verification but no subscription
   const STEP_ORDER = useMemo(() => {
-    if (selectedRole === "user") {
-      return [STEPS.CHOOSE_ROLE, STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.COMPLETE];
-    }
-    return [
-      STEPS.CHOOSE_ROLE,
-      STEPS.BASIC_INFO,
-      STEPS.ROLE_SPECIFIC,
-      STEPS.SUBSCRIPTION,
-      STEPS.COMPLETE,
-    ];
-  }, [selectedRole]);
+    const core =
+      selectedRole === "user"
+        ? [STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.COMPLETE]
+        : [STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.SUBSCRIPTION, STEPS.COMPLETE];
+
+    return skipChooseRole ? core : [STEPS.CHOOSE_ROLE, ...core];
+  }, [selectedRole, skipChooseRole]);
 
   const getStepProgress = () => {
     const idx = Math.max(0, STEP_ORDER.indexOf(currentStep));
@@ -735,6 +733,13 @@ export default function Onboarding() {
         data.selected_role || data.user_type || data.userType || data.role || DEFAULT_ROLE
       );
 
+      const hasRoleInProfile = Boolean(
+        data.selected_role || data.user_type || data.userType || data.role
+      );
+
+      setSkipChooseRole(entryRoleLocked || hasRoleInProfile);
+
+      
       const effectiveRole = entryRoleLocked ? normalizeRole(entryRoleHint) : roleFromProfile;
 
       // ✅ if role locked from entry and still at choose_role, bump to BASIC_INFO
@@ -756,6 +761,9 @@ export default function Onboarding() {
           onboarding_step: STEPS.BASIC_INFO,
           updated_at: serverTimestamp(),
         });
+      } else if (!entryRoleLocked && hasRoleInProfile && nextStep === STEPS.CHOOSE_ROLE) {
+        nextStep = STEPS.BASIC_INFO;
+        await updateDoc(ref, { onboarding_step: STEPS.BASIC_INFO, updated_at: serverTimestamp() });
       } else if (needsRoleSync) {
         await updateDoc(ref, {
           selected_role: effectiveRole,
