@@ -90,7 +90,7 @@ import {
 ========================= */
 const MARKETING_URL =
   (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
-  "https://greenpassgroup.com/";
+  "https://www.greenpassgroup.com/";
 
 const normalizeUrl = (u = "") => {
   const s = String(u || "").trim();
@@ -107,26 +107,6 @@ const getMarketingUrl = () => {
     return u.toString();
   } catch {
     return base;
-  }
-};
-// ✅ Logout URL (hits marketing /logout which also signs out on that origin)
-const getMarketingLogoutUrl = (nextPath = "/") => {
-  const base = normalizeUrl(MARKETING_URL);
-  try {
-    const lang =
-      window?.localStorage?.getItem("gp_lang") ||
-      window?.localStorage?.getItem("i18nextLng") ||
-      "en";
-    const u = new URL(base.replace("://www.", "://"));
-    // ensure /logout path
-    const basePath = (u.pathname || "/").replace(/\/+$/, "");
-    u.pathname = `${basePath}/logout`;
-    u.searchParams.set("next", nextPath || "/");
-    u.searchParams.set("lang", lang);
-    return u.toString();
-  } catch {
-    const clean = base.replace("://www.", "://").replace(/\/+$/, "");
-    return `${clean}/logout?next=${encodeURIComponent(nextPath || "/")}`;
   }
 };
 
@@ -1927,7 +1907,7 @@ export default function Layout() {
     try {
       await signOut(auth);
       setCurrentUser(null);
-      window.location.replace(getMarketingLogoutUrl("/"));
+      window.location.href = getMarketingUrl();
     } catch {}
   }, []);
 
