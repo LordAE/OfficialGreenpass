@@ -26,16 +26,6 @@ export default function AuthBridge() {
         const code = params.get("code");
         const next = params.get("next") || "/dashboard";
 
-        // Optional: pass role hint from marketing/SEO flow into onboarding (preselect + lock)
-        const roleHint = params.get("role") || params.get("user_type") || params.get("userType");
-        const roleLocked =
-          params.get("role_locked") === "1" ||
-          params.get("roleLocked") === "1" ||
-          params.get("locked") === "1";
-
-        if (roleHint) sessionStorage.setItem("onboarding_role", roleHint);
-        if (roleLocked) sessionStorage.setItem("onboarding_role_locked", "1");
-
         if (!code) {
           setError("Missing bridge code.");
           return;

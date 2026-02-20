@@ -424,23 +424,7 @@ const DEFAULT_ROLE = "user";
 
 const normalizeRole = (r) => {
   const v = (r || "").toString().trim().toLowerCase();
-
-  // Accept role labels coming from the SEO/marketing signup flow
-  const mapped =
-    v === "student" ? "user" :
-    v === "general_user" ? "user" :
-    v === "user" ? "user" :
-    v === "education_agent" ? "agent" :
-    v === "agent" ? "agent" :
-    v === "tutor" ? "tutor" :
-    v === "educational_institution" ? "school" :
-    v === "institution" ? "school" :
-    v === "school" ? "school" :
-    v === "service_provider" ? "vendor" :
-    v === "vendor" ? "vendor" :
-    v;
-
-  return VALID_ROLES.includes(mapped) ? mapped : DEFAULT_ROLE;
+  return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
 };
 
 // ✅ Used to match a School's LIVE account to the School Directory card
@@ -726,9 +710,6 @@ export default function Onboarding() {
         return;
       }
 
-      setProfileLoading(true);
-      try {
-
       const entryRoleHint = roleHintRef.current;
       const entryRoleLocked = roleLockedRef.current;
 
@@ -750,10 +731,6 @@ export default function Onboarding() {
       const data = finalSnap.data() || {};
       setProfile(data);
 
-      const hasRoleInProfile = Boolean(
-        data.selected_role || data.user_type || data.userType || data.role
-      );
-
       const roleFromProfile = normalizeRole(
         data.selected_role || data.user_type || data.userType || data.role || DEFAULT_ROLE
       );
@@ -770,7 +747,7 @@ export default function Onboarding() {
           data.role !== effectiveRole);
 
       // If the role was provided by the entry URL (SEO) or explicitly locked, skip the role picker.
-      if ((entryRoleLocked || entryRoleFromUrl || hasRoleInProfile) && nextStep === STEPS.CHOOSE_ROLE) {
+      if ((entryRoleLocked || entryRoleFromUrl) && nextStep === STEPS.CHOOSE_ROLE) {
         nextStep = STEPS.BASIC_INFO;
         await updateDoc(ref, {
           selected_role: effectiveRole,
@@ -860,15 +837,8 @@ export default function Onboarding() {
         return;
       }
 
-
-      } catch (err) {
-        console.error("[Onboarding] Failed to load/initialize profile:", err);
-        // Let the user continue with onboarding rather than getting stuck on a spinner.
-        setProfile(null);
-      } finally {
-        setProfileLoading(false);
-        setAuthChecked(true);
-      }
+      setProfileLoading(false);
+      setAuthChecked(true);
     });
 
     return () => unsub();
