@@ -590,6 +590,39 @@ export default function Onboarding() {
 
   const PAYPAL_CLIENT_ID = (import.meta?.env?.VITE_PAYPAL_CLIENT_ID || "").trim();
 
+
+/* =========================
+   ✅ Marketing Website URL (env-first)
+========================= */
+const MARKETING_URL =
+  (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
+  "https://greenpassgroup.com/";
+
+const normalizeUrl = (u = "") => {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  return s.endsWith("/") ? s : `${s}/`;
+};
+
+const getMarketingLogoutUrl = (nextPath = "/") => {
+  const base = normalizeUrl(MARKETING_URL);
+  try {
+    const lang =
+      window?.localStorage?.getItem("gp_lang") ||
+      window?.localStorage?.getItem("i18nextLng") ||
+      "en";
+    const u = new URL(base.replace("://www.", "://"));
+    const basePath = (u.pathname || "/").replace(/\/+$/, "");
+    u.pathname = `${basePath}/logout`;
+    u.searchParams.set("next", nextPath || "/");
+    u.searchParams.set("lang", lang);
+    return u.toString();
+  } catch {
+    const clean = base.replace("://www.", "://").replace(/\/+$/, "");
+    return `${clean}/logout?next=${encodeURIComponent(nextPath || "/")}`;
+  }
+};
+
   const uploadVerificationDoc = async (key, file) => {
     if (!auth.currentUser) return;
     setVerificationError("");
@@ -704,7 +737,7 @@ export default function Onboarding() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
-        navigate(createPageUrl("Welcome"), { replace: true });
+        window.location.replace(getMarketingLogoutUrl("/"));
         return;
       }
 
@@ -1243,7 +1276,7 @@ export default function Onboarding() {
     } catch (e) {
       // ignore
     } finally {
-      navigate(createPageUrl("Welcome"), { replace: true });
+      window.location.replace(getMarketingLogoutUrl("/"));
       setLoggingOut(false);
     }
   };
