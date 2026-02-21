@@ -86,7 +86,7 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   ✅ Marketing Website URL (env-first)
+   â Marketing Website URL (env-first)
 ========================= */
 const MARKETING_URL =
   (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
@@ -98,19 +98,12 @@ const normalizeUrl = (u = "") => {
   return s.endsWith("/") ? s : `${s}/`;
 };
 
-const getMarketingUrl = (extraParams = {}) => {
+const getMarketingUrl = () => {
   const base = normalizeUrl(MARKETING_URL);
   try {
     const lang = window?.localStorage?.getItem("gp_lang") || window?.localStorage?.getItem("i18nextLng") || "en";
     const u = new URL(base);
     u.searchParams.set("lang", lang);
-
-    if (extraParams && typeof extraParams === "object") {
-      Object.entries(extraParams).forEach(([k, v]) => {
-        if (v === undefined || v === null) return;
-        u.searchParams.set(String(k), String(v));
-      });
-    }
     return u.toString();
   } catch {
     return base;
@@ -131,7 +124,7 @@ const FALLBACK_TEXT = {
 
 const fb = (key) => FALLBACK_TEXT[key] || key;
 
-// ✅ i18n helper for this file (avoids `tr is not defined` in sub-components)
+// â i18n helper for this file (avoids `tr is not defined` in sub-components)
 function useNavTr() {
   const { t } = useTranslation();
   return React.useCallback(
@@ -169,7 +162,7 @@ const TikTokIcon = ({ className = "h-5 w-5" }) => (
   </svg>
 );
 
-// ✅ 3x3 Dots (App Launcher style) — matches the circular 9-dot icon
+// â 3x3 Dots (App Launcher style) â matches the circular 9-dot icon
 const Dots9Icon = ({ className = "h-6 w-6" }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
     {[
@@ -419,7 +412,7 @@ function buildAccountMenuItems(currentUser, tr) {
 }
 
 /* =========================
-   ✅ Mobile Bottom Nav (restored)
+   â Mobile Bottom Nav (restored)
    NOTE: Notifications route removed from "More" (popover is in top bar)
 ========================= */
 const MobileBottomNav = ({ nav, isActive }) => {
@@ -516,7 +509,7 @@ const MobileBottomNav = ({ nav, isActive }) => {
 
               <div className="px-3 pb-6 max-h-[65vh] overflow-y-auto">
                 <div className="space-y-1">
-                  {/* ✅ Website link first */}
+                  {/* â Website link first */}
 {more.map((it) => (
                     <SheetItem key={it.url} to={it.url} Icon={it.icon} label={it.title} />
                   ))}
@@ -777,7 +770,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
     [q, navigate]
   );
 
-  // ✅ FIX: IconLink was used below but not defined in the Admin layout scope
+  // â FIX: IconLink was used below but not defined in the Admin layout scope
 const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
   const active = isActive(to);
 
@@ -858,7 +851,7 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* ✅ POPUP Notifications (no route) */}
+              {/* â POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -987,7 +980,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* ✅ POPUP Notifications (no route) */}
+              {/* â POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1117,7 +1110,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* ✅ POPUP Notifications (no route) */}
+              {/* â POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1247,7 +1240,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* ✅ POPUP Notifications (no route) */}
+              {/* â POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1281,7 +1274,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
 };
 
 /* =========================
-   ✅ ADMIN: Top Nav + Left Panel
+   â ADMIN: Top Nav + Left Panel
 ========================= */
 const AdminAuthedTopNavWithLeftPanelLayout = ({
   currentUser,
@@ -1293,14 +1286,14 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
   const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
   const supportMessagesUrl = withLang("/messages?inbox=support");
 
-  const navigate = useNavigate(); // ✅ FIX: was missing (your admin used navigate without declaring)
+  const navigate = useNavigate(); // â FIX: was missing (your admin used navigate without declaring)
   const isActive = useIsActive();
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [acctOpen, setAcctOpen] = React.useState(false);
 
   
 
-  // ✅ FIX: IconLink was used below but not defined in the Admin layout scope
+  // â FIX: IconLink was used below but not defined in the Admin layout scope
   const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
     const active = isActive(to);
     return (
@@ -1444,7 +1437,7 @@ const centerItems = React.useMemo(
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* ✅ POPUP Notifications (no route) */}
+              {/* â POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1587,7 +1580,7 @@ function buildDesktopNav(currentUser) {
 
   const role = (currentUser?.user_type || currentUser?.role || "student").toLowerCase();
 
-  // ✅ Admin uses the sidebar layout on desktop (so it needs the full admin nav here)
+  // â Admin uses the sidebar layout on desktop (so it needs the full admin nav here)
   if (role === "admin") {
     return [
       { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
@@ -1634,7 +1627,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
   const tr = typeof trFn === "function" ? trFn : (key, def) => def;
   const role = (currentUser?.user_type || "student").toLowerCase();
 
-  // ✅ IMPORTANT: Removed Notifications route items from all "more" menus.
+  // â IMPORTANT: Removed Notifications route items from all "more" menus.
   // Notifications are ONLY via <NotificationsBell /> in the top bar (popover).
 
   // Agent (match desktop center icons: Dashboard / Directory / Events / My Students)
@@ -1911,42 +1904,20 @@ export default function Layout() {
   }, [currentUser?.id]);
 
   const handleLogout = React.useCallback(async () => {
-    // 1) Sign out on app.greenpassgroup.com
     try {
       await signOut(auth);
-    } catch {}
-
-    // 2) Clear app state
-    try {
       setCurrentUser(null);
-    } catch {}
-
-    // 3) Best-effort cookie cleanup (covers shared cookies on .greenpassgroup.com)
-    try {
-      const expire = "Thu, 01 Jan 1970 00:00:00 GMT";
-      const domains = [".greenpassgroup.com", "greenpassgroup.com", ".www.greenpassgroup.com", "www.greenpassgroup.com"];
-      const names = [
-        "__session",
-        "session",
-        "token",
-        "gp_session",
-        "gp_token",
-        "firebase:authUser",
-        "firebase:authEvent",
-      ];
-
-      names.forEach((name) => {
-        // current host
-        document.cookie = `${name}=; expires=${expire}; path=/`;
-        // parent domains
-        domains.forEach((d) => {
-          document.cookie = `${name}=; expires=${expire}; path=/; domain=${d}`;
-        });
-      });
-    } catch {}
-
-    // 4) Redirect to marketing site WITH logout flag so greenpassgroup.com also signs out
-    window.location.href = getMarketingUrl({ logout: "1" });
+      // ✅ Force marketing-origin signOut by sending logout=1
+      try {
+        const base = getMarketingUrl();
+        const u = new URL(base);
+        u.searchParams.set("logout", "1");
+        window.location.replace(u.toString());
+      } catch {
+        const base = getMarketingUrl();
+        window.location.replace(base + (base.includes("?") ? "&" : "?") + "logout=1");
+      }
+} catch {}
   }, []);
 
   const getLogoUrl = React.useCallback(
@@ -2154,17 +2125,17 @@ export default function Layout() {
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="en">English</option>
-                <option value="vi">Tiếng Việt</option>
+                <option value="vi">Tiáº¿ng Viá»t</option>
                 <option value="fil">Filipino</option>
                 <option value="ceb">Bisaya</option>
-                <option value="es">Español</option>
-                <option value="fr">Français</option>
+                <option value="es">EspaÃ±ol</option>
+                <option value="fr">FranÃ§ais</option>
                 <option value="de">Deutsch</option>
-                <option value="pt-BR">Português (Brasil)</option>
-                <option value="ar">العربية</option>
-                <option value="zh">中文</option>
-                <option value="ja">日本語</option>
-                <option value="ko">한국어</option>
+                <option value="pt-BR">PortuguÃªs (Brasil)</option>
+                <option value="ar">Ø§ÙØ¹Ø±Ø¨ÙØ©</option>
+                <option value="zh">ä¸­æ</option>
+                <option value="ja">æ¥æ¬èª</option>
+                <option value="ko">íêµ­ì´</option>
               </select>
             </div>
 

@@ -44,12 +44,9 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteField } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// 🔧 Firestore entities (for creating the first role record after onboarding)
-import { Agent, Tutor, SchoolProfile, Vendor } from "@/api/entities";
-
-
 /* =========================
-   ✅ Marketing Website URL (env-first)
+   Marketing Website URL (env-first)
+   Used for a true cross-domain logout.
 ========================= */
 const MARKETING_URL =
   (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
@@ -58,21 +55,28 @@ const MARKETING_URL =
 const normalizeUrl = (u = "") => {
   const s = String(u || "").trim();
   if (!s) return "";
-  return s.endsWith("/") ? s : `${s}/`;
+  return s.endsWith("/") ? s : s + "/";
 };
 
 const getMarketingLogoutUrl = () => {
   const base = normalizeUrl(MARKETING_URL);
   try {
-    const lang = window?.localStorage?.getItem("gp_lang") || window?.localStorage?.getItem("i18nextLng") || "en";
+    const lang =
+      window?.localStorage?.getItem("gp_lang") ||
+      window?.localStorage?.getItem("i18nextLng") ||
+      "en";
     const u = new URL(base);
     u.searchParams.set("lang", lang);
     u.searchParams.set("logout", "1");
     return u.toString();
   } catch {
-    return base;
+    return base + (base.includes("?") ? "&" : "?") + "logout=1";
   }
 };
+
+
+// 🔧 Firestore entities (for creating the first role record after onboarding)
+import { Agent, Tutor, SchoolProfile, Vendor } from "@/api/entities";
 
 const STEPS = {
   CHOOSE_ROLE: "choose_role",
@@ -731,7 +735,7 @@ export default function Onboarding() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
-        navigate(createPageUrl("Welcome"), { replace: true });
+        window.location.replace(getMarketingLogoutUrl());
         return;
       }
 
@@ -1265,31 +1269,14 @@ export default function Onboarding() {
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
-
-    // 1) Sign out on app.greenpassgroup.com
     try {
       await signOut(auth);
     } catch (e) {
       // ignore
+    } finally {
+      window.location.replace(getMarketingLogoutUrl());
+      setLoggingOut(false);
     }
-
-    // 2) Best-effort cookie cleanup (covers shared cookies on .greenpassgroup.com)
-    try {
-      const expire = "Thu, 01 Jan 1970 00:00:00 GMT";
-      const domains = [".greenpassgroup.com", "greenpassgroup.com", ".www.greenpassgroup.com", "www.greenpassgroup.com"];
-      const names = ["__session", "session", "token", "gp_session", "gp_token", "firebase:authUser", "firebase:authEvent"];
-      names.forEach((name) => {
-        document.cookie = `${name}=; expires=${expire}; path=/`;
-        domains.forEach((d) => {
-          document.cookie = `${name}=; expires=${expire}; path=/; domain=${d}`;
-        });
-      });
-    } catch {}
-
-    // 3) Hard-redirect to marketing site with logout flag,
-    //    so greenpassgroup.com also clears its Firebase session and won't auto-bounce back to app.
-    window.location.href = getMarketingLogoutUrl();
-    setLoggingOut(false);
   };
 
   const RoleLockedPill = ({ role }) => {
