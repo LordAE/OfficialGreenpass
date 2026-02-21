@@ -98,12 +98,19 @@ const normalizeUrl = (u = "") => {
   return s.endsWith("/") ? s : `${s}/`;
 };
 
-const getMarketingUrl = () => {
+const getMarketingUrl = (extraParams = {}) => {
   const base = normalizeUrl(MARKETING_URL);
   try {
     const lang = window?.localStorage?.getItem("gp_lang") || window?.localStorage?.getItem("i18nextLng") || "en";
     const u = new URL(base);
     u.searchParams.set("lang", lang);
+
+    if (extraParams && typeof extraParams === "object") {
+      Object.entries(extraParams).forEach(([k, v]) => {
+        if (v === undefined || v === null) return;
+        u.searchParams.set(String(k), String(v));
+      });
+    }
     return u.toString();
   } catch {
     return base;
@@ -1904,11 +1911,42 @@ export default function Layout() {
   }, [currentUser?.id]);
 
   const handleLogout = React.useCallback(async () => {
+    // 1) Sign out on app.greenpassgroup.com
     try {
       await signOut(auth);
-      setCurrentUser(null);
-      window.location.href = getMarketingUrl();
     } catch {}
+
+    // 2) Clear app state
+    try {
+      setCurrentUser(null);
+    } catch {}
+
+    // 3) Best-effort cookie cleanup (covers shared cookies on .greenpassgroup.com)
+    try {
+      const expire = "Thu, 01 Jan 1970 00:00:00 GMT";
+      const domains = [".greenpassgroup.com", "greenpassgroup.com", ".www.greenpassgroup.com", "www.greenpassgroup.com"];
+      const names = [
+        "__session",
+        "session",
+        "token",
+        "gp_session",
+        "gp_token",
+        "firebase:authUser",
+        "firebase:authEvent",
+      ];
+
+      names.forEach((name) => {
+        // current host
+        document.cookie = `${name}=; expires=${expire}; path=/`;
+        // parent domains
+        domains.forEach((d) => {
+          document.cookie = `${name}=; expires=${expire}; path=/; domain=${d}`;
+        });
+      });
+    } catch {}
+
+    // 4) Redirect to marketing site WITH logout flag so greenpassgroup.com also signs out
+    window.location.href = getMarketingUrl({ logout: "1" });
   }, []);
 
   const getLogoUrl = React.useCallback(
