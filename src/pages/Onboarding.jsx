@@ -44,37 +44,6 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteField } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
-/* =========================
-   Marketing Website URL (env-first)
-   Used for a true cross-domain logout.
-========================= */
-const MARKETING_URL =
-  (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
-  "https://www.greenpassgroup.com/";
-
-const normalizeUrl = (u = "") => {
-  const s = String(u || "").trim();
-  if (!s) return "";
-  return s.endsWith("/") ? s : s + "/";
-};
-
-const getMarketingLogoutUrl = () => {
-  const base = normalizeUrl(MARKETING_URL);
-  try {
-    const lang =
-      window?.localStorage?.getItem("gp_lang") ||
-      window?.localStorage?.getItem("i18nextLng") ||
-      "en";
-    const u = new URL(base);
-    u.searchParams.set("lang", lang);
-    u.searchParams.set("logout", "1");
-    return u.toString();
-  } catch {
-    return base + (base.includes("?") ? "&" : "?") + "logout=1";
-  }
-};
-
-
 // 🔧 Firestore entities (for creating the first role record after onboarding)
 import { Agent, Tutor, SchoolProfile, Vendor } from "@/api/entities";
 
@@ -717,15 +686,18 @@ export default function Onboarding() {
 
   // ✅ Dynamic step order aligned to: student needs verification but no subscription
   const STEP_ORDER = useMemo(() => {
+    // Minimal onboarding: only collect Basic Info.
+    // - Students finish after Basic Info
+    // - Other roles go to Subscription (if applicable) then Complete
     const core =
       selectedRole === "user"
-        ? [STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.COMPLETE]
-        : [STEPS.BASIC_INFO, STEPS.ROLE_SPECIFIC, STEPS.SUBSCRIPTION, STEPS.COMPLETE];
+        ? [STEPS.BASIC_INFO, STEPS.COMPLETE]
+        : [STEPS.BASIC_INFO, STEPS.SUBSCRIPTION, STEPS.COMPLETE];
 
     return skipChooseRole ? core : [STEPS.CHOOSE_ROLE, ...core];
   }, [selectedRole, skipChooseRole]);
 
-  const getStepProgress = () => {
+const getStepProgress = () => {
     const idx = Math.max(0, STEP_ORDER.indexOf(currentStep));
     const total = Math.max(1, STEP_ORDER.length - 1);
     return Math.round((idx / total) * 100);
@@ -735,7 +707,7 @@ export default function Onboarding() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
-        window.location.replace(getMarketingLogoutUrl());
+        navigate(createPageUrl("Welcome"), { replace: true });
         return;
       }
 
@@ -775,6 +747,11 @@ export default function Onboarding() {
 
       // ✅ if role locked from entry and still at choose_role, bump to BASIC_INFO
       let nextStep = data.onboarding_completed ? STEPS.COMPLETE : data.onboarding_step || STEPS.CHOOSE_ROLE;
+
+      // ✅ Migration: older onboarding used ROLE_SPECIFIC; new minimal flow skips it.
+      if (nextStep === STEPS.ROLE_SPECIFIC) {
+        nextStep = effectiveRole === "user" ? STEPS.COMPLETE : STEPS.SUBSCRIPTION;
+      }
       const needsRoleSync =
         entryRoleLocked &&
         (data.selected_role !== effectiveRole ||
@@ -1071,28 +1048,43 @@ export default function Onboarding() {
   const handleBasicInfoSubmit = async () => {
     if (!selectedRole || !validateBasicInfo()) return;
 
+    const nextStep = selectedRole === "user" ? STEPS.COMPLETE : STEPS.SUBSCRIPTION;
+
     if (auth.currentUser) {
       const ref = doc(db, "users", auth.currentUser.uid);
       await updateDoc(ref, {
-        onboarding_step: STEPS.ROLE_SPECIFIC,
+        onboarding_step: nextStep,
         full_name: formData.full_name || "",
         phone: formData.phone || "",
         country: formData.country || "",
         country_code: formData.country_code || "",
+        // keep role fields consistent
+        selected_role: selectedRole,
+        user_type: selectedRole,
+        userType: selectedRole,
+        role: selectedRole,
         updated_at: serverTimestamp(),
       });
     }
 
-    setCurrentStep(STEPS.ROLE_SPECIFIC);
+    if (selectedRole === "user") {
+      // Minimal student flow: mark onboarding complete without forcing verification uploads.
+      await finalizeOnboarding({ subscriptionActive: false, skipped: true });
+      return;
+    }
+
+    setCurrentStep(nextStep);
   };
+
 
   const handleBack = async () => {
     let next = STEPS.CHOOSE_ROLE;
 
+    // Minimal onboarding navigation:
+    // BASIC_INFO -> (SUBSCRIPTION if non-user) -> COMPLETE
     if (currentStep === STEPS.COMPLETE) {
-      next = selectedRole === "user" ? STEPS.ROLE_SPECIFIC : STEPS.SUBSCRIPTION;
-    } else if (currentStep === STEPS.SUBSCRIPTION) next = STEPS.ROLE_SPECIFIC;
-    else if (currentStep === STEPS.ROLE_SPECIFIC) next = STEPS.BASIC_INFO;
+      next = selectedRole === "user" ? STEPS.BASIC_INFO : STEPS.SUBSCRIPTION;
+    } else if (currentStep === STEPS.SUBSCRIPTION) next = STEPS.BASIC_INFO;
     else if (currentStep === STEPS.BASIC_INFO) next = roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE;
 
     if (next === currentStep) return;
@@ -1103,6 +1095,7 @@ export default function Onboarding() {
       await updateDoc(ref, { onboarding_step: next, updated_at: serverTimestamp() });
     }
   };
+
 
   /**
    * Save role-specific info then go to subscription (non-user roles only)
@@ -1274,7 +1267,7 @@ export default function Onboarding() {
     } catch (e) {
       // ignore
     } finally {
-      window.location.replace(getMarketingLogoutUrl());
+      navigate(createPageUrl("Welcome"), { replace: true });
       setLoggingOut(false);
     }
   };
