@@ -40,6 +40,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ===============================
+    // INVITES
+    // - Created/accepted/revoked ONLY via Cloud Functions
+    // ===============================
+    match /invites/{inviteId} {
+      allow read, write: if false;
+    }
+
     // ✅ Creators who can post
     function isCreatorRole() {
       return signedIn() && (userHasType("agent") || userHasType("tutor") || userHasType("school"));
@@ -815,6 +823,15 @@ service cloud.firestore {
     match /mail/{docId} {
       allow create: if isAdmin();
       allow read, update, delete: if false;
+    }
+
+    // ============================
+    // Invites
+    // ============================
+    // Security model: invites are created/accepted/revoked ONLY via Cloud Functions
+    // (Admin SDK). Clients should not be able to read tokens or tamper with invites.
+    match /invites/{inviteId} {
+      allow read, write: if false;
     }
 
     match /promotions/{id} {

@@ -492,6 +492,78 @@ exports.cleanupOnFollowRequestDeleted = onDocumentDeleted(
 
 const AUTH_BRIDGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// ============================
+// Invite System (Admin/School/Agent)
+// ============================
+
+// NOTE: Set a strong pepper in Functions env: INVITE_PEPPER
+// Example (local): INVITE_PEPPER="<long-random>" firebase emulators:start
+// Example (deploy): set an env var in your functions runtime.
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INVITE_PEPPER = process.env.INVITE_PEPPER || "CHANGE_ME_INVITE_PEPPER";
+
+function sha256(str) {
+  return crypto.createHash("sha256").update(str).digest("hex");
+}
+
+function normalizeRole(v) {
+  const s = String(v || "").toLowerCase().trim();
+  if (s === "advisor") return "admin";
+  return s;
+}
+
+async function getUserRoleForInvite(uid, decodedToken) {
+  // Prefer custom claim
+  if (decodedToken?.admin === true) return "admin";
+
+  const snap = await admin.firestore().doc(`users/${uid}`).get();
+  const u = snap.data() || {};
+
+  if (u.is_admin === true || u.admin === true) return "admin";
+
+  // Support your multiple role fields
+  return normalizeRole(u.role || u.user_type || u.selected_role || u.userType);
+}
+
+function assertRoleCanInvite(inviterRole, invitedRole) {
+  const ir = normalizeRole(inviterRole);
+  const rr = normalizeRole(invitedRole);
+
+  if (ir === "admin") {
+    // ✅ Admin can invite: school, agent, student
+    if (rr !== "agent" && rr !== "school" && rr !== "student") {
+      throw new Error("Admin can only invite agent, school, or student");
+    }
+    return;
+  }
+  if (ir === "school") {
+    // ✅ School can invite: agent (unchanged)
+    if (rr !== "agent") throw new Error("School can only invite agent");
+    return;
+  }
+  if (ir === "agent") {
+    // ✅ Agent can invite: agent, school, student
+    if (rr !== "agent" && rr !== "school" && rr !== "student") {
+      throw new Error("Agent can only invite agent, school, or student");
+    }
+    return;
+  }
+  throw new Error("Role not allowed to invite");
+}
+
+function randomToken(bytes = 32) {
+  return crypto.randomBytes(bytes).toString("hex");
+}
+
+async function requireBearerUid(req) {
+  const authHeader = req.headers.authorization || "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  const idToken = match?.[1];
+  if (!idToken) throw new Error("Missing Authorization Bearer token");
+  const decoded = await admin.auth().verifyIdToken(idToken);
+  return { uid: decoded.uid, decoded };
+}
+
 function randomCode(len = 48) {
   return crypto.randomBytes(len).toString("hex"); // 96 chars
 }
@@ -559,6 +631,255 @@ exports.exchangeAuthBridgeCode = onRequest(async (req, res) => {
     } catch (e) {
       console.error("exchangeAuthBridgeCode error:", e);
       return res.status(500).json({ error: "Failed to exchange bridge code" });
+    }
+  });
+});
+
+
+// ============================
+// Invites (Create / Accept / Revoke)
+// ============================
+
+// POST /createInvite
+// Header: Authorization: Bearer <Firebase ID token>
+// Body: { invitedRole: 'agent'|'school', invitedEmail?: string, mode: 'email'|'link' }
+exports.createInvite = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const { invitedRole, invitedEmail, mode } = req.body || {};
+
+      const r = normalizeRole(invitedRole);
+      const m = String(mode || "").toLowerCase().trim();
+      const email = (invitedEmail || "").toString().trim().toLowerCase();
+
+      if (r !== "agent" && r !== "school" && r !== "student") {
+        return res.status(400).json({ error: "Invalid invitedRole" });
+      }
+      if (m !== "email" && m !== "link") return res.status(400).json({ error: "Invalid mode" });
+      if (m === "email" && !email) return res.status(400).json({ error: "invitedEmail required for email mode" });
+
+      const inviterRole = await getUserRoleForInvite(uid, decoded);
+      assertRoleCanInvite(inviterRole, r);
+
+      const rawToken = randomToken(32);
+      const tokenHash = sha256(rawToken + INVITE_PEPPER);
+
+      const now = Date.now();
+      const expiresAtMs = now + INVITE_TTL_MS;
+
+      const inviteRef = admin.firestore().collection("invites").doc();
+      await inviteRef.set({
+        tokenHash,
+        invitedEmail: email,
+        invitedRole: r,
+        inviterId: uid,
+        inviterRole,
+        mode: m,
+        status: "active",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: admin.firestore.Timestamp.fromMillis(expiresAtMs),
+        usedAt: null,
+        usedByUid: null,
+      });
+
+      const base = "https://greenpassgroup.com";
+      const inviteLink = `${base}/join?invite=${encodeURIComponent(inviteRef.id)}&token=${encodeURIComponent(rawToken)}`;
+
+      // Optional: email sending via Firebase Trigger Email extension.
+      // If you already use it, writing to `mail` will send.
+      if (m === "email") {
+        await admin.firestore().collection("mail").add({
+          to: email,
+          message: {
+            subject: "You're invited to GreenPass",
+            html: `
+                <div style="font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; padding:24px;">
+                  <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+                    
+                    <!-- Header -->
+                    <div style="background:#0f766e; color:#ffffff; padding:20px 24px;">
+                      <h1 style="margin:0; font-size:22px;">You’re invited to GreenPass</h1>
+                      <p style="margin:6px 0 0; font-size:13px; opacity:0.9;">
+                        Your gateway to students, agents, tutors, and schools
+                      </p>
+                    </div>
+
+                    <!-- Body -->
+                    <div style="padding:24px; color:#1f2937;">
+                      <p style="font-size:15px; line-height:1.6;">
+                        Hi there 👋,
+                      </p>
+
+                      <p style="font-size:15px; line-height:1.6;">
+                        You’ve been invited to join <strong>GreenPass</strong> — a platform that helps manage student applications,
+                        connect with agents and schools, and organize events and services in one place.
+                      </p>
+
+                      <!-- CTA Button -->
+                      <div style="text-align:center; margin:28px 0;">
+                        <a href="${inviteLink}"
+                          style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; padding:14px 26px; border-radius:8px; font-weight:600;">
+                          Accept Invitation
+                        </a>
+                      </div>
+
+                      <!-- Fallback link -->
+                      <p style="font-size:13px; color:#6b7280; margin-bottom:6px;">
+                        If the button doesn’t work, copy and paste this link into your browser:
+                      </p>
+
+                      <p style="font-size:12px; background:#f3f4f6; padding:10px 12px; border-radius:6px; word-break:break-all;">
+                        ${inviteLink}
+                      </p>
+
+                      <p style="font-size:13px; color:#6b7280; margin-top:20px;">
+                        If you didn’t expect this invitation, you can safely ignore this email.
+                      </p>
+                    </div>
+
+                    <!-- Footer -->
+                    <div style="background:#f9fafb; padding:14px 24px; text-align:center; font-size:12px; color:#9ca3af;">
+                      © ${new Date().getFullYear()} GreenPass Group · All rights reserved
+                    </div>
+                  </div>
+                </div>
+              `,
+              text: `You're invited to join GreenPass.
+
+              Open this link to accept your invitation:
+              ${inviteLink}
+
+              If you didn’t request this, you can ignore this email.`,
+          },
+        });
+      }
+
+      return res.json({ inviteId: inviteRef.id, inviteLink, expiresInMs: INVITE_TTL_MS });
+    } catch (e) {
+      console.error("createInvite error:", e);
+      const msg = e?.message || "Failed to create invite";
+      const code = msg.toLowerCase().includes("missing authorization") ? 401 : 500;
+      return res.status(code).json({ error: msg });
+    }
+  });
+});
+
+
+// POST /acceptInvite
+// Header: Authorization: Bearer <Firebase ID token>
+// Body: { inviteId: string, token: string }
+exports.acceptInvite = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const authedEmail = (decoded?.email || "").toString().toLowerCase();
+
+      const { inviteId, token } = req.body || {};
+      if (!inviteId || !token) return res.status(400).json({ error: "Missing inviteId/token" });
+
+      const inviteRef = admin.firestore().doc(`invites/${inviteId}`);
+      const userRef = admin.firestore().doc(`users/${uid}`);
+
+      await admin.firestore().runTransaction(async (tx) => {
+        const invSnap = await tx.get(inviteRef);
+        if (!invSnap.exists) throw new Error("Invite not found");
+
+        const inv = invSnap.data() || {};
+        if (inv.status !== "active") throw new Error("Invite not active");
+
+        const exp = inv.expiresAt;
+        if (exp?.toMillis && exp.toMillis() < Date.now()) throw new Error("Invite expired");
+
+        const computed = sha256(String(token) + INVITE_PEPPER);
+        if (computed !== inv.tokenHash) throw new Error("Invalid token");
+
+        const invitedEmail = String(inv.invitedEmail || "").toLowerCase();
+        if (invitedEmail && invitedEmail !== authedEmail) {
+          throw new Error("This invite is tied to a different email");
+        }
+
+        const invitedRole = normalizeRole(inv.invitedRole);
+        if (invitedRole !== "agent" && invitedRole !== "school" && invitedRole !== "student") {
+          throw new Error("Invalid invited role");
+        }
+
+        // ✅ Align with your users schema (multiple role keys)
+        tx.set(
+          userRef,
+          {
+            role: invitedRole,
+            selected_role: invitedRole,
+            user_type: invitedRole,
+            userType: invitedRole,
+
+            onboarding_completed: false,
+            onboarding_step: "basic_info",
+
+            invited_by: {
+              uid: inv.inviterId || "",
+              role: inv.inviterRole || "",
+              inviteId: inviteId,
+            },
+
+            // Keep timestamps consistent with your schema
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            email: authedEmail || admin.firestore.FieldValue.delete(),
+          },
+          { merge: true }
+        );
+
+        tx.update(inviteRef, {
+          status: "used",
+          usedAt: admin.firestore.FieldValue.serverTimestamp(),
+          usedByUid: uid,
+        });
+      });
+
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error("acceptInvite error:", e);
+      const msg = e?.message || "Failed to accept invite";
+      const low = String(msg).toLowerCase();
+      const code = low.includes("missing authorization") ? 401 : low.includes("not found") ? 404 : 400;
+      return res.status(code).json({ error: msg });
+    }
+  });
+});
+
+
+// POST /revokeInvite
+// Header: Authorization: Bearer <Firebase ID token>
+// Body: { inviteId: string }
+exports.revokeInvite = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const { inviteId } = req.body || {};
+      if (!inviteId) return res.status(400).json({ error: "Missing inviteId" });
+
+      const inviterRole = await getUserRoleForInvite(uid, decoded);
+      const isAdmin = normalizeRole(inviterRole) === "admin";
+
+      const ref = admin.firestore().doc(`invites/${inviteId}`);
+      const snap = await ref.get();
+      if (!snap.exists) return res.status(404).json({ error: "Invite not found" });
+      const inv = snap.data() || {};
+
+      if (!isAdmin && inv.inviterId !== uid) return res.status(403).json({ error: "Not allowed" });
+      if (inv.status !== "active") return res.status(400).json({ error: "Invite is not active" });
+
+      await ref.update({ status: "revoked", revokedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return res.json({ ok: true });
+    } catch (e) {
+      console.error("revokeInvite error:", e);
+      return res.status(500).json({ error: e?.message || "Failed to revoke invite" });
     }
   });
 });

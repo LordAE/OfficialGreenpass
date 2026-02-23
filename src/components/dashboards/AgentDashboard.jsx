@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import InviteUsersDialog from "@/components/invites/InviteUserDialog";
 import {
   Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1026,6 +1027,7 @@ setCommunityLoading(false);
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
 
   const [createEventOpen, setCreateEventOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const canCreateEvent = !subscriptionModeEnabled || isSubscribed;
 
 
@@ -1197,6 +1199,29 @@ useEffect(() => {
                   </div>
                 </div>
               </div>
+
+{/* ✅ Invite CTA (below shortcuts) */}
+                <div className="mt-4 rounded-2xl border bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-gray-900">
+                      {tr("invite","Invite")}
+                    </div>
+                    <Button size="sm" onClick={() => setInviteOpen(true)}>
+                      {tr("invite","Invite")}
+                    </Button>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {tr("invite_hint","Invite agents, schools, or students via link or email.")}
+                  </div>
+                </div>
+
+                <InviteUsersDialog
+                  open={inviteOpen}
+                  onOpenChange={setInviteOpen}
+                  allowedRoles={["agent","school","student"]}
+                  defaultRole="agent"
+                  title={tr("invite","Invite")}
+                />
 
                 {/* ✅ Create Event CTA (below shortcuts) */}
                 <div className="mt-4 rounded-2xl border bg-white p-3">

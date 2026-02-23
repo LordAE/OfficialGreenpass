@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import InviteUsersDialog from "@/components/invites/InviteUserDialog";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, Calendar, DollarSign, UserCheck, Loader2 } from 'lucide-react';
@@ -29,6 +30,7 @@ const StatCard = ({ title, value, icon, linkTo }) => (
 );
 
 export default function AdminDashboard({ user }) {
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalRevenue: '$0',
@@ -145,8 +147,26 @@ export default function AdminDashboard({ user }) {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-      <h1 className="text-2xl md:text-3xl font-bold">Admin Dashboard</h1>
-      <p className="text-muted-foreground text-sm sm:text-base">Welcome back, {user.full_name}. Here's an overview of your platform activity and system status.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold">Admin Dashboard</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">
+            Welcome back, {user.full_name}. Here's an overview of your platform activity and system status.
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <Button onClick={() => setInviteOpen(true)}>Invite</Button>
+        </div>
+      </div>
+
+      <InviteUsersDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        allowedRoles={["agent", "school", "student"]}
+        defaultRole="agent"
+        title="Invite User"
+      />
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((card, index) => (
