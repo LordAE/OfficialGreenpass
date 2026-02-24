@@ -499,6 +499,33 @@ const AUTH_BRIDGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 // NOTE: Set a strong pepper in Functions env: INVITE_PEPPER
 // Example (local): INVITE_PEPPER="<long-random>" firebase emulators:start
 // Example (deploy): set an env var in your functions runtime.
+
+const INVITE_ROLE_LABELS = {
+  student: "Student",
+  agent: "Agent",
+  school: "School",
+  admin: "Admin",
+};
+
+async function getInviterDisplayName(uid, decodedToken) {
+  try {
+    const snap = await admin.firestore().doc(`users/${uid}`).get();
+    const u = snap.data() || {};
+    const full =
+      u.full_name ||
+      u.display_name ||
+      u.displayName ||
+      u.name ||
+      [u.first_name, u.last_name].filter(Boolean).join(" ") ||
+      decodedToken?.name ||
+      decodedToken?.displayName ||
+      decodedToken?.email ||
+      "";
+    return String(full || "").trim() || "A GreenPass user";
+  } catch (e) {
+    return decodedToken?.name || decodedToken?.email || "A GreenPass user";
+  }
+}
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const INVITE_PEPPER = process.env.INVITE_PEPPER || "CHANGE_ME_INVITE_PEPPER";
 
@@ -664,6 +691,9 @@ exports.createInvite = onRequest(async (req, res) => {
       const inviterRole = await getUserRoleForInvite(uid, decoded);
       assertRoleCanInvite(inviterRole, r);
 
+      const inviterName = await getInviterDisplayName(uid, decoded);
+      const invitedRoleLabel = INVITE_ROLE_LABELS[r] || r;
+
       const rawToken = randomToken(32);
       const tokenHash = sha256(rawToken + INVITE_PEPPER);
 
@@ -677,6 +707,7 @@ exports.createInvite = onRequest(async (req, res) => {
         invitedRole: r,
         inviterId: uid,
         inviterRole,
+        inviterName,
         mode: m,
         status: "active",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -693,8 +724,9 @@ exports.createInvite = onRequest(async (req, res) => {
       if (m === "email") {
         await admin.firestore().collection("mail").add({
           to: email,
+          from: `${inviterName} <info@greenpassgroup.com>`,
           message: {
-            subject: "You're invited to GreenPass",
+            subject: `${inviterName} invited you to GreenPass (${invitedRoleLabel})`,
             html: `
                 <div style="font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; padding:24px;">
                   <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
@@ -714,7 +746,12 @@ exports.createInvite = onRequest(async (req, res) => {
                       </p>
 
                       <p style="font-size:15px; line-height:1.6;">
-                        You’ve been invited to join <strong>GreenPass</strong> — a platform that helps manage student applications,
+                        <strong>${inviterName}</strong> invited you to join GreenPass as a <strong>${invitedRoleLabel}</strong>.
+                      </p>
+
+                      <p style="font-size:15px; line-height:1.6;">
+                        GreenPass is a platform that helps manage student applications,
+                        connect with agents and schools, and organize events and services in one place. A platform that helps manage student applications,
                         connect with agents and schools, and organize events and services in one place.
                       </p>
 
@@ -747,12 +784,12 @@ exports.createInvite = onRequest(async (req, res) => {
                   </div>
                 </div>
               `,
-              text: `You're invited to join GreenPass.
+              text: `${inviterName} invited you to join GreenPass as a ${invitedRoleLabel}.
 
-              Open this link to accept your invitation:
-              ${inviteLink}
+Open this link to accept your invitation:
+${inviteLink}
 
-              If you didn’t request this, you can ignore this email.`,
+If you didn’t expect this invitation, you can safely ignore this email.`,
           },
         });
       }

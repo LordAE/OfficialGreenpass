@@ -7,7 +7,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Copy, Mail, Link2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { getAuth } from "firebase/auth";
@@ -89,6 +89,21 @@ export default function InviteUserDialog({
     }
   }, [open, safeDefaultRole]);
 
+
+  const emailList = useMemo(() => {
+    if (method !== "email") return [];
+    const parts = String(email || "")
+      .split(/[\n,;]+/)
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean);
+    return Array.from(new Set(parts));
+  }, [email, method]);
+
+  const invalidEmails = useMemo(() => {
+    if (method !== "email") return [];
+    const reEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailList.filter((e) => !reEmail.test(e));
+  }, [emailList, method]);
   async function createInvite({ invitedRole, mode, invitedEmail }) {
     const auth = getAuth();
     const user = auth.currentUser;
@@ -144,39 +159,78 @@ export default function InviteUserDialog({
     }
 
     if (method === "email") {
-      const clean = (email || "").trim().toLowerCase();
-      if (!clean) {
-        setStatus({ loading: false, ok: false, message: "Email is required." });
+      if (emailList.length === 0) {
+        setStatus({ loading: false, ok: false, message: "Please enter at least 1 email address." });
         return;
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
-        setStatus({ loading: false, ok: false, message: "Please enter a valid email address." });
+      if (emailList.length > 10) {
+        setStatus({ loading: false, ok: false, message: "You can send up to 10 invites per action." });
+        return;
+      }
+      if (invalidEmails.length > 0) {
+        setStatus({
+          loading: false,
+          ok: false,
+          message: `Invalid email(s): ${invalidEmails.slice(0, 5).join(", ")}${invalidEmails.length > 5 ? "…" : ""}`,
+        });
         return;
       }
     }
 
     setStatus({ loading: true, ok: false, message: "" });
     try {
-      const res = await createInvite({
-        invitedRole: role,
-        mode: method,
-        invitedEmail: method === "email" ? (email || "").trim().toLowerCase() : undefined,
-      });
-
       if (method === "link") {
+        const res = await createInvite({
+          invitedRole: role,
+          mode: method,
+        });
+
         if (!res?.inviteLink) throw new Error("inviteLink missing from response.");
         setInviteLink(res.inviteLink);
         await copyToClipboard(res.inviteLink);
         setStatus({ loading: false, ok: true, message: "Invite link copied to clipboard." });
       } else {
-        setStatus({ loading: false, ok: true, message: "Invite email sent successfully." });
+        // Email mode: send up to 10 in one action
+        let okCount = 0;
+        const failed = [];
+        for (const addr of emailList) {
+          try {
+            await createInvite({ invitedRole: role, mode: "email", invitedEmail: addr });
+            okCount += 1;
+          } catch (err) {
+            failed.push({ email: addr, error: err?.message || "Failed" });
+          }
+        }
+
+        if (failed.length === 0) {
+          setStatus({
+            loading: false,
+            ok: true,
+            message: `Invite email sent to ${okCount} recipient${okCount === 1 ? "" : "s"}.`,
+          });
+        } else if (okCount === 0) {
+          setStatus({
+            loading: false,
+            ok: false,
+            message: `Failed to send invites. ${failed[0]?.error || ""}`.trim(),
+          });
+        } else {
+          setStatus({
+            loading: false,
+            ok: true,
+            message: `Sent ${okCount} invite${okCount === 1 ? "" : "s"}. Failed: ${failed
+              .slice(0, 3)
+              .map((f) => f.email)
+              .join(", ")}${failed.length > 3 ? "…" : ""}`,
+          });
+        }
       }
     } catch (e) {
       setStatus({ loading: false, ok: false, message: e?.message || "Invite failed." });
     }
   }
 
-  const primaryLabel = method === "link" ? "Generate Invite Link" : "Send Invite Email";
+  const primaryLabel = method === "link" ? "Generate Invite Link" : `Send Invite Email${emailList.length ? ` (${Math.min(emailList.length, 10)})` : ""}`;
   const descId = "invite-user-dialog-desc";
 
   return (
@@ -260,14 +314,22 @@ export default function InviteUserDialog({
               {/* Email */}
               {method === "email" && (
                 <div className="rounded-2xl border bg-background p-4 space-y-2">
-                  <Label>Email address</Label>
-                  <Input
+                  <div className="flex items-center justify-between gap-3">
+                    <Label>Email addresses</Label>
+                    <div className="text-xs text-muted-foreground">
+                      {emailList.length}/10
+                    </div>
+                  </div>
+                  <Textarea
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
+                    placeholder={"name@example.com\nname2@example.com\n(You can also separate by commas)"}
                     autoComplete="email"
-                    className="h-11 rounded-xl"
+                    className="min-h-[92px] rounded-xl"
                   />
+                  <div className="text-xs text-muted-foreground">
+                    Tip: paste multiple emails (one per line). Max 10 invites per action.
+                  </div>
                 </div>
               )}
 
