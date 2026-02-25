@@ -886,8 +886,7 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
 
 const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
   const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
-
+  const tr = React.useCallback((key, def) => t(`nav.${key}`, { defaultValue: def ?? fb(key) }), [t]);
   const navigate = useNavigate();
   const isActive = useIsActive();
   const { headerRef, headerH, measured } = useHeaderMeasure();
@@ -1015,8 +1014,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
 const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
   const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
-
+  const tr = React.useCallback((key, def) => t(`nav.${key}`, { defaultValue: def ?? fb(key) }), [t]);
   const navigate = useNavigate();
   const isActive = useIsActive();
 
@@ -1145,8 +1143,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
 const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
   const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
-
+  const tr = React.useCallback((key, def) => t(`nav.${key}`, { defaultValue: def ?? fb(key) }), [t]);
   const navigate = useNavigate();
   const isActive = useIsActive();
 
