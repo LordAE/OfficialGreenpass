@@ -1,5 +1,5 @@
 // src/pages/Directory.jsx
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { School } from "@/api/entities";
 import { Institution } from "@/api/entities";
 import { Card, CardContent } from "@/components/ui/card";
@@ -72,7 +72,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 16;
 
 /* -----------------------------
    Subscription helper (matches YOUR DB fields)
@@ -102,6 +102,13 @@ const flagPngUrl = (code) => {
   const cc = (code || "").trim().toUpperCase();
   if (!isIso2(cc)) return "";
   return `https://flagcdn.com/w40/${cc.toLowerCase()}.png`;
+};
+
+// Larger flag image for card backgrounds
+const flagCoverPngUrl = (code) => {
+  const cc = String(code || "").trim().toUpperCase();
+  if (!isIso2(cc)) return "";
+  return `https://flagcdn.com/w640/${cc.toLowerCase()}.png`;
 };
 
 function CountryFlag({ code, className = "" }) {
@@ -233,6 +240,69 @@ const SchoolListRow = ({ item, isSelected, onSelect, tr }) => {
     </button>
   );
 };
+
+
+
+/* -----------------------------
+   ✅ Skeletons (loading placeholders)
+   ----------------------------- */
+const SkeletonListRow = () => (
+  <div className="w-full rounded-lg border border-gray-200 bg-white p-3 animate-pulse">
+    <div className="flex gap-3">
+      <div className="h-12 w-12 rounded-md bg-gray-200 border" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="h-4 bg-gray-200 rounded w-2/3" />
+          <div className="h-5 bg-gray-200 rounded w-20" />
+        </div>
+        <div className="mt-2 h-3 bg-gray-200 rounded w-4/5" />
+        <div className="mt-3 h-3 bg-gray-200 rounded w-24" />
+      </div>
+    </div>
+  </div>
+);
+
+const SkeletonGridCard = () => (
+  <div className="w-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm animate-pulse">
+    <div className="h-20 bg-gray-200" />
+    <div className="px-4 pb-4">
+      <div className="-mt-10 flex justify-center">
+        <div className="h-20 w-20 rounded-full bg-gray-200 border-4 border-white" />
+      </div>
+      <div className="mt-3 flex justify-center">
+        <div className="h-4 w-2/3 bg-gray-200 rounded" />
+      </div>
+      <div className="mt-2 flex justify-center">
+        <div className="h-3 w-4/5 bg-gray-200 rounded" />
+      </div>
+      <div className="mt-4 flex justify-center">
+        <div className="h-3 w-1/2 bg-gray-200 rounded" />
+      </div>
+      <div className="mt-4 flex justify-center">
+        <div className="h-9 w-2/3 bg-gray-200 rounded-full" />
+      </div>
+    </div>
+  </div>
+);
+
+const SkeletonDetailsPanel = () => (
+  <Card className="h-[70vh] flex flex-col overflow-hidden animate-pulse">
+    <div className="h-56 bg-gray-200" />
+    <CardContent className="p-6 flex-1 overflow-auto">
+      <div className="h-5 w-24 bg-gray-200 rounded" />
+      <div className="mt-3 h-7 w-3/4 bg-gray-200 rounded" />
+      <div className="mt-3 h-4 w-1/2 bg-gray-200 rounded" />
+      <div className="mt-6 h-11 w-full bg-gray-200 rounded" />
+      <div className="mt-6 h-4 w-32 bg-gray-200 rounded" />
+      <div className="mt-3 space-y-2">
+        <div className="h-3 w-full bg-gray-200 rounded" />
+        <div className="h-3 w-11/12 bg-gray-200 rounded" />
+        <div className="h-3 w-10/12 bg-gray-200 rounded" />
+      </div>
+      <div className="mt-6 h-11 w-full bg-gray-200 rounded" />
+    </CardContent>
+  </Card>
+);
 
 /* -----------------------------
    Carousel helpers
@@ -538,6 +608,115 @@ const UserListRow = ({ user, isSelected, onSelect, tr }) => {
 };
 
 /* -----------------------------
+   LinkedIn-style grid card
+   - Clicking opens the SAME details panel as before (in a dialog)
+   ----------------------------- */
+const DirectoryGridCard = ({ browseTab, item, onOpenDetails, tr }) => {
+  const isSchool = browseTab === "school";
+
+  const name = isSchool
+    ? item.name || item.school_name || item.institution_name || tr?.("directory.common.unknown", "Unknown")
+    : item.full_name || item.name || tr?.("directory.common.unnamed", "Unnamed");
+
+  const country = isSchool
+    ? item.country || item.school_country || "—"
+    : item.country || "—";
+
+  const countryCodeRaw = isSchool
+    ? item.country_code || item.countryCode || item.iso2 || ""
+    : item.country_code || item.countryCode || "";
+  const countryCode = String(countryCodeRaw || "").trim().toUpperCase();
+
+  const coverUrl = flagCoverPngUrl(countryCode);
+
+  const avatar = isSchool
+    ? item.logoUrl || item.school_image_url || item.institution_logo_url || "https://images.unsplash.com/photo-1562774053-701939374585?w=256&h=256&fit=crop&q=80"
+    : item.profile_picture || item.photoURL || "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" + encodeURIComponent(name);
+
+  const basicInfo = isSchool
+    ? `${(item.city || item.school_city || tr?.("directory.common.city", "City"))}, ${getProvinceLabel(item.province || item.school_province) || tr?.("directory.common.province", "Province")}`
+    : (item.headline || item.title || item.position || item.job_title || item.bio || "");
+
+  const isVerified = !!(
+    item?.is_verified === true ||
+    item?.verified === true ||
+    String(item?.verification_status || "").toLowerCase() === "verified" ||
+    String(item?.kyc_status || "").toLowerCase() === "verified"
+  );
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenDetails}
+      className="group w-full overflow-hidden rounded-2xl border border-gray-200 bg-white text-left shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
+    >
+      {/* cover */}
+      <div className="relative h-20 w-full bg-gray-100">
+        {coverUrl ? (
+          <img
+            src={coverUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        ) : null}
+        <div className="absolute inset-0 bg-black/10" />
+      </div>
+
+      {/* body */}
+      <div className="relative px-4 pb-4">
+        {/* avatar */}
+        <div className="-mt-10 flex justify-center">
+          <div className="h-20 w-20 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-sm">
+            <img
+              src={avatar}
+              alt={name}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+
+        {/* name + verified */}
+        <div className="mt-2 text-center">
+          <div className="flex items-center justify-center gap-1">
+            <div className="max-w-[240px] truncate text-base font-semibold text-gray-900">
+              {name}
+            </div>
+            {isVerified ? <Award className="h-4 w-4 text-emerald-600" /> : null}
+          </div>
+
+          {/* info */}
+          {basicInfo ? (
+            <div className="mt-1 line-clamp-2 text-sm text-gray-600">
+              {basicInfo}
+            </div>
+          ) : (
+            <div className="mt-1 text-sm text-gray-400">&nbsp;</div>
+          )}
+        </div>
+
+        {/* country */}
+        <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-600">
+          <MapPin className="h-3.5 w-3.5" />
+          <CountryFlag code={countryCode} />
+          <span className="truncate">{country}</span>
+        </div>
+
+        {/* bottom line */}
+        <div className="mt-4 flex items-center justify-center">
+          <span className="rounded-full border border-blue-500 px-6 py-2 text-sm font-semibold text-blue-600 group-hover:bg-blue-50">
+            {isSchool ? tr?.("directory.school.contact_us", "Contact Us") : tr?.("directory.profile.message_us", "Message Us")}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+};
+
+/* -----------------------------
    ✅ UserDetailsPanel
    ----------------------------- */
 const UserDetailsPanel = ({ user, onMessageClick, tr }) => {
@@ -654,11 +833,16 @@ export default function Directory() {
 
   const [browseTab, setBrowseTab] = useState("school");
 
+  // ✅ Simple in-memory caches to avoid refetch on tab switches
+  const usersCacheRef = useRef(new Map()); // role -> users[]
+  const schoolsLoadedRef = useRef(false);
+
   // Schools data
   const [allSchools, setAllSchools] = useState([]);
   const [allInstitutions, setAllInstitutions] = useState([]);
   const [filteredSchools, setFilteredSchools] = useState([]);
   const [loadingSchools, setLoadingSchools] = useState(true);
+  const [loadingPrograms, setLoadingPrograms] = useState(true);
 
   // User directory data
   const [allUsers, setAllUsers] = useState([]);
@@ -673,6 +857,7 @@ export default function Directory() {
 const [selectedCity, setSelectedCity] = useState("all");
 const [page, setPage] = useState(1);
   const [selectedKey, setSelectedKey] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // ✅ Auth state
   const [currentUser, setCurrentUser] = useState(null);
@@ -818,40 +1003,74 @@ const [page, setPage] = useState(1);
      - institutions: actual schools
      - schools: program docs, linked by school_id == institutions doc id
    ----------------------------- */
-  const loadSchoolData = useCallback(async () => {
-    setLoadingSchools(true);
-    try {
-      const instRef = collection(db, "institutions");
-      const progRef = collection(db, "schools");
+  
+const loadSchoolData = useCallback(async () => {
+  // Two-phase load:
+  // 1) institutions first (fast) => list renders quickly
+  // 2) programs after (can be large) => counts/details update when ready
+  setLoadingSchools(true);
+  setLoadingPrograms(true);
 
-      const [instSnap, progSnap] = await Promise.all([
-        getDocs(instRef),
-        getDocs(progRef),
-      ]);
+  const instRef = collection(db, "institutions");
+  const progRef = collection(db, "schools");
 
-      const institutionsData = instSnap.docs.map((d) => ({ id: d.id, ...((d.data && d.data()) || {}) }));
-      const programsData = progSnap.docs.map((d) => ({ id: d.id, ...((d.data && d.data()) || {}) }));
+  try {
+    const instSnap = await getDocs(instRef);
+    const institutionsData = instSnap.docs.map((d) => ({
+      id: d.id,
+      ...((d.data && d.data()) || {}),
+    }));
+    setAllInstitutions(institutionsData || []);
+  } catch (error) {
+    console.error("Error loading institutions:", error);
+    setAllInstitutions([]);
+  } finally {
+    // Let UI render institutions immediately
+    setLoadingSchools(false);
+  }
 
-      // Keep naming to minimize refactors in rest of file
-      setAllInstitutions(institutionsData || []);
-      setAllSchools(programsData || []);
-    } catch (error) {
-      console.error("Error loading institutions/programs:", error);
-      setAllInstitutions([]);
-      setAllSchools([]);
-    } finally {
-      setLoadingSchools(false);
-    }
-  }, []);
+  // Load programs in the background
+  try {
+    const progSnap = await getDocs(progRef);
+    const programsData = progSnap.docs.map((d) => ({
+      id: d.id,
+      ...((d.data && d.data()) || {}),
+    }));
+    setAllSchools(programsData || []);
+  } catch (error) {
+    console.error("Error loading programs:", error);
+    setAllSchools([]);
+  } finally {
+    setLoadingPrograms(false);
+  }
+}, []);
+
 
   useEffect(() => {
+    if (browseTab !== "school") return;
+    if (schoolsLoadedRef.current) return;
+    schoolsLoadedRef.current = true;
     loadSchoolData();
-  }, [loadSchoolData]);
+  }, [browseTab, loadSchoolData]);
 
   /* -----------------------------
      Load users for directory
    ----------------------------- */
   const fetchUsersForRole = useCallback(async (role) => {
+    const r = String(role || "").toLowerCase().trim();
+    if (!r) {
+      setAllUsers([]);
+      return;
+    }
+
+    // ✅ Cache: switching tabs feels instant
+    const cached = usersCacheRef.current.get(r);
+    if (cached && Array.isArray(cached) && cached.length) {
+      setAllUsers(cached);
+      setLoadingUsers(false);
+      return;
+    }
+
     setLoadingUsers(true);
     try {
       const usersRef = collection(db, "users");
@@ -873,7 +1092,9 @@ const [page, setPage] = useState(1);
         });
       });
 
-      setAllUsers(Array.from(byId.values()));
+      const arr = Array.from(byId.values());
+      usersCacheRef.current.set(r, arr);
+      setAllUsers(arr);
     } catch (e) {
       console.error("Error loading users:", e);
       setAllUsers([]);
@@ -1643,15 +1864,6 @@ const [page, setPage] = useState(1);
     [currentUser, currentUserDoc, onContactSchool, openAuthDialog]
   );
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-green-600 mx-auto mb-4" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
@@ -2022,6 +2234,45 @@ const [page, setPage] = useState(1);
         </DialogContent>
       </Dialog>
 
+      {/* Details dialog (uses the SAME panels as the previous right-side UI) */}
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="max-w-5xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle>
+              {browseTab === "school"
+                ? tr("directory.school.details", "School Details")
+                : tr("directory.profile.details", "Profile Details")}
+            </DialogTitle>
+            <DialogDescription>
+              {browseTab === "school"
+                ? tr(
+                    "directory.school.details_sub",
+                    "View overview, programs, and contact options."
+                  )
+                : tr(
+                    "directory.profile.details_sub",
+                    "View profile details and message options."
+                  )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            {loading ? (
+            <SkeletonDetailsPanel />
+          ) : browseTab === "school" ? (
+            <SchoolDetailsPanel
+              item={selectedItem}
+              programs={selectedPrograms}
+              onContactClick={onContactClick}
+              onProgramClick={onProgramClick}
+              tr={tr}
+            />
+          ) : (
+            <UserDetailsPanel user={selectedItem} onMessageClick={onMessageClick} tr={tr} />
+          )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         <div className="mb-8 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-4">
@@ -2153,7 +2404,7 @@ const [page, setPage] = useState(1);
                         {browseTab === "school" ? (
                           <>
                             {" "}
-                            ({allSchools.length} programs, {allInstitutions.length} institutions)
+                            {loadingPrograms ? tr("directory.school.loading_programs","Loading programs…") : `${allSchools.length} programs`}, {allInstitutions.length} institutions
                           </>
                         ) : null}
                       </>
@@ -2171,106 +2422,83 @@ const [page, setPage] = useState(1);
           </Card>
         </div>
 
-        {/* Split layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* LEFT LIST */}
-          <div className="lg:col-span-5 min-h-0">
-            <Card className="h-[70vh] flex flex-col">
-              <CardContent className="p-4 h-full flex flex-col min-h-0">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900">
-                    {browseTab === "school"
-                      ? "Schools & Institutions"
-                      : `${browseTab.charAt(0).toUpperCase() + browseTab.slice(1)}s`}
-                  </h3>
-                  <Badge variant="secondary">{totalCount}</Badge>
-                </div>
-
-                <div className="flex-1 min-h-0 overflow-auto space-y-3 pr-1">
-                  {pagedItems.map((item) => {
-                    const key = item.school_key || item.id;
-                    return browseTab === "school" ? (
-                      <SchoolListRow
-                        key={key}
-                        item={item}
-                        isSelected={key === selectedKey}
-                        onSelect={() => setSelectedKey(key)}
-                        tr={tr}
-                      />
-                    ) : (
-                      <UserListRow
-                        key={key}
-                        user={item}
-                        isSelected={key === selectedKey}
-                        onSelect={() => setSelectedKey(key)}
-                        tr={tr}
-                      />
-                    );
-                  })}
-                </div>
-
-                {/* Pagination */}
-                {totalCount > 0 && totalPages > 1 && (
-                  <div className="pt-4 flex items-center justify-center gap-2 flex-wrap">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updatePage(Math.max(1, page - 1))}
-                      disabled={page === 1}
-                    >
-                      Prev
-                    </Button>
-
-                    {pageNumbers.map((p, i) =>
-                      p === "…" ? (
-                        <span key={`ellipsis-${i}`} className="px-2 text-gray-500 select-none">
-                          …
-                        </span>
-                      ) : (
-                        <Button
-                          key={p}
-                          type="button"
-                          size="sm"
-                          variant={p === page ? "default" : "outline"}
-                          onClick={() => updatePage(p)}
-                          aria-current={p === page ? "page" : undefined}
-                        >
-                          {p}
-                        </Button>
-                      )
-                    )}
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updatePage(Math.min(totalPages, page + 1))}
-                      disabled={page === totalPages}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        {/* Grid layout (LinkedIn-style cards) */}
+        <div className="mt-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {loading ? (
+              Array.from({ length: 8 }).map((_, i) => <SkeletonGridCard key={`sk-${i}`} />)
+            ) : pagedItems.length ? (
+              pagedItems.map((item) => {
+                const key = item.school_key || item.id;
+                return (
+                  <DirectoryGridCard
+                    key={key}
+                    browseTab={browseTab}
+                    item={item}
+                    tr={tr}
+                    onOpenDetails={() => {
+                      setSelectedKey(key);
+                      setDetailsOpen(true);
+                    }}
+                  />
+                );
+              })
+            ) : (
+              <div className="col-span-full">
+                <Card>
+                  <CardContent className="p-10 text-center text-gray-600">
+                    {tr("directory.common.no_results", "No results found. Try adjusting your filters.")}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
 
-          {/* RIGHT DETAILS */}
-          <div className="lg:col-span-7 min-h-0">
-            <div className="h-[70vh] min-h-0">
-              {browseTab === "school" ? (
-                <SchoolDetailsPanel
-                  item={selectedItem}
-                  programs={selectedPrograms}
-                  onContactClick={onContactClick}
-                  onProgramClick={onProgramClick}
-                 tr={tr} />
-              ) : (
-                <UserDetailsPanel user={selectedItem} onMessageClick={onMessageClick}  tr={tr} />
+          {/* Pagination */}
+          {totalCount > 0 && totalPages > 1 && (
+            <div className="pt-6 flex items-center justify-center gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => updatePage(Math.max(1, page - 1))}
+                disabled={page === 1}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Prev
+              </Button>
+
+              {pageNumbers.map((p, i) =>
+                p === "…" ? (
+                  <span key={`ellipsis-${i}`} className="px-2 text-gray-500 select-none">
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    key={p}
+                    type="button"
+                    size="sm"
+                    variant={p === page ? "default" : "outline"}
+                    onClick={() => updatePage(p)}
+                    aria-current={p === page ? "page" : undefined}
+                  >
+                    {p}
+                  </Button>
+                )
               )}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => updatePage(Math.min(totalPages, page + 1))}
+                disabled={page === totalPages}
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Empty state */}
