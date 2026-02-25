@@ -808,6 +808,68 @@ If you didn’t expect this invitation, you can safely ignore this email.`,
 // POST /acceptInvite
 // Header: Authorization: Bearer <Firebase ID token>
 // Body: { inviteId: string, token: string }
+
+// Public: Get invited role (and invited email) for an invite link (no auth)
+// Query: ?inviteId=...&token=...
+exports.getInviteRolePublic = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "GET") {
+        return res.status(405).json({ ok: false, error: "Method not allowed" });
+      }
+
+      const inviteId = String(req.query.inviteId || "");
+      const token = String(req.query.token || "");
+
+      if (!inviteId || !token) {
+        return res.status(400).json({ ok: false, error: "Missing inviteId or token" });
+      }
+
+      const snap = await admin.firestore().collection("invites").doc(inviteId).get();
+      if (!snap.exists) {
+        return res.status(404).json({ ok: false, error: "Invite not found" });
+      }
+
+      const invite = snap.data() || {};
+
+      // Validate token (matches how createInvite stores tokenHash)
+      const expectedHash = sha256(token + INVITE_PEPPER);
+      if (invite.tokenHash !== expectedHash) {
+        return res.status(403).json({ ok: false, error: "Invalid token" });
+      }
+
+      // Validate invite status / expiry / usage
+      if (invite.status !== "active") {
+        return res.status(403).json({ ok: false, error: "Invite not active" });
+      }
+
+      if (invite.expiresAt?.toDate && invite.expiresAt.toDate() < new Date()) {
+        return res.status(403).json({ ok: false, error: "Invite expired" });
+      }
+
+      if (invite.usedAt || invite.usedByUid) {
+        return res.status(403).json({ ok: false, error: "Invite already used" });
+      }
+
+      const role = invite.invitedRole;
+      if (!role) {
+        return res.status(500).json({ ok: false, error: "Invite role missing" });
+      }
+
+      // Return only what SEO needs (no inviter info)
+      return res.json({
+        ok: true,
+        role,
+        invitedEmail: invite.invitedEmail || null,
+      });
+    } catch (e) {
+      console.error("getInviteRolePublic error:", e);
+      return res.status(500).json({ ok: false, error: "Server error" });
+    }
+  });
+});
+
+
 exports.acceptInvite = onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
