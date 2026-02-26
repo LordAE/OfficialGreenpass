@@ -2,6 +2,8 @@
 import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Layout from "@/pages/Layout.jsx";
+import Organization from "@/pages/Organization";
+import AcceptOrgInvite from "@/pages/AcceptOrgInvite";
 import Welcome from "@/pages/Welcome.jsx";
 import Directory from "@/pages/Directory";
 import Dashboard from "@/pages/Dashboard";
@@ -230,6 +232,17 @@ export default function App() {
             </RequireAuth>
           }
         />
+
+
+{/* Organization (School/Agent/Tutor) */}
+<Route
+  path="organization"
+  element={
+    <RequireRole currentUser={currentUser} loading={loading} allow={["school", "agent", "tutor"]}>
+      <Organization />
+    </RequireRole>
+  }
+/>
 
         {/* Student-only */}
         <Route

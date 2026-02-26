@@ -1332,7 +1332,102 @@ match /follow_requests_sent/{followeeId} {
       );
     }
 
+    
+/* ===============================
+   ORGANIZATIONS (Team seats)
+   - org owner/admin manages org
+   - baseSlots=5 free, extraSlots paid
+   - usedSlots increments when members join
+   =============================== */
+
+function orgRef(orgId) {
+  return /databases/$(database)/documents/organizations/$(orgId);
+}
+
+function orgExists(orgId) {
+  return orgId is string && exists(orgRef(orgId));
+}
+
+function isOrgOwner(orgId) {
+  return signedIn() && orgExists(orgId) && get(orgRef(orgId)).data.ownerId == request.auth.uid;
+}
+
+function canUseOrgFeature() {
+  // Subscription gate: only applies to school/agent/tutor when subscription mode is enabled
+  // subscription doc: app_config/subscription { enabled: true/false }
+  // if not enabled, allow.
+  // if enabled, require user doc subscribed==true (or subscription_active==true)
+  return signedIn() && (
+    !exists(/databases/$(database)/documents/app_config/subscription) ||
+    get(/databases/$(database)/documents/app_config/subscription).data.enabled != true ||
+    !(userHasType("school") || userHasType("agent") || userHasType("tutor")) ||
+    (
+      exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscribed == true ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscription_active == true ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionActive == true
+      )
+    )
+  );
+}
+
+match /organizations/{orgId} {
+  allow read: if signedIn() && (isAdmin() || isOrgOwner(orgId));
+
+  // Create org: school/agent/tutor (gated) or admin. OwnerId must be caller.
+  allow create: if signedIn()
+    && canUseOrgFeature()
+    && (isAdmin() || userHasType("school") || userHasType("agent") || userHasType("tutor"))
+    && request.resource.data.ownerId == request.auth.uid
+    && request.resource.data.baseSlots == 5
+    && request.resource.data.extraSlots == 0
+    && request.resource.data.usedSlots >= 0;
+
+  // Update org: owner/admin only. Prevent lowering usedSlots below current.
+  allow update: if signedIn()
+    && (isAdmin() || isOrgOwner(orgId))
+    && request.resource.data.ownerId == resource.data.ownerId
+    && request.resource.data.usedSlots >= resource.data.usedSlots;
+
+  allow delete: if signedIn() && (isAdmin() || isOrgOwner(orgId));
+}
+
+match /organization_members/{memberId} {
+  function memberOrgId() { return resource.data.orgId; }
+  function newMemberOrgId() { return request.resource.data.orgId; }
+
+  // Read: owner/admin. (Members reading their own can be added later if you want)
+  allow read: if signedIn() && (
+    isAdmin() ||
+    (resource.data.orgId is string && isOrgOwner(resource.data.orgId))
+  );
+
+  // Client create: only when creating org owner member (the initial addDoc)
+  // This is needed because org creation currently adds owner member from frontend.
+  allow create: if signedIn()
+    && canUseOrgFeature()
+    && request.resource.data.userId == request.auth.uid
+    && request.resource.data.role == "owner"
+    && request.resource.data.orgId is string
+    && isOrgOwner(request.resource.data.orgId);
+
+  // All other member writes are server-only (accept invite runs in Cloud Function)
+  allow update, delete: if false;
+}
+
+// ===============================
+// ORG INVITES (server writes only)
+// ===============================
+match /org_invites/{inviteId} {
+  allow read: if signedIn() && (
+    isAdmin() ||
+    (resource.data.orgId is string && isOrgOwner(resource.data.orgId))
+  );
+  allow create, update, delete: if false;
+}
+
+
     match /{document=**} { allow read, write: if false; }
   }
-
 }

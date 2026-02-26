@@ -86,7 +86,8 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   â Marketing Website URL (env-first)
+   â
+ Marketing Website URL (env-first)
 ========================= */
 const MARKETING_URL =
   (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
@@ -115,6 +116,7 @@ const FALLBACK_TEXT = {
   logOut: "Log Out",
   profileSettings: "Profile Settings",
   more: "More",
+  organization: "Organization",
   // role-specific dropdown labels
   schoolProfile: "School Profile",
   schoolDetails: "School Details",
@@ -124,7 +126,7 @@ const FALLBACK_TEXT = {
 
 const fb = (key) => FALLBACK_TEXT[key] || key;
 
-// â i18n helper for this file (avoids `tr is not defined` in sub-components)
+// i18n helper for this file (avoids `tr is not defined` in sub-components)
 function useNavTr() {
   const { t } = useTranslation();
   return React.useCallback(
@@ -162,7 +164,7 @@ const TikTokIcon = ({ className = "h-5 w-5" }) => (
   </svg>
 );
 
-// â 3x3 Dots (App Launcher style) â matches the circular 9-dot icon
+// Dots (App Launcher style) â matches the circular 9-dot icon
 const Dots9Icon = ({ className = "h-6 w-6" }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
     {[
@@ -391,18 +393,21 @@ function buildAccountMenuItems(currentUser, tr) {
 
   if (role === "agent") {
     items.unshift(
+      { label: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Users },
       { label: tr("myStudents", "My Students"), url: createPageUrl("MyStudents"), icon: Users }
     );
   }
 
   if (role === "tutor") {
     items.unshift(
+      { label: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Users },
       { label: tr("myStudents", "My Students"), url: createPageUrl("TutorStudents"), icon: Users }
     );
   }
 
   if (role === "school") {
     items.unshift(
+      { label: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Users },
       { label: tr("schoolProfile", "School Profile"), url: createPageUrl("SchoolProfile"), icon: Building },
       { label: tr("schoolDetails", "School Details"), url: createPageUrl("SchoolDetails"), icon: BookOpen }
     );
@@ -412,7 +417,8 @@ function buildAccountMenuItems(currentUser, tr) {
 }
 
 /* =========================
-   â Mobile Bottom Nav (restored)
+   â
+ Mobile Bottom Nav (restored)
    NOTE: Notifications route removed from "More" (popover is in top bar)
 ========================= */
 const MobileBottomNav = ({ nav, isActive }) => {
@@ -509,7 +515,8 @@ const MobileBottomNav = ({ nav, isActive }) => {
 
               <div className="px-3 pb-6 max-h-[65vh] overflow-y-auto">
                 <div className="space-y-1">
-                  {/* â Website link first */}
+                  {/* â
+ Website link first */}
 {more.map((it) => (
                     <SheetItem key={it.url} to={it.url} Icon={it.icon} label={it.title} />
                   ))}
@@ -770,7 +777,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
     [q, navigate]
   );
 
-  // â FIX: IconLink was used below but not defined in the Admin layout scope
+  // IconLink was used below but not defined in the Admin layout scope
 const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
   const active = isActive(to);
 
@@ -851,7 +858,8 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â POPUP Notifications (no route) */}
+              {/* â
+ POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -979,7 +987,8 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â POPUP Notifications (no route) */}
+              {/* â
+ POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1108,7 +1117,8 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â POPUP Notifications (no route) */}
+              {/* â
+ POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1237,7 +1247,8 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â POPUP Notifications (no route) */}
+              {/* â
+ POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1271,7 +1282,8 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
 };
 
 /* =========================
-   â ADMIN: Top Nav + Left Panel
+   â
+ ADMIN: Top Nav + Left Panel
 ========================= */
 const AdminAuthedTopNavWithLeftPanelLayout = ({
   currentUser,
@@ -1283,14 +1295,14 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
   const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
   const supportMessagesUrl = withLang("/messages?inbox=support");
 
-  const navigate = useNavigate(); // â FIX: was missing (your admin used navigate without declaring)
+  const navigate = useNavigate(); // â
   const isActive = useIsActive();
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [acctOpen, setAcctOpen] = React.useState(false);
 
   
 
-  // â FIX: IconLink was used below but not defined in the Admin layout scope
+  //  IconLink was used below but not defined in the Admin layout scope
   const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
     const active = isActive(to);
     return (
@@ -1434,7 +1446,8 @@ const centerItems = React.useMemo(
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â POPUP Notifications (no route) */}
+              {/* â
+ POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1577,7 +1590,7 @@ function buildDesktopNav(currentUser) {
 
   const role = (currentUser?.user_type || currentUser?.role || "student").toLowerCase();
 
-  // â Admin uses the sidebar layout on desktop (so it needs the full admin nav here)
+  // Admin uses the sidebar layout on desktop (so it needs the full admin nav here)
   if (role === "admin") {
     return [
       { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
@@ -1624,7 +1637,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
   const tr = typeof trFn === "function" ? trFn : (key, def) => def;
   const role = (currentUser?.user_type || "student").toLowerCase();
 
-  // â IMPORTANT: Removed Notifications route items from all "more" menus.
+  // Removed Notifications route items from all "more" menus.
   // Notifications are ONLY via <NotificationsBell /> in the top bar (popover).
 
   // Agent (match desktop center icons: Dashboard / Directory / Events / My Students)
@@ -1637,6 +1650,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
         { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
+        { title: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Users },
         { title: tr("myStudents", "My Students"), url: createPageUrl("MyStudents"), icon: Users },
         { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
         { title: tr("logOut", "Log Out"), url: createPageUrl("Logout"), icon: LogOut },
@@ -1654,6 +1668,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
         { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
+        { title: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Users },
         { title: tr("myStudents", "My Students"), url: createPageUrl("TutorStudents"), icon: Users },
         { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
         { title: tr("logOut", "Log Out"), url: createPageUrl("Logout"), icon: LogOut },
@@ -1671,6 +1686,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
         { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
       ],
       more: [
+        { title: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Users },
         { title: tr("schoolProfile", "School Profile"), url: createPageUrl("SchoolProfile"), icon: Building },
         { title: tr("schoolDetails", "School Details"), url: createPageUrl("SchoolDetails"), icon: BookOpen },
         { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },

@@ -750,9 +750,8 @@ exports.createInvite = onRequest(async (req, res) => {
                       </p>
 
                       <p style="font-size:15px; line-height:1.6;">
-                        GreenPass is a platform that helps manage student applications,
-                        connect with agents and schools, and organize events and services in one place. A platform that helps manage student applications,
-                        connect with agents and schools, and organize events and services in one place.
+                        GreenPass is an all-in-one platform connecting schools, agents, students, and tutors to manage applications, collaborate seamlessly, and access quality opportunities.
+                        It helps all partners save time, reduce costs, and grow efficiently through one simple, transparent system.
                       </p>
 
                       <!-- CTA Button -->
@@ -982,3 +981,309 @@ exports.revokeInvite = onRequest(async (req, res) => {
     }
   });
 });
+
+/**
+ * =========================================================
+ * ORG INVITES (Secure, Zoho-style)
+ * - Owner creates invite => writes org_invites + sends email
+ * - Invitee accepts => server verifies token + slots + email, then adds member
+ * =========================================================
+ */
+
+const ORG_INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+const ORG_INVITE_PEPPER = "org_invite_pepper_v1"; // change anytime (invalidates old links)
+
+function normalizeOrgMemberRole(r) {
+  const x = String(r || "member").toLowerCase().trim();
+  if (x === "owner" || x === "admin" || x === "staff" || x === "member") return x;
+  return "member";
+}
+
+async function requireOrgOwnerOrAdmin(uid, orgId) {
+  const orgSnap = await admin.firestore().collection("organizations").doc(orgId).get();
+  if (!orgSnap.exists) throw new Error("Organization not found");
+  const org = orgSnap.data() || {};
+  if (org.ownerId !== uid) {
+    // allow platform admin
+    const uSnap = await admin.firestore().collection("users").doc(uid).get();
+    const ud = uSnap.exists ? (uSnap.data() || {}) : {};
+    const role = String(ud.role || ud.user_role || "").toLowerCase();
+    if (role !== "admin" && role !== "advisor" && role !== "superadmin") {
+      throw new Error("Not authorized");
+    }
+  }
+  return orgSnap;
+}
+
+function sha256hex(s) {
+  return crypto.createHash("sha256").update(String(s)).digest("hex");
+}
+
+function safeOrigin() {
+  // Prefer app domain for accepting org invites
+  return "https://app.greenpassgroup.com";
+}
+
+exports.createOrgInvite = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+      const { uid } = await requireBearerUid(req);
+      const { orgId, email, role } = req.body || {};
+
+      const orgIdStr = String(orgId || "").trim();
+      const invitedEmail = String(email || "").trim().toLowerCase();
+      const invitedRole = normalizeOrgMemberRole(role);
+
+      if (!orgIdStr) return res.status(400).json({ error: "orgId required" });
+      if (!invitedEmail || !invitedEmail.includes("@")) return res.status(400).json({ error: "Valid email required" });
+
+      const orgSnap = await requireOrgOwnerOrAdmin(uid, orgIdStr);
+      const org = orgSnap.data() || {};
+
+      // Slot check (soft): prevent sending invites if full
+      const baseSlots = Number(org.baseSlots ?? 5);
+      const extraSlots = Number(org.extraSlots ?? 0);
+      const totalSlots = Number(org.totalSlots ?? (baseSlots + extraSlots));
+      const usedSlots = Number(org.usedSlots ?? 0);
+      if (usedSlots >= totalSlots) {
+        return res.status(400).json({ error: "Slot limit reached" });
+      }
+
+      const rawToken = randomToken(32);
+      const tokenHash = sha256hex(rawToken + ORG_INVITE_PEPPER);
+
+      const now = Date.now();
+      const expiresAtMs = now + ORG_INVITE_TTL_MS;
+
+      const invRef = admin.firestore().collection("org_invites").doc();
+      await invRef.set({
+        orgId: orgIdStr,
+        orgName: String(org.name || ""),
+        email: invitedEmail,
+        role: invitedRole,
+        tokenHash,
+        status: "pending",
+        invitedBy: uid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: admin.firestore.Timestamp.fromMillis(expiresAtMs),
+        acceptedAt: null,
+        acceptedBy: null,
+        revokedAt: null,
+        revokedBy: null,
+      });
+
+      const base = safeOrigin();
+      const inviteLink = `${base}/accept-org-invite?invite=${encodeURIComponent(invRef.id)}&token=${encodeURIComponent(rawToken)}`;
+
+      // Send email using your existing "mail" collection
+      await admin.firestore().collection("mail").add({
+        to: invitedEmail,
+        message: {
+          subject: `Invitation to join ${org.name || "an organization"} on GreenPass`,
+          html: `
+            <div style="font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; padding:24px;">
+              <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,0.08);">
+                <div style="background:#0f766e; color:#fff; padding:18px 22px;">
+                  <h2 style="margin:0; font-size:20px;">You’re invited to join an organization</h2>
+                  <p style="margin:6px 0 0; font-size:13px; opacity:.9;">GreenPass Team Access</p>
+                </div>
+                <div style="padding:22px; color:#111827;">
+                  <p style="margin:0 0 10px; font-size:14px; line-height:1.6;">Hi 👋</p>
+                  <p style="margin:0 0 10px; font-size:14px; line-height:1.6;">
+                    You’ve been invited to join <b>${org.name || "an organization"}</b>.
+                  </p>
+                  <p style="margin:0 0 18px; font-size:14px; line-height:1.6;">
+                    Role: <b>${invitedRole}</b>
+                  </p>
+                  <div style="text-align:center; margin:20px 0;">
+                    <a href="${inviteLink}" style="display:inline-block; background:#10b981; color:#fff; text-decoration:none; padding:12px 18px; border-radius:10px; font-weight:700;">
+                      Accept invitation
+                    </a>
+                  </div>
+                  <p style="margin:0 0 8px; font-size:12px; color:#6b7280;">If the button doesn’t work, copy this link:</p>
+                  <div style="font-size:12px; background:#f3f4f6; padding:10px 12px; border-radius:10px; word-break:break-all;">${inviteLink}</div>
+                  <p style="margin:16px 0 0; font-size:12px; color:#6b7280;">This invite expires in 7 days.</p>
+                </div>
+                <div style="background:#f9fafb; padding:12px 18px; text-align:center; font-size:12px; color:#9ca3af;">
+                  © ${new Date().getFullYear()} GreenPass Group
+                </div>
+              </div>
+            </div>
+          `,
+          text: `You’ve been invited to join ${org.name || "an organization"}.\n\nOpen this link to accept:\n${inviteLink}\n\nThis invite expires in 7 days.`,
+        },
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return res.json({ ok: true, inviteId: invRef.id, inviteLink });
+    } catch (err) {
+      console.error("createOrgInvite error:", err);
+      return res.status(500).json({ error: err.message || "createOrgInvite failed" });
+    }
+  });
+});
+
+exports.revokeOrgInvite = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+      const { uid } = await requireBearerUid(req);
+      const { inviteId } = req.body || {};
+      const invId = String(inviteId || "").trim();
+      if (!invId) return res.status(400).json({ error: "inviteId required" });
+
+      const invRef = admin.firestore().collection("org_invites").doc(invId);
+      const invSnap = await invRef.get();
+      if (!invSnap.exists) return res.status(404).json({ error: "Invite not found" });
+
+      const inv = invSnap.data() || {};
+      await requireOrgOwnerOrAdmin(uid, inv.orgId);
+
+      if (String(inv.status || "").toLowerCase() !== "pending") {
+        return res.status(400).json({ error: "Only pending invites can be revoked" });
+      }
+
+      await invRef.update({
+        status: "revoked",
+        revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+        revokedBy: uid,
+      });
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("revokeOrgInvite error:", err);
+      return res.status(500).json({ error: err.message || "revokeOrgInvite failed" });
+    }
+  });
+});
+
+exports.getOrgInvitePublic = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      // Public: no auth required. Used to show preview + required email.
+      const inviteId = String(req.query?.invite || req.body?.invite || "").trim();
+      const token = String(req.query?.token || req.body?.token || "").trim();
+      if (!inviteId || !token) return res.status(400).json({ error: "invite and token required" });
+
+      const invRef = admin.firestore().collection("org_invites").doc(inviteId);
+      const invSnap = await invRef.get();
+      if (!invSnap.exists) return res.status(404).json({ error: "Invite not found" });
+
+      const inv = invSnap.data() || {};
+      const now = Date.now();
+
+      const expiresAtMs = inv.expiresAt?.toMillis ? inv.expiresAt.toMillis() : null;
+      if (expiresAtMs && now > expiresAtMs) {
+        return res.json({ ok: true, status: "expired", orgName: inv.orgName || "", email: inv.email || "", role: inv.role || "member" });
+      }
+
+      const expected = inv.tokenHash;
+      const actual = sha256hex(token + ORG_INVITE_PEPPER);
+      if (!expected || expected !== actual) return res.status(403).json({ error: "Invalid token" });
+
+      return res.json({
+        ok: true,
+        status: inv.status || "pending",
+        orgId: inv.orgId,
+        orgName: inv.orgName || "",
+        email: inv.email || "",
+        role: inv.role || "member",
+        expiresAt: expiresAtMs,
+      });
+    } catch (err) {
+      console.error("getOrgInvitePublic error:", err);
+      return res.status(500).json({ error: err.message || "getOrgInvitePublic failed" });
+    }
+  });
+});
+
+exports.acceptOrgInvite = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const inviteId = String(req.body?.invite || "").trim();
+      const token = String(req.body?.token || "").trim();
+      if (!inviteId || !token) return res.status(400).json({ error: "invite and token required" });
+
+      const userEmail = String(decoded?.email || "").toLowerCase();
+      if (!userEmail) return res.status(400).json({ error: "User email missing" });
+
+      const invRef = admin.firestore().collection("org_invites").doc(inviteId);
+      const orgs = admin.firestore().collection("organizations");
+      const members = admin.firestore().collection("organization_members");
+      const users = admin.firestore().collection("users");
+
+      await admin.firestore().runTransaction(async (tx) => {
+        const invSnap = await tx.get(invRef);
+        if (!invSnap.exists) throw new Error("Invite not found");
+
+        const inv = invSnap.data() || {};
+
+        const expiresAtMs = inv.expiresAt?.toMillis ? inv.expiresAt.toMillis() : null;
+        if (expiresAtMs && Date.now() > expiresAtMs) throw new Error("Invite expired");
+
+        if (String(inv.status || "").toLowerCase() !== "pending") throw new Error("Invite not pending");
+
+        const expected = inv.tokenHash;
+        const actual = sha256hex(token + ORG_INVITE_PEPPER);
+        if (!expected || expected !== actual) throw new Error("Invalid token");
+
+        const invEmail = String(inv.email || "").toLowerCase();
+        if (!invEmail || invEmail !== userEmail) throw new Error("Email mismatch");
+
+        const orgRef = orgs.doc(String(inv.orgId || ""));
+        const orgSnap = await tx.get(orgRef);
+        if (!orgSnap.exists) throw new Error("Organization not found");
+
+        const org = orgSnap.data() || {};
+        const baseSlots = Number(org.baseSlots ?? 5);
+        const extraSlots = Number(org.extraSlots ?? 0);
+        const totalSlots = Number(org.totalSlots ?? (baseSlots + extraSlots));
+        const usedSlots = Number(org.usedSlots ?? 0);
+
+        if (usedSlots >= totalSlots) throw new Error("Slot limit reached");
+
+        // Prevent duplicate membership for same user+org
+        // (best-effort: query not allowed in transaction, so use a deterministic doc id)
+        const memberDocId = `${orgRef.id}_${uid}`;
+        const memRef = members.doc(memberDocId);
+        const memSnap = await tx.get(memRef);
+        if (memSnap.exists) {
+          // Still mark invite accepted to prevent reuse
+          tx.update(invRef, { status: "accepted", acceptedAt: admin.firestore.FieldValue.serverTimestamp(), acceptedBy: uid });
+          return;
+        }
+
+        tx.set(memRef, {
+          orgId: orgRef.id,
+          userId: uid,
+          email: userEmail,
+          role: normalizeOrgMemberRole(inv.role),
+          status: "active",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        tx.update(orgRef, { usedSlots: usedSlots + 1 });
+
+        tx.update(invRef, {
+          status: "accepted",
+          acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+          acceptedBy: uid,
+        });
+
+        tx.set(users.doc(uid), { orgId: orgRef.id }, { merge: true });
+      });
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("acceptOrgInvite error:", err);
+      return res.status(500).json({ error: err.message || "acceptOrgInvite failed" });
+    }
+  });
+});
+
