@@ -48,6 +48,16 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage
 // 🔧 Firestore entities (for creating the first role record after onboarding)
 import { Agent, Tutor, SchoolProfile, Vendor } from "@/api/entities";
 
+// Prevent open-redirects: only allow internal paths like '/accept-org-invite?...'
+function safeInternalPath(p) {
+  if (!p || typeof p !== "string") return "";
+  if (!p.startsWith("/")) return "";
+  if (p.startsWith("//")) return "";
+  if (p.includes("http://") || p.includes("https://")) return "";
+  return p;
+}
+
+
 const STEPS = {
   CHOOSE_ROLE: "choose_role",
   BASIC_INFO: "basic_info",
