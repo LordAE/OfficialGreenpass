@@ -750,8 +750,9 @@ exports.createInvite = onRequest(async (req, res) => {
                       </p>
 
                       <p style="font-size:15px; line-height:1.6;">
-                        GreenPass is an all-in-one platform connecting schools, agents, students, and tutors to manage applications, collaborate seamlessly, and access quality opportunities.
-                        It helps all partners save time, reduce costs, and grow efficiently through one simple, transparent system.
+                        GreenPass is a professional platform specifically designed for the international education sector. 
+                        On GreenPass, schools, agents, and tutors interact in a transparent environment, share verified content, and manage applications efficiently. 
+                        It is a space where you can build credibility, create tangible value, and enhance your reputation within the professional education community.
                       </p>
 
                       <!-- CTA Button -->
