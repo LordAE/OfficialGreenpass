@@ -18,12 +18,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 
- const inviteId = params.get("invite") || "";
- const inviteToken = params.get("token") || "";
 
- // ✅ Preserve safe `next` (for org invitations and other deep links)
- const rawNextFromUrl = params.get("next") || "";
- const nextFromUrl = safeNextPath(rawNextFromUrl);
 import {
   Loader2,
   User as UserIcon,
