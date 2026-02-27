@@ -181,11 +181,15 @@ export default function Organization() {
     setMembers(mSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
     // Owner status list comes from Firestore reads (writes are server-only)
-    const iSnap = await getDocs(
-      query(collection(db, "org_invites"), where("orgId", "==", orgDoc.id), orderBy("createdAt", "desc"), limit(50))
-    );
-    setInvites(iSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-
+    // Invites are visible to owner/admin only (rules enforce this too)
+    if (orgDoc?.ownerId === uid) {
+      const iSnap = await getDocs(
+        query(collection(db, "org_invites"), where("orgId", "==", orgDoc.id), orderBy("createdAt", "desc"), limit(50))
+      );
+      setInvites(iSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } else {
+      setInvites([]);
+    }
     return orgDoc;
   };
 

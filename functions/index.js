@@ -1041,6 +1041,23 @@ exports.createOrgInvite = onRequest(async (req, res) => {
 
       const orgSnap = await requireOrgOwnerOrAdmin(uid, orgIdStr);
       const org = orgSnap.data() || {};
+      // Block inviting an email that already belongs to an organization (existing registered user)
+      try {
+        const usersCol = admin.firestore().collection("users");
+
+        const q1 = await usersCol.where("emailLower", "==", invitedEmail).limit(1).get();
+        const q2 = q1.empty ? await usersCol.where("email", "==", invitedEmail).limit(1).get() : q1;
+
+        if (!q2.empty) {
+          const existingUser = q2.docs[0].data() || {};
+          if (existingUser.orgId) {
+            return res.status(400).json({ error: "This email already belongs to an organization." });
+          }
+        }
+      } catch (e) {
+        // Non-fatal: if query fails, we still allow invite creation (accept step will enforce safety)
+        console.warn("[createOrgInvite] org check skipped:", e?.message || e);
+      }
 
       // Slot check (soft): prevent sending invites if full
       const baseSlots = Number(org.baseSlots ?? 5);

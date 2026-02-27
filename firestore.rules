@@ -1352,6 +1352,13 @@ function isOrgOwner(orgId) {
   return signedIn() && orgExists(orgId) && get(orgRef(orgId)).data.ownerId == request.auth.uid;
 }
 
+function isOrgMember(orgId) {
+  // membership doc id is deterministic: {orgId}_{uid}
+  return signedIn()
+    && (orgId is string)
+    && exists(/databases/$(database)/documents/organization_members/$(orgId + "_" + request.auth.uid));
+}
+
 function canUseOrgFeature() {
   // Subscription gate: only applies to school/agent/tutor when subscription mode is enabled
   // subscription doc: app_config/subscription { enabled: true/false }
@@ -1373,7 +1380,7 @@ function canUseOrgFeature() {
 }
 
 match /organizations/{orgId} {
-  allow read: if signedIn() && (isAdmin() || isOrgOwner(orgId));
+  allow read: if signedIn() && (isAdmin() || isOrgOwner(orgId) || isOrgMember(orgId));
 
   // Create org: school/agent/tutor (gated) or admin. OwnerId must be caller.
   allow create: if signedIn()
@@ -1397,10 +1404,10 @@ match /organization_members/{memberId} {
   function memberOrgId() { return resource.data.orgId; }
   function newMemberOrgId() { return request.resource.data.orgId; }
 
-  // Read: owner/admin. (Members reading their own can be added later if you want)
+  // Read: admin/owner OR any member in the same org (so members can see the roster)
   allow read: if signedIn() && (
     isAdmin() ||
-    (resource.data.orgId is string && isOrgOwner(resource.data.orgId))
+    (resource.data.orgId is string && (isOrgOwner(resource.data.orgId) || isOrgMember(resource.data.orgId)))
   );
 
   // Client create: only when creating org owner member (the initial addDoc)

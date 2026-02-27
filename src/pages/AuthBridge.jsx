@@ -7,35 +7,46 @@ import { auth, db } from "@/firebase";
 
 /**
  * Rules:
- * - If user doc does NOT exist => create it => go /onboarding
- * - If user doc exists and onboarding_completed === true => go /dashboard
- * - Else => go /onboarding
+ * - If user doc does NOT exist => create it => go /onboarding (preserve next)
+ * - If user doc exists and onboarding_completed === true => go to `next` if provided else /dashboard
+ * - Else => go /onboarding (preserve next)
  *
  * Query:
  * - code=... (required)
- * - next=/onboarding or /dashboard (optional; used only as a hint, not authority)
+ * - next=/accept-org-invite?invite=...&token=... (optional)
+ * - role=student|agent|tutor|school|institution|provider (optional; for NEW users)
  * - lang=en (optional)
  */
 export default function AuthBridge() {
   const [params] = useSearchParams();
-  const role = params.get("role"); // optional: student | agent | tutor | school | institution | provider
+  const role = params.get("role");
   const navigate = useNavigate();
   const [status, setStatus] = React.useState("Exchanging sign-in code...");
 
   const code = params.get("code");
   const lang = params.get("lang") || "en";
-
-  // optional hint only (we still decide based on Firestore)
-  const nextHint = params.get("next") || "/onboarding";
+  const nextHint = params.get("next") || "";
 
   const safeInternalPath = (p) => {
     if (!p) return null;
-    // allow only internal relative paths like "/onboarding"
     if (typeof p !== "string") return null;
     if (!p.startsWith("/")) return null;
     if (p.startsWith("//")) return null;
     if (p.includes("http://") || p.includes("https://")) return null;
     return p;
+  };
+
+  const appendQuery = (path, queryObj) => {
+    try {
+      const u = new URL(path, window.location.origin);
+      Object.entries(queryObj || {}).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === "") return;
+        u.searchParams.set(k, String(v));
+      });
+      return u.pathname + (u.search ? u.search : "");
+    } catch {
+      return path;
+    }
   };
 
   const exchangeUrl =
@@ -49,12 +60,10 @@ export default function AuthBridge() {
       try {
         if (!code) {
           setStatus("Missing sign-in code.");
-          // send them back to login
           navigate(`/login?mode=login&lang=${encodeURIComponent(lang)}`, { replace: true });
           return;
         }
 
-        // 1) Exchange code -> customToken
         const res = await fetch(exchangeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -66,42 +75,35 @@ export default function AuthBridge() {
           throw new Error(`exchangeAuthBridgeCode failed (${res.status}): ${txt}`);
         }
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         const customToken = data?.customToken || data?.token;
-
-        if (!customToken) {
-          throw new Error("No customToken returned from exchangeAuthBridgeCode.");
-        }
-
+        if (!customToken) throw new Error("No customToken returned from exchangeAuthBridgeCode.");
         if (cancelled) return;
 
         setStatus("Signing you in...");
-
-        // 2) Sign in with the custom token
         await signInWithCustomToken(auth, customToken);
-
         if (cancelled) return;
 
         const fbUser = auth.currentUser;
-        if (!fbUser?.uid) {
-          throw new Error("Signed in but auth.currentUser is missing.");
-        }
+        if (!fbUser?.uid) throw new Error("Signed in but auth.currentUser is missing.");
 
         setStatus("Checking your profile...");
 
-        // 3) Check/create user doc
         const userRef = doc(db, "users", fbUser.uid);
         const snap = await getDoc(userRef);
 
-        let goTo = "/onboarding";
+        const hint = safeInternalPath(nextHint);
+        const isHintMeaningful = !!(hint && hint !== "/onboarding" && hint !== "/dashboard");
+
+        let goTo = "/dashboard";
 
         if (!snap.exists()) {
-          // New user => create doc
           await setDoc(
             userRef,
             {
               uid: fbUser.uid,
               email: fbUser.email || "",
+              emailLower: (fbUser.email || "").toLowerCase(),
               full_name: fbUser.displayName || "",
               selected_role: role || "student",
               user_type: role || "student",
@@ -114,32 +116,32 @@ export default function AuthBridge() {
             },
             { merge: true }
           );
-          goTo = "/onboarding";
+
+          goTo = isHintMeaningful
+            ? appendQuery("/onboarding", { next: hint, lang })
+            : appendQuery("/onboarding", { lang });
         } else {
           const u = snap.data() || {};
-          if (u.onboarding_completed === true) goTo = "/dashboard";
-          else goTo = "/onboarding";
-        }
+          const completed = u.onboarding_completed === true;
 
-        // optional hint: if they are NOT completed, allow /onboarding
-        // but NEVER force onboarding for completed users
-        const hint = safeInternalPath(nextHint);
-        if (hint && goTo !== "/dashboard") {
-          goTo = hint; // only applies when not completed
+          if (!completed) {
+            goTo = isHintMeaningful
+              ? appendQuery("/onboarding", { next: hint, lang })
+              : appendQuery("/onboarding", { lang });
+          } else {
+            goTo = hint ? appendQuery(hint, { lang }) : appendQuery("/dashboard", { lang });
+          }
         }
 
         if (cancelled) return;
 
         setStatus("Redirecting...");
-
-        // Use hard navigation so app state resets cleanly after auth
-        window.location.replace(`${goTo}?lang=${encodeURIComponent(lang)}`);
+        window.location.replace(goTo);
       } catch (err) {
         console.error("[AuthBridge] error:", err);
         if (cancelled) return;
 
         setStatus("Sign-in failed. Redirecting to login...");
-        // Back to login with a simple error flag
         setTimeout(() => {
           navigate(`/login?mode=login&lang=${encodeURIComponent(lang)}&bridge=fail`, {
             replace: true,
@@ -152,7 +154,7 @@ export default function AuthBridge() {
     return () => {
       cancelled = true;
     };
-  }, [code, exchangeUrl, lang, nextHint, navigate]);
+  }, [code, exchangeUrl, lang, nextHint, navigate, role]);
 
   return (
     <div style={{ padding: 24 }}>
