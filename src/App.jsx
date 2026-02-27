@@ -156,6 +156,7 @@ export default function App() {
         {/* Public site */}
         <Route path="directory" element={<Directory />} />
         <Route path="auth-bridge" element={<AuthBridge />} />
+        <Route path="accept-org-invite" element={<AcceptOrgInvite />} />
         <Route path="events" element={<EventsPage />} />
         <Route path={createPageUrl("StudyCanada")} element={<StudyCanada />} />
         <Route path={createPageUrl("StudyNewZealand")} element={<StudyNewZealand />} />

@@ -18,6 +18,12 @@ import {
   CommandList,
 } from "@/components/ui/command";
 
+ const inviteId = params.get("invite") || "";
+ const inviteToken = params.get("token") || "";
+
+ // ✅ Preserve safe `next` (for org invitations and other deep links)
+ const rawNextFromUrl = params.get("next") || "";
+ const nextFromUrl = safeNextPath(rawNextFromUrl);
 import {
   Loader2,
   User as UserIcon,
@@ -521,6 +527,10 @@ export default function Onboarding() {
   const location = useLocation();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
+  // preserve next (e.g., /accept-org-invite?invite=...&token=...)
+  const nextRaw = useMemo(() => params.get("next") || "", [params]);
+  const next = useMemo(() => safeInternalPath(nextRaw), [nextRaw]);
+
   const urlRoleRaw = useMemo(() => {
     const raw = params.get("role") ?? params.get("userType") ?? params.get("as");
     return raw && String(raw).trim() ? String(raw).trim() : null;
@@ -848,7 +858,7 @@ const getStepProgress = () => {
           sessionStorage.removeItem("onboarding_role_locked");
           sessionStorage.removeItem("onboarding_role");
         } catch {}
-        navigate(createPageUrl("Dashboard"), { replace: true });
+        navigate(next || createPageUrl("Dashboard"), { replace: true });
         return;
       }
 
@@ -1035,7 +1045,7 @@ const getStepProgress = () => {
         sessionStorage.removeItem("onboarding_role");
       } catch {}
 
-      setTimeout(() => navigate(createPageUrl("Dashboard"), { replace: true }), 600);
+      setTimeout(() => navigate(next || createPageUrl("Dashboard"), { replace: true }), 600);
     } catch (e) {
       console.error("Error finalizing onboarding:", e);
       alert("An error occurred. Please try again.");
