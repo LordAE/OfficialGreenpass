@@ -123,6 +123,9 @@ export default function Organization() {
   const [org, setOrg] = useState(null);
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
+const pendingInvites = useMemo(() => {
+  return (invites || []).filter((inv) => String(inv?.status || "pending").toLowerCase() === "pending");
+}, [invites]);
   const [loading, setLoading] = useState(true);
 
   const [creating, setCreating] = useState(false);
@@ -130,6 +133,8 @@ export default function Organization() {
   const [error, setError] = useState("");
 
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteActionBusyId, setInviteActionBusyId] = useState(null);
+  const [inviteActionMsg, setInviteActionMsg] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
   const [inviteBusy, setInviteBusy] = useState(false);
@@ -319,15 +324,37 @@ export default function Organization() {
   };
 
   const resendInvite = async (inv) => {
-    // For resend, we simply issue a new invite (cleaner + safer than reusing token).
-    // Owner will see a new pending row.
-    try {
-      await postAuthed("createOrgInvite", { orgId: inv.orgId, email: inv.email, role: inv.role || "member" });
-      await refreshOrg(fbUser.uid);
-    } catch (e) {
-      console.error(e);
+  // Resend should NOT create duplicate rows. We revoke the existing pending invite,
+  // then create a fresh one (new token) for the same email/role.
+  try {
+    const status = String(inv?.status || "pending").toLowerCase();
+    if (status !== "pending") {
+      setInviteActionMsg("This invitation is already accepted (or no longer pending).");
+      return;
     }
-  };
+
+    setInviteActionBusyId(inv.id);
+    setInviteActionMsg("");
+
+    // Revoke old pending invite first so the list stays clean.
+    await postAuthed("revokeOrgInvite", { inviteId: inv.id });
+
+    // Create a new invite (fresh token) for the same email + role
+    await postAuthed("createOrgInvite", {
+      orgId: inv.orgId,
+      email: inv.email,
+      role: inv.role || "member",
+    });
+
+    await refreshOrg(fbUser.uid);
+    setInviteActionMsg("Invitation resent.");
+  } catch (e) {
+    console.error(e);
+    setInviteActionMsg(e?.message || "Failed to resend invitation.");
+  } finally {
+    setInviteActionBusyId(null);
+  }
+};
 
   if (loading) {
     return (
@@ -570,6 +597,11 @@ export default function Organization() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
+              {inviteActionMsg ? (
+                <div className="rounded-2xl border bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  {inviteActionMsg}
+                </div>
+              ) : null}
               <Button className="w-full rounded-2xl" onClick={openInvite}>
                 <span className="flex items-center gap-2">
                   <Mail className="h-4 w-4" />
@@ -626,7 +658,7 @@ export default function Organization() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {invites.length === 0 ? (
+              {pendingInvites.length === 0 ? (
                 <div className="rounded-2xl border border-dashed p-6 text-center">
                   <div className="mx-auto mb-2 h-10 w-10 rounded-2xl bg-gray-100 flex items-center justify-center">
                     <Mail className="h-5 w-5 text-gray-600" />
@@ -636,7 +668,7 @@ export default function Organization() {
                 </div>
               ) : (
                 <div className="divide-y">
-                  {invites.map((inv) => (
+                  {pendingInvites.map((inv) => (
                     <div key={inv.id} className="py-3 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium">{inv.email}</div>
@@ -648,10 +680,12 @@ export default function Organization() {
                         <StatusBadge status={capWord(inv.status)} />
                         {String(inv.status || "pending").toLowerCase() === "pending" ? (
                           <>
-                            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => resendInvite(inv)} title="Resend (new invite)">
+                            <Button size="sm" variant="outline" className="rounded-xl" disabled={inviteActionBusyId === inv.id}
+                              onClick={() => resendInvite(inv)} title="Resend (new invite)">
                               <RefreshCcw className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => revokeInvite(inv.id)} title="Revoke">
+                            <Button size="sm" variant="outline" className="rounded-xl" disabled={inviteActionBusyId === inv.id}
+                              onClick={() => revokeInvite(inv.id)} title="Revoke">
                               <Ban className="h-4 w-4" />
                             </Button>
                           </>
