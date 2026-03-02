@@ -751,8 +751,8 @@ exports.createInvite = onRequest(async (req, res) => {
 
                       <p style="font-size:15px; line-height:1.6;">
                         GreenPass is a professional platform specifically designed for the international education sector. 
-                        On GreenPass, schools, agents, and tutors interact in a transparent environment, share verified content, and manage applications efficiently. 
-                        It is a space where you can build credibility, create tangible value, and enhance your reputation within the professional education community.
+                        On GreenPass, schools, agents, and tutors interact in a transparent environment, share verified content, and manage applications efficiently, while gaining access to high-quality student and parent leads who can follow and connect with them directly. 
+                        It is a space where you can build credibility, create tangible value, and enhance your professional reputation within a trusted global education community.
                       </p>
 
                       <!-- CTA Button -->
@@ -1102,34 +1102,66 @@ exports.createOrgInvite = onRequest(async (req, res) => {
           subject: `Invitation to join ${org.name || "an organization"} on GreenPass`,
           html: `
             <div style="font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; padding:24px;">
-              <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,0.08);">
-                <div style="background:#0f766e; color:#fff; padding:18px 22px;">
-                  <h2 style="margin:0; font-size:20px;">You’re invited to join an organization</h2>
-                  <p style="margin:6px 0 0; font-size:13px; opacity:.9;">GreenPass Team Access</p>
+              <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,0.08);">
+                
+                <!-- Header -->
+                <div style="background:#0f766e; color:#fff; padding:20px 24px;">
+                  <h2 style="margin:0; font-size:22px;">You’re Invited to Join ${org.name}</h2>
+                  <p style="margin:6px 0 0; font-size:13px; opacity:.9;">GreenPass Organization Access</p>
                 </div>
-                <div style="padding:22px; color:#111827;">
-                  <p style="margin:0 0 10px; font-size:14px; line-height:1.6;">Hi 👋</p>
-                  <p style="margin:0 0 10px; font-size:14px; line-height:1.6;">
-                    You’ve been invited to join <b>${org.name || "an organization"}</b>.
+
+                <!-- Body -->
+                <div style="padding:24px; color:#111827;">
+                  <p style="font-size:15px; margin:0 0 12px;">Hello 👋</p>
+
+                  <p style="font-size:15px; line-height:1.6;">
+                    You’ve been invited to join <strong>${org.name}</strong> on GreenPass as a 
+                    <strong>${invitedRole}</strong>.
                   </p>
-                  <p style="margin:0 0 18px; font-size:14px; line-height:1.6;">
-                    Role: <b>${invitedRole}</b>
+
+                  <div style="background:#f3f4f6; padding:16px; border-radius:10px; margin:18px 0;">
+                    <p style="margin:0 0 6px; font-size:14px;"><strong>Organization:</strong> ${org.name}</p>
+                    <p style="margin:0 0 6px; font-size:14px;"><strong>Your Role:</strong> ${invitedRole}</p>
+                    <p style="margin:0; font-size:14px;"><strong>Email:</strong> ${invitedEmail}</p>
+                  </div>
+
+                  <p style="font-size:14px; line-height:1.6;">
+                    Once accepted, you will gain access to your organization dashboard where you can collaborate with your team, manage records, and operate securely within the GreenPass platform.
                   </p>
-                  <div style="text-align:center; margin:20px 0;">
-                    <a href="${inviteLink}" style="display:inline-block; background:#10b981; color:#fff; text-decoration:none; padding:12px 18px; border-radius:10px; font-weight:700;">
-                      Accept invitation
+
+                  <!-- CTA -->
+                  <div style="text-align:center; margin:28px 0;">
+                    <a href="${inviteLink}" 
+                      style="display:inline-block; background:#10b981; color:#fff; text-decoration:none; padding:14px 26px; border-radius:10px; font-weight:700; font-size:15px;">
+                      Accept Invitation
                     </a>
                   </div>
-                  <p style="margin:0 0 8px; font-size:12px; color:#6b7280;">If the button doesn’t work, copy this link:</p>
-                  <div style="font-size:12px; background:#f3f4f6; padding:10px 12px; border-radius:10px; word-break:break-all;">${inviteLink}</div>
-                  <p style="margin:16px 0 0; font-size:12px; color:#6b7280;">This invite expires in 7 days.</p>
+
+                  <p style="font-size:12px; color:#6b7280; margin-bottom:6px;">
+                    If the button doesn’t work, copy and paste this link into your browser:
+                  </p>
+
+                  <div style="font-size:12px; background:#f9fafb; padding:10px 12px; border-radius:10px; word-break:break-all;">
+                    ${inviteLink}
+                  </div>
+
+                  <p style="font-size:12px; color:#6b7280; margin-top:18px;">
+                    🔒 This invitation is valid for 7 days and can only be used by the email address it was sent to.
+                  </p>
+
+                  <p style="font-size:12px; color:#6b7280;">
+                    If you were not expecting this invitation, you may safely ignore this email.
+                  </p>
                 </div>
-                <div style="background:#f9fafb; padding:12px 18px; text-align:center; font-size:12px; color:#9ca3af;">
-                  © ${new Date().getFullYear()} GreenPass Group
+
+                <!-- Footer -->
+                <div style="background:#f9fafb; padding:14px 18px; text-align:center; font-size:12px; color:#9ca3af;">
+                  © ${new Date().getFullYear()} GreenPass Group · All rights reserved
                 </div>
+
               </div>
             </div>
-          `,
+            `,
           text: `You’ve been invited to join ${org.name || "an organization"}.\n\nOpen this link to accept:\n${inviteLink}\n\nThis invite expires in 7 days.`,
         },
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
