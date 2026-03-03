@@ -82,29 +82,18 @@
     "no_cases_yet": "Aucun dossier pour le moment."
   },
   "auth": {
-    "confirm_password_placeholder": "Confirmer le mot de passe",
-    "continueApple": "Continuer avec Apple",
-    "continueGoogle": "Continuer avec Google",
-    "create_password_placeholder": "Créer un mot de passe",
-    "email": "Adresse e-mail",
-    "email_placeholder": "vous@exemple.com",
-    "forgotPassword": "Mot de passe oublié ?",
-    "login": "Se connecter",
-    "name_placeholder": "Votre nom",
-    "orContinueEmail": "ou continuer par e-mail",
-    "password": "Mot de passe",
-    "password_placeholder": "Entrez votre mot de passe",
-    "signIn": "Se connecter",
-    "signUp": "S’inscrire",
-    "subtitle": "Bon retour ! Connectez-vous à votre tableau de bord.",
-    "title": "Votre parcours commence ici",
     "apple_failed_message": "La connexion avec Apple a échoué.",
     "apple_failed_title": "Échec de la connexion avec Apple",
     "apple_unavailable_message": "Apple Sign-in n’est pas activé pour ce projet/environnement.",
     "apple_unavailable_title": "Apple Sign-in indisponible",
+    "confirm_password_placeholder": "Confirmer le mot de passe",
+    "continueApple": "Continuer avec Apple",
+    "continueGoogle": "Continuer avec Google",
     "continue_apple": "Continuer avec Apple",
     "continue_google": "Continuer avec Google",
     "create_account": "Créer un compte",
+    "create_password_placeholder": "Créer un mot de passe",
+    "email": "Adresse e-mail",
     "email_already_registered_message": "Cet e-mail est déjà utilisé ({{providers}}). Essayez de vous connecter.",
     "email_already_registered_simple": "Cet e-mail est déjà enregistré. Essayez de vous connecter (E-mail & mot de passe, Google ou Apple).",
     "email_already_registered_title": "E-mail déjà enregistré",
@@ -112,7 +101,9 @@
     "email_check_failed": "Impossible de vérifier l’e-mail pour le moment. Veuillez réessayer plus tard.",
     "email_google_only": "Cet e-mail a été enregistré avec Google. Veuillez utiliser « Continuer avec Google ».",
     "email_in_use_message": "Cet e-mail est déjà utilisé.",
+    "email_placeholder": "vous@exemple.com",
     "email_signin_failed": "La connexion par e-mail a échoué.",
+    "forgotPassword": "Mot de passe oublié ?",
     "forgot_password": "Mot de passe oublié ?",
     "fullname_placeholder": "Nom complet",
     "google_failed_message": "La connexion avec Google a échoué.",
@@ -124,12 +115,17 @@
     "incorrect_password_title": "Mot de passe incorrect",
     "invalid_email_message": "Veuillez saisir une adresse e-mail valide.",
     "invalid_email_title": "E-mail invalide",
+    "login": "Se connecter",
     "missing_name_message": "Veuillez saisir votre nom complet.",
     "missing_name_title": "Nom manquant",
+    "name_placeholder": "Votre nom",
     "no_account": "Pas encore de compte ?",
     "no_account_message": "Aucun compte trouvé pour cet e-mail. Veuillez créer un compte.",
     "no_account_title": "Compte introuvable",
+    "orContinueEmail": "ou continuer par e-mail",
     "or_continue_email": "ou continuer par e-mail",
+    "password": "Mot de passe",
+    "password_placeholder": "Entrez votre mot de passe",
     "password_requirements_label": "Exigences du mot de passe :",
     "password_requirements_message": "Le mot de passe ne respecte pas toutes les exigences :",
     "password_requirements_title": "Exigences du mot de passe",
@@ -146,6 +142,8 @@
     "pw_upper": "• Au moins 1 lettre majuscule",
     "show_confirm_password": "Afficher la confirmation du mot de passe",
     "show_password": "Afficher le mot de passe",
+    "signIn": "Se connecter",
+    "signUp": "S’inscrire",
     "signin": "Se connecter",
     "signin_error_message": "Veuillez réessayer ou réinitialiser votre mot de passe.",
     "signin_error_title": "Impossible de se connecter",
@@ -155,6 +153,8 @@
     "signup": "S’inscrire",
     "signup_failed_message": "L’inscription a échoué.",
     "signup_failed_title": "Échec de l’inscription",
+    "subtitle": "Bon retour ! Connectez-vous à votre tableau de bord.",
+    "title": "Votre parcours commence ici",
     "use_apple_message": "Cet e-mail a été enregistré avec Apple. Veuillez utiliser « Continuer avec Apple ».",
     "use_apple_title": "Utilisez Apple pour vous connecter",
     "use_google_message": "Cet e-mail a été enregistré avec Google. Veuillez utiliser « Continuer avec Google ».",
@@ -163,6 +163,9 @@
     "use_original_method_message_google": "Cet e-mail est lié à une autre méthode de connexion. Essayez avec E-mail & mot de passe ou Apple.",
     "use_original_method_title": "Utilisez la méthode de connexion d’origine",
     "weak_password_message": "Le mot de passe doit respecter les exigences ci-dessus."
+  },
+  "brand": {
+    "alt": "GreenPass Super App"
   },
   "common": {
     "cancel": "Annuler",
@@ -304,6 +307,16 @@
   "footer": {
     "copyright": "© GreenPass. Tous droits réservés.",
     "privacy": "Politique de confidentialité",
+    "terms": "Conditions d’utilisation",
+    "explore": "Explorer",
+    "account": "Compte",
+    "legal": "Juridique",
+    "agentAgreement": "Accord d’agent"
+  },
+  "legal": {
+    "and": "et",
+    "by_continuing": "En continuant, vous acceptez",
+    "privacy": "Politique de confidentialité",
     "terms": "Conditions d’utilisation"
   },
   "messages": {
@@ -323,7 +336,38 @@
     "profileSettings": "Paramètres du profil",
     "schools": "Écoles",
     "services": "Services",
-    "tutors": "Tuteurs"
+    "tutors": "Tuteurs",
+    "apps": "Applications",
+    "login": "Se connecter",
+    "account": "Compte",
+    "accountSettings": "Paramètres du compte",
+    "connections": "Connexions",
+    "more": "Plus",
+    "myStudents": "Mes étudiants",
+    "schoolProfile": "Profil de l’école",
+    "schoolDetails": "Détails de l’école",
+    "bankSettings": "Paramètres bancaires",
+    "brandSettings": "Paramètres de marque",
+    "chatSettings": "Paramètres du chat",
+    "eventsAdmin": "Gestion des événements",
+    "institutionManagement": "Gestion des institutions",
+    "paymentVerification": "Vérification des paiements",
+    "reports": "Rapports",
+    "schoolManagement": "Gestion des écoles",
+    "userManagement": "Gestion des utilisateurs",
+    "verifications": "Vérifications",
+    "walletManagement": "Gestion du portefeuille",
+    "paymentMonitoring": "Suivi des paiements",
+    "agentAssignments": "Affectations d’agents",
+    "subscriptionMode": "Mode d’abonnement",
+    "myServices": "Mes services",
+    "profile": "Profil",
+    "payments": "Paiements",
+    "seatReservations": "Réservations",
+    "myAgent": "Mon agent",
+    "findAgent": "Trouver un agent",
+    "search": "Rechercher",
+    "searchPlaceholder": "Rechercher..."
   },
   "onboarding": {
     "agent": {
@@ -331,6 +375,13 @@
       "company_name": "Nom de l’entreprise *",
       "paypal_hint": "Requis pour les paiements de commissions",
       "year_established": "Année de création"
+    },
+    "badges": {
+      "role_selected": "Rôle sélectionné :"
+    },
+    "basic": {
+      "subtitle_prefix": "Configuration du profil",
+      "title": "Informations de base"
     },
     "buttons": {
       "back": "Retour",
@@ -340,6 +391,13 @@
       "skip": "Ignorer pour l’instant"
     },
     "chooseRole": "Choisissez votre rôle",
+    "common": {
+      "back": "Retour",
+      "continue": "Continuer",
+      "logout": "Se déconnecter",
+      "redirecting": "Redirection...",
+      "step_of": "Étape {{step}} / {{total}}"
+    },
     "country": {
       "loading": "Chargement des pays...",
       "no_results": "Aucun résultat."
@@ -354,18 +412,20 @@
       "search_country": "Rechercher un pays..."
     },
     "payments": {
-      "loading_paypal": "Chargement de PayPal...",
-      "pay_with_paypal": "Payer avec PayPal",
-      "paypal_email": "PayPal Email *",
-      "paypal_placeholder": "payouts@example.com",
       "loading": "Chargement du bouton PayPal...",
       "pay": "Payer avec PayPal",
-      "paypal_hint": "Requis pour recevoir les paiements des sessions"
+      "paypal_email": "PayPal Email *",
+      "paypal_hint": "Requis pour recevoir les paiements des sessions",
+      "paypal_placeholder": "payouts@example.com"
     },
     "placeholders": {
       "full_name": "Entrez votre nom complet",
       "phone": "Entrez votre numéro de téléphone",
       "select_country": "Sélectionnez votre pays"
+    },
+    "profile": {
+      "complete_subtitle": "Encore quelques informations pour continuer",
+      "complete_title": "Complétez votre profil {{role}}"
     },
     "roles": {
       "agent": "Agent",
@@ -388,84 +448,54 @@
       },
       "website": "Site officiel *"
     },
-    "subscription": {
-      "plan": "Forfait",
-      "price": "Prix",
-      "title": "Abonnement"
-    },
     "subtitle": "Quelques infos pour personnaliser votre expérience.",
     "title": "Complétez votre profil",
     "tutor": {
       "bio_hint": "Optionnel, mais recommandé pour une meilleure visibilité du profil.",
+      "bio_label": "Biographie / Description du tuteur",
       "bio_placeholder": "Rédigez une courte bio/description qui sera affichée sur votre profil public...",
       "hourly_rate": "Tarif horaire (USD) *",
-      "paypal_hint": "Requis pour les paiements des sessions",
       "specializations": "Spécialisations *",
       "specializations_hint": "Séparez plusieurs spécialisations par des virgules",
       "specializations_placeholder": "IELTS, TOEFL, Anglais général",
-      "years_experience": "Années d’expérience *",
-      "bio_label": "Biographie / Description du tuteur"
+      "years_experience": "Années d’expérience *"
     },
     "ui": {
       "basic_info_title": "Informations de base",
       "complete_profile_subtitle": "Encore quelques informations pour continuer",
       "complete_profile_title": "Complétez votre profil {{role}}",
-      "logout_instead": "Se déconnecter à la place",
       "logout_title": "Se déconnecter et quitter l’inscription",
-      "profile_suffix": " profil",
-      "redirecting": "Redirection vers votre tableau de bord personnalisé...",
-      "role_selected": "Rôle sélectionné :",
-      "setting_up_prefix": "Configuration de votre",
-      "setting_up_profile": "Configuration de votre profil {{role}}",
-      "welcome": "Bienvenue sur GreenPass !"
+      "setting_up_profile": "Configuration de votre profil {{role}}"
     },
     "vendor": {
       "business_name": "Nom de l’entreprise *",
       "paypal_hint": "Requis pour les paiements de service",
       "service_categories": "Catégories de service *"
-    },
-    "badges": {
-      "role_selected": "Rôle sélectionné :"
-    },
-    "basic": {
-      "subtitle_prefix": "Configuration du profil",
-      "title": "Informations de base"
-    },
-    "common": {
-      "back": "Retour",
-      "continue": "Continuer",
-      "logout": "Se déconnecter",
-      "redirecting": "Redirection...",
-      "step_of": "Étape {{step}} / {{total}}"
-    },
-    "profile": {
-      "complete_subtitle": "Encore quelques informations pour continuer",
-      "complete_title": "Complétez votre profil {{role}}"
     }
   },
   "profile": {
     "about_institution": "À propos de votre établissement",
     "agent_details": "Détails de l’agent",
     "alerts": {
-      "required_business_license": "La licence commerciale (MST) est obligatoire.",
-      "required_business_name": "Le nom de l’entreprise est obligatoire.",
-      "required_city_location": "La ville/le lieu est obligatoire.",
-      "required_company_name": "Le nom de l’entreprise est obligatoire.",
-      "required_country": "Le pays est obligatoire.",
-      "required_experience_years": "Les années d’expérience sont obligatoires.",
-      "required_full_name": "Le nom complet est obligatoire.",
-      "required_hourly_rate": "Le tarif horaire est obligatoire.",
-      "required_institution_name": "Le nom de l’établissement est obligatoire.",
-      "required_paypal_email": "L’email PayPal est obligatoire.",
-      "required_phone": "Le téléphone est obligatoire.",
-      "required_school_type": "Le type d’école est obligatoire.",
-      "required_service_category": "Sélectionnez au moins 1 catégorie de service.",
-      "required_specializations": "Les spécialisations sont obligatoires.",
-      "required_website": "Le site web est obligatoire.",
-      "save_failed": "Échec de l’enregistrement. Veuillez réessayer.",
       "saved": "Enregistré ! Tous les changements ont été mis à jour.",
+      "save_failed": "Échec de l’enregistrement. Veuillez réessayer.",
       "upload_failed": "Échec du téléversement de la photo de profil. Veuillez réessayer.",
+      "required_full_name": "Le nom complet est obligatoire.",
+      "required_phone": "Le téléphone est obligatoire.",
+      "required_country": "Le pays est obligatoire.",
+      "required_company_name": "Le nom de l’entreprise est obligatoire.",
+      "required_business_license": "La licence commerciale (MST) est obligatoire.",
+      "required_paypal_email": "L’email PayPal est obligatoire.",
       "required_year_established": "Veuillez saisir l’année de création.",
+      "required_specializations": "Les spécialisations sont obligatoires.",
+      "required_experience_years": "Les années d’expérience sont obligatoires.",
+      "required_hourly_rate": "Le tarif horaire est obligatoire.",
+      "required_business_name": "Le nom de l’entreprise est obligatoire.",
+      "required_service_category": "Sélectionnez au moins 1 catégorie de service.",
+      "required_institution_name": "Le nom de l’établissement est obligatoire.",
+      "required_school_type": "Le type d’école est obligatoire.",
+      "required_city_location": "La ville/le lieu est obligatoire.",
+      "required_website": "Le site web est obligatoire.",
       "verification_submitted": "Vérification envoyée.",
       "verification_missing_required": "Documents obligatoires manquants pour la vérification.",
       "verification_bad_file": "Fichier invalide. Veuillez choisir un autre fichier."
@@ -817,18 +847,56 @@
     "report_failed": "Signalement impossible. Veuillez réessayer.",
     "report_submitted": "Merci — votre signalement a été envoyé."
   },
-  "brand": {
-    "alt": "GreenPass Super App"
-  },
-  "legal": {
-    "and": "et",
-    "by_continuing": "En continuant, vous acceptez",
-    "privacy": "Politique de confidentialité",
-    "terms": "Conditions d’utilisation"
-  },
   "welcome": {
     "subtitle_signin": "Bon retour ! Connectez-vous pour accéder à votre tableau de bord.",
     "subtitle_signup": "Créez un compte pour une expérience personnalisée.",
     "title": "Votre parcours commence ici"
-  }
+  },
+  "reports": "Rapports",
+  "reportInbox": "Boîte de réception des rapports",
+  "reportDetails": "Détails du rapport",
+  "reportsPolicyNote": "Les enquêtes se basent uniquement sur les journaux de chat de la plateforme. Les messages ne peuvent pas être supprimés (trace conservée).",
+  "allStatuses": "Tous les statuts",
+  "statusOpen": "Ouvert",
+  "statusReviewing": "En cours d’examen",
+  "statusResolved": "Résolu",
+  "statusDismissed": "Ignoré",
+  "allRoles": "Tous les rôles",
+  "reportedRole": "Rôle signalé",
+  "searchReports": "Rechercher des rapports…",
+  "noReports": "Aucun rapport trouvé.",
+  "openInMessages": "Ouvrir dans Messages",
+  "markReviewing": "Marquer comme « en cours d’examen »",
+  "markResolved": "Marquer comme résolu",
+  "dismiss": "Ignorer",
+  "selectReport": "Sélectionnez un rapport pour voir les détails.",
+  "reporter": "Auteur du signalement",
+  "reportedUser": "Utilisateur signalé",
+  "reason": "Motif",
+  "conversationId": "ID de conversation",
+  "status": "Statut",
+  "createdAt": "Créé le",
+  "chatLogs": "Journaux de chat",
+  "policies": "Politiques",
+  "loadingChatLogs": "Chargement des journaux de chat",
+  "noLogs": "Aucun message dans cette conversation pour la période sélectionnée.",
+  "messagingSystemPolicies": "Politiques du système de messagerie",
+  "policyNoDelete": "Les utilisateurs ne peuvent pas supprimer les messages (trace conservée).",
+  "policy1Year": "Les utilisateurs peuvent consulter l’historique des messages jusqu’à 1 an.",
+  "policyArchived": "Les anciens messages seront archivés/masqués dans l’UI (pas supprimés).",
+  "investigationAccess": "Accès à l’enquête",
+  "investigationSuperadmin": "Enquête réservée à vous (Superadmin).",
+  "investigationUsedFor": "Utilisé pour : bannissement/suspension en cas de violation et demandes légales avec base juridique appropriée.",
+  "investigationSwitch": "Le Superadmin peut basculer : 1 an, 2 ans, ou tout l’historique.",
+  "investigationChatLogsOnly": "L’enquête n’utilise que les journaux de chat de la plateforme.",
+  "policyExternalPayments": "Si la transaction a eu lieu hors plateforme et qu’il n’y a aucune trace, le rapport peut être ignoré.",
+  "investigationRange": "Période d’enquête",
+  "last1Year": "Dernière année",
+  "last2Years": "Deux dernières années",
+  "allTime": "Tout l’historique",
+  "unknown": "Inconnu",
+  "noReasonProvided": "Aucun motif fourni.",
+  "loading": "Chargement",
+  "accessDenied": "Accès refusé",
+  "adminOnly": "Cette page est réservée aux administrateurs."
 }
