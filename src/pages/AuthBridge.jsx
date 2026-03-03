@@ -157,8 +157,35 @@ export default function AuthBridge() {
   }, [code, exchangeUrl, lang, nextHint, navigate, role]);
 
   return (
-    <div style={{ padding: 24 }}>
-      <p>{status}</p>
+    <div
+      style={{
+        minHeight: "60vh",
+        padding: 24,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      <div className="gp-spinner" aria-label="Loading" />
+      <div style={{ fontSize: 14, color: "#555", textAlign: "center" }}>
+        {status}
+      </div>
+
+      <style>{`
+        .gp-spinner {
+          width: 52px;
+          height: 52px;
+          border-radius: 999px;
+          border: 4px solid rgba(0, 0, 0, 0.12);
+          border-top-color: rgba(0, 0, 0, 0.55);
+          animation: gp-spin 0.9s linear infinite;
+        }
+        @keyframes gp-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
