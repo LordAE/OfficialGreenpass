@@ -367,7 +367,11 @@
     "myAgent": "My agent",
     "findAgent": "Find an agent",
     "search": "Search",
-    "searchPlaceholder": "Search..."
+    "searchPlaceholder": "Search...",
+    "contactSupport": "Contact support",
+    "supportInbox": "Support inbox",
+    "organization": "Organization",
+    "signOut": "Sign out"
   },
   "onboarding": {
     "agent": {
