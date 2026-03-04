@@ -316,15 +316,41 @@ async function syncSchoolCollections({ uid, payload }) {
   const name = (payload.school_name || "").trim();
   if (!name) return "";
 
-  let institutionId = (payload.institution_id || "").trim();
-  if (!institutionId) {
-    institutionId = `${slugify(name)}-${uid.substring(0, 6)}`;
-  }
+  // Base institution id
+  const baseInstitutionId =
+    (payload.institution_id || "").trim() || `${slugify(name)}-${uid.substring(0, 6)}`;
 
-  const instRef = doc(db, "institutions", institutionId);
+  // If an institutions doc already exists but has no user_id (older bad data),
+  // updates will always FAIL because rules check resource.data.user_id.
+  // So we detect that and generate a new id we own.
+  let institutionId = baseInstitutionId;
+
+  const tryPickInstitutionId = async () => {
+    const instRef0 = doc(db, "institutions", institutionId);
+    const instSnap0 = await getDoc(instRef0);
+
+    // Doesn’t exist yet → OK, we can create it with user_id
+    if (!instSnap0.exists()) return { institutionId, instRef: instRef0 };
+
+    const existing = instSnap0.data() || {};
+    const existingOwner = existing.user_id;
+
+    // Already owned by me → OK to update
+    if (existingOwner === uid) return { institutionId, instRef: instRef0 };
+
+    // If owned by someone else, do NOT overwrite. Create a new one.
+    // If missing owner (old bad doc), also create a new one because update is impossible via rules.
+    const suffix = Date.now().toString(36);
+    institutionId = `${baseInstitutionId}-${suffix}`;
+    const instRef1 = doc(db, "institutions", institutionId);
+    return { institutionId, instRef: instRef1 };
+  };
+
+  const { institutionId: finalInstitutionId, instRef } = await tryPickInstitutionId();
   const spRef = doc(db, "school_profiles", uid);
 
   const institutionData = {
+    user_id: uid, // ✅ REQUIRED by Firestore rules for /institutions create
     name,
     short_name: name,
     website: payload.website || "",
@@ -334,7 +360,7 @@ async function syncSchoolCollections({ uid, payload }) {
   };
 
   const schoolProfileData = {
-    institution_id: institutionId,
+    institution_id: finalInstitutionId,
     user_id: uid,
 
     name,
@@ -355,7 +381,7 @@ async function syncSchoolCollections({ uid, payload }) {
     setDoc(spRef, schoolProfileData, { merge: true }),
   ]);
 
-  return institutionId;
+  return finalInstitutionId;
 }
 
 export default function Profile() {
@@ -387,6 +413,7 @@ const [uid, setUid] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveNotice, setSaveNotice] = useState(null); // { type: "success"|"error", text: string }
 
   const [uploadingProfilePic, setUploadingProfilePic] = useState(false);
 
@@ -819,6 +846,7 @@ const [uid, setUid] = useState(null);
       if (!form.paypal_email?.trim()) return alert(tr("alerts.required_paypal_email","PayPal email is required."));
     }
 
+    setSaveNotice(null);
     setSaving(true);
     try {
       const uref = doc(db, "users", uid);
@@ -895,11 +923,15 @@ const [uid, setUid] = useState(null);
       await updateDoc(uref, updates);
       try { localStorage.setItem("gp_lang", updates.lang || "en"); } catch {}
       window.dispatchEvent(new CustomEvent("gp_lang_changed", { detail: updates.lang || "en" }));
-      alert(tr("alerts.saved","Saved! All changes were updated."));
+      setSaveNotice({ type: "success", text: tr("alerts.saved","Saved! All changes were updated.") });
+      // auto-hide after 4 seconds
+      setTimeout(() => setSaveNotice(null), 4000);
       await loadProfile(uid);
     } catch (e) {
       console.error("Save failed:", e);
-      alert(tr("alerts.save_failed","Failed to save changes. Please try again."));
+      setSaveNotice({ type: "error", text: tr("alerts.save_failed","Failed to save changes. Please try again.") });
+      // auto-hide after 6 seconds
+      setTimeout(() => setSaveNotice(null), 6000);
     } finally {
       setSaving(false);
     }
@@ -950,6 +982,31 @@ const [uid, setUid] = useState(null);
           </div>
         </div>
 
+
+{saveNotice && (
+  <div
+    className={[
+      "rounded-2xl border px-4 py-3 text-sm",
+      saveNotice.type === "success"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+        : "border-rose-200 bg-rose-50 text-rose-900",
+    ].join(" ")}
+    role="status"
+    aria-live="polite"
+  >
+    <div className="flex items-start justify-between gap-3">
+      <div className="leading-5">{saveNotice.text}</div>
+      <button
+        type="button"
+        onClick={() => setSaveNotice(null)}
+        className="rounded-full px-2 py-1 text-xs font-semibold hover:bg-white/60"
+        aria-label={tr("close","Close")}
+      >
+        ✕
+      </button>
+    </div>
+  </div>
+)}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-4">
