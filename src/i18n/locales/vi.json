@@ -367,7 +367,11 @@
     "myAgent": "Đại lý của tôi",
     "findAgent": "Tìm đại lý",
     "search": "Tìm kiếm",
-    "searchPlaceholder": "Tìm kiếm..."
+    "searchPlaceholder": "Tìm kiếm...",
+    "contactSupport": "Liên hệ hỗ trợ",
+    "supportInbox": "Hộp thư hỗ trợ",
+    "organization": "Tổ chức",
+    "signOut": "Đăng xuất"
   },
   "onboarding": {
     "agent": {
