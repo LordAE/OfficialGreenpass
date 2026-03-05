@@ -1,6 +1,6 @@
-
 // src/pages/Organization.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   collection,
   getDocs,
@@ -64,11 +64,12 @@ function ProgressBar({ value = 0 }) {
 }
 
 function StatusBadge({ status }) {
+  const { t } = useTranslation();
   const s = (status || "pending").toLowerCase();
-  if (s === "accepted") return <Badge className="rounded-full" variant="secondary">Accepted</Badge>;
-  if (s === "revoked") return <Badge className="rounded-full" variant="destructive">Revoked</Badge>;
-  if (s === "expired") return <Badge className="rounded-full" variant="outline">Expired</Badge>;
-  return <Badge className="rounded-full" variant="outline">Pending</Badge>;
+  if (s === "accepted") return <Badge className="rounded-full" variant="secondary">{t("accepted", "Accepted")}</Badge>;
+  if (s === "revoked") return <Badge className="rounded-full" variant="destructive">{t("revoked", "Revoked")}</Badge>;
+  if (s === "expired") return <Badge className="rounded-full" variant="outline">{t("expired", "Expired")}</Badge>;
+  return <Badge className="rounded-full" variant="outline">{t("pending", "Pending")}</Badge>;
 }
 
 function getEnv(key) {
@@ -117,6 +118,8 @@ async function postAuthed(path, body) {
 }
 
 export default function Organization() {
+  const { t } = useTranslation();
+
   const [fbUser, setFbUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
@@ -238,7 +241,7 @@ const pendingInvites = useMemo(() => {
     if (!fbUser?.uid) return;
     const name = (orgName || "").trim();
     if (!name) {
-      setError("Please enter an organization name.");
+      setError(t("organization_page.err_org_name_required", "Please enter an organization name."));
       return;
     }
 
@@ -275,7 +278,7 @@ const pendingInvites = useMemo(() => {
       await refreshOrg(fbUser.uid);
     } catch (e) {
       console.error("Create org error:", e);
-      setError("Failed to create organization. Check Firestore rules.");
+      setError(t("organization_page.err_create_failed", "Failed to create organization. Check Firestore rules."));
     } finally {
       setCreating(false);
     }
@@ -296,7 +299,7 @@ const pendingInvites = useMemo(() => {
       return;
     }
     if (remainingSlots <= 0) {
-      setInviteErr("Slot limit reached. Buy more slots to invite more members.");
+      setInviteErr(t("organization_page.err_slot_limit", "Slot limit reached. Buy more slots to invite more members."));
       return;
     }
 
@@ -363,9 +366,7 @@ const pendingInvites = useMemo(() => {
           <Card className="rounded-3xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                Organization
-              </CardTitle>
+                <Building2 className="h-5 w-5" />{t("organization", "Organization")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -392,12 +393,10 @@ const pendingInvites = useMemo(() => {
           <Card className="rounded-3xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                Organization
-              </CardTitle>
+                <Building2 className="h-5 w-5" />{t("organization", "Organization")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600">Please sign in to manage your organization.</p>
+              <p className="text-sm text-gray-600">{t("organization_page.sign_in_hint", "Please sign in to manage your organization.")}</p>
             </CardContent>
           </Card>
         </div>
@@ -416,12 +415,12 @@ const pendingInvites = useMemo(() => {
         <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-1">
-              <h1 className="text-2xl font-semibold tracking-tight">Organization</h1>
-              <p className="text-sm text-gray-600">Create your organization to manage members and unlock team slots.</p>
+              <h1 className="text-2xl font-semibold tracking-tight">{t("organization", "Organization")}</h1>
+              <p className="text-sm text-gray-600">{t("organization_page.subtitle", "Create your organization to manage members and unlock team slots.")}</p>
             </div>
             <Badge variant="secondary" className="rounded-full">
               <Sparkles className="mr-1 h-3.5 w-3.5" />
-              5 free slots
+              {t("organization_page.free_seats_5", "5 free seats")}
             </Badge>
           </div>
         </div>
@@ -435,19 +434,19 @@ const pendingInvites = useMemo(() => {
                     <ShieldCheck className="h-5 w-5 text-emerald-700" />
                   </div>
                   <div>
-                    <div className="font-semibold">Set up your team in minutes</div>
-                    <div className="text-xs text-gray-600">Add up to 5 members free. Buy more slots anytime.</div>
+                    <div className="font-semibold">{t("organization_page.setup_title", "Set up your team in minutes")}</div>
+                    <div className="text-xs text-gray-600">{t("organization_page.setup_desc", "Add up to 5 members free. Buy more slots anytime.")}</div>
                   </div>
                 </div>
               </div>
 
               <CardContent className="p-6 space-y-4">
                 <div className="space-y-1">
-                  <Label>Organization name</Label>
+                  <Label>{t("organization_page.org_name", "Organization name")}</Label>
                   <Input
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
-                    placeholder="e.g., ABC School Admissions Team"
+                    placeholder={t("organization_page.org_placeholder", "e.g., ABC School Admissions Team")}
                     disabled={!canCreateOrg}
                     className="rounded-2xl"
                   />
@@ -465,7 +464,7 @@ const pendingInvites = useMemo(() => {
                     ) : (
                       <span className="flex items-center gap-2">
                         <Plus className="h-4 w-4" />
-                        Create organization
+                        {t("organization_page.create_org", "Create organization")}
                       </span>
                     )}
                   </Button>
@@ -475,16 +474,16 @@ const pendingInvites = useMemo(() => {
 
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-2xl border p-3">
-                    <div className="text-xs text-gray-600">Included</div>
-                    <div className="font-semibold">5 team slots</div>
+                    <div className="text-xs text-gray-600">{t("organization_page.included", "Included")}</div>
+                    <div className="font-semibold">{t("organization_page.team_slots_5", "5 team slots")}</div>
                   </div>
                   <div className="rounded-2xl border p-3">
-                    <div className="text-xs text-gray-600">Access</div>
-                    <div className="font-semibold">Org settings</div>
+                    <div className="text-xs text-gray-600">{t("organization_page.access", "Access")}</div>
+                    <div className="font-semibold">{t("organization_page.org_settings", "Org settings")}</div>
                   </div>
                   <div className="rounded-2xl border p-3">
-                    <div className="text-xs text-gray-600">Upgrade</div>
-                    <div className="font-semibold">Pay per slot</div>
+                    <div className="text-xs text-gray-600">{t("organization_page.upgrade", "Upgrade")}</div>
+                    <div className="font-semibold">{t("organization_page.pay_per_slot", "Pay per slot")}</div>
                   </div>
                 </div>
               </CardContent>
@@ -494,13 +493,13 @@ const pendingInvites = useMemo(() => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard className="h-5 w-5" />
-                  Seat pricing
+                  {t("organization_page.seat_pricing", "Seat pricing")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="rounded-2xl border p-4">
-                  <div className="text-xs text-gray-600">Included</div>
-                  <div className="mt-1 text-sm font-semibold">5 free seats</div>
+                  <div className="text-xs text-gray-600">{t("organization_page.included", "Included")}</div>
+                  <div className="mt-1 text-sm font-semibold">{t("organization_page.free_seats_5", "5 free seats")}</div>
                   <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
                     <Check className="h-4 w-4 text-emerald-600" /> Invite staff
                   </div>
@@ -513,11 +512,11 @@ const pendingInvites = useMemo(() => {
                 </div>
 
                 <div className="rounded-2xl border p-4">
-                  <div className="text-xs text-gray-600">Extra seats</div>
-                  <div className="mt-1 text-sm font-semibold">$3 / seat / month</div>
-                  <div className="mt-1 text-xs text-gray-500">Buy only when you need more members.</div>
+                  <div className="text-xs text-gray-600">{t("organization_page.extra_seats", "Extra seats")}</div>
+                  <div className="mt-1 text-sm font-semibold">{t("organization_page.seat_price", "$3 / seat / month")}</div>
+                  <div className="mt-1 text-xs text-gray-500">{t("organization_page.seat_desc", "Buy only when you need more members.")}</div>
                   <Button className="mt-3 w-full rounded-2xl" variant="outline" disabled>
-                    Coming soon
+                    {t("organization_page.coming_soon", "Coming soon")}
                   </Button>
                 </div>
               </CardContent>
@@ -535,7 +534,7 @@ const pendingInvites = useMemo(() => {
       <div className="mx-auto max-w-6xl space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">Organization</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("organization", "Organization")}</h1>
             <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
               <span className="inline-flex items-center gap-2">
                 <Building2 className="h-4 w-4" />
@@ -562,7 +561,7 @@ const pendingInvites = useMemo(() => {
             <Button className="rounded-2xl" variant="outline">
               <span className="flex items-center gap-2">
                 <CreditCard className="h-4 w-4" />
-                Buy more slots
+                {t("organization_page.buy_more_slots", "Buy more slots")}
               </span>
             </Button>
           </div>
@@ -573,19 +572,16 @@ const pendingInvites = useMemo(() => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                Team slots
+                {t("organization_page.team_slots", "Team slots")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <div className="text-gray-600">
-                  Used <span className="font-medium text-gray-900">{usedSlots}</span> of{" "}
-                  <span className="font-medium text-gray-900">{totalSlots}</span>
-                </div>
+                <div className="text-gray-600">{t("organization_page.used_of", "Used {{used}} of {{total}}", { used: usedSlots, total: totalSlots })}</div>
                 <div className="text-gray-600">{usedPct}%</div>
               </div>
               <ProgressBar value={usedPct} />
-              <div className="text-xs text-gray-500">You start with <b>5 free slots</b>. Add more by purchasing extra slots.</div>
+              <div className="text-xs text-gray-500">{t("organization_page.free_slots_note", "You start with 5 free slots. Add more by purchasing extra slots.")}</div>
             </CardContent>
           </Card>
 
@@ -593,7 +589,7 @@ const pendingInvites = useMemo(() => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ArrowRight className="h-5 w-5" />
-                Quick actions
+                {t("organization_page.quick_actions", "Quick actions")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -605,10 +601,10 @@ const pendingInvites = useMemo(() => {
               <Button className="w-full rounded-2xl" onClick={openInvite}>
                 <span className="flex items-center gap-2">
                   <Mail className="h-4 w-4" />
-                  Invite by email
+                  {t("organization_page.invite_by_email", "Invite by email")}
                 </span>
               </Button>
-              <div className="text-xs text-gray-500">Invites are created + emailed by Cloud Functions.</div>
+              <div className="text-xs text-gray-500">{t("organization_page.invites_cf_hint", "Invites are created + emailed by Cloud Functions.")}</div>
             </CardContent>
           </Card>
         </div>
@@ -617,9 +613,7 @@ const pendingInvites = useMemo(() => {
           <Card className="rounded-3xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Members
-              </CardTitle>
+                <Users className="h-5 w-5" />{t("members", "Members")}</CardTitle>
             </CardHeader>
             <CardContent>
               {members.length === 0 ? (
@@ -627,8 +621,8 @@ const pendingInvites = useMemo(() => {
                   <div className="mx-auto mb-2 h-10 w-10 rounded-2xl bg-gray-100 flex items-center justify-center">
                     <Users className="h-5 w-5 text-gray-600" />
                   </div>
-                  <div className="font-medium">No members yet</div>
-                  <div className="text-sm text-gray-600">Invite your first teammate.</div>
+                  <div className="font-medium">{t("organization_page.no_members_title", "No members yet")}</div>
+                  <div className="text-sm text-gray-600">{t("organization_page.no_members_desc", "Invite your first teammate.")}</div>
                 </div>
               ) : (
                 <div className="divide-y">
@@ -639,9 +633,9 @@ const pendingInvites = useMemo(() => {
                         <div className="text-xs text-gray-500">{capWord(m.role ? m.role : "member")} {m.status ? `• ${capWord(m.status)}` : ""}</div>
                       </div>
                       {m.role === "owner" ? (
-                        <Badge className="rounded-full" variant="secondary">Owner</Badge>
+                        <Badge className="rounded-full" variant="secondary">{t("owner", "Owner")}</Badge>
                       ) : (
-                        <Badge className="rounded-full" variant="outline">Member</Badge>
+                        <Badge className="rounded-full" variant="outline">{t("member", "Member")}</Badge>
                       )}
                     </div>
                   ))}
@@ -663,8 +657,8 @@ const pendingInvites = useMemo(() => {
                   <div className="mx-auto mb-2 h-10 w-10 rounded-2xl bg-gray-100 flex items-center justify-center">
                     <Mail className="h-5 w-5 text-gray-600" />
                   </div>
-                  <div className="font-medium">No invitations yet</div>
-                  <div className="text-sm text-gray-600">Send an invite to add teammates.</div>
+                  <div className="font-medium">{t("organization_page.no_invites_title", "No invitations yet")}</div>
+                  <div className="text-sm text-gray-600">{t("organization_page.no_invites_desc", "Send an invite to add teammates.")}</div>
                 </div>
               ) : (
                 <div className="divide-y">
@@ -681,11 +675,11 @@ const pendingInvites = useMemo(() => {
                         {String(inv.status || "pending").toLowerCase() === "pending" ? (
                           <>
                             <Button size="sm" variant="outline" className="rounded-xl" disabled={inviteActionBusyId === inv.id}
-                              onClick={() => resendInvite(inv)} title="Resend (new invite)">
+                              onClick={() => resendInvite(inv)} title={t("organization_page.resend_new_invite", "Resend (new invite)")}>
                               <RefreshCcw className="h-4 w-4" />
                             </Button>
                             <Button size="sm" variant="outline" className="rounded-xl" disabled={inviteActionBusyId === inv.id}
-                              onClick={() => revokeInvite(inv.id)} title="Revoke">
+                              onClick={() => revokeInvite(inv.id)} title={t("organization_page.revoke", "Revoke")}>
                               <Ban className="h-4 w-4" />
                             </Button>
                           </>

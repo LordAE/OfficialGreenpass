@@ -1380,7 +1380,9 @@ function canUseOrgFeature() {
 }
 
 match /organizations/{orgId} {
-  allow read: if signedIn() && (isAdmin() || isOrgOwner(orgId) || isOrgMember(orgId));
+  // Read: admin, owner, or member.
+  // IMPORTANT: use resource.data.ownerId to avoid recursive get() calls.
+  allow read: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid || isOrgMember(orgId));
 
   // Create org: school/agent/tutor (gated) or admin. OwnerId must be caller.
   allow create: if signedIn()
@@ -1393,11 +1395,11 @@ match /organizations/{orgId} {
 
   // Update org: owner/admin only. Prevent lowering usedSlots below current.
   allow update: if signedIn()
-    && (isAdmin() || isOrgOwner(orgId))
+    && (isAdmin() || resource.data.ownerId == request.auth.uid)
     && request.resource.data.ownerId == resource.data.ownerId
     && request.resource.data.usedSlots >= resource.data.usedSlots;
 
-  allow delete: if signedIn() && (isAdmin() || isOrgOwner(orgId));
+  allow delete: if signedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
 }
 
 match /organization_members/{memberId} {
