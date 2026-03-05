@@ -1,5 +1,6 @@
 // src/pages/AcceptOrgInvite.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +48,8 @@ function safeInternalPath(p) {
 }
 
 export default function AcceptOrgInvite() {
+  const { t } = useTranslation();
+
   const qs = useQuery();
   // Support BOTH param names: invite (new) and inviteId (legacy)
   const invite = qs.get("invite") || qs.get("inviteId") || "";
@@ -104,7 +107,7 @@ export default function AcceptOrgInvite() {
           return;
         }
         const base = await functionsBase();
-        if (!base) throw new Error("Missing Functions base URL.");
+        if (!base) throw new Error(t("acceptOrgInvite.missingFunctionsBase", "Missing Functions base URL."));
 
         // getOrgInvitePublic expects `invite` + `token`
         const res = await fetch(
@@ -133,7 +136,7 @@ export default function AcceptOrgInvite() {
       } catch (e) {
         console.error(e);
         setState("error");
-        setMsg(e?.message || "Failed to load invite.");
+        setMsg(e?.message || t("acceptOrgInvite.failedToLoadInvite", "Failed to load invite."));
       } finally {
         setLoading(false);
       }
@@ -158,7 +161,7 @@ export default function AcceptOrgInvite() {
     setMsg("");
     try {
       const base = await functionsBase();
-      if (!base) throw new Error("Missing Functions base URL.");
+      if (!base) throw new Error(t("acceptOrgInvite.missingFunctionsBase", "Missing Functions base URL."));
 
       const idToken = await user.getIdToken(true);
       const res = await fetch(`${base}/acceptOrgInvite`, {
@@ -189,7 +192,7 @@ export default function AcceptOrgInvite() {
     } catch (e) {
       console.error(e);
       setState("error");
-      setMsg(e?.message || "Failed to accept invite.");
+      setMsg(e?.message || t("acceptOrgInvite.failedToAccept", "Failed to accept invite."));
     } finally {
       setLoading(false);
     }
@@ -202,11 +205,11 @@ export default function AcceptOrgInvite() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Mail className="h-5 w-5" />
-              Accept Organization Invite
+              {t("acceptOrgInvite.pageTitle", "Accept Organization Invite")}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-gray-600 flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+            <Loader2 className="h-4 w-4 animate-spin" /> {t("acceptOrgInvite.loading", "Loading…")}
           </CardContent>
         </Card>
       </div>
@@ -220,16 +223,14 @@ export default function AcceptOrgInvite() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <XCircle className="h-5 w-5 text-red-600" />
-              Invalid invitation
+              {t("acceptOrgInvite.invalidInvitationTitle", "Invalid invitation")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-sm text-gray-600">
-              {msg || "This invitation link is invalid or no longer available."}
+              {msg || t("acceptOrgInvite.invalidOrUnavailable", "This invitation link is invalid or no longer available.")}
             </div>
-            <Button onClick={() => nav("/")} className="rounded-2xl">
-              Go home
-            </Button>
+            <Button onClick={() => nav("/")} className="rounded-2xl">{t("acceptOrgInvite.goHome", "Go home")}</Button>
           </CardContent>
         </Card>
       </div>
@@ -243,16 +244,14 @@ export default function AcceptOrgInvite() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <XCircle className="h-5 w-5 text-amber-600" />
-              Invitation expired
+              {t("acceptOrgInvite.invitationExpiredTitle", "Invitation expired")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-sm text-gray-600">
-              {msg || "Ask the organization owner to resend a new invite."}
+              {msg || t("acceptOrgInvite.askResend", "Ask the organization owner to resend a new invite.")}
             </div>
-            <Button onClick={() => nav("/")} className="rounded-2xl">
-              Go home
-            </Button>
+            <Button onClick={() => nav("/")} className="rounded-2xl">{t("acceptOrgInvite.goHome", "Go home")}</Button>
           </CardContent>
         </Card>
       </div>
@@ -266,18 +265,16 @@ export default function AcceptOrgInvite() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <LogIn className="h-5 w-5" />
-              Sign in required
+              {t("acceptOrgInvite.signInRequiredTitle", "Sign in required")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-sm text-gray-600">
-              Please sign in (or sign up) using the same email address that received the invitation.
+              {t("acceptOrgInvite.pleaseSignInSameEmail", "Please sign in (or sign up) using the same email address that received the invitation.")}
             </div>
-            <Button onClick={goToSeoLogin} className="rounded-2xl w-full">
-              Continue to Sign in / Sign up
-            </Button>
+            <Button onClick={goToSeoLogin} className="rounded-2xl w-full">{t("acceptOrgInvite.continueToSignInUp", "Continue to Sign in / Sign up")}</Button>
             <div className="text-xs text-gray-500">
-              You’ll be brought back here automatically after login.
+              {t("acceptOrgInvite.backAfterLogin", "You’ll be brought back here automatically after login.")}
             </div>
           </CardContent>
         </Card>
@@ -292,16 +289,14 @@ export default function AcceptOrgInvite() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              Invitation accepted
+              {t("acceptOrgInvite.invitationAcceptedTitle", "Invitation accepted")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-sm text-gray-600">
-              You’ve joined {preview?.orgName || "the organization"}.
+              {t("acceptOrgInvite.youVeJoined", "You’ve joined")} {preview?.orgName || t("acceptOrgInvite.theOrganization", "the organization")}.
             </div>
-            <Button onClick={() => nav("/organization")} className="rounded-2xl">
-              Go to Organization
-            </Button>
+            <Button onClick={() => nav("/organization")} className="rounded-2xl">{t("acceptOrgInvite.goToOrganization", "Go to Organization")}</Button>
           </CardContent>
         </Card>
       </div>
@@ -316,41 +311,37 @@ export default function AcceptOrgInvite() {
     <div className="p-6">
       <Card className="rounded-3xl max-w-xl mx-auto">
         <CardHeader>
-          <CardTitle>Accept invitation</CardTitle>
+          <CardTitle>{t("acceptOrgInvite.title", "Accept invitation")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="text-sm text-gray-600">
-            You were invited to join <b>{preview?.orgName || "an organization"}</b>.
+            {t("acceptOrgInvite.invitedToJoin", "You were invited to join")} <b>{preview?.orgName || t("acceptOrgInvite.anOrganization", "an organization")}</b>.
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="secondary" className="rounded-full">
-              {preview?.role || "member"}
+              {preview?.role || t("acceptOrgInvite.roleMember", "member")}
             </Badge>
             <Badge variant="outline" className="rounded-full">
-              Pending
+              {t("acceptOrgInvite.badgePending", "Pending")}
             </Badge>
           </div>
 
           {emailMismatch ? (
             <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl p-3">
-              You are signed in as <b>{myEmail}</b>, but this invite was sent to <b>{invitedEmail}</b>.
+              {t("acceptOrgInvite.signedInAs", "You are signed in as")} <b>{myEmail}</b>, {t("acceptOrgInvite.butThisInviteWasSentTo", "but this invite was sent to")} <b>{invitedEmail}</b>.
               <div className="mt-2">
-                <Button onClick={goToSeoLogin} variant="outline" className="rounded-2xl">
-                  Sign in with the invited email
-                </Button>
+                <Button onClick={goToSeoLogin} variant="outline" className="rounded-2xl">{t("acceptOrgInvite.signInWithInvitedEmail", "Sign in with the invited email")}</Button>
               </div>
             </div>
           ) : null}
 
           {msg ? <div className="text-sm text-red-600">{msg}</div> : null}
 
-          <Button onClick={acceptInvite} className="rounded-2xl w-full" disabled={emailMismatch}>
-            Accept & Join
-          </Button>
+          <Button onClick={acceptInvite} className="rounded-2xl w-full" disabled={emailMismatch}>{t("acceptOrgInvite.acceptAndJoin", "Accept & Join")}</Button>
 
           <div className="text-xs text-gray-500">
-            You must be signed in with <b>{invitedEmail || "the invited email"}</b> to accept.
+            {t("acceptOrgInvite.youMustBeSignedInWith", "You must be signed in with")} <b>{invitedEmail || t("acceptOrgInvite.theInvitedEmail", "the invited email")}</b> {t("acceptOrgInvite.toAccept", "to accept.")}
           </div>
         </CardContent>
       </Card>
