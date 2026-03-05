@@ -72,7 +72,7 @@ async function fetchUsersByIds(ids) {
 }
 
 export default function Connections() {
-  const { tr } = useTr("connections");
+  const { tr } = useTr("connections_page");
   const navigate = useNavigate();
   const qp = useQueryParams();
 
@@ -283,7 +283,7 @@ export default function Connections() {
       alert(
         tr(
           "file_too_large_4mb",
-          `Some files are larger than 4MB and were not added: ${names}${more}`
+          `Một số tệp lớn hơn 4MB nên không được thêm: ${names}${more}`
         )
       );
     }
@@ -379,8 +379,8 @@ export default function Connections() {
           <div className="min-w-0">
             <div className="text-sm font-semibold text-gray-900 truncate">{name}</div>
             <div className="text-xs text-gray-600 flex items-center gap-2">
-              <span className="capitalize">{role}</span>
-              {role === "agent" ? <Badge>Agent</Badge> : role === "tutor" ? <Badge>Tutor</Badge> : null}
+              <span className="capitalize">{role === "agent" ? tr("agent", "Agent") : role === "tutor" ? tr("tutor", "Tutor") : role === "school" ? tr("school", "School") : role === "student" ? tr("student", "Student") : role}</span>
+              {role === "agent" ? <Badge>{tr("agent", "Agent")}</Badge> : role === "tutor" ? <Badge>{tr("tutor", "Tutor")}</Badge> : null}
             </div>
           </div>
         </div>
