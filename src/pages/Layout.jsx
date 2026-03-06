@@ -152,17 +152,26 @@ const FALLBACK_TEXT = {
   seatReservations: "Seat Reservations",
   myAgent: "My Agent",
   findAgent: "Find Agent",
+  search: "Search",
+  searchPlaceholder: "Search...",
+  apps: "Apps",
+  admin: "Admin",
+  tutors: "Tutors",
 };
 
 const fb = (key) => FALLBACK_TEXT[key] || key;
 
+/* ---------- translation safety ---------- */
+const safeText = (value, fallback = "") => (typeof value === "string" ? value : fallback);
+
 function useNavTr() {
   const { t } = useTranslation();
   return React.useCallback(
-    (key, defaultValue) =>
-      t(`nav.${key}`, {
-        defaultValue: defaultValue ?? fb(key),
-      }),
+    (key, defaultValue) => {
+      const fallback = defaultValue ?? fb(key);
+      const value = t(`nav.${key}`, { defaultValue: fallback });
+      return safeText(value, fallback);
+    },
     [t]
   );
 }
@@ -247,7 +256,7 @@ const UserAvatar = ({
   className = "",
 }) => {
   const { t } = useTranslation();
-  const name = user?.full_name || t("nav.account", { defaultValue: "Account" });
+  const name = user?.full_name || safeText(t("nav.account", { defaultValue: "Account" }), "Account");
   const initial = name.charAt(0).toUpperCase();
   const photo = user?.photo_url || user?.profile_picture || user?.photoURL;
 
@@ -272,7 +281,7 @@ const UserAvatar = ({
 
 const AccountTrigger = ({ currentUser, open, onClick }) => {
   const { t } = useTranslation();
-  const accountLabel = t("nav.account", { defaultValue: "Account" });
+  const accountLabel = safeText(t("nav.account", { defaultValue: "Account" }), "Account");
 
   return (
     <button
@@ -312,7 +321,7 @@ const AccountDropdown = ({
   useClickOutside(wrapRef, () => setOpen(false), open);
 
   const resolvedTitle =
-    title || t("nav.account", { defaultValue: "Account" });
+    title || safeText(t("nav.account", { defaultValue: "Account" }), "Account");
 
   const MenuItem = ({ to, onClick, Icon, label, danger = false, chevron = false }) => {
     const base =
@@ -373,10 +382,10 @@ const AccountDropdown = ({
                 <UserAvatar user={currentUser} sizeClass="w-12 h-12" textClass="text-lg" />
                 <div className="min-w-0">
                   <div className="font-semibold text-gray-900 truncate">
-                    {currentUser?.full_name || t("nav.account", { defaultValue: "Account" })}
+                    {currentUser?.full_name || safeText(t("nav.account", { defaultValue: "Account" }), "Account")}
                   </div>
                   <div className="text-xs text-gray-500 capitalize truncate">
-                    {currentUser?.user_type || t("nav.account", { defaultValue: "Account" })}
+                    {currentUser?.user_type || safeText(t("nav.account", { defaultValue: "Account" }), "Account")}
                   </div>
                 </div>
               </div>
@@ -403,7 +412,7 @@ const AccountDropdown = ({
               <MenuItem
                 onClick={onLogout}
                 Icon={LogOut}
-                label={t("nav.logOut", { defaultValue: "Logout" })}
+                label={safeText(t("nav.logOut", { defaultValue: "Logout" }), "Logout")}
                 danger
               />
             </div>
@@ -567,6 +576,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
 
+  const tt = React.useCallback((key, fallback) => safeText(t(key, { defaultValue: fallback }), fallback), [t]);
+
   const headerRef = React.useRef(null);
   const [headerH, setHeaderH] = React.useState(72);
   const [measured, setMeasured] = React.useState(false);
@@ -658,9 +669,9 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
+                    placeholder={tt("nav.searchPlaceholder", "Search...")}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label={t("nav.search", { defaultValue: "Search" })}
+                    aria-label={tt("nav.search", "Search")}
                   />
                 </div>
               </form>
@@ -670,16 +681,16 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
+                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={tt("nav.dashboard", "Dashboard")} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
+                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={tt("nav.directory", "Directory")} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
+                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={tt("nav.connections", "Connections")} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
+                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={tt("nav.events", "Events")} />
                   </div>
                 </div>
               </div>
@@ -689,8 +700,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               <Link
                 to={createPageUrl("Directory")}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label={t("nav.apps", { defaultValue: "Apps" })}
-                title={t("nav.apps", { defaultValue: "Apps" })}
+                aria-label={tt("nav.apps", "Apps")}
+                title={tt("nav.apps", "Apps")}
               >
                 <Dots9Icon className="h-6 w-6" />
               </Link>
@@ -698,8 +709,8 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               <Link
                 to={createPageUrl("Welcome")}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label={t("nav.login", { defaultValue: "Login" })}
-                title={t("nav.login", { defaultValue: "Login" })}
+                aria-label={tt("nav.login", "Login")}
+                title={tt("nav.login", "Login")}
               >
                 <UserCheck className="h-6 w-6" />
               </Link>
@@ -788,6 +799,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
   const navigate = useNavigate();
   const isActive = useIsActive();
   const { t } = useTranslation();
+  const tt = React.useCallback((key, fallback) => safeText(t(key, { defaultValue: fallback }), fallback), [t]);
   const tr = useNavTr();
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
@@ -821,9 +833,9 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
+                    placeholder={tt("nav.searchPlaceholder", "Search...")}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label={t("nav.search", { defaultValue: "Search" })}
+                    aria-label={tt("nav.search", "Search")}
                   />
                 </div>
               </form>
@@ -833,16 +845,16 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
               <div className="pointer-events-auto w-[560px] md:w-[640px] lg:w-[720px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={tt("nav.dashboard", "Dashboard")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={tt("nav.directory", "Directory")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={tt("nav.connections", "Connections")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={tt("nav.events", "Events")} isActive={isActive} />
                   </div>
                 </div>
               </div>
@@ -853,8 +865,8 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label={t("nav.messages", { defaultValue: "Messages" })}
-                title={t("nav.messages", { defaultValue: "Messages" })}
+                aria-label={tt("nav.messages", "Messages")}
+                title={tt("nav.messages", "Messages")}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -866,7 +878,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("nav.account", { defaultValue: "Account" })}
+                title={tt("nav.account", "Account")}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -893,6 +905,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
 
 const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
   const { t } = useTranslation();
+  const tt = React.useCallback((key, fallback) => safeText(t(key, { defaultValue: fallback }), fallback), [t]);
   const tr = useNavTr();
   const navigate = useNavigate();
   const isActive = useIsActive();
@@ -928,9 +941,9 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
+                    placeholder={tt("nav.searchPlaceholder", "Search...")}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label={t("nav.search", { defaultValue: "Search" })}
+                    aria-label={tt("nav.search", "Search")}
                   />
                 </div>
               </form>
@@ -940,16 +953,16 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={tt("nav.dashboard", "Dashboard")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={tt("nav.directory", "Directory")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={tt("nav.connections", "Connections")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={tt("nav.events", "Events")} isActive={isActive} />
                   </div>
                 </div>
               </div>
@@ -960,8 +973,8 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label={t("nav.messages", { defaultValue: "Messages" })}
-                title={t("nav.messages", { defaultValue: "Messages" })}
+                aria-label={tt("nav.messages", "Messages")}
+                title={tt("nav.messages", "Messages")}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -973,7 +986,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("nav.account", { defaultValue: "Account" })}
+                title={tt("nav.account", "Account")}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1000,6 +1013,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
 const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
   const { t } = useTranslation();
+  const tt = React.useCallback((key, fallback) => safeText(t(key, { defaultValue: fallback }), fallback), [t]);
   const tr = useNavTr();
   const navigate = useNavigate();
   const isActive = useIsActive();
@@ -1035,9 +1049,9 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
+                    placeholder={tt("nav.searchPlaceholder", "Search...")}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label={t("nav.search", { defaultValue: "Search" })}
+                    aria-label={tt("nav.search", "Search")}
                   />
                 </div>
               </form>
@@ -1047,16 +1061,16 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={tt("nav.dashboard", "Dashboard")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={tt("nav.directory", "Directory")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={tt("nav.connections", "Connections")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={tt("nav.events", "Events")} isActive={isActive} />
                   </div>
                 </div>
               </div>
@@ -1067,8 +1081,8 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label={t("nav.messages", { defaultValue: "Messages" })}
-                title={t("nav.messages", { defaultValue: "Messages" })}
+                aria-label={tt("nav.messages", "Messages")}
+                title={tt("nav.messages", "Messages")}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -1080,7 +1094,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("nav.account", { defaultValue: "Account" })}
+                title={tt("nav.account", "Account")}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1107,6 +1121,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 
 const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
   const { t } = useTranslation();
+  const tt = React.useCallback((key, fallback) => safeText(t(key, { defaultValue: fallback }), fallback), [t]);
   const tr = useNavTr();
   const navigate = useNavigate();
   const isActive = useIsActive();
@@ -1142,9 +1157,9 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder={t("nav.searchPlaceholder", { defaultValue: "Search..." })}
+                    placeholder={tt("nav.searchPlaceholder", "Search...")}
                     className="w-full h-10 rounded-full border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-200 focus:border-green-300"
-                    aria-label={t("nav.search", { defaultValue: "Search" })}
+                    aria-label={tt("nav.search", "Search")}
                   />
                 </div>
               </form>
@@ -1154,16 +1169,16 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={tt("nav.dashboard", "Dashboard")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={tt("nav.directory", "Directory")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={tt("nav.connections", "Connections")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={tt("nav.events", "Events")} isActive={isActive} />
                   </div>
                 </div>
               </div>
@@ -1174,8 +1189,8 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label={t("nav.messages", { defaultValue: "Messages" })}
-                title={t("nav.messages", { defaultValue: "Messages" })}
+                aria-label={tt("nav.messages", "Messages")}
+                title={tt("nav.messages", "Messages")}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -1187,7 +1202,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("nav.account", { defaultValue: "Account" })}
+                title={tt("nav.account", "Account")}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1222,6 +1237,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
   onLogout,
 }) => {
   const { t } = useTranslation();
+  const tt = React.useCallback((key, fallback) => safeText(t(key, { defaultValue: fallback }), fallback), [t]);
   const tr = useNavTr();
   const navigate = useNavigate();
   const isActive = useIsActive();
@@ -1297,16 +1313,16 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
               <div className="pointer-events-auto w-[620px] md:w-[720px] lg:w-[820px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={tt("nav.dashboard", "Dashboard")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={tt("nav.directory", "Directory")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={tt("nav.connections", "Connections")} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={tt("nav.events", "Events")} isActive={isActive} />
                   </div>
                 </div>
               </div>
@@ -1317,8 +1333,8 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
                 type="button"
                 onClick={() => navigate(createPageUrl("Messages"))}
                 className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
-                aria-label={t("nav.messages", { defaultValue: "Messages" })}
-                title={t("nav.messages", { defaultValue: "Messages" })}
+                aria-label={tt("nav.messages", "Messages")}
+                title={tt("nav.messages", "Messages")}
               >
                 <MessageSquare className="h-6 w-6" />
               </button>
@@ -1330,7 +1346,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("nav.accountSettings", { defaultValue: "Account Settings" })}
+                title={tt("nav.accountSettings", "Account Settings")}
                 items={accountSettingsItems.map((it) => ({
                   label: it.title,
                   url: it.url,
@@ -1355,7 +1371,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
             <div className="h-[calc(100svh-theme(spacing.0))] max-h-[calc(100svh)] overflow-y-auto px-3 py-4">
               <div className="rounded-2xl bg-white border border-gray-200 shadow-sm p-3">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 py-2">
-                  {t("nav.admin", { defaultValue: "Admin" })}
+                  {tt("nav.admin", "Admin")}
                 </div>
                 <div className="space-y-1">
                   {leftPanelItems.map((it) => (
@@ -1385,28 +1401,29 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 /* ---------- Footer ---------- */
 const Footer = ({ getCompanyName }) => {
   const { t } = useTranslation();
+  const tt = React.useCallback((key, fallback) => safeText(t(key, { defaultValue: fallback }), fallback), [t]);
 
   const footerLinks = [
     {
-      column_title: t("footer.explore", { defaultValue: "Explore" }),
+      column_title: tt("footer.explore", "Explore"),
       links: [
-        { text: t("nav.directory", { defaultValue: "Directory" }), url: createPageUrl("Directory") },
-        { text: t("nav.events", { defaultValue: "Events" }), url: createPageUrl("Events") },
-        { text: t("nav.messages", { defaultValue: "Messages" }), url: createPageUrl("Messages") },
+        { text: tt("nav.directory", "Directory"), url: createPageUrl("Directory") },
+        { text: tt("nav.events", "Events"), url: createPageUrl("Events") },
+        { text: tt("nav.messages", "Messages"), url: createPageUrl("Messages") },
       ],
     },
     {
-      column_title: t("footer.account", { defaultValue: "Account" }),
+      column_title: tt("footer.account", "Account"),
       links: [
-        { text: t("nav.login", { defaultValue: "Login" }), url: createPageUrl("Welcome") },
-        { text: t("nav.login", { defaultValue: "Login" }), url: createPageUrl("Login") },
-        { text: t("nav.profile", { defaultValue: "Profile" }), url: createPageUrl("Profile") },
+        { text: tt("nav.login", "Login"), url: createPageUrl("Welcome") },
+        { text: tt("nav.login", "Login"), url: createPageUrl("Login") },
+        { text: tt("nav.profile", "Profile"), url: createPageUrl("Profile") },
       ],
     },
     {
-      column_title: t("footer.legal", { defaultValue: "Legal" }),
+      column_title: tt("footer.legal", "Legal"),
       links: [
-        { text: t("footer.agentAgreement", { defaultValue: "Agent Agreement" }), url: createPageUrl("AgentAgreement") },
+        { text: tt("footer.agentAgreement", "Agent Agreement"), url: createPageUrl("AgentAgreement") },
       ],
     },
   ];
@@ -1447,9 +1464,7 @@ const Footer = ({ getCompanyName }) => {
             ))}
           </div>
           <p className="mt-8 text-base text-gray-400 md:mt-0 md:order-1">
-            {t("footer.copyright", {
-              defaultValue: `© ${getCompanyName()}. All rights reserved.`,
-            })}
+            {tt("footer.copyright", `© ${getCompanyName()}. All rights reserved.`)}
           </p>
         </div>
       </div>
@@ -1471,7 +1486,7 @@ function buildDesktopNav(currentUser, tr) {
       { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
       { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
       { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: DollarSign },
-      { title: tr("payments", "Payments"), url: createPageUrl("AdminPayments"), icon: DollarSign },
+      { title: tr("paymentMonitoring", "Payment Monitoring"), url: createPageUrl("AdminPayments"), icon: DollarSign },
       { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
       { title: tr("eventsAdmin", "Event Management"), url: createPageUrl("AdminEvents"), icon: Calendar },
       { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
@@ -1567,7 +1582,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
         { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
         { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
         { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: DollarSign },
-        { title: tr("payments", "Payments"), url: createPageUrl("AdminPayments"), icon: DollarSign },
+        { title: tr("paymentMonitoring", "Payment Monitoring"), url: createPageUrl("AdminPayments"), icon: DollarSign },
         { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
         { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
         { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: DollarSign },
@@ -1961,14 +1976,14 @@ export default function Layout() {
                 <p className="text-xs text-gray-500 capitalize">{currentUser?.user_type}</p>
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout} className="text-red-600">
-                <LogOut className="w-4 h-4 mr-1" /> {t("nav.logOut", { defaultValue: "Logout" })}
+                <LogOut className="w-4 h-4 mr-1" /> {safeText(t("nav.logOut", { defaultValue: "Logout" }), "Logout")}
               </Button>
             </div>
 
             <div className="mb-3">
               <div className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-2">
                 <Globe className="w-4 h-4" />
-                {t("common.language", { defaultValue: "Language" })}
+                {safeText(t("common.language", { defaultValue: "Language" }), "Language")}
               </div>
               <select
                 data-testid="lang-select"
