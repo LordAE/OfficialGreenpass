@@ -13,14 +13,10 @@ import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
-// ✅ Firebase (sync status to users/{uid} so Profile + Onboarding stay consistent)
 import { db } from "@/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 
-// Required
 import { User } from '@/api/entities';
-
-// Optional (may be unavailable in some deployments)
 import { Agent } from '@/api/entities';
 import { Tutor } from '@/api/entities';
 import { Vendor } from '@/api/entities';
@@ -31,12 +27,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const toDate = (d) => {
   if (!d) return null;
-  if (typeof d?.toDate === 'function') return d.toDate();       // Firestore Timestamp
-  if (typeof d === 'object' && typeof d.seconds === 'number')   // {seconds, nanoseconds}
-    return new Date(d.seconds * 1000);
-  const dt = new Date(d);                                       // ISO/date string/epoch ms
+  if (typeof d?.toDate === 'function') return d.toDate();
+  if (typeof d === 'object' && typeof d.seconds === 'number') return new Date(d.seconds * 1000);
+  const dt = new Date(d);
   return isNaN(dt.getTime()) ? null : dt;
 };
+
 const safeFormatDate = (d, fmt = 'MMM dd, yyyy') => {
   const date = toDate(d);
   return date ? format(date, fmt) : 'N/A';
@@ -48,12 +44,47 @@ const dedupeById = (arr) => {
   return Object.values(map);
 };
 
+const normalizeRole = (role) => {
+  const r = String(role || '').toLowerCase().trim();
+  if (r === 'user') return 'student';
+  return r;
+};
+
+const getVerificationStatus = (item) =>
+  String(item?.verification_status || item?.verification?.status || '').toLowerCase();
+
+const getVerificationDocs = (item) => {
+  const docs =
+    item?.verification?.docs ||
+    item?.verification_docs ||
+    item?.documents ||
+    item?.docs ||
+    {};
+  return docs && typeof docs === 'object' ? docs : {};
+};
+
+const hasAnyDocUrl = (item) => {
+  const docs = getVerificationDocs(item);
+  const nested = Object.values(docs).some((v) => typeof v === 'string' && /^https?:\/\//i.test(v));
+
+  if (nested) return true;
+
+  return Object.values(item || {}).some((v) => typeof v === 'string' && /^https?:\/\//i.test(v));
+};
+
+const isPendingVerificationSubmission = (item) => {
+  const status = getVerificationStatus(item);
+  const isVerified = item?.is_verified === true;
+  return status === 'pending' && !isVerified && hasAnyDocUrl(item);
+};
+
 const updateUserVerification = async (userId, status, reason = "") => {
   if (!userId) return;
   const uref = doc(db, "users", String(userId));
   const cleanStatus = String(status || "pending").toLowerCase();
   const cleanReason = String(reason || "");
   const isVerified = cleanStatus === "verified";
+
   await updateDoc(uref, {
     verification_status: cleanStatus,
     verification_rejection_reason: cleanStatus === "rejected" ? cleanReason : "",
@@ -65,8 +96,7 @@ const updateUserVerification = async (userId, status, reason = "") => {
   });
 };
 
-// ---------- end helpers ----------
-
+// ---------- ui ----------
 const StatusBadge = ({ status }) => {
   const colors = {
     pending: "bg-yellow-100 text-yellow-800",
@@ -79,7 +109,7 @@ const StatusBadge = ({ status }) => {
 const VerificationActions = ({ item, onApprove, onReject, entityType }) => (
   <div className="flex gap-2">
     <Button asChild variant="ghost" size="sm" className="w-8 h-8">
-      <Link to={createPageUrl(`UserDetails?id=${encodeURIComponent(item.user_id || item.id)}`)}>
+      <Link to={createPageUrl(`UserDetails?id=${encodeURIComponent(item.user_id || item.userId || item.uid || item.id)}`)}>
         <Eye className="w-4 h-4" />
       </Link>
     </Button>
@@ -91,7 +121,6 @@ const VerificationActions = ({ item, onApprove, onReject, entityType }) => (
     </Button>
   </div>
 );
-
 
 /* ---------- Verification Documents helpers ---------- */
 const isHttpUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
@@ -108,12 +137,8 @@ const normalizeDocsSources = (item, userDoc) => {
     userDoc?.docs,
   ].filter(Boolean);
 
-  // Also consider direct flat fields (fallback)
   const flat = {};
-  const candidates = [
-    item,
-    userDoc,
-  ].filter(Boolean);
+  const candidates = [item, userDoc].filter(Boolean);
 
   for (const obj of candidates) {
     for (const [k, v] of Object.entries(obj)) {
@@ -125,9 +150,8 @@ const normalizeDocsSources = (item, userDoc) => {
 };
 
 const resolveRoleDocs = (role, item, userDoc) => {
+  const normalizedRole = normalizeRole(role);
   const { sources, flat } = normalizeDocsSources(item, userDoc);
-
-  // merge all maps (later maps override earlier maps)
   const merged = sources.reduce((acc, m) => ({ ...acc, ...m }), {});
   const all = { ...merged, ...flat };
 
@@ -140,27 +164,24 @@ const resolveRoleDocs = (role, item, userDoc) => {
   };
 
   const docs = [];
-  if (role === "agent") {
+  if (normalizedRole === "agent") {
     docs.push(pick(["agent_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
     docs.push(pick(["agent_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
     docs.push(pick(["agent_business_permit", "business_permit_url", "businessPermit", "business_permit", "business_license"], "Business Permit"));
-  } else if (role === "tutor") {
+  } else if (normalizedRole === "tutor") {
     docs.push(pick(["tutor_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
     docs.push(pick(["tutor_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
     docs.push(pick(["tutor_proof", "tutor_proof_url", "proof_url", "proof", "teaching_proof"], "Tutor Proof"));
-  } else if (role === "school") {
-    docs.push(pick(["school_permit", "school_permit_url", "permit_url", "permit"], "School Permit"));
+  } else if (normalizedRole === "school") {
+    docs.push(pick(["school_dli_or_permit", "school_permit", "school_permit_url", "permit_url", "permit"], "School Permit / DLI"));
     docs.push(pick(["school_dli", "school_dli_url", "dli_url", "dli", "school_accreditation", "accreditation_url"], "DLI / Accreditation"));
-  } else if (role === "vendor") {
+  } else if (normalizedRole === "vendor") {
     docs.push(pick(["vendor_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
     docs.push(pick(["vendor_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
     docs.push(pick(["vendor_business_permit", "business_permit_url", "businessPermit", "business_permit"], "Business Permit"));
-  } else if (role === "student") {
-    docs.push(pick(["student_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
-    docs.push(pick(["student_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
-  } else if (role === "user") {
-    docs.push(pick(["user_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
-    docs.push(pick(["user_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
+  } else if (normalizedRole === "student") {
+    docs.push(pick(["student_id_front", "user_id_front", "id_front_url", "idFront", "id_front"], "ID Front"));
+    docs.push(pick(["student_id_back", "user_id_back", "id_back_url", "idBack", "id_back"], "ID Back"));
   }
 
   return docs.filter(Boolean);
@@ -188,13 +209,11 @@ const VerificationDocsCell = ({ role, item, userDoc }) => {
   );
 };
 
-
 export default function Verification() {
   const [agents, setAgents] = useState([]);
   const [tutors, setTutors] = useState([]);
   const [schools, setSchools] = useState([]);
   const [vendors, setVendors] = useState([]);
-  const [users, setUsers] = useState([]);
   const [students, setStudents] = useState([]);
   const [userMap, setUserMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -204,8 +223,8 @@ export default function Verification() {
     const loadData = async () => {
       setLoading(true);
       setError(null);
+
       try {
-        // ---------- Users ----------
         let userData = [];
         try {
           userData = await User.list();
@@ -214,87 +233,83 @@ export default function Verification() {
           console.error('Error loading users:', err);
         }
 
-        // ---------- Agents ----------
         let agentData = [];
-        if (Agent && typeof Agent.filter === 'function') {
+        if (Agent && typeof Agent.list === 'function') {
           try {
-            const [q1, q2] = await Promise.all([
-              Agent.filter({ verification_status: 'pending' }).catch(() => []),
-              Agent.filter({ is_verified: false }).catch(() => []),
-            ]);
-            agentData = dedupeById([...(q1 || []), ...(q2 || [])]);
+            agentData = dedupeById(await Agent.list());
             await sleep(150);
           } catch (err) {
             console.error('Error loading agents:', err);
           }
         }
 
-        // ---------- Tutors ----------
         let tutorData = [];
-        if (Tutor && typeof Tutor.filter === 'function') {
+        if (Tutor && typeof Tutor.list === 'function') {
           try {
-            const [q1, q2] = await Promise.all([
-              Tutor.filter({ verification_status: 'pending' }).catch(() => []),
-              Tutor.filter({ is_verified: false }).catch(() => []),
-            ]);
-            tutorData = dedupeById([...(q1 || []), ...(q2 || [])]);
+            tutorData = dedupeById(await Tutor.list());
             await sleep(150);
           } catch (err) {
             console.error('Error loading tutors:', err);
           }
         }
 
-        // ---------- Schools ----------
         let schoolData = [];
-        if (School && typeof School.filter === 'function') {
+        if (School && typeof School.list === 'function') {
           try {
-            const [q1, q2] = await Promise.all([
-              School.filter({ verification_status: 'pending' }).catch(() => []),
-              School.filter({ is_verified: false }).catch(() => []),
-            ]);
-            schoolData = dedupeById([...(q1 || []), ...(q2 || [])]);
+            schoolData = dedupeById(await School.list());
             await sleep(150);
           } catch (err) {
             console.error('Error loading schools:', err);
           }
         }
 
-        // ---------- Vendors ----------
         let vendorData = [];
-        if (Vendor && typeof Vendor.filter === 'function') {
+        if (Vendor && typeof Vendor.list === 'function') {
           try {
-            const [q1, q2] = await Promise.all([
-              Vendor.filter({ verification_status: 'pending' }).catch(() => []),
-              Vendor.filter({ is_verified: false }).catch(() => []),
-            ]);
-            vendorData = dedupeById([...(q1 || []), ...(q2 || [])]);
+            vendorData = dedupeById(await Vendor.list());
             await sleep(150);
           } catch (err) {
             console.error('Error loading vendors:', err);
           }
         }
 
-        // ---------- Build user map & pending lists ----------
-        const userMapping = (Array.isArray(userData) ? userData : []).reduce((acc, u) => {
+        const allUsers = Array.isArray(userData) ? userData : [];
+        const userMapping = allUsers.reduce((acc, u) => {
           if (u && u.id) acc[u.id] = u;
           return acc;
         }, {});
         setUserMap(userMapping);
 
-        const allUsers = Array.isArray(userData) ? userData : [];
-        const pendingUsers = allUsers.filter(
-          (u) => u.user_type === 'user' && (u.is_verified === false || !u.onboarding_completed)
-        );
-        const pendingStudents = allUsers.filter(
-          (u) => u.user_type === 'student' && (u.is_verified === false || !u.onboarding_completed)
-        );
+        const pendingStudents = allUsers.filter((u) => {
+          const role = normalizeRole(u.user_type || u.role || u.userType);
+          return role === 'student' && isPendingVerificationSubmission(u);
+        });
 
-        setAgents(Array.isArray(agentData) ? agentData : []);
-        setTutors(Array.isArray(tutorData) ? tutorData : []);
-        setSchools(Array.isArray(schoolData) ? schoolData : []);
-        setVendors(Array.isArray(vendorData) ? vendorData : []);
-        setUsers(pendingUsers);
-        setStudents(pendingStudents);
+        const pendingAgents = (agentData || []).filter((a) => {
+          const linkedUser = userMapping[a.user_id];
+          return isPendingVerificationSubmission(a) || isPendingVerificationSubmission(linkedUser);
+        });
+
+        const pendingTutors = (tutorData || []).filter((t) => {
+          const linkedUser = userMapping[t.user_id];
+          return isPendingVerificationSubmission(t) || isPendingVerificationSubmission(linkedUser);
+        });
+
+        const pendingSchools = (schoolData || []).filter((s) => {
+          const linkedUser = userMapping[s.user_id];
+          return isPendingVerificationSubmission(s) || isPendingVerificationSubmission(linkedUser);
+        });
+
+        const pendingVendors = (vendorData || []).filter((v) => {
+          const linkedUser = userMapping[v.user_id];
+          return isPendingVerificationSubmission(v) || isPendingVerificationSubmission(linkedUser);
+        });
+
+        setAgents(dedupeById(pendingAgents));
+        setTutors(dedupeById(pendingTutors));
+        setSchools(dedupeById(pendingSchools));
+        setVendors(dedupeById(pendingVendors));
+        setStudents(dedupeById(pendingStudents));
       } catch (err) {
         console.error("Critical error loading verification data:", err);
         setError("Failed to load verification data. Please try refreshing the page.");
@@ -308,10 +323,21 @@ export default function Verification() {
 
   const handleApprove = async (item, entityType) => {
     try {
-      // write both forms for compatibility with different docs
-      const updateData = { verification_status: 'verified', is_visible: true, is_verified: true, verification_rejection_reason: '' };
+      const normalizedType = normalizeRole(entityType);
+      const updateData = {
+        verification_status: 'verified',
+        is_visible: true,
+        is_verified: true,
+        verification_rejection_reason: '',
+        verification: {
+          ...(item?.verification || {}),
+          status: 'verified',
+          reason: '',
+          reviewedAt: new Date().toISOString(),
+        },
+      };
 
-      switch (entityType) {
+      switch (normalizedType) {
         case 'agent':
           if (Agent?.update) {
             await Agent.update(item.id, updateData);
@@ -344,21 +370,25 @@ export default function Verification() {
             alert('Vendor verification not available.');
           }
           break;
-        case 'user':
         case 'student':
-          await User.update(item.id, { onboarding_completed: true, is_verified: true, verification_status: 'verified', verification_rejection_reason: '' });
-          if (entityType === 'user') {
-            setUsers((prev) => prev.filter((u) => u.id !== item.id));
-          } else {
-            setStudents((prev) => prev.filter((s) => s.id !== item.id));
-          }
+          await User.update(item.id, {
+            is_verified: true,
+            verification_status: 'verified',
+            verification_rejection_reason: '',
+            verification: {
+              ...(item?.verification || {}),
+              status: 'verified',
+              reason: '',
+              reviewedAt: new Date().toISOString(),
+            },
+          });
+          setStudents((prev) => prev.filter((s) => s.id !== item.id));
           break;
         default:
           alert('Unknown entity type.');
       }
 
-      // ✅ Also sync to users/{uid} for Profile page
-      await updateUserVerification(item.user_id || item.userId || item.uid, 'verified', '');
+      await updateUserVerification(item.user_id || item.userId || item.uid || item.id, 'verified', '');
     } catch (err) {
       console.error('Error approving item:', err);
       alert('Failed to approve item. Please try again.');
@@ -367,10 +397,22 @@ export default function Verification() {
 
   const handleReject = async (item, entityType) => {
     try {
+      const normalizedType = normalizeRole(entityType);
       const reason = window.prompt('Reason for rejection (shown to user):', '') || '';
-      const updateData = { verification_status: 'rejected', is_visible: false, is_verified: false, verification_rejection_reason: reason };
+      const updateData = {
+        verification_status: 'rejected',
+        is_visible: false,
+        is_verified: false,
+        verification_rejection_reason: reason,
+        verification: {
+          ...(item?.verification || {}),
+          status: 'rejected',
+          reason,
+          reviewedAt: new Date().toISOString(),
+        },
+      };
 
-      switch (entityType) {
+      switch (normalizedType) {
         case 'agent':
           if (Agent?.update) {
             await Agent.update(item.id, updateData);
@@ -403,21 +445,25 @@ export default function Verification() {
             alert('Vendor verification not available.');
           }
           break;
-        case 'user':
         case 'student':
-          await User.update(item.id, { onboarding_completed: true, is_verified: false, verification_status: 'rejected', verification_rejection_reason: reason });
-          if (entityType === 'user') {
-            setUsers((prev) => prev.filter((u) => u.id !== item.id));
-          } else {
-            setStudents((prev) => prev.filter((s) => s.id !== item.id));
-          }
+          await User.update(item.id, {
+            is_verified: false,
+            verification_status: 'rejected',
+            verification_rejection_reason: reason,
+            verification: {
+              ...(item?.verification || {}),
+              status: 'rejected',
+              reason,
+              reviewedAt: new Date().toISOString(),
+            },
+          });
+          setStudents((prev) => prev.filter((s) => s.id !== item.id));
           break;
         default:
           alert('Unknown entity type.');
       }
 
-      // ✅ Also sync to users/{uid} for Profile page
-      await updateUserVerification(item.user_id || item.userId || item.uid, 'rejected', reason);
+      await updateUserVerification(item.user_id || item.userId || item.uid || item.id, 'rejected', reason);
     } catch (err) {
       console.error('Error rejecting item:', err);
       alert('Failed to reject item. Please try again.');
@@ -429,21 +475,24 @@ export default function Verification() {
     (tutors?.length || 0) +
     (schools?.length || 0) +
     (vendors?.length || 0) +
-    (users?.length || 0) +
     (students?.length || 0);
+
+  const availableTabCount = useMemo(() => {
+    return [!!Agent, !!Tutor, !!School, !!Vendor, true].filter(Boolean).length;
+  }, []);
 
   const initialTab = useMemo(() => {
     const order = [
-      { key: 'agents', available: !!Agent },
-      { key: 'tutors', available: !!Tutor },
-      { key: 'schools', available: !!School },
-      { key: 'vendors', available: !!Vendor },
-      { key: 'users', available: true },
-      { key: 'students', available: true },
+      { key: 'agents', count: agents.length, available: !!Agent },
+      { key: 'tutors', count: tutors.length, available: !!Tutor },
+      { key: 'schools', count: schools.length, available: !!School },
+      { key: 'vendors', count: vendors.length, available: !!Vendor },
+      { key: 'students', count: students.length, available: true },
     ];
-    const first = order.find((o) => o.available);
-    return first ? first.key : 'users';
-  }, []);
+    const firstWithItems = order.find((o) => o.available && o.count > 0);
+    const firstAvailable = order.find((o) => o.available);
+    return firstWithItems?.key || firstAvailable?.key || 'students';
+  }, [agents.length, tutors.length, schools.length, vendors.length, students.length]);
 
   if (loading) {
     return (
@@ -488,77 +537,23 @@ export default function Verification() {
         </Card>
 
         <Tabs defaultValue={initialTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 bg-white/80 backdrop-blur-sm">
+          <TabsList
+            className="grid w-full bg-white/80 backdrop-blur-sm"
+            style={{ gridTemplateColumns: `repeat(${availableTabCount}, minmax(0, 1fr))` }}
+          >
             {Agent && <TabsTrigger value="agents"><Briefcase className="w-4 h-4 mr-2" />Agents ({agents.length})</TabsTrigger>}
             {Tutor && <TabsTrigger value="tutors"><BookOpen className="w-4 h-4 mr-2" />Tutors ({tutors.length})</TabsTrigger>}
             {School && <TabsTrigger value="schools"><Building className="w-4 h-4 mr-2" />Schools ({schools.length})</TabsTrigger>}
             {Vendor && <TabsTrigger value="vendors"><Store className="w-4 h-4 mr-2" />Vendors ({vendors.length})</TabsTrigger>}
-            <TabsTrigger value="users"><UsersIcon className="w-4 h-4 mr-2" />Users ({users.length})</TabsTrigger>
             <TabsTrigger value="students"><UsersIcon className="w-4 h-4 mr-2" />Students ({students.length})</TabsTrigger>
           </TabsList>
 
-          {/* Users */}
-          <TabsContent value="users">
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UsersIcon className="w-5 h-5" />
-                  Pending Users
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {users.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Country</TableHead>
-                        <TableHead>Submitted Date</TableHead>
-                        <TableHead>Documents</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((u) => (
-                        <TableRow key={u.id}>
-                          <TableCell className="font-medium">{u.full_name || 'N/A'}</TableCell>
-                          <TableCell>{u.email}</TableCell>
-                          <TableCell>{u.country || 'N/A'}</TableCell>
-                          <TableCell>{safeFormatDate(u.created_at || u.created_date)}</TableCell>
-                          <TableCell>
-                            <VerificationDocsCell role="user" item={u} userDoc={u} />
-                          </TableCell>
-                          <TableCell>
-                            <VerificationActions
-                              item={u}
-                              onApprove={handleApprove}
-                              onReject={handleReject}
-                              entityType="user"
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="text-center py-8">
-                    <UsersIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Users</h3>
-                    <p className="text-gray-600">All users have completed verification.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Students */}
           <TabsContent value="students">
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <UsersIcon className="w-5 h-5" />
-                  Pending Students
+                  Pending Student Verifications
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -568,9 +563,9 @@ export default function Verification() {
                       <TableRow>
                         <TableHead>Name</TableHead>
                         <TableHead>Email</TableHead>
-                        <TableHead>Program Enrolled</TableHead>
-                        <TableHead>School</TableHead>
+                        <TableHead>Country</TableHead>
                         <TableHead>Submitted Date</TableHead>
+                        <TableHead>Status</TableHead>
                         <TableHead>Documents</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
@@ -579,10 +574,10 @@ export default function Verification() {
                       {students.map((s) => (
                         <TableRow key={s.id}>
                           <TableCell className="font-medium">{s.full_name || 'N/A'}</TableCell>
-                          <TableCell>{s.email}</TableCell>
-                          <TableCell>{s.programId || 'N/A'}</TableCell>
-                          <TableCell>{s.schoolId || 'N/A'}</TableCell>
-                          <TableCell>{safeFormatDate(s.created_at || s.created_date)}</TableCell>
+                          <TableCell>{s.email || 'N/A'}</TableCell>
+                          <TableCell>{s.country || 'N/A'}</TableCell>
+                          <TableCell>{safeFormatDate(s?.verification?.submittedAt || s?.verification?.submitted_at || s.updated_at || s.created_at || s.created_date)}</TableCell>
+                          <TableCell><StatusBadge status={getVerificationStatus(s)} /></TableCell>
                           <TableCell>
                             <VerificationDocsCell role="student" item={s} userDoc={s} />
                           </TableCell>
@@ -602,14 +597,13 @@ export default function Verification() {
                   <div className="text-center py-8">
                     <UsersIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Students</h3>
-                    <p className="text-gray-600">All students have completed verification.</p>
+                    <p className="text-gray-600">Only submitted student verification requests appear here.</p>
                   </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Agents */}
           {Agent && (
             <TabsContent value="agents">
               <Card className="shadow-lg">
@@ -627,8 +621,8 @@ export default function Verification() {
                           <TableHead>Company</TableHead>
                           <TableHead>Contact Person</TableHead>
                           <TableHead>Email</TableHead>
-                          <TableHead>Business License</TableHead>
                           <TableHead>Submitted</TableHead>
+                          <TableHead>Status</TableHead>
                           <TableHead>Documents</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
@@ -641,8 +635,8 @@ export default function Verification() {
                               <TableCell className="font-medium">{agent.company_name || 'N/A'}</TableCell>
                               <TableCell>{agent.contact_person?.name || u?.full_name || 'N/A'}</TableCell>
                               <TableCell>{agent.contact_person?.email || u?.email || 'N/A'}</TableCell>
-                              <TableCell>{agent.business_license_mst || 'N/A'}</TableCell>
-                              <TableCell>{safeFormatDate(agent.created_at || agent.created_date)}</TableCell>
+                              <TableCell>{safeFormatDate(agent?.verification?.submittedAt || agent?.verification?.submitted_at || u?.verification?.submittedAt || u?.verification?.submitted_at || agent.updated_at || agent.created_at || agent.created_date)}</TableCell>
+                              <TableCell><StatusBadge status={getVerificationStatus(agent) || getVerificationStatus(u)} /></TableCell>
                               <TableCell>
                                 <VerificationDocsCell role="agent" item={agent} userDoc={u} />
                               </TableCell>
@@ -663,7 +657,7 @@ export default function Verification() {
                     <div className="text-center py-8">
                       <Briefcase className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Agents</h3>
-                      <p className="text-gray-600">All agents have been verified.</p>
+                      <p className="text-gray-600">Only submitted agent verification requests appear here.</p>
                     </div>
                   )}
                 </CardContent>
@@ -671,7 +665,6 @@ export default function Verification() {
             </TabsContent>
           )}
 
-          {/* Tutors */}
           {Tutor && (
             <TabsContent value="tutors">
               <Card className="shadow-lg">
@@ -689,9 +682,8 @@ export default function Verification() {
                           <TableHead>Name</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead>Specializations</TableHead>
-                          <TableHead>Experience</TableHead>
-                          <TableHead>Rate</TableHead>
                           <TableHead>Submitted</TableHead>
+                          <TableHead>Status</TableHead>
                           <TableHead>Documents</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
@@ -703,10 +695,9 @@ export default function Verification() {
                             <TableRow key={tutor.id}>
                               <TableCell className="font-medium">{u?.full_name || 'N/A'}</TableCell>
                               <TableCell>{u?.email || 'N/A'}</TableCell>
-                              <TableCell>{(tutor.specializations || []).join(', ')}</TableCell>
-                              <TableCell>{tutor.experience_years || 0} years</TableCell>
-                              <TableCell>${tutor.hourly_rate || 0}/hr</TableCell>
-                              <TableCell>{safeFormatDate(tutor.created_at || tutor.created_date)}</TableCell>
+                              <TableCell>{(tutor.specializations || []).join(', ') || 'N/A'}</TableCell>
+                              <TableCell>{safeFormatDate(tutor?.verification?.submittedAt || tutor?.verification?.submitted_at || u?.verification?.submittedAt || u?.verification?.submitted_at || tutor.updated_at || tutor.created_at || tutor.created_date)}</TableCell>
+                              <TableCell><StatusBadge status={getVerificationStatus(tutor) || getVerificationStatus(u)} /></TableCell>
                               <TableCell>
                                 <VerificationDocsCell role="tutor" item={tutor} userDoc={u} />
                               </TableCell>
@@ -727,7 +718,7 @@ export default function Verification() {
                     <div className="text-center py-8">
                       <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Tutors</h3>
-                      <p className="text-gray-600">All tutors have been verified.</p>
+                      <p className="text-gray-600">Only submitted tutor verification requests appear here.</p>
                     </div>
                   )}
                 </CardContent>
@@ -735,7 +726,6 @@ export default function Verification() {
             </TabsContent>
           )}
 
-          {/* Schools */}
           {School && (
             <TabsContent value="schools">
               <Card className="shadow-lg">
@@ -753,8 +743,8 @@ export default function Verification() {
                           <TableHead>School Name</TableHead>
                           <TableHead>Location</TableHead>
                           <TableHead>Contact</TableHead>
-                          <TableHead>Type</TableHead>
                           <TableHead>Submitted</TableHead>
+                          <TableHead>Status</TableHead>
                           <TableHead>Documents</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
@@ -764,15 +754,11 @@ export default function Verification() {
                           const u = userMap[school.user_id];
                           return (
                             <TableRow key={school.id}>
-                              <TableCell className="font-medium">{school.school_name || 'N/A'}</TableCell>
+                              <TableCell className="font-medium">{school.school_name || school.name || 'N/A'}</TableCell>
                               <TableCell>{[school.location, school.country].filter(Boolean).join(', ') || 'N/A'}</TableCell>
                               <TableCell>{u?.email || 'N/A'}</TableCell>
-                              <TableCell>
-                                <Badge className="bg-gray-100 text-gray-800">
-                                  {school.type || 'N/A'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>{safeFormatDate(school.created_at || school.created_date)}</TableCell>
+                              <TableCell>{safeFormatDate(school?.verification?.submittedAt || school?.verification?.submitted_at || u?.verification?.submittedAt || u?.verification?.submitted_at || school.updated_at || school.created_at || school.created_date)}</TableCell>
+                              <TableCell><StatusBadge status={getVerificationStatus(school) || getVerificationStatus(u)} /></TableCell>
                               <TableCell>
                                 <VerificationDocsCell role="school" item={school} userDoc={u} />
                               </TableCell>
@@ -793,7 +779,7 @@ export default function Verification() {
                     <div className="text-center py-8">
                       <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Schools</h3>
-                      <p className="text-gray-600">All schools have been verified.</p>
+                      <p className="text-gray-600">Only submitted school verification requests appear here.</p>
                     </div>
                   )}
                 </CardContent>
@@ -801,7 +787,6 @@ export default function Verification() {
             </TabsContent>
           )}
 
-          {/* Vendors */}
           {Vendor && (
             <TabsContent value="vendors">
               <Card className="shadow-lg">
@@ -820,6 +805,7 @@ export default function Verification() {
                           <TableHead>Contact</TableHead>
                           <TableHead>Service Categories</TableHead>
                           <TableHead>Submitted</TableHead>
+                          <TableHead>Status</TableHead>
                           <TableHead>Documents</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
@@ -831,8 +817,9 @@ export default function Verification() {
                             <TableRow key={vendor.id}>
                               <TableCell className="font-medium">{vendor.business_name || 'N/A'}</TableCell>
                               <TableCell>{u?.email || 'N/A'}</TableCell>
-                              <TableCell>{(vendor.service_categories || []).join(', ')}</TableCell>
-                              <TableCell>{safeFormatDate(vendor.created_at || vendor.created_date)}</TableCell>
+                              <TableCell>{(vendor.service_categories || []).join(', ') || 'N/A'}</TableCell>
+                              <TableCell>{safeFormatDate(vendor?.verification?.submittedAt || vendor?.verification?.submitted_at || u?.verification?.submittedAt || u?.verification?.submitted_at || vendor.updated_at || vendor.created_at || vendor.created_date)}</TableCell>
+                              <TableCell><StatusBadge status={getVerificationStatus(vendor) || getVerificationStatus(u)} /></TableCell>
                               <TableCell>
                                 <VerificationDocsCell role="vendor" item={vendor} userDoc={u} />
                               </TableCell>
@@ -853,7 +840,7 @@ export default function Verification() {
                     <div className="text-center py-8">
                       <Store className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Vendors</h3>
-                      <p className="text-gray-600">All vendors have been verified.</p>
+                      <p className="text-gray-600">Only submitted vendor verification requests appear here.</p>
                     </div>
                   )}
                 </CardContent>

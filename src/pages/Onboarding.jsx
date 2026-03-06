@@ -5,8 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -17,7 +15,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-
 
 import {
   Loader2,
@@ -39,14 +36,12 @@ import {
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
-// 🔥 Firebase
-import { auth, db, storage } from "@/firebase";
+// Firebase
+import { auth, db } from "@/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteField } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 
-// 🔧 Firestore entities (for creating the first role record after onboarding)
-import { Agent, Tutor, SchoolProfile, Vendor } from "@/api/entities";
+import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 
 // Prevent open-redirects: only allow internal paths like '/accept-org-invite?...'
 function safeInternalPath(p) {
@@ -57,11 +52,9 @@ function safeInternalPath(p) {
   return p;
 }
 
-
 const STEPS = {
   CHOOSE_ROLE: "choose_role",
   BASIC_INFO: "basic_info",
-  ROLE_SPECIFIC: "role_specific",
   SUBSCRIPTION: "subscription",
   COMPLETE: "complete",
 };
@@ -121,122 +114,7 @@ const buildRoleOptions = (tr) => [
   },
 ];
 
-// ✅ Helpers to handle CSV ↔ array safely
-const csvToArray = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
-const arrayToCSV = (v) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
-
-// 📎 Verification doc helpers
-const safeExt = (name = "") => {
-  const m = String(name).toLowerCase().match(/\.(pdf|png|jpg|jpeg|webp)$/);
-  return m ? m[1] : "bin";
-};
-
-const isAllowedVerificationFile = (file) => {
-  const okTypes = [
-    "application/pdf",
-    "image/png",
-    "image/jpeg",
-    "image/webp",
-  ];
-  if (!file) return false;
-  if (okTypes.includes(file.type)) return true;
-  // some browsers may not provide type for certain files; fallback to extension
-  return /\.(pdf|png|jpg|jpeg|webp)$/i.test(file.name || "");
-};
-
-function VerificationUpload({
-  tr,
-  label,
-  hint,
-  required = false,
-  valueUrl,
-  uploading = false,
-  onPick,
-  onClear,
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <Label className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-600" />
-          <span>
-            {label} {required ? "*" : ""}
-          </span>
-        </Label>
-        {valueUrl ? (
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-xs text-gray-500 hover:text-red-600"
-            title={tr("onboarding.verification.remove", "Remove")}
-          >
-            {tr("onboarding.verification.remove", "Remove")}
-          </button>
-        ) : null}
-      </div>
-
-      <div className="rounded-lg border bg-white p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            {valueUrl ? (
-              <a
-                href={valueUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm font-medium text-emerald-700 hover:underline"
-              >
-                {tr("onboarding.verification.view_uploaded", "View uploaded document")}
-              </a>
-            ) : (
-              <div className="text-sm text-gray-700">
-                {tr("onboarding.verification.no_file", "No file uploaded yet")}
-              </div>
-            )}
-
-            {hint ? <div className="text-xs text-gray-500 mt-1">{hint}</div> : null}
-          </div>
-
-          <div className="shrink-0">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <input
-                type="file"
-                accept=".pdf,image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] || null;
-                  e.target.value = "";
-                  if (f) onPick?.(f);
-                }}
-                disabled={uploading}
-              />
-              <span
-                className={
-                  "inline-flex items-center rounded-md border px-3 py-2 text-sm " +
-                  (uploading
-                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                    : "bg-white hover:bg-gray-50 text-gray-900")
-                }
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {tr("onboarding.verification.uploading", "Uploading...")}
-                  </>
-                ) : valueUrl ? (
-                  tr("onboarding.verification.replace", "Replace")
-                ) : (
-                  tr("onboarding.verification.upload", "Upload")
-                )}
-              </span>
-            </label>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// 🌍 Country helpers (flags as images + all countries via Intl, with API fallback)
+// Country helpers
 const flagUrlFromCode = (code) => {
   const cc = (code || "").toString().trim().toLowerCase();
   if (!/^[a-z]{2}$/.test(cc)) return "";
@@ -406,30 +284,6 @@ function CountrySelect({ valueCode, valueName, onChange }) {
   );
 }
 
-// ✅ keep stable component (no remount on typing)
-const BiographyField = React.memo(function BiographyField({
-  label = "Biography / Description",
-  value = "",
-  onChange,
-}) {
-  const { t: tr } = useTranslation();
-
-  return (
-    <div>
-      <Label htmlFor="bio">{label}</Label>
-      <Textarea
-        id="bio"
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        placeholder={tr("onboarding.tutor.bio_placeholder","Write a short bio/description that will be shown on your public profile...")}
-        className="mt-1"
-        rows={4}
-      />
-      <p className="text-xs text-gray-500 mt-1">{tr("onboarding.tutor.bio_hint","Optional, but recommended for better profile visibility.")}</p>
-    </div>
-  );
-});
-
 const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor"];
 const DEFAULT_ROLE = "user";
 
@@ -437,17 +291,6 @@ const normalizeRole = (r) => {
   const v = (r || "").toString().trim().toLowerCase();
   return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
 };
-
-// ✅ Used to match a School's LIVE account to the School Directory card
-// Saved on the user's doc when role=school finishes onboarding.
-const normalizeSchoolKey = (s = "") =>
-  String(s)
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/(the|of|and|for|at|in|de|la|le|du|des|université|universite)/g, "")
-    .replace(/(university|college|institute|polytechnic|school|academy|centre|center)/g, "")
-    .replace(/[^a-z0-9]/g, "")
-    .trim();
 
 function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
   const finalRole = normalizeRole(role);
@@ -461,10 +304,7 @@ function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
     phone: "",
     country: "",
     country_code: "",
-
-    // keep bio field supported at root for directory; but user/student onboarding won't ask for it
     bio: "",
-
     address: { street: "", ward: "", district: "", province: "", postal_code: "" },
     profile_picture: "",
     is_verified: false,
@@ -484,7 +324,6 @@ function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
   };
 }
 
-// 🔐 Subscription prices (USD/year)
 const SUBSCRIPTION_PRICING = {
   user: { label: "Student", amount: 19, currency: "USD" },
   tutor: { label: "Tutor", amount: 29, currency: "USD" },
@@ -527,12 +366,11 @@ export default function Onboarding() {
   const roleOptions = React.useMemo(() => buildRoleOptions(tr), [tr]);
 
   const navigate = useNavigate();
+  const { subscriptionModeEnabled, loading: subscriptionModeLoading } = useSubscriptionMode();
 
-  // stable search params
   const location = useLocation();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
-  // preserve next (e.g., /accept-org-invite?invite=...&token=...)
   const nextRaw = useMemo(() => params.get("next") || "", [params]);
   const next = useMemo(() => safeInternalPath(nextRaw), [nextRaw]);
 
@@ -583,7 +421,6 @@ export default function Onboarding() {
   const formDirtyRef = useRef(false);
 
   const [skipChooseRole, setSkipChooseRole] = useState(roleLockedFromEntry);
-
   const [currentStep, setCurrentStep] = useState(roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE);
   const [selectedRole, setSelectedRole] = useState(null);
   const [formData, setFormData] = useState({});
@@ -593,11 +430,6 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  // 📎 Verification uploads
-  const [verificationUploading, setVerificationUploading] = useState({});
-  const [verificationError, setVerificationError] = useState("");
-
-  // PayPal state (used ONLY for non-user roles)
   const paypalContainerRef = useRef(null);
   const [paypalReady, setPaypalReady] = useState(false);
   const [paypalError, setPaypalError] = useState("");
@@ -605,120 +437,23 @@ export default function Onboarding() {
 
   const PAYPAL_CLIENT_ID = (import.meta?.env?.VITE_PAYPAL_CLIENT_ID || "").trim();
 
-  const uploadVerificationDoc = async (key, file) => {
-    if (!auth.currentUser) return;
-    setVerificationError("");
-
-    if (!isAllowedVerificationFile(file)) {
-      setVerificationError(
-        tr(
-          "onboarding.verification.invalid_file",
-          "Invalid file. Please upload a PDF or an image (PNG/JPG/WebP)."
-        )
-      );
-      return;
-    }
-
-    const uid = auth.currentUser.uid;
-    const ext = safeExt(file.name);
-    const safeKey = String(key || "doc").replace(/[^a-z0-9_\-]/gi, "_");
-    const path = `verification/${uid}/${safeKey}_${Date.now()}.${ext}`;
-
-    setVerificationUploading((p) => ({ ...p, [key]: true }));
-    try {
-      const r = storageRef(storage, path);
-      await uploadBytes(r, file, {
-        contentType: file.type || undefined,
-      });
-      const url = await getDownloadURL(r);
-
-      formDirtyRef.current = true;
-      setFormData((p) => ({
-        ...p,
-        verification_docs: {
-          ...(p.verification_docs || {}),
-          [key]: url,
-        },
-      }));
-
-      // also persist immediately (so refresh won't lose it)
-      const userRef = doc(db, "users", uid);
-      await updateDoc(userRef, {
-        "verification.status": "pending",
-        "verification.submitted_at": serverTimestamp(),
-        "verification.role": selectedRole || "",
-        [`verification.docs.${key}`]: url,
-
-        // compatibility fields used elsewhere
-        verification_status: "pending",
-        verification_rejection_reason: "",
-
-        updated_at: serverTimestamp(),
-      });
-    } catch (e) {
-      console.error("Verification upload failed:", e);
-      setVerificationError(
-        tr(
-          "onboarding.verification.upload_failed",
-          "Upload failed. Please try again."
-        )
-      );
-    } finally {
-      setVerificationUploading((p) => ({ ...p, [key]: false }));
-    }
-  };
-
-  const clearVerificationDoc = async (key) => {
-    if (!auth.currentUser) return;
-    formDirtyRef.current = true;
-    setFormData((p) => {
-      const next = { ...(p.verification_docs || {}) };
-      delete next[key];
-      return { ...p, verification_docs: next };
-    });
-
-    try {
-      const uid = auth.currentUser.uid;
-      const userRef = doc(db, "users", uid);
-      const current = { ...(formData.verification_docs || {}) };
-      delete current[key];
-      await updateDoc(userRef, {
-        "verification.status": "pending",
-        "verification.submitted_at": serverTimestamp(),
-        "verification.role": selectedRole || "",
-        [`verification.docs.${key}`]: deleteField(),
-
-        verification_status: "pending",
-        verification_rejection_reason: "",
-
-        updated_at: serverTimestamp(),
-      });
-    } catch (e) {
-      // non-fatal
-      console.warn("Failed to persist verification doc removal:", e);
-    }
-  };
-
-  // ✅ Dynamic step order aligned to: student needs verification but no subscription
   const STEP_ORDER = useMemo(() => {
-    // Minimal onboarding: only collect Basic Info.
-    // - Students finish after Basic Info
-    // - Other roles go to Subscription (if applicable) then Complete
     const core =
       selectedRole === "user"
         ? [STEPS.BASIC_INFO, STEPS.COMPLETE]
-        : [STEPS.BASIC_INFO, STEPS.SUBSCRIPTION, STEPS.COMPLETE];
+        : subscriptionModeEnabled
+          ? [STEPS.BASIC_INFO, STEPS.SUBSCRIPTION, STEPS.COMPLETE]
+          : [STEPS.BASIC_INFO, STEPS.COMPLETE];
 
     return skipChooseRole ? core : [STEPS.CHOOSE_ROLE, ...core];
-  }, [selectedRole, skipChooseRole]);
+  }, [selectedRole, skipChooseRole, subscriptionModeEnabled]);
 
-const getStepProgress = () => {
+  const getStepProgress = () => {
     const idx = Math.max(0, STEP_ORDER.indexOf(currentStep));
     const total = Math.max(1, STEP_ORDER.length - 1);
     return Math.round((idx / total) * 100);
   };
 
-  // ✅ Auth/load profile
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
@@ -756,23 +491,9 @@ const getStepProgress = () => {
       );
 
       setSkipChooseRole(entryRoleLocked || hasRoleInProfile);
-
-      
       const effectiveRole = entryRoleLocked ? normalizeRole(entryRoleHint) : roleFromProfile;
 
-      // ✅ if role locked from entry and still at choose_role, bump to BASIC_INFO
       let nextStep = data.onboarding_completed ? STEPS.COMPLETE : data.onboarding_step || STEPS.CHOOSE_ROLE;
-
-      // ✅ Migration: older onboarding used ROLE_SPECIFIC; new minimal flow skips it.
-      if (nextStep === STEPS.ROLE_SPECIFIC) {
-        nextStep = effectiveRole === "user" ? STEPS.COMPLETE : STEPS.SUBSCRIPTION;
-      }
-      const needsRoleSync =
-        entryRoleLocked &&
-        (data.selected_role !== effectiveRole ||
-          data.user_type !== effectiveRole ||
-          data.userType !== effectiveRole ||
-          data.role !== effectiveRole);
 
       if (entryRoleLocked && nextStep === STEPS.CHOOSE_ROLE) {
         nextStep = STEPS.BASIC_INFO;
@@ -787,35 +508,27 @@ const getStepProgress = () => {
       } else if (!entryRoleLocked && hasRoleInProfile && nextStep === STEPS.CHOOSE_ROLE) {
         nextStep = STEPS.BASIC_INFO;
         await updateDoc(ref, { onboarding_step: STEPS.BASIC_INFO, updated_at: serverTimestamp() });
-      } else if (needsRoleSync) {
-        await updateDoc(ref, {
-          selected_role: effectiveRole,
-          user_type: effectiveRole,
-          userType: effectiveRole,
-          role: effectiveRole,
-          updated_at: serverTimestamp(),
-        });
-      }
+      } else {
+        const needsRoleSync =
+          entryRoleLocked &&
+          (data.selected_role !== effectiveRole ||
+            data.user_type !== effectiveRole ||
+            data.userType !== effectiveRole ||
+            data.role !== effectiveRole);
 
-      // ✅ ALIGNMENT: user/student has verification (ROLE_SPECIFIC) but no subscription
-      if (effectiveRole === "user" && !data.onboarding_completed) {
-        if (nextStep === STEPS.SUBSCRIPTION) {
-          nextStep = STEPS.ROLE_SPECIFIC;
-          await updateDoc(ref, { onboarding_step: STEPS.ROLE_SPECIFIC, updated_at: serverTimestamp() });
+        if (needsRoleSync) {
+          await updateDoc(ref, {
+            selected_role: effectiveRole,
+            user_type: effectiveRole,
+            userType: effectiveRole,
+            role: effectiveRole,
+            updated_at: serverTimestamp(),
+          });
         }
       }
 
       setSelectedRole(effectiveRole);
       setCurrentStep(nextStep);
-
-      // ✅ resolve bio (kept, but user onboarding won't ask)
-      const resolvedBio =
-        data.bio ||
-        data.agent_profile?.bio ||
-        data.tutor_profile?.bio ||
-        data.school_profile?.bio ||
-        data.vendor_profile?.bio ||
-        "";
 
       setFormData((prev) => {
         if (formDirtyRef.current) return prev;
@@ -826,38 +539,9 @@ const getStepProgress = () => {
           country: data.country || "",
           country_code: data.country_code || "",
           email: data.email || fbUser.email || "",
-
-          bio: resolvedBio,
-
-          company_name: data.agent_profile?.company_name || "",
-          business_license_mst: data.agent_profile?.business_license_mst || "",
-          year_established: data.agent_profile?.year_established || "",
-
-          paypal_email:
-            data.agent_profile?.paypal_email ||
-            data.tutor_profile?.paypal_email ||
-            data.vendor_profile?.paypal_email ||
-            "",
-
-          specializations: arrayToCSV(data.tutor_profile?.specializations),
-          experience_years: data.tutor_profile?.experience_years || "",
-          hourly_rate: data.tutor_profile?.hourly_rate || "",
-
-          school_name: data.school_profile?.school_name || "",
-          location: data.school_profile?.location || "",
-          website: data.school_profile?.website || "",
-          type: data.school_profile?.type || "",
-          about: data.school_profile?.about || "",
-
-          business_name: data.vendor_profile?.business_name || "",
-          service_categories: data.vendor_profile?.service_categories || [],
-
-          // 📎 Verification docs (saved as URLs in users/{uid}.verification.docs)
-          verification_docs: data.verification?.docs || {},
         };
       });
 
-      // if already complete
       if (data.onboarding_completed) {
         try {
           sessionStorage.removeItem("onboarding_role_locked");
@@ -872,13 +556,11 @@ const getStepProgress = () => {
     });
 
     return () => unsub();
-  }, [navigate]);
+  }, [navigate, next]);
 
   const handleRoleSelect = async (roleType) => {
     if (roleLockedFromEntry) return;
     setSelectedRole(roleType);
-
-    // ✅ user goes straight to basic info; others too
     setCurrentStep(STEPS.BASIC_INFO);
 
     if (auth.currentUser) {
@@ -896,52 +578,12 @@ const getStepProgress = () => {
 
   const validateBasicInfo = () => !!(formData.full_name && formData.phone && formData.country);
 
-  const hasDoc = (k) => !!(formData.verification_docs && formData.verification_docs[k]);
-
-  const validateVerification = () => {
-    // Student
-    if (selectedRole === "user") return hasDoc("student_id_front") && hasDoc("student_id_back");
-
-    // Agent
-    if (selectedRole === "agent") return hasDoc("agent_id_front") && hasDoc("agent_id_back") && hasDoc("agent_business_permit");
-
-    // Tutor
-    if (selectedRole === "tutor") return hasDoc("tutor_id_front") && hasDoc("tutor_id_back") && hasDoc("tutor_proof");
-
-    // School
-    if (selectedRole === "school") return hasDoc("school_dli_or_permit");
-
-    // Vendor (optional / not required for now)
-    if (selectedRole === "vendor") return true;
-    return true;
-  };
-
-  const validateRoleSpecificInfo = () => {
-    // ✅ student has verification requirements
-    if (selectedRole === "user") {
-      return validateVerification();
-    }
-
-    if (selectedRole === "agent") return formData.company_name && formData.business_license_mst && formData.paypal_email && validateVerification();
-    if (selectedRole === "tutor")
-      return (
-        csvToArray(formData.specializations).length > 0 &&
-        !!formData.experience_years &&
-        !!formData.hourly_rate &&
-        !!formData.paypal_email &&
-        validateVerification()
-      );
-    if (selectedRole === "school") return formData.school_name && formData.location && formData.website && formData.type && validateVerification();
-    if (selectedRole === "vendor") return formData.business_name && formData.service_categories?.length > 0 && formData.paypal_email;
-    return false;
-  };
-
-  // ✅ Finalize onboarding (reused)
   const finalizeOnboarding = async ({ subscriptionActive, paypalOrderId = "", paypalDetails = null, skipped = false }) => {
     if (!auth.currentUser || !selectedRole) return;
     setSaving(true);
     try {
-      const ref = doc(db, "users", auth.currentUser.uid);
+      const uid = auth.currentUser.uid;
+      const ref = doc(db, "users", uid);
 
       const plan = SUBSCRIPTION_PRICING[selectedRole] || SUBSCRIPTION_PRICING.user;
 
@@ -949,17 +591,6 @@ const getStepProgress = () => {
         onboarding_completed: true,
         onboarding_step: STEPS.COMPLETE,
         updated_at: serverTimestamp(),
-
-        // 📎 Verification payload (for admin review)
-        verification: {
-          status: "pending",
-          role: selectedRole || "",
-          submitted_at: serverTimestamp(),
-          docs: formData.verification_docs || {},
-        },
-
-        verification_status: "pending",
-        verification_rejection_reason: "",
 
         subscription_active: Boolean(subscriptionActive),
         subscription_status: subscriptionActive ? "active" : skipped ? "skipped" : "none",
@@ -974,74 +605,6 @@ const getStepProgress = () => {
       };
 
       await updateDoc(ref, updates);
-
-      // ✅ Seed role collections ONLY for non-user roles
-      if (selectedRole !== "user") {
-        const now = serverTimestamp();
-        try {
-          const profileSnap = await getDoc(ref);
-          const data = profileSnap.data() || {};
-
-          if (selectedRole === "agent" && data.agent_profile) {
-            const existing = await Agent.filter({ user_id: uid }, { limit: 1 });
-            if (!existing.length) {
-              await Agent.create({
-                user_id: uid,
-                verification_status: "pending",
-                is_visible: false,
-                referral_code: `AG${Date.now().toString().slice(-6)}`,
-                created_at: now,
-                updated_at: now,
-                ...data.agent_profile,
-              });
-            }
-          }
-
-          if (selectedRole === "tutor" && data.tutor_profile) {
-            const existing = await Tutor.filter({ user_id: uid }, { limit: 1 });
-            if (!existing.length) {
-              await Tutor.create({
-                user_id: uid,
-                verification_status: "pending",
-                is_visible: false,
-                rating: 0,
-                total_students: 0,
-                created_at: now,
-                updated_at: now,
-                ...data.tutor_profile,
-              });
-            }
-          }
-
-          if (selectedRole === "school" && data.school_profile) {
-            const existing = await SchoolProfile.filter({ user_id: uid }, { limit: 1 });
-            if (!existing.length) {
-              await SchoolProfile.create({
-                user_id: uid,
-                verification_status: "pending",
-                created_at: now,
-                updated_at: now,
-                ...data.school_profile,
-              });
-            }
-          }
-
-          if (selectedRole === "vendor" && data.vendor_profile) {
-            const existing = await Vendor.filter({ user_id: uid }, { limit: 1 });
-            if (!existing.length) {
-              await Vendor.create({
-                user_id: uid,
-                verification_status: "pending",
-                created_at: now,
-                updated_at: now,
-                ...data.vendor_profile,
-              });
-            }
-          }
-        } catch (e) {
-          console.warn("Seeding role collection failed (non-fatal):", e);
-        }
-      }
 
       setCurrentStep(STEPS.COMPLETE);
 
@@ -1059,11 +622,15 @@ const getStepProgress = () => {
     }
   };
 
-  // ✅ BASIC INFO submit: user goes straight to complete (skips role_specific + subscription)
   const handleBasicInfoSubmit = async () => {
     if (!selectedRole || !validateBasicInfo()) return;
 
-    const nextStep = selectedRole === "user" ? STEPS.COMPLETE : STEPS.SUBSCRIPTION;
+    const nextStep =
+      selectedRole === "user"
+        ? STEPS.COMPLETE
+        : subscriptionModeEnabled
+          ? STEPS.SUBSCRIPTION
+          : STEPS.COMPLETE;
 
     if (auth.currentUser) {
       const ref = doc(db, "users", auth.currentUser.uid);
@@ -1073,7 +640,6 @@ const getStepProgress = () => {
         phone: formData.phone || "",
         country: formData.country || "",
         country_code: formData.country_code || "",
-        // keep role fields consistent
         selected_role: selectedRole,
         user_type: selectedRole,
         userType: selectedRole,
@@ -1082,8 +648,7 @@ const getStepProgress = () => {
       });
     }
 
-    if (selectedRole === "user") {
-      // Minimal student flow: mark onboarding complete without forcing verification uploads.
+    if (selectedRole === "user" || !subscriptionModeEnabled) {
       await finalizeOnboarding({ subscriptionActive: false, skipped: true });
       return;
     }
@@ -1091,124 +656,34 @@ const getStepProgress = () => {
     setCurrentStep(nextStep);
   };
 
-
   const handleBack = async () => {
-    let next = STEPS.CHOOSE_ROLE;
+    let nextStep = STEPS.CHOOSE_ROLE;
 
-    // Minimal onboarding navigation:
-    // BASIC_INFO -> (SUBSCRIPTION if non-user) -> COMPLETE
     if (currentStep === STEPS.COMPLETE) {
-      next = selectedRole === "user" ? STEPS.BASIC_INFO : STEPS.SUBSCRIPTION;
-    } else if (currentStep === STEPS.SUBSCRIPTION) next = STEPS.BASIC_INFO;
-    else if (currentStep === STEPS.BASIC_INFO) next = roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE;
+      nextStep =
+        selectedRole === "user" || !subscriptionModeEnabled
+          ? STEPS.BASIC_INFO
+          : STEPS.SUBSCRIPTION;
+    } else if (currentStep === STEPS.SUBSCRIPTION) {
+      nextStep = STEPS.BASIC_INFO;
+    } else if (currentStep === STEPS.BASIC_INFO) {
+      nextStep = roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE;
+    }
 
-    if (next === currentStep) return;
+    if (nextStep === currentStep) return;
 
-    setCurrentStep(next);
+    setCurrentStep(nextStep);
     if (auth.currentUser) {
       const ref = doc(db, "users", auth.currentUser.uid);
-      await updateDoc(ref, { onboarding_step: next, updated_at: serverTimestamp() });
+      await updateDoc(ref, { onboarding_step: nextStep, updated_at: serverTimestamp() });
     }
   };
 
-
-  /**
-   * Save role-specific info then go to subscription (non-user roles only)
-   */
-  const handleRoleSpecificSubmitGoSubscription = async () => {
-    if (!auth.currentUser || !selectedRole || !validateRoleSpecificInfo()) return;
-
-    const uid = auth.currentUser.uid;
-    const userRef = doc(db, "users", uid);
-
-    
-
-    // ✅ Student flow: requires ID verification, then finishes onboarding (no subscription step)
-    if (selectedRole === "user") {
-      await finalizeOnboarding({ subscriptionActive: false, skipped: true });
-      return;
-    }
-    setSaving(true);
-    try {
-      const ref = userRef;
-
-      const updates = {
-        selected_role: selectedRole,
-        full_name: formData.full_name || "",
-        phone: formData.phone || "",
-        country: formData.country || "",
-        country_code: formData.country_code || "",
-
-        // ✅ save bio for directory display (non-user roles)
-        bio: formData.bio || "",
-
-        onboarding_step: STEPS.SUBSCRIPTION,
-        updated_at: serverTimestamp(),
-      };
-
-      updates.user_type = selectedRole;
-      updates.userType = selectedRole;
-      updates.role = selectedRole;
-
-      if (selectedRole === "agent") {
-        updates.agent_profile = {
-          company_name: formData.company_name || "",
-          business_license_mst: formData.business_license_mst || "",
-          year_established: formData.year_established || "",
-          paypal_email: formData.paypal_email || "",
-          bio: formData.bio || "",
-        };
-      }
-
-      if (selectedRole === "tutor") {
-        updates.tutor_profile = {
-          specializations: csvToArray(formData.specializations),
-          experience_years: Number(formData.experience_years) || 0,
-          hourly_rate: Number(formData.hourly_rate) || 0,
-          paypal_email: formData.paypal_email || "",
-          bio: formData.bio || "",
-        };
-      }
-
-      if (selectedRole === "school") {
-        // ✅ Field used by Directory.jsx to identify LIVE school accounts
-        // (Directory normalizes the directory card name and matches it to this key)
-        updates.linked_school_key = normalizeSchoolKey(formData.school_name || "");
-
-        updates.school_profile = {
-          school_name: formData.school_name || "",
-          location: formData.location || "",
-          website: formData.website || "",
-          type: formData.type || "",
-          about: formData.about || "",
-          bio: formData.bio || "",
-        };
-      }
-
-      if (selectedRole === "vendor") {
-        updates.vendor_profile = {
-          business_name: formData.business_name || "",
-          service_categories: formData.service_categories || [],
-          paypal_email: formData.paypal_email || "",
-          bio: formData.bio || "",
-        };
-      }
-
-      await updateDoc(ref, updates);
-      setCurrentStep(STEPS.SUBSCRIPTION);
-    } catch (e) {
-      console.error("Error saving role-specific info:", e);
-      alert("An error occurred while saving. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // 🧾 PayPal render (ONLY for non-user roles)
   useEffect(() => {
     const run = async () => {
       if (currentStep !== STEPS.SUBSCRIPTION) return;
-      if (selectedRole === "user") return; // ✅ never show PayPal for user/student
+      if (selectedRole === "user") return;
+      if (!subscriptionModeEnabled) return;
 
       setPaypalError("");
       setPaypalReady(false);
@@ -1271,8 +746,7 @@ const getStepProgress = () => {
     };
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, selectedRole, PAYPAL_CLIENT_ID]);
+  }, [currentStep, selectedRole, PAYPAL_CLIENT_ID, subscriptionModeEnabled]);
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -1346,7 +820,6 @@ const getStepProgress = () => {
     const selectedRoleData = roleOptions.find((r) => r.type === selectedRole) || roleOptions[0];
     return (
       <div className="max-w-md mx-auto">
-
         <div className="text-center mb-8">
           <div className={`${selectedRoleData?.color} text-white p-3 rounded-full mb-4 mx-auto w-fit`}>
             {selectedRoleData?.icon}
@@ -1428,512 +901,11 @@ const getStepProgress = () => {
     );
   };
 
-  const renderRoleSpecific = () => {
-    const selectedRoleData = roleOptions.find((r) => r.type === selectedRole);
-
-    return (
-      <div className="max-w-md mx-auto">
-
-        <div className="text-center mb-8">
-          <div className={`${selectedRoleData?.color} text-white p-3 rounded-full mb-4 mx-auto w-fit`}>
-            {selectedRoleData?.icon}
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{tr("onboarding.ui.complete_profile_title", "Complete Your {{role}} Profile", { role: tr(`onboarding.roles.${selectedRole}.title`, selectedRoleData?.title || selectedRole) })}</h2>
-          <p className="text-gray-600">{tr("onboarding.ui.complete_profile_subtitle","Just a few more details to continue")}</p>
-          <div className="mt-3">
-            <RoleLockedPill role={selectedRole} />
-          </div>
-        </div>
-
-        {verificationError ? (
-          <div className="mb-6 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {verificationError}
-          </div>
-        ) : null}
-
-        {/* Student (Verification) */}
-        {selectedRole === "user" && (
-          <div className="space-y-6">
-            <div className="rounded-lg border bg-emerald-50/40 p-3 text-sm text-gray-700">
-              {tr(
-                "onboarding.verification.student_hint",
-                "Please upload a valid government-issued ID (front and back). Your verification will be reviewed."
-              )}
-            </div>
-
-            <VerificationUpload
-              tr={tr}
-              label={tr("onboarding.verification.student_id_front","Valid ID (Front)")}
-              hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-              required
-              valueUrl={formData.verification_docs?.student_id_front || ""}
-              uploading={!!verificationUploading.student_id_front}
-              onPick={(file) => uploadVerificationDoc("student_id_front", file)}
-              onClear={() => clearVerificationDoc("student_id_front")}
-            />
-
-            <VerificationUpload
-              tr={tr}
-              label={tr("onboarding.verification.student_id_back","Valid ID (Back)")}
-              hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-              required
-              valueUrl={formData.verification_docs?.student_id_back || ""}
-              uploading={!!verificationUploading.student_id_back}
-              onPick={(file) => uploadVerificationDoc("student_id_back", file)}
-              onClear={() => clearVerificationDoc("student_id_back")}
-            />
-          </div>
-        )}
-
-        {/* Agent */}
-        {selectedRole === "agent" && (
-          <div className="space-y-6">
-            <div>
-              <Label htmlFor="company_name">{tr("onboarding.agent.company_name","Company Name *")}</Label>
-              <Input
-                id="company_name"
-                value={formData.company_name || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, company_name: e.target.value }));
-                }}
-                placeholder="Your education consultancy name"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="business_license_mst">{tr("onboarding.agent.business_license","Business License (MST) *")}</Label>
-              <Input
-                id="business_license_mst"
-                value={formData.business_license_mst || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, business_license_mst: e.target.value }));
-                }}
-                placeholder="Enter your business license number"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="year_established">{tr("onboarding.agent.year_established","Year Established")}</Label>
-              <Input
-                id="year_established"
-                type="number"
-                value={formData.year_established || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, year_established: e.target.value }));
-                }}
-                placeholder="2020"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="paypal_email">{tr("onboarding.payments.paypal_email","PayPal Email *")}</Label>
-              <Input
-                id="paypal_email"
-                type="email"
-                value={formData.paypal_email || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, paypal_email: e.target.value }));
-                }}
-                placeholder={tr("onboarding.payments.paypal_placeholder","payouts@example.com")}
-                className="mt-1"
-              />
-              <p className="text-xs text-gray-500 mt-1">{tr("onboarding.agent.paypal_hint","Required for commission payouts")}</p>
-            </div>
-
-            <div className="space-y-6 pt-2">
-              <div className="rounded-lg border bg-emerald-50/40 p-3 text-sm text-gray-700">
-                {tr(
-                  "onboarding.verification.agent_hint",
-                  "Upload your valid ID and business permit. Your verification will be reviewed."
-                )}
-              </div>
-
-              <VerificationUpload
-                tr={tr}
-                label={tr("onboarding.verification.agent_id_front","Valid ID (Front)")}
-                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-                required
-                valueUrl={formData.verification_docs?.agent_id_front || ""}
-                uploading={!!verificationUploading.agent_id_front}
-                onPick={(file) => uploadVerificationDoc("agent_id_front", file)}
-                onClear={() => clearVerificationDoc("agent_id_front")}
-              />
-
-              <VerificationUpload
-                tr={tr}
-                label={tr("onboarding.verification.agent_id_back","Valid ID (Back)")}
-                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-                required
-                valueUrl={formData.verification_docs?.agent_id_back || ""}
-                uploading={!!verificationUploading.agent_id_back}
-                onPick={(file) => uploadVerificationDoc("agent_id_back", file)}
-                onClear={() => clearVerificationDoc("agent_id_back")}
-              />
-
-              <VerificationUpload
-                tr={tr}
-                label={tr("onboarding.verification.agent_business_permit","Business Permit / Registration")}
-                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-                required
-                valueUrl={formData.verification_docs?.agent_business_permit || ""}
-                uploading={!!verificationUploading.agent_business_permit}
-                onPick={(file) => uploadVerificationDoc("agent_business_permit", file)}
-                onClear={() => clearVerificationDoc("agent_business_permit")}
-              />
-            </div>
-
-            <BiographyField
-              label="Agency Biography / Description"
-              value={formData.bio || ""}
-              onChange={(val) => {
-                formDirtyRef.current = true;
-                setFormData((p) => ({ ...p, bio: val }));
-              }}
-            />
-          </div>
-        )}
-
-        {/* Tutor */}
-        {selectedRole === "tutor" && (
-          <div className="space-y-6">
-            <div>
-              <Label htmlFor="specializations">{tr("onboarding.tutor.specializations","Specializations *")}</Label>
-              <Input
-                id="specializations"
-                value={formData.specializations || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, specializations: e.target.value }));
-                }}
-                placeholder={tr("onboarding.tutor.specializations_placeholder","IELTS, TOEFL, General English")}
-                className="mt-1"
-              />
-              <p className="text-xs text-gray-500 mt-1">{tr("onboarding.tutor.specializations_hint","Separate multiple specializations with commas")}</p>
-            </div>
-
-            <div>
-              <Label htmlFor="experience_years">{tr("onboarding.tutor.years_experience","Years of Experience *")}</Label>
-              <Input
-                id="experience_years"
-                type="number"
-                value={formData.experience_years || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, experience_years: e.target.value }));
-                }}
-                placeholder="5"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="hourly_rate">{tr("onboarding.tutor.hourly_rate","Hourly Rate (USD) *")}</Label>
-              <Input
-                id="hourly_rate"
-                type="number"
-                step="0.01"
-                value={formData.hourly_rate || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, hourly_rate: e.target.value }));
-                }}
-                placeholder="25.00"
-                className="mt-1"
-              />
-            </div>
-
-            <BiographyField
-              label="Tutor Biography / Description"
-              value={formData.bio || ""}
-              onChange={(val) => {
-                formDirtyRef.current = true;
-                setFormData((p) => ({ ...p, bio: val }));
-              }}
-            />
-
-            <div>
-              <Label htmlFor="paypal_email">{tr("onboarding.payments.paypal_email","PayPal Email *")}</Label>
-              <Input
-                id="paypal_email"
-                type="email"
-                value={formData.paypal_email || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, paypal_email: e.target.value }));
-                }}
-                placeholder={tr("onboarding.payments.paypal_placeholder","payouts@example.com")}
-                className="mt-1"
-              />
-              <p className="text-xs text-gray-500 mt-1">{tr("onboarding.tutor.paypal_hint","Required for session payouts")}</p>
-            </div>
-
-            <div className="space-y-6 pt-2">
-              <div className="rounded-lg border bg-emerald-50/40 p-3 text-sm text-gray-700">
-                {tr(
-                  "onboarding.verification.tutor_hint",
-                  "Upload your valid ID and proof that you are a tutor (certificate, license, school ID, etc.). Your verification will be reviewed."
-                )}
-              </div>
-
-              <VerificationUpload
-                tr={tr}
-                label={tr("onboarding.verification.tutor_id_front","Valid ID (Front)")}
-                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-                required
-                valueUrl={formData.verification_docs?.tutor_id_front || ""}
-                uploading={!!verificationUploading.tutor_id_front}
-                onPick={(file) => uploadVerificationDoc("tutor_id_front", file)}
-                onClear={() => clearVerificationDoc("tutor_id_front")}
-              />
-
-              <VerificationUpload
-                tr={tr}
-                label={tr("onboarding.verification.tutor_id_back","Valid ID (Back)")}
-                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-                required
-                valueUrl={formData.verification_docs?.tutor_id_back || ""}
-                uploading={!!verificationUploading.tutor_id_back}
-                onPick={(file) => uploadVerificationDoc("tutor_id_back", file)}
-                onClear={() => clearVerificationDoc("tutor_id_back")}
-              />
-
-              <VerificationUpload
-                tr={tr}
-                label={tr("onboarding.verification.tutor_proof","Proof as Tutor (certificate/license)")}
-                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-                required
-                valueUrl={formData.verification_docs?.tutor_proof || ""}
-                uploading={!!verificationUploading.tutor_proof}
-                onPick={(file) => uploadVerificationDoc("tutor_proof", file)}
-                onClear={() => clearVerificationDoc("tutor_proof")}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* School */}
-        {selectedRole === "school" && (
-          <div className="space-y-6">
-            <div>
-              <Label htmlFor="school_name">{tr("onboarding.school.institution_name","Institution Name *")}</Label>
-              <Input
-                id="school_name"
-                value={formData.school_name || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, school_name: e.target.value }));
-                }}
-                placeholder="e.g., University of Toronto"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="type">{tr("onboarding.school.school_type","School Type *")}</Label>
-              <Select value={formData.type || ""} onValueChange={(v) => setFormData((p) => ({ ...p, type: v }))}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select institution type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="High School">{tr("onboarding.school.types.high_school","High School")}</SelectItem>
-                  <SelectItem value="College">{tr("onboarding.school.types.college","College")}</SelectItem>
-                  <SelectItem value="University">{tr("onboarding.school.types.university","University")}</SelectItem>
-                  <SelectItem value="Institute">{tr("onboarding.school.types.institute","Institute")}</SelectItem>
-                  <SelectItem value="Vocational">{tr("onboarding.school.types.vocational","Vocational School")}</SelectItem>
-                  <SelectItem value="Other">{tr("common.other","Other")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="location">{tr("onboarding.school.city","City/Location *")}</Label>
-              <Input
-                id="location"
-                value={formData.location || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, location: e.target.value }));
-                }}
-                placeholder="e.g., Toronto, ON"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="website">{tr("onboarding.school.website","Official Website *")}</Label>
-              <Input
-                id="website"
-                type="url"
-                value={formData.website || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, website: e.target.value }));
-                }}
-                placeholder="https://www.university.edu"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="about">{tr("onboarding.school.about","About Your Institution")}</Label>
-              <Textarea
-                id="about"
-                value={formData.about || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, about: e.target.value }));
-                }}
-                placeholder="Brief description of your institution..."
-                className="mt-1"
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-6 pt-2">
-              <div className="rounded-lg border bg-emerald-50/40 p-3 text-sm text-gray-700">
-                {tr(
-                  "onboarding.verification.school_hint",
-                  "Upload your school permit / accreditation document (e.g., DLI, government registration, etc.). Your verification will be reviewed."
-                )}
-              </div>
-
-              <VerificationUpload
-                tr={tr}
-                label={tr("onboarding.verification.school_dli","School Permit / DLI / Accreditation")}
-                hint={tr("onboarding.verification.accepted_types","Accepted: PDF, PNG, JPG, WebP")}
-                required
-                valueUrl={formData.verification_docs?.school_dli_or_permit || ""}
-                uploading={!!verificationUploading.school_dli_or_permit}
-                onPick={(file) => uploadVerificationDoc("school_dli_or_permit", file)}
-                onClear={() => clearVerificationDoc("school_dli_or_permit")}
-              />
-            </div>
-
-            <BiographyField
-              label="Profile Biography / Description"
-              value={formData.bio || ""}
-              onChange={(val) => {
-                formDirtyRef.current = true;
-                setFormData((p) => ({ ...p, bio: val }));
-              }}
-            />
-          </div>
-        )}
-
-        {/* Vendor */}
-        {selectedRole === "vendor" && (
-          <div className="space-y-6">
-            <div>
-              <Label htmlFor="business_name">{tr("onboarding.vendor.business_name","Business Name *")}</Label>
-              <Input
-                id="business_name"
-                value={formData.business_name || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, business_name: e.target.value }));
-                }}
-                placeholder="Your business name"
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label>{tr("onboarding.vendor.service_categories","Service Categories *")}</Label>
-              <div className="grid grid-cols-2 gap-3 mt-2">
-                {["Transport", "SIM Card", "Banking", "Accommodation", "Delivery", "Tours"].map((category) => (
-                  <div key={category} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={`category-${category}`}
-                      checked={formData.service_categories?.includes(category) || false}
-                      onChange={(e) => {
-                        const cur = formData.service_categories || [];
-                        const updated = e.target.checked ? [...cur, category] : cur.filter((c) => c !== category);
-                        setFormData((p) => ({ ...p, service_categories: updated }));
-                      }}
-                      className="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                    />
-                    <label htmlFor={`category-${category}`} className="text-sm text-gray-700">
-                      {category}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="paypal_email">{tr("onboarding.payments.paypal_email","PayPal Email *")}</Label>
-              <Input
-                id="paypal_email"
-                type="email"
-                value={formData.paypal_email || ""}
-                onChange={(e) => {
-                  formDirtyRef.current = true;
-                  setFormData((p) => ({ ...p, paypal_email: e.target.value }));
-                }}
-                placeholder={tr("onboarding.payments.paypal_placeholder","payouts@example.com")}
-                className="mt-1"
-              />
-              <p className="text-xs text-gray-500 mt-1">{tr("onboarding.vendor.paypal_hint","Required for service payouts")}</p>
-            </div>
-
-            <BiographyField
-              label="Business Biography / Description"
-              value={formData.bio || ""}
-              onChange={(val) => {
-                formDirtyRef.current = true;
-                setFormData((p) => ({ ...p, bio: val }));
-              }}
-            />
-          </div>
-        )}
-
-        <div className="flex gap-3 pt-4">
-          <Button variant="outline" onClick={handleBack} className="flex-1">
-            <ArrowLeft className="w-4 h-4 mr-2" /> {tr("common.back","Back")}
-          </Button>
-
-          <Button
-            onClick={handleRoleSpecificSubmitGoSubscription}
-            disabled={saving || !validateRoleSpecificInfo()}
-            className="flex-1"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {tr("common.saving","Saving...")}
-              </>
-            ) : (
-              <>
-                {tr("common.continue","Continue")}
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </>
-            )}
-          </Button>
-        </div>
-
-        <div className="text-center mt-4">
-          <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-600 inline-flex items-center gap-1">
-            <LogOut className="w-4 h-4" /> {tr("onboarding.ui.logout_instead","Log out instead")}
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   const renderSubscription = () => {
     const plan = SUBSCRIPTION_PRICING[selectedRole] || SUBSCRIPTION_PRICING.user;
 
     return (
       <div className="max-w-md mx-auto">
-
         <div className="text-center mb-6">
           <div className="bg-emerald-600 text-white p-3 rounded-full mb-4 mx-auto w-fit">
             <CreditCard className="w-6 h-6" />
@@ -2024,7 +996,7 @@ const getStepProgress = () => {
     </div>
   );
 
-  if (!authChecked || profileLoading) {
+  if (!authChecked || profileLoading || subscriptionModeLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Loader2 className="w-8 h-8 animate-spin text-green-600" />
@@ -2065,8 +1037,10 @@ const getStepProgress = () => {
           <CardContent className="p-0">
             {currentStep === STEPS.CHOOSE_ROLE && renderChooseRole()}
             {currentStep === STEPS.BASIC_INFO && renderBasicInfo()}
-            {currentStep === STEPS.ROLE_SPECIFIC && renderRoleSpecific()}
-            {currentStep === STEPS.SUBSCRIPTION && selectedRole !== "user" && renderSubscription()}
+            {currentStep === STEPS.SUBSCRIPTION &&
+              selectedRole !== "user" &&
+              subscriptionModeEnabled &&
+              renderSubscription()}
             {currentStep === STEPS.COMPLETE && renderComplete()}
           </CardContent>
         </Card>
