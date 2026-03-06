@@ -1,7 +1,6 @@
 // src/pages/TutorDashboard.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import {
-  Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,12 +9,7 @@ import { listenFollowState, sendFollowRequest, cancelFollowRequest, unfollowUser
 import {
   Calendar,
   Users,
-  Clock,
   ArrowRight,
-  DollarSign,
-  BookOpen,
-  Star,
-  TrendingUp,
   CreditCard,
   MoreHorizontal,
   Pencil,
@@ -24,13 +18,12 @@ import {
   Flag,
   Globe,
   Image as ImageIcon,
-  ExternalLink,
   X,
   Loader2,
   Video,
   MessageSquare,
-  Ticket,
   Sparkles,
+  BookOpen,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -53,7 +46,6 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  writeBatch,
   updateDoc,
   runTransaction,
   Timestamp,
@@ -69,6 +61,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+
 /* ✅ SUBSCRIPTION LOGIC */
 function isSubscribedUser(u) {
   if (!u) return false;
@@ -78,8 +71,12 @@ function isSubscribedUser(u) {
   return ok.has(status);
 }
 
+const POST_PREVIEW_TEXT_LIMIT = 320;
+const MAX_DASHBOARD_MEDIA = 4;
+const buildPostDetailUrl = (postId) =>
+  `${createPageUrl("PostDetails")}?id=${encodeURIComponent(postId || "")}`;
 
-// 🌍 Country flag helper (same approach as Onboarding.jsx)
+// 🌍 Country flag helper
 const flagUrlFromCode = (code) => {
   const cc = (code || "").toString().trim().toLowerCase();
   if (!/^[a-z]{2}$/.test(cc)) return "";
@@ -128,27 +125,6 @@ const SubscribeBanner = ({ to, user, tr }) => {
   );
 };
 
-const StatCard = ({ title, value, icon, to, viewLabel = "View Details", color = "text-blue-600" }) => (
-  <Card className="hover:shadow-lg transition-shadow rounded-2xl">
-    <CardContent className="p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className={`text-2xl font-bold ${color}`}>{value}</div>
-          <p className="text-gray-600">{title}</p>
-        </div>
-        {icon}
-      </div>
-      {to && (
-        <Link to={to}>
-          <Button variant="ghost" size="sm" className="w-full mt-3" type="button">
-            {viewLabel} <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-        </Link>
-      )}
-    </CardContent>
-  </Card>
-);
-
 const QuickLink = ({ title, description, to, icon }) => (
   <Link to={to} className="block">
     <Card className="hover:shadow-md transition-shadow cursor-pointer rounded-2xl">
@@ -189,8 +165,8 @@ const Avatar = ({ name = "Tutor", size = "md" }) => {
   );
 };
 
-/* -------------------- Follow Button (Follow Request / Instagram-style) -------------------- */
-function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "", }) {
+/* -------------------- Follow Button -------------------- */
+function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "" }) {
   const { tr } = useTr("tutor_dashboard");
 
   const [state, setState] = useState({ following: false, requested: false });
@@ -240,69 +216,120 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
   );
 }
 
-/* -------------------- Media grid (REAL) -------------------- */
-const MediaGallery = ({ media = [], tr }) => {
-  const items = Array.isArray(media) ? media : [];
-  if (!items.length) return null;
+/* -------------------- Media grid -------------------- */
+const MediaGallery = ({ media = [], tr, postId }) => {
+  const items = Array.isArray(media) ? media.filter((m) => m?.url) : [];
+  if (!items.length || !postId) return null;
 
-  const many = items.length > 1;
+  const visibleItems = items.slice(0, MAX_DASHBOARD_MEDIA);
+  const remaining = Math.max(0, items.length - MAX_DASHBOARD_MEDIA);
+  const postDetailUrl = buildPostDetailUrl(postId);
+  const isSingle = visibleItems.length === 1;
+  const singleItem = visibleItems[0];
+  const singleType = String(singleItem?.type || "").toLowerCase();
+
+  if (isSingle) {
+    return (
+      <div className="px-4 pb-4">
+        <Link
+          to={postDetailUrl}
+          state={{ postId }}
+          className="block overflow-hidden rounded-2xl border bg-gray-100"
+          title={tr?.("view_post_details", "View post details")}
+        >
+          <div className="flex w-full items-center justify-center bg-gray-100">
+            {singleType === "video" ? (
+              <video
+                src={singleItem?.url}
+                preload="metadata"
+                muted
+                playsInline
+                controls={false}
+                className="block h-auto max-h-[42rem] w-auto max-w-full object-contain bg-black"
+              />
+            ) : singleType === "image" ? (
+              <img
+                src={singleItem?.url}
+                alt={singleItem?.name || "image-0"}
+                className="block h-auto max-h-[42rem] w-auto max-w-full object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex min-h-[18rem] w-full items-center justify-center text-sm text-gray-600">
+                {tr?.("open_media", "Open media")}
+              </div>
+            )}
+          </div>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 pb-4">
-      <div className={`grid gap-2 ${many ? "grid-cols-2" : "grid-cols-1"}`}>
-        {items.slice(0, 4).map((m, idx) => {
+      <div className="grid grid-cols-2 gap-2">
+        {visibleItems.map((m, idx) => {
           const type = String(m?.type || "").toLowerCase();
           const url = m?.url;
           if (!url) return null;
-
-          if (type === "image") {
-            return (
-              <a
-                key={idx}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="block overflow-hidden rounded-2xl border bg-gray-100"
-                title={tr?.("open_image","Open image")}
-              >
-                <img
-                  src={url}
-                  alt={m?.name || `image-${idx}`}
-                  className="h-56 w-full object-cover hover:scale-[1.01] transition"
-                  loading="lazy"
-                />
-              </a>
-            );
-          }
-
-          if (type === "video") {
-            return (
-              <div key={idx} className="overflow-hidden rounded-2xl border bg-black">
-                <video src={url} controls preload="metadata" className="h-56 w-full object-cover" />
-              </div>
-            );
-          }
+          const showMoreOverlay = idx === MAX_DASHBOARD_MEDIA - 1 && remaining > 0;
 
           return (
-            <a
-              key={idx}
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-56 items-center justify-center rounded-2xl border bg-gray-50 text-sm text-gray-600"
+            <Link
+              key={`${url}-${idx}`}
+              to={postDetailUrl}
+              state={{ postId }}
+              className="relative block overflow-hidden rounded-2xl border bg-gray-100"
+              title={tr?.("view_post_details", "View post details")}
             >
-              Open media
-            </a>
+              <div className="relative flex h-56 w-full items-center justify-center bg-gray-100">
+                {type === "image" ? (
+                  <img
+                    src={url}
+                    alt={m?.name || `image-${idx}`}
+                    className="h-full w-full object-contain"
+                    loading="lazy"
+                  />
+                ) : type === "video" ? (
+                  <video
+                    src={url}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    className="h-full w-full object-contain bg-black"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-gray-600">
+                    {tr?.("open_media", "Open media")}
+                  </div>
+                )}
+
+                {showMoreOverlay ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                    <div className="text-center text-white">
+                      <div className="text-2xl font-semibold">+{remaining}</div>
+                      <div className="text-xs opacity-90">{tr?.("view_all", "View all")}</div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </Link>
           );
         })}
       </div>
 
-      {items.length > 4 ? (
-        <div className="mt-2 text-xs text-gray-500">{tr?.("more_count","+{{count}} more", { count: items.length - 4 })}</div>
+      {items.length > MAX_DASHBOARD_MEDIA ? (
+        <div className="mt-2 flex justify-end">
+          <Link to={postDetailUrl} state={{ postId }}>
+            <Button type="button" variant="link" className="h-auto px-0 text-sm">
+              {tr?.("view_all_photos", "View all photos")}
+            </Button>
+          </Link>
+        </div>
       ) : null}
     </div>
   );
 };
-
 
 /* -------------------- Boost Modal -------------------- */
 const BOOST_PLANS = [
@@ -428,7 +455,7 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me, tr }) => {
   );
 };
 
-/* -------------------- Post Card (FOLLOW + MESSAGE only) -------------------- */
+/* -------------------- Post Card -------------------- */
 const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, authorCountryByUid }) => {
   const created = post?.createdAt?.seconds
     ? new Date(post.createdAt.seconds * 1000)
@@ -443,7 +470,6 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
   const isMine = !!(currentUserId && authorId && currentUserId === authorId);
   const [boostOpen, setBoostOpen] = useState(false);
 
-  // ✅ 3-dots actions (edit/share/delete/report)
   const [editOpen, setEditOpen] = useState(false);
   const [editText, setEditText] = useState(String(post?.text || ""));
   const [reportOpen, setReportOpen] = useState(false);
@@ -451,41 +477,36 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
   const [actionBusy, setActionBusy] = useState(false);
   const [actionErr, setActionErr] = useState("");
 
+  const postDetailsUrl = useMemo(() => buildPostDetailUrl(post?.id), [post?.id]);
+  const fullText = String(post?.text || "");
+  const hasLongText = fullText.length > POST_PREVIEW_TEXT_LIMIT;
+  const previewText = hasLongText
+    ? `${fullText.slice(0, POST_PREVIEW_TEXT_LIMIT).trimEnd()}…`
+    : fullText;
+
   useEffect(() => {
     setEditText(String(post?.text || ""));
-  }, [post?.id]);
-
-  const postDetailsUrl = useMemo(() => {
-    const id = post?.id || "";
-    if (!id) return "";
-    try {
-      // Use your existing page registry if PostDetails exists there.
-      return `${window.location.origin}${createPageUrl("PostDetails")}?id=${encodeURIComponent(id)}`;
-    } catch {
-      // Safe fallback if createPageUrl doesn't know PostDetails.
-      return `${window.location.origin}/postdetails?id=${encodeURIComponent(id)}`;
-    }
-  }, [post?.id]);
+  }, [post?.id, post?.text]);
 
   const handleShare = async () => {
     if (!postDetailsUrl) return;
     setActionErr("");
     try {
+      const fullUrl = `${window.location.origin}${postDetailsUrl}`;
       if (navigator?.share) {
         await navigator.share({
           title: tr?.("post","Post") || "Post",
           text: tr?.("share_post","Check out this post") || "Check out this post",
-          url: postDetailsUrl,
+          url: fullUrl,
         });
         return;
       }
 
       if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(postDetailsUrl);
+        await navigator.clipboard.writeText(fullUrl);
       } else {
-        // Fallback copy
         const ta = document.createElement("textarea");
-        ta.value = postDetailsUrl;
+        ta.value = fullUrl;
         ta.style.position = "fixed";
         ta.style.left = "-9999px";
         document.body.appendChild(ta);
@@ -671,24 +692,34 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
           </DropdownMenu>
         </div>
 
-        {post?.text ? (
-          <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
+        {fullText ? (
+          <div className="px-4 pb-3">
+            <div className="text-sm text-gray-800 whitespace-pre-line">{previewText}</div>
+            {hasLongText ? (
+              <div className="mt-2">
+                <Link to={postDetailsUrl} state={{ postId: post?.id }}>
+                  <Button type="button" variant="link" className="h-auto px-0 text-sm font-medium">
+                    {tr?.("view_more", "View more")}
+                  </Button>
+                </Link>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
-        <MediaGallery media={post?.media || []} tr={tr} />
+        <MediaGallery media={post?.media || []} tr={tr} postId={post?.id} />
 
-        {/* ✅ ONLY FOLLOW + MESSAGE (no like/comment/share) */}
         <div className="px-4 pb-4">
           <div className="mt-3 border-t pt-2 grid grid-cols-2 gap-2">
             <div className="flex">
               {isMine ? (
                 subscriptionModeEnabled ? (
                   <Button
-                  variant="outline"
-                  className="w-full justify-center text-gray-700"
-                  type="button"
-                  onClick={() => setBoostOpen(true)}
-                >
+                    variant="outline"
+                    className="w-full justify-center text-gray-700"
+                    type="button"
+                    onClick={() => setBoostOpen(true)}
+                  >
                     <Sparkles className="h-4 w-4 mr-2" /> {tr?.("boost_your_post","Boost your post")}
                   </Button>
                 ) : null
@@ -697,7 +728,6 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
                   currentUserId={currentUserId}
                   creatorId={authorId}
                   creatorRole={authorRole}
-                  tr={tr}
                   className="w-full justify-center"
                 />
               )}
@@ -721,7 +751,6 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
           <div className="px-4 pb-3 text-sm text-red-600">{actionErr}</div>
         ) : null}
 
-        {/* ✅ Edit post dialog (owner only) */}
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
@@ -751,7 +780,6 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
           </DialogContent>
         </Dialog>
 
-        {/* ✅ Report post dialog */}
         <Dialog open={reportOpen} onOpenChange={setReportOpen}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
@@ -759,7 +787,7 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
             </DialogHeader>
 
             <div className="text-sm text-gray-600">
-              {tr?.("report_help","Tell us what\'s wrong (spam, scam, harassment, etc.).") ||
+              {tr?.("report_help","Tell us what's wrong (spam, scam, harassment, etc.).") ||
                 "Tell us what's wrong (spam, scam, harassment, etc.)."}
             </div>
 
@@ -817,25 +845,20 @@ export default function TutorDashboard({ user }) {
   const [tutorProfile, setTutorProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Tutor can post
   const [composerText, setComposerText] = useState("");
   const fileInputRef = useRef(null);
-  const [attachments, setAttachments] = useState([]); // File[]
-  const [attachmentPreviews, setAttachmentPreviews] = useState([]); // {id,name,type,url}
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentPreviews, setAttachmentPreviews] = useState([]);
 
-  // ✅ Posting state
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState("");
   const [quotaUsed, setQuotaUsed] = useState(0);
   const [quotaMonth, setQuotaMonth] = useState("");
 
-  // ✅ Posts feed (Option B: one community feed including your own posts)
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
   const [authorCountryByUid, setAuthorCountryByUid] = useState({});
 
-  
-  // ✅ Cache author country (from users/{uid}) so posts show 🇨🇦 Canada instead of 🌐 Public
   useEffect(() => {
     let alive = true;
 
@@ -888,7 +911,7 @@ export default function TutorDashboard({ user }) {
     return () => { alive = false; };
   }, [communityPosts, authorCountryByUid]);
 
-const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
+  const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
   const { subscriptionModeEnabled } = useSubscriptionMode();
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
 
@@ -896,23 +919,19 @@ const isSubscribed = useMemo(() => isSubscribedUser(user), [user]);
   const canCreateEvent = !subscriptionModeEnabled || isSubscribed;
 
   const { tr } = useTr("tutor_dashboard");
-
-
-  // ✅ Posting limit dialog
   const [limitOpen, setLimitOpen] = useState(false);
-// ✅ Listen to quota fields on the user doc (for disabling Post button + friendly prompt)
-useEffect(() => {
-  if (!userId) return;
-  const meRef = doc(db, "users", userId);
-  const unsub = onSnapshot(meRef, (snap) => {
-    if (!snap.exists()) return;
-    const d = snap.data() || {};
-    setQuotaUsed(Number(d.post_quota_used || 0));
-    setQuotaMonth(String(d.post_quota_month || ""));
-  });
-  return () => unsub();
-}, [userId]);
 
+  useEffect(() => {
+    if (!userId) return;
+    const meRef = doc(db, "users", userId);
+    const unsub = onSnapshot(meRef, (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data() || {};
+      setQuotaUsed(Number(d.post_quota_used || 0));
+      setQuotaMonth(String(d.post_quota_month || ""));
+    });
+    return () => unsub();
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -964,14 +983,11 @@ useEffect(() => {
     loadDashboardData();
   }, [userId]);
 
-  // ✅ Live load: published posts
   useEffect(() => {
     if (!userId) return;
 
     setCommunityLoading(true);
 
-    // NOTE: This assumes you store status as "published"
-    // If your existing posts don't have status, you can remove the where("status","==","published")
     const q = query(
       collection(db, "posts"),
       where("status", "==", "published"),
@@ -1009,7 +1025,6 @@ useEffect(() => {
     return () => unsub();
   }, [userId]);
 
-  // Build & cleanup preview URLs
   useEffect(() => {
     attachmentPreviews.forEach((p) => {
       if (p?.url) URL.revokeObjectURL(p.url);
@@ -1029,7 +1044,6 @@ useEffect(() => {
         if (p?.url) URL.revokeObjectURL(p.url);
       });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachments]);
 
   const openFilePicker = () => fileInputRef.current?.click();
@@ -1087,27 +1101,24 @@ useEffect(() => {
     if (!text && attachments.length === 0) return;
     if (!userId) return;
 
-  // ✅ Post limit (only when admin enabled subscription mode AND user is not subscribed)
-  if (subscriptionModeEnabled === true && isSubscribed === false) {
-    const nowKey = monthKeyUTC();
-    const used = quotaMonth === nowKey ? quotaUsed : 0;
-    if (used >= 10) {
-      setPostError("You\u2019ve reached the posting limit. Subscribe to post more.");
-      setLimitOpen(true);
-      return;
+    if (subscriptionModeEnabled === true && isSubscribed === false) {
+      const nowKey = monthKeyUTC();
+      const used = quotaMonth === nowKey ? quotaUsed : 0;
+      if (used >= 10) {
+        setPostError("You’ve reached the posting limit. Subscribe to post more.");
+        setLimitOpen(true);
+        return;
+      }
     }
-  }
 
     setPosting(true);
     setPostError("");
 
     try {
       const authorName = user?.full_name || "Tutor";
-
       const canEnforceLimit = subscriptionModeEnabled === true;
       const isUnlimited = isSubscribed === true;
 
-      // ✅ Enforce: 10 posts per month for NON-subscribed users (only when admin turned ON subscription mode)
       let postDocId = null;
 
       await runTransaction(db, async (tx) => {
@@ -1142,7 +1153,6 @@ useEffect(() => {
         });
       });
 
-      // Upload attachments (after post doc exists)
       if (postDocId && attachments.length > 0) {
         const uploaded = [];
         for (let i = 0; i < attachments.length; i++) {
@@ -1157,8 +1167,7 @@ useEffect(() => {
 
       if (String(e?.message || "").includes("POST_LIMIT_REACHED")) {
         setLimitOpen(true);
-        setPostError("You\u2019ve reached the posting limit. Subscribe to post more.");
-        setLimitOpen(true);
+        setPostError("You’ve reached the posting limit. Subscribe to post more.");
       } else {
         setPostError(tr("post_failed","Failed to post. Please try again."));
       }
@@ -1166,7 +1175,6 @@ useEffect(() => {
       setPosting(false);
     }
   };
-
 
   if (loading) {
     return (
@@ -1178,14 +1186,13 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ✅ Posting limit prompt */}
       <Dialog open={limitOpen} onOpenChange={setLimitOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{tr("posting_limit_title","Posting limit reached")}</DialogTitle>
           </DialogHeader>
           <div className="text-sm text-gray-700">
-            {"You\u2019ve reached the posting limit. Subscribe to post more."}
+            {"You’ve reached the posting limit. Subscribe to post more."}
           </div>
           <div className="mt-4 flex gap-2 justify-end">
             <Button type="button" variant="outline" onClick={() => setLimitOpen(false)}>
@@ -1200,7 +1207,6 @@ useEffect(() => {
         </DialogContent>
       </Dialog>
 
-      {/* ✅ Create Event */}
       <CreateEventDialog
         open={createEventOpen}
         onOpenChange={setCreateEventOpen}
@@ -1212,7 +1218,6 @@ useEffect(() => {
 
       <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="mx-auto max-w-[1800px] space-y-6">
-          {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
@@ -1232,25 +1237,15 @@ useEffect(() => {
               >
                 {tutorProfile?.verification_status || tr("pending","pending")}
               </Badge>
-
-              {stats.averageRating > 0 && (
-                <Badge variant="outline" className="flex items-center gap-1">
-                  <Star className="w-3 h-3 text-yellow-500 fill-current" />
-                  {stats.averageRating.toFixed(1)}
-                </Badge>
-              )}
             </div>
           </div>
 
-          {/* Subscribe */}
           {subscriptionModeEnabled === true && !isSubscribed && (
             <SubscribeBanner to={subscribeUrl} user={user} tr={tr} />
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-10">
-            {/* LEFT: stats */}
             <div className="lg:col-span-3 space-y-4">
-
               <Card className="mt-4 rounded-2xl">
                 <CardContent className="p-3 space-y-4">
                   <QuickLink
@@ -1276,13 +1271,11 @@ useEffect(() => {
                   >
                     <Calendar className="h-4 w-4 mr-2" /> {tr("create_event","Create Event")}
                   </Button>
-</CardContent>
+                </CardContent>
               </Card>
             </div>
 
-            {/* CENTER: composer + feeds */}
             <div className="lg:col-span-6 space-y-4">
-              {/* Composer */}
               <div className="rounded-2xl border bg-white">
                 <div className="p-3 flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 w-full">
@@ -1324,10 +1317,10 @@ useEffect(() => {
                                 >
                                   <div className="h-12 w-12 rounded-xl border bg-white overflow-hidden flex items-center justify-center">
                                     {isVideo ? (
-                                      <div className="h-full w-full relative">
+                                      <div className="h-full w-full relative flex items-center justify-center bg-black">
                                         <video
                                           src={p.url}
-                                          className="h-full w-full object-cover"
+                                          className="h-full w-full object-contain bg-black"
                                           muted
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center">
@@ -1340,7 +1333,7 @@ useEffect(() => {
                                       <img
                                         src={p.url}
                                         alt={p.name}
-                                        className="h-full w-full object-cover"
+                                        className="h-full w-full object-contain"
                                       />
                                     )}
                                   </div>
@@ -1403,8 +1396,6 @@ useEffect(() => {
                       </div>
                     </div>
                   </div>
-
-                  {/* (removed empty 3-dots button for composer) */}
                 </div>
 
                 <div className="border-t px-3 py-2 flex items-center gap-2 text-xs text-gray-500">
@@ -1413,7 +1404,6 @@ useEffect(() => {
                 </div>
               </div>
 
-              {/* ✅ Posts feed (Option B: one feed) */}
               <Card className="rounded-2xl">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
@@ -1432,7 +1422,15 @@ useEffect(() => {
                   ) : (
                     <div className="mt-4 space-y-4">
                       {communityPosts.map((p) => (
-                        <RealPostCard key={p.id} post={p} currentUserId={userId} me={user} subscriptionModeEnabled={subscriptionModeEnabled} tr={tr} authorCountryByUid={authorCountryByUid} />
+                        <RealPostCard
+                          key={p.id}
+                          post={p}
+                          currentUserId={userId}
+                          me={user}
+                          subscriptionModeEnabled={subscriptionModeEnabled}
+                          tr={tr}
+                          authorCountryByUid={authorCountryByUid}
+                        />
                       ))}
                     </div>
                   )}
@@ -1440,7 +1438,6 @@ useEffect(() => {
               </Card>
             </div>
 
-            {/* RIGHT: upcoming sessions */}
             <div className="hidden lg:block lg:col-span-3">
               <div className="sticky top-4 space-y-4">
                 <Card className="rounded-2xl">

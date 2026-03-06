@@ -23,7 +23,7 @@ import {
   Users,
   Loader2,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
 // 🤝 Follow helpers
@@ -37,13 +37,11 @@ import { db, auth } from "@/firebase";
 import {
   collection,
   addDoc,
-  doc,
   onSnapshot,
   query,
   where,
   orderBy,
   limit,
-  writeBatch,
   serverTimestamp,
   getDocs,
 } from "firebase/firestore";
@@ -55,7 +53,7 @@ import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 const toValidDate = (v) => {
   if (!v) return null;
   if (v instanceof Date) return v;
-  if (typeof v === "object" && typeof v.toDate === "function") return v.toDate(); // Firestore Timestamp
+  if (typeof v === "object" && typeof v.toDate === "function") return v.toDate();
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 };
@@ -78,6 +76,11 @@ const timeAgo = (dt) => {
   const y = Math.floor(days / 365);
   return `${y}y`;
 };
+
+const POST_PREVIEW_TEXT_LIMIT = 320;
+const MAX_DASHBOARD_MEDIA = 4;
+const buildPostDetailUrl = (postId) =>
+  `${createPageUrl("PostDetails")}?id=${encodeURIComponent(postId || "")}`;
 
 const Avatar = ({ name = "User", role = "user" }) => {
   const initials = String(name)
@@ -145,7 +148,7 @@ const StatPill = ({ children }) => (
   </span>
 );
 
-// 🌍 Country helpers (same approach as Onboarding)
+// 🌍 Country helpers
 const flagUrlFromCode = (code) => {
   const cc = String(code || "").trim().toLowerCase();
   if (!cc) return "";
@@ -153,70 +156,122 @@ const flagUrlFromCode = (code) => {
 };
 
 /* ✅ Real media viewer: multiple images/videos */
-const MediaGallery = ({ media = [], tr }) => {
-  const items = Array.isArray(media) ? media : [];
-  if (!items.length) return null;
+const MediaGallery = ({ media = [], postId, tr }) => {
+  const items = Array.isArray(media) ? media.filter((m) => m?.url) : [];
+  if (!items.length || !postId) return null;
 
-  const many = items.length > 1;
+  const visibleItems = items.slice(0, MAX_DASHBOARD_MEDIA);
+  const remaining = Math.max(0, items.length - MAX_DASHBOARD_MEDIA);
+  const postDetailUrl = buildPostDetailUrl(postId);
+  const isSingle = visibleItems.length === 1;
+  const singleItem = visibleItems[0];
+  const singleType = String(singleItem?.type || "").toLowerCase();
+
+  if (isSingle) {
+    return (
+      <div className="px-4 pb-4">
+        <Link
+          to={postDetailUrl}
+          state={{ postId }}
+          className="block overflow-hidden rounded-2xl border bg-gray-100"
+          title={tr("view_post_details", "View post details")}
+        >
+          <div className="flex w-full items-center justify-center bg-gray-100">
+            {singleType === "video" ? (
+              <video
+                src={singleItem?.url}
+                preload="metadata"
+                muted
+                playsInline
+                controls={false}
+                className="block h-auto max-h-[42rem] w-auto max-w-full object-contain bg-black"
+              />
+            ) : singleType === "image" ? (
+              <img
+                src={singleItem?.url}
+                alt={singleItem?.name || "image-0"}
+                className="block h-auto max-h-[42rem] w-auto max-w-full object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex min-h-[18rem] w-full items-center justify-center text-sm text-gray-600">
+                {tr("open_media", "Open media")}
+              </div>
+            )}
+          </div>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 pb-4">
-      <div className={`grid gap-2 ${many ? "grid-cols-2" : "grid-cols-1"}`}>
-        {items.slice(0, 4).map((m, idx) => {
+      <div className="grid grid-cols-2 gap-2">
+        {visibleItems.map((m, idx) => {
           const type = String(m?.type || "").toLowerCase();
           const url = m?.url;
           if (!url) return null;
 
-          if (type === "image") {
-            return (
-              <a
-                key={idx}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="block overflow-hidden rounded-2xl border bg-gray-100"
-                title={tr("open_image", "Open image")}
-              >
-                <img
-                  src={url}
-                  alt={m?.name || `image-${idx}`}
-                  className="h-60 w-full object-cover hover:scale-[1.01] transition"
-                  loading="lazy"
-                />
-              </a>
-            );
-          }
-
-          if (type === "video") {
-            return (
-              <div key={idx} className="overflow-hidden rounded-2xl border bg-black">
-                <video src={url} controls preload="metadata" className="h-60 w-full object-cover" />
-              </div>
-            );
-          }
+          const showMoreOverlay = idx === MAX_DASHBOARD_MEDIA - 1 && remaining > 0;
 
           return (
-            <a
-              key={idx}
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-60 items-center justify-center rounded-2xl border bg-gray-50 text-sm text-gray-600"
+            <Link
+              key={`${url}-${idx}`}
+              to={postDetailUrl}
+              state={{ postId }}
+              className="relative block overflow-hidden rounded-2xl border bg-gray-100"
+              title={tr("view_post_details", "View post details")}
             >
-              {tr("open_media", "Open media")}
-            </a>
+              <div className="relative flex h-60 w-full items-center justify-center bg-gray-100">
+                {type === "image" ? (
+                  <img
+                    src={url}
+                    alt={m?.name || `image-${idx}`}
+                    className="h-full w-full object-contain"
+                    loading="lazy"
+                  />
+                ) : type === "video" ? (
+                  <video
+                    src={url}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    className="h-full w-full object-contain bg-black"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-gray-600">
+                    {tr("open_media", "Open media")}
+                  </div>
+                )}
+
+                {showMoreOverlay ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                    <div className="text-center text-white">
+                      <div className="text-2xl font-semibold">+{remaining}</div>
+                      <div className="text-xs opacity-90">{tr("view_all", "View all")}</div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </Link>
           );
         })}
       </div>
 
-      {items.length > 4 ? (
-        <div className="mt-2 text-xs text-gray-500">+{items.length - 4} more</div>
+      {items.length > MAX_DASHBOARD_MEDIA ? (
+        <div className="mt-2 flex justify-end">
+          <Link to={postDetailUrl} state={{ postId }}>
+            <Button type="button" variant="link" className="h-auto px-0 text-sm">
+              {tr("view_all_photos", "View all photos")}
+            </Button>
+          </Link>
+        </div>
       ) : null}
     </div>
   );
 };
 
-/* -------------------- Follow Button (same behavior as SchoolDashboard) -------------------- */
+/* -------------------- Follow Button -------------------- */
 function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "" }) {
   const { tr } = useTr("student_dashboard");
   const [state, setState] = useState({ following: false, requested: false });
@@ -278,19 +333,19 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
   );
 }
 
-/* -------------------- Post Card UI (NO like/comment/share) -------------------- */
+/* -------------------- Post Card UI -------------------- */
 function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
   const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
-
-  // 🌍 Resolve author country (same logic as AgentDashboard)
-  const authorId = post?.authorId;
-  const authorCountry = authorId ? authorCountryByUid?.[authorId] : null;
-  const resolvedCC = String(authorCountry?.country_code || post?.countryCode || "").trim();
-  const resolvedCountryName = String(authorCountry?.country || post?.country || "").trim();
+  const postDetailUrl = buildPostDetailUrl(post.id);
+  const fullText = String(post.text || "");
+  const hasLongText = fullText.length > POST_PREVIEW_TEXT_LIMIT;
+  const previewText = hasLongText
+    ? `${fullText.slice(0, POST_PREVIEW_TEXT_LIMIT).trimEnd()}…`
+    : fullText;
 
   const sharePost = async () => {
     try {
-      const url = `${window.location.origin}${createPageUrl("PostDetails")}?id=${encodeURIComponent(post.id)}`;
+      const url = `${window.location.origin}${buildPostDetailUrl(post.id)}`;
       if (navigator.share) {
         await navigator.share({
           title: tr("share_post", "Share post"),
@@ -304,7 +359,7 @@ function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
     } catch (e) {
       console.error("sharePost error", e);
       try {
-        const url = `${window.location.origin}${createPageUrl("PostDetails")}?id=${encodeURIComponent(post.id)}`;
+        const url = `${window.location.origin}${buildPostDetailUrl(post.id)}`;
         window.prompt(tr("copy_link", "Copy link:"), url);
       } catch {
         alert(tr("share_failed", "Share failed"));
@@ -441,12 +496,23 @@ function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
         </div>
 
         {/* Body */}
-        {post.text ? (
-          <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
+        {fullText ? (
+          <div className="px-4 pb-3">
+            <div className="text-sm text-gray-800 whitespace-pre-line">{previewText}</div>
+            {hasLongText ? (
+              <div className="mt-2">
+                <Link to={postDetailUrl} state={{ postId: post?.id }}>
+                  <Button type="button" variant="link" className="h-auto px-0 text-sm font-medium">
+                    {tr("view_more", "View more")}
+                  </Button>
+                </Link>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {/* Media */}
-        <MediaGallery media={post.media || []} tr={tr} />
+        <MediaGallery media={post.media || []} postId={post.id} tr={tr} />
 
         {/* Follow + Message row */}
         <div className="px-4 pb-4">
@@ -457,7 +523,7 @@ function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
               creatorRole={post.authorRole}
               size="sm"
               className="rounded-xl w-full"
-/>
+            />
             {canMessage ? (
               <Button
                 className="rounded-xl"
@@ -471,13 +537,13 @@ function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
               </Button>
             ) : null}
           </div>
-</div>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-/* -------------------- REAL Student Dashboard (FB-style) -------------------- */
+/* -------------------- REAL Student Dashboard -------------------- */
 export default function StudentDashboard({ user }) {
   const { tr } = useTr("student_dashboard");
   const { subscriptionModeEnabled, loading: subscriptionLoading } = useSubscriptionMode();
@@ -489,7 +555,6 @@ export default function StudentDashboard({ user }) {
   const [following, setFollowing] = useState(() => new Set());
   const [requested, setRequested] = useState(() => new Set());
   const [authorCountryByUid, setAuthorCountryByUid] = useState(() => ({}));
-
 
   // ✅ Live following set
   useEffect(() => {
@@ -509,7 +574,7 @@ export default function StudentDashboard({ user }) {
     return () => unsub();
   }, [myUid]);
 
-  // ✅ Live sent-request set (for "Requested" state)
+  // ✅ Live sent-request set
   useEffect(() => {
     if (!myUid) return;
 
@@ -549,7 +614,6 @@ export default function StudentDashboard({ user }) {
             authorId: data.authorId || data.author_id || data.user_id || data.userId || "",
             authorRole: String(data.authorRole || data.author_role || "").toLowerCase(),
             authorName: data.authorName || data.author_name || "Creator",
-            // 🌍 country display (prefer post snapshot fields; fallback to author_* keys)
             country: data.country || data.authorCountry || data.author_country || "",
             countryCode:
               data.country_code || data.countryCode || data.authorCountryCode || data.author_country_code || "",
@@ -574,8 +638,7 @@ export default function StudentDashboard({ user }) {
     return () => unsub();
   }, []);
 
-
-  // ✅ Resolve author country for posts that don't store it (matches AgentDashboard behavior)
+  // ✅ Resolve author country for posts that don't store it
   useEffect(() => {
     let cancelled = false;
 
@@ -583,18 +646,12 @@ export default function StudentDashboard({ user }) {
       try {
         if (!posts?.length) return;
 
-        // unique author ids in feed
-        const ids = Array.from(
-          new Set(posts.map((p) => p?.authorId).filter(Boolean))
-        );
-
-        // only fetch missing entries
+        const ids = Array.from(new Set(posts.map((p) => p?.authorId).filter(Boolean)));
         const missing = ids.filter((uid) => !(uid in authorCountryByUid));
         if (missing.length === 0) return;
 
         const next = { ...authorCountryByUid };
 
-        // Firestore "in" query limit = 10
         for (let i = 0; i < missing.length; i += 10) {
           const chunk = missing.slice(i, i + 10);
           const qUsers = query(collection(db, "users"), where("__name__", "in", chunk));
@@ -607,7 +664,6 @@ export default function StudentDashboard({ user }) {
             next[d.id] = { country, country_code };
           });
 
-          // Ensure all requested ids exist in map (even if missing doc)
           chunk.forEach((uid) => {
             if (!(uid in next)) next[uid] = { country: "", country_code: "" };
           });
@@ -625,33 +681,7 @@ export default function StudentDashboard({ user }) {
     };
   }, [posts, authorCountryByUid]);
 
-  const isFollowing = (creatorId) => following.has(creatorId);
-  const isRequested = (creatorId) => requested.has(creatorId);
-
-  const toggleFollow = async (creatorId) => {
-    if (!myUid || !creatorId || creatorId === myUid) return;
-
-    const followed = following.has(creatorId);
-    const req = requested.has(creatorId);
-
-    // Unfollow: delete your own following doc (backend cleanup removes mirror)
-    if (followed) {
-      await unfollowUser({ followerId: myUid, followeeId: creatorId });
-      return;
-    }
-
-    // Cancel request
-    if (req) {
-      await cancelFollowRequest({ followerId: myUid, followeeId: creatorId });
-      return;
-    }
-
-    // Send request
-    await sendFollowRequest({ followerId: myUid, followeeId: creatorId });
-  };
-
   const messageCreator = (post) => {
-    // your messaging page can read ?with=<uid>
     if (!post?.authorId) return;
     navigate(`${createPageUrl("Messages")}?with=${encodeURIComponent(post.authorId)}`);
   };
@@ -661,7 +691,6 @@ export default function StudentDashboard({ user }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="w-full px-3 sm:px-6 lg:px-8 py-5">
-        {/* ✅ Subscription notice depends on app_config/subscription.enabled */}
         {showSubscriptionNotice ? (
           <div className="mx-auto max-w-[1800px] mb-5">
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -766,8 +795,9 @@ export default function StudentDashboard({ user }) {
                 <FeedPostCard
                   key={p.id}
                   post={p}
-                  myUid={myUid}                  onMessage={messageCreator}
-                authorCountryByUid={authorCountryByUid}
+                  myUid={myUid}
+                  onMessage={messageCreator}
+                  authorCountryByUid={authorCountryByUid}
                   tr={tr}
                 />
               ))
@@ -799,7 +829,7 @@ export default function StudentDashboard({ user }) {
           </div>
         </div>
 
-        {/* Mobile-only suggestions block (kept minimal) */}
+        {/* Mobile-only suggestions block */}
         <div className="lg:hidden mt-6">
           <Card className="rounded-2xl">
             <CardContent className="p-4">
