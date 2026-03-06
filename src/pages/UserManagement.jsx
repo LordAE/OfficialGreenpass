@@ -49,8 +49,16 @@ const roleIcons = {
   school: <SchoolIcon className="w-4 h-4 text-purple-500" />,
   tutor: <BookOpen className="w-4 h-4 text-green-500" />,
   vendor: <Store className="w-4 h-4 text-orange-500" />,
-  student: <UserIcon className="w-4 h-4 text-gray-500" />,
   user: <UserIcon className="w-4 h-4 text-gray-500" />,
+};
+
+const roleLabels = {
+  admin: "Admin",
+  agent: "Agent",
+  school: "School",
+  tutor: "Tutor",
+  vendor: "Vendor",
+  user: "User",
 };
 
 function flagUrlFromCode(code) {
@@ -88,7 +96,9 @@ function getUserRole(user) {
     user?.role ||
     user?.selected_role ||
     "user"
-  );
+  )
+    .toString()
+    .toLowerCase();
 }
 
 function getVerificationStatus(user) {
@@ -266,7 +276,7 @@ export default function UserManagement() {
       <InviteUsersDialog
         open={inviteOpen}
         onOpenChange={setInviteOpen}
-        allowedRoles={["agent", "school", "student", "Tutor", "Vendor"]}
+        allowedRoles={["agent", "school", "tutor", "vendor"]}
         defaultRole="agent"
         title="Invite User"
       />
@@ -288,13 +298,17 @@ export default function UserManagement() {
 
             <Select value={roleFilter} onValueChange={setRoleFilter}>
               <SelectTrigger className="w-full lg:w-52">
-                <SelectValue placeholder="Filter by role" />
+                <SelectValue placeholder="Filter by role">
+                  {roleFilter === "all"
+                    ? "All Roles"
+                    : roleLabels[roleFilter] || roleFilter}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Roles</SelectItem>
                 {Object.keys(roleIcons).map((role) => (
-                  <SelectItem key={role} value={role} className="capitalize">
-                    {role}
+                  <SelectItem key={role} value={role}>
+                    {roleLabels[role] || role}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -373,9 +387,9 @@ export default function UserManagement() {
                         </TableCell>
 
                         <TableCell>
-                          <div className="flex items-center gap-2 capitalize">
+                          <div className="flex items-center gap-2">
                             {roleIcons[role] || <UserIcon className="w-4 h-4" />}
-                            {role}
+                            {roleLabels[role] || role}
                           </div>
                         </TableCell>
 
@@ -478,9 +492,9 @@ export default function UserManagement() {
                     <div className="mt-4 pt-4 border-t space-y-2 text-sm">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-gray-500">Role</span>
-                        <div className="flex items-center gap-2 capitalize">
+                        <div className="flex items-center gap-2">
                           {roleIcons[role] || <UserIcon className="w-4 h-4" />}
-                          {role}
+                          {roleLabels[role] || role}
                         </div>
                       </div>
 
