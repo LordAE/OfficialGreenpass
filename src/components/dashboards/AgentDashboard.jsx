@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import InviteUsersDialog from "@/components/invites/InviteUserDialog";
-import {
-  Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Agent } from "@/api/entities";
 import { User } from "@/api/entities";
-import { listenFollowState, sendFollowRequest, cancelFollowRequest, unfollowUser } from "@/api/follow";
+import {
+  listenFollowState,
+  sendFollowRequest,
+  cancelFollowRequest,
+  unfollowUser,
+} from "@/api/follow";
 import {
   Users,
-  FileText,
-  DollarSign,
   ArrowRight,
   UserPlus,
   CreditCard,
@@ -27,7 +29,7 @@ import {
   Building2,
   X,
   Loader2,
-  Sparkles
+  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -48,14 +50,13 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  writeBatch,
   updateDoc,
   deleteDoc,
   runTransaction,
   Timestamp,
   increment,
   getDoc,
-  getDocs
+  getDocs,
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -68,7 +69,6 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
-import ProfileCompletionBanner from "../profile/ProfileCompletionBanner";
 import ActionBlocker from "../profile/ActionBlocker";
 import { getProfileCompletionData } from "../profile/ProfileCompletionBanner";
 import { useTr } from "@/i18n/useTr";
@@ -103,17 +103,11 @@ const toValidDate = (v) => {
   return null;
 };
 
-const fmt = (v, fmtStr = "MMM dd, h:mm a") => {
-  const d = toValidDate(v);
-  if (!d) return "—";
-  try {
-    return format(d, fmtStr);
-  } catch {
-    return d.toLocaleString();
-  }
-};
-
 const arr = (x) => (Array.isArray(x) ? x : x ? [x] : []);
+const POST_PREVIEW_TEXT_LIMIT = 320;
+const MAX_DASHBOARD_MEDIA = 4;
+const buildPostDetailUrl = (postId) =>
+  `${createPageUrl("PostDetail")}?id=${encodeURIComponent(postId || "")}`;
 /* --------------------------------------------------------------------- */
 
 /* ✅ Uses your REAL user doc fields */
@@ -131,10 +125,19 @@ const SubscribeBanner = ({ to, user }) => {
   const status = String(user?.subscription_status || "").toLowerCase().trim();
   const message =
     status === "skipped"
-      ? tr("sub_msg_skipped","You skipped subscription. Subscribe to unlock full features, commissions, and payouts.")
+      ? tr(
+          "sub_msg_skipped",
+          "You skipped subscription. Subscribe to unlock full features, commissions, and payouts."
+        )
       : status === "expired"
-      ? tr("sub_msg_expired","Your subscription expired. Renew to regain access to commissions and payouts.")
-      : tr("sub_msg_default","You’re not subscribed yet. Subscribe to unlock full agent features, commissions, and payouts.");
+      ? tr(
+          "sub_msg_expired",
+          "Your subscription expired. Renew to regain access to commissions and payouts."
+        )
+      : tr(
+          "sub_msg_default",
+          "You’re not subscribed yet. Subscribe to unlock full agent features, commissions, and payouts."
+        );
 
   return (
     <div className="rounded-2xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -143,26 +146,25 @@ const SubscribeBanner = ({ to, user }) => {
           <CreditCard className="w-5 h-5 text-red-600" />
         </div>
         <div>
-          <p className="font-semibold text-red-800">{tr("sub_required","Subscription required")}</p>
+          <p className="font-semibold text-red-800">
+            {tr("sub_required", "Subscription required")}
+          </p>
           <p className="text-sm text-red-700">{message}</p>
         </div>
       </div>
 
       <Link to={to}>
-        <Button className="bg-red-600 hover:bg-red-700 w-full sm:w-auto">
-          Subscribe Now
-        </Button>
+        <Button className="bg-red-600 hover:bg-red-700 w-full sm:w-auto">Subscribe Now</Button>
       </Link>
     </div>
   );
 };
+
 const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
   const { tr } = useTr("agent_dashboard");
 
-  // Keep using shared helper if present, but DO NOT trust its missingFields blindly.
-  const completion = useMemo(() => getProfileCompletionData(user, relatedEntity), [user, relatedEntity]);
+  useMemo(() => getProfileCompletionData(user, relatedEntity), [user, relatedEntity]);
 
-  // ✅ Only show banner if REAL required fields are empty in the actual profile data
   const isEmpty = (v) => {
     if (v === null || v === undefined) return true;
     if (typeof v === "string") return v.trim().length === 0;
@@ -170,29 +172,33 @@ const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
     return false;
   };
 
-  // Profile.jsx stores agent fields under users/{uid}.agent_profile.{...}
   const agent = user?.agent_profile || {};
-
-  // Allow fallbacks just in case some older docs stored fields at top-level
   const companyName = agent.company_name ?? user?.company_name ?? "";
   const businessLicense =
-    agent.business_license_mst ?? agent.business_license ?? user?.business_license_mst ?? user?.business_license ?? "";
+    agent.business_license_mst ??
+    agent.business_license ??
+    user?.business_license_mst ??
+    user?.business_license ??
+    "";
   const paypalEmail = agent.paypal_email ?? user?.paypal_email ?? "";
 
   const missing = [];
   if (isEmpty(user?.full_name)) missing.push({ key: "full_name", label: tr("field_full_name", "Full Name") });
   if (isEmpty(user?.phone)) missing.push({ key: "phone", label: tr("field_phone", "Phone") });
   if (isEmpty(user?.country)) missing.push({ key: "country", label: tr("field_country", "Country") });
-
   if (isEmpty(companyName)) missing.push({ key: "company_name", label: tr("field_company_name", "Company Name") });
-  if (isEmpty(businessLicense)) missing.push({ key: "business_license_mst", label: tr("field_business_license", "Business License (MST)") });
+  if (isEmpty(businessLicense)) {
+    missing.push({ key: "business_license_mst", label: tr("field_business_license", "Business License (MST)") });
+  }
   if (isEmpty(paypalEmail)) missing.push({ key: "paypal_email", label: tr("field_paypal_email", "PayPal Email") });
 
-  // If nothing is missing, don't show the banner at all.
   if (missing.length === 0) return null;
 
   const totalRequired = 6;
-  const percent = Math.max(0, Math.min(100, Math.round(((totalRequired - missing.length) / totalRequired) * 100)));
+  const percent = Math.max(
+    0,
+    Math.min(100, Math.round(((totalRequired - missing.length) / totalRequired) * 100))
+  );
 
   const fieldLabel = (f) => {
     const raw =
@@ -203,13 +209,12 @@ const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
 
     const map = {
       "Full Name": "field_full_name",
-      "Phone": "field_phone",
-      "Country": "field_country",
+      Phone: "field_phone",
+      Country: "field_country",
       "Company Name": "field_company_name",
       "Business License": "field_business_license",
       "Business License (MST)": "field_business_license",
       "PayPal Email": "field_paypal_email",
-
       full_name: "field_full_name",
       phone: "field_phone",
       country: "field_country",
@@ -220,7 +225,7 @@ const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
     };
 
     const k = map[key] || null;
-    return k ? tr(k, key) : (key || tr("missing_field", "Missing field"));
+    return k ? tr(k, key) : key || tr("missing_field", "Missing field");
   };
 
   const missingText = `${tr("missing_prefix", "Missing")}: ${missing.map(fieldLabel).join(", ")}`;
@@ -262,21 +267,16 @@ const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
   );
 };
 
-
 const Shortcut = ({ icon, label, to }) => (
   <Link to={to} className="block">
     <div className="flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-gray-50 transition">
-      <div className="h-9 w-9 rounded-xl bg-gray-100 flex items-center justify-center">
-        {icon}
-      </div>
+      <div className="h-9 w-9 rounded-xl bg-gray-100 flex items-center justify-center">{icon}</div>
       <div className="text-sm font-medium text-gray-900">{label}</div>
     </div>
   </Link>
 );
 
 const Avatar = ({ name = "User", size = "md" }) => {
-  const { tr } = useTr("agent_dashboard");
-
   const initials = String(name)
     .trim()
     .split(/\s+/)
@@ -300,17 +300,14 @@ const Avatar = ({ name = "User", size = "md" }) => {
   );
 };
 
-// 🌍 Country helpers (same approach as Onboarding: flagcdn images)
 const flagUrlFromCode = (code) => {
   const cc = (code || "").toString().trim().toLowerCase();
   if (!/^[a-z]{2}$/.test(cc)) return "";
   return `https://flagcdn.com/w20/${cc}.png`;
 };
 
-/* -------------------- Follow Button (Follow Request / Instagram-style) -------------------- */
-function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "", }) {
+function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "" }) {
   const { tr } = useTr("agent_dashboard");
-
   const [state, setState] = useState({ following: false, requested: false });
   const disabled = !currentUserId || !creatorId || currentUserId === creatorId;
 
@@ -324,17 +321,14 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
 
   const onClick = async () => {
     if (disabled) return;
-
     if (state.following) {
       await unfollowUser({ followerId: currentUserId, followeeId: creatorId });
       return;
     }
-
     if (state.requested) {
       await cancelFollowRequest({ followerId: currentUserId, followeeId: creatorId });
       return;
     }
-
     await sendFollowRequest({ followerId: currentUserId, followeeId: creatorId });
   };
 
@@ -359,65 +353,116 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
 }
 
 /* -------------------- Media grid (images + videos) -------------------- */
-const MediaGallery = ({ media = [], }) => {
+const MediaGallery = ({ media = [], postId }) => {
   const { tr } = useTr("agent_dashboard");
 
-  const items = Array.isArray(media) ? media : [];
-  if (!items.length) return null;
+  const items = Array.isArray(media) ? media.filter((m) => m?.url) : [];
+  if (!items.length || !postId) return null;
 
-  const many = items.length > 1;
+  const visibleItems = items.slice(0, MAX_DASHBOARD_MEDIA);
+  const remaining = Math.max(0, items.length - MAX_DASHBOARD_MEDIA);
+  const postDetailUrl = buildPostDetailUrl(postId);
+  const isSingle = visibleItems.length === 1;
+  const singleItem = visibleItems[0];
+  const singleType = String(singleItem?.type || "").toLowerCase();
+
+  if (isSingle) {
+    return (
+      <div className="px-4 pb-4">
+        <Link
+          to={postDetailUrl}
+          state={{ postId }}
+          className="block overflow-hidden rounded-2xl border bg-gray-100"
+          title={tr("view_post_details", "View post details")}
+        >
+          <div className="flex w-full items-center justify-center bg-gray-100">
+            {singleType === "video" ? (
+              <video
+                src={singleItem?.url}
+                preload="metadata"
+                muted
+                playsInline
+                controls={false}
+                className="block h-auto max-h-[42rem] w-auto max-w-full object-contain bg-black"
+              />
+            ) : singleType === "image" ? (
+              <img
+                src={singleItem?.url}
+                alt={singleItem?.name || "image-0"}
+                className="block h-auto max-h-[42rem] w-auto max-w-full object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex min-h-[18rem] w-full items-center justify-center text-sm text-gray-600">
+                {tr("open_media", "Open media")}
+              </div>
+            )}
+          </div>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 pb-4">
-      <div className={`grid gap-2 ${many ? "grid-cols-2" : "grid-cols-1"}`}>
-        {items.slice(0, 4).map((m, idx) => {
+      <div className="grid grid-cols-2 gap-2">
+        {visibleItems.map((m, idx) => {
           const type = String(m?.type || "").toLowerCase();
           const url = m?.url;
-          if (!url) return null;
-
-          if (type === "image") {
-            return (
-              <a
-                key={idx}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="block overflow-hidden rounded-2xl border bg-gray-100"
-                title={tr("open_image","Open image")}
-              >
-                <img
-                  src={url}
-                  alt={m?.name || `image-${idx}`}
-                  className="h-56 w-full object-cover hover:scale-[1.01] transition"
-                  loading="lazy"
-                />
-              </a>
-            );
-          }
-
-          if (type === "video") {
-            return (
-              <div key={idx} className="overflow-hidden rounded-2xl border bg-black">
-                <video src={url} controls preload="metadata" className="h-56 w-full object-cover" />
-              </div>
-            );
-          }
+          const showMoreOverlay = idx === MAX_DASHBOARD_MEDIA - 1 && remaining > 0;
 
           return (
-            <a
-              key={idx}
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-56 items-center justify-center rounded-2xl border bg-gray-50 text-sm text-gray-600"
+            <Link
+              key={`${url}-${idx}`}
+              to={postDetailUrl}
+              state={{ postId }}
+              className="relative block overflow-hidden rounded-2xl border bg-gray-100"
+              title={tr("view_post_details", "View post details")}
             >
-              Open media
-            </a>
+              <div className="relative flex h-56 w-full items-center justify-center bg-gray-100">
+                {type === "video" ? (
+                  <video
+                    src={url}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    className="h-full w-full object-contain bg-black"
+                  />
+                ) : type === "image" ? (
+                  <img
+                    src={url}
+                    alt={m?.name || `image-${idx}`}
+                    className="h-full w-full object-contain"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-gray-600">
+                    {tr("open_media", "Open media")}
+                  </div>
+                )}
+
+                {showMoreOverlay ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                    <div className="text-center text-white">
+                      <div className="text-2xl font-semibold">+{remaining}</div>
+                      <div className="text-xs opacity-90">{tr("view_all", "View all")}</div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </Link>
           );
         })}
       </div>
 
-      {items.length > 4 ? (
-        <div className="mt-2 text-xs text-gray-500">+{items.length - 4} more</div>
+      {items.length > MAX_DASHBOARD_MEDIA ? (
+        <div className="mt-2 flex justify-end">
+          <Link to={postDetailUrl} state={{ postId }}>
+            <Button type="button" variant="link" className="h-auto px-0 text-sm">
+              {tr("view_all_photos", "View all photos")}
+            </Button>
+          </Link>
+        </div>
       ) : null}
     </div>
   );
@@ -438,30 +483,30 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
   const authorName = post?.authorName || post?.author_name || "Agent";
   const authorCountry = authorId ? authorCountryByUid?.[authorId] : null;
 
-// Fallback to post-stored country fields (older behavior)
-const postCC =
-  post?.country_code ||
-  post?.countryCode ||
-  post?.author_country_code ||
-  post?.authorCountryCode ||
-  post?.authorCC ||
-  "";
+  const postCC =
+    post?.country_code ||
+    post?.countryCode ||
+    post?.author_country_code ||
+    post?.authorCountryCode ||
+    post?.authorCC ||
+    "";
 
-const postCountryName =
-  post?.country ||
-  post?.country_name ||
-  post?.author_country ||
-  post?.authorCountry ||
-  "";
+  const postCountryName =
+    post?.country || post?.country_name || post?.author_country || post?.authorCountry || "";
 
-const authorCC = (authorCountry?.country_code || postCC || "").toString();
-const authorCountryName = (authorCountry?.country || postCountryName || "").toString();
+  const authorCC = (authorCountry?.country_code || postCC || "").toString();
+  const authorCountryName = (authorCountry?.country || postCountryName || "").toString();
 
   const isMine = currentUserId && authorId && currentUserId === authorId;
   const [boostOpen, setBoostOpen] = useState(false);
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
+  const postDetailUrl = buildPostDetailUrl(post?.id);
+  const fullText = String(post?.text || "");
+  const hasLongText = fullText.length > POST_PREVIEW_TEXT_LIMIT;
+  const previewText = hasLongText
+    ? `${fullText.slice(0, POST_PREVIEW_TEXT_LIMIT).trimEnd()}…`
+    : fullText;
 
-  // ✅ 3-dots menu actions
   const [editOpen, setEditOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [editText, setEditText] = useState(String(post?.text || ""));
@@ -497,9 +542,7 @@ const authorCountryName = (authorCountry?.country || postCountryName || "").toSt
         alert(tr("link_copied", "Link copied"));
         return;
       }
-      if (url) {
-        window.prompt(tr("copy_link", "Copy this link:"), url);
-      }
+      if (url) window.prompt(tr("copy_link", "Copy this link:"), url);
     } catch (e) {
       console.error("share failed:", e);
     }
@@ -654,7 +697,6 @@ const authorCountryName = (authorCountry?.country || postCountryName || "").toSt
           </DropdownMenu>
         </div>
 
-        {/* ✅ Edit Post */}
         <Dialog open={editOpen} onOpenChange={(v) => (menuBusy ? null : setEditOpen(v))}>
           <DialogContent className="max-w-xl">
             <DialogHeader>
@@ -678,7 +720,6 @@ const authorCountryName = (authorCountry?.country || postCountryName || "").toSt
           </DialogContent>
         </Dialog>
 
-        {/* ✅ Report Post */}
         <Dialog open={reportOpen} onOpenChange={(v) => (menuBusy ? null : setReportOpen(v))}>
           <DialogContent className="max-w-xl">
             <DialogHeader>
@@ -705,11 +746,22 @@ const authorCountryName = (authorCountry?.country || postCountryName || "").toSt
           </DialogContent>
         </Dialog>
 
-        {post?.text ? (
-          <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
+        {fullText ? (
+          <div className="px-4 pb-3">
+            <div className="text-sm text-gray-800 whitespace-pre-line">{previewText}</div>
+            {hasLongText ? (
+              <div className="mt-2">
+                <Link to={postDetailUrl} state={{ postId: post?.id }}>
+                  <Button type="button" variant="link" className="h-auto px-0 text-sm font-medium">
+                    {tr("view_more", "View more")}
+                  </Button>
+                </Link>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
-        <MediaGallery media={post?.media || []} />
+        <MediaGallery media={post?.media || []} postId={post?.id} />
 
         <div className="px-4 pb-4">
           <div className="mt-3 border-t pt-2 grid grid-cols-2 gap-2">
@@ -717,11 +769,11 @@ const authorCountryName = (authorCountry?.country || postCountryName || "").toSt
               {isMine ? (
                 subscriptionModeEnabled ? (
                   <Button
-                  variant="outline"
-                  className="w-full justify-center text-gray-700"
-                  type="button"
-                  onClick={() => setBoostOpen(true)}
-                >
+                    variant="outline"
+                    className="w-full justify-center text-gray-700"
+                    type="button"
+                    onClick={() => setBoostOpen(true)}
+                  >
                     <Sparkles className="h-4 w-4 mr-2" /> Boost your post
                   </Button>
                 ) : null
@@ -741,21 +793,22 @@ const authorCountryName = (authorCountry?.country || postCountryName || "").toSt
                 className="w-full justify-center text-gray-700"
                 type="button"
                 disabled={!authorId || !currentUserId || isMine}
-                title={!authorId ? tr("missing_author_id","Missing author id") : isMine ? tr("cant_message_self","You can\'t message yourself") : tr("message","Message")}
+                title={
+                  !authorId
+                    ? tr("missing_author_id", "Missing author id")
+                    : isMine
+                    ? tr("cant_message_self", "You can't message yourself")
+                    : tr("message", "Message")
+                }
               >
-                <MessageCircle className="h-4 w-4 mr-2" /> {tr("message","Message")}
+                <MessageCircle className="h-4 w-4 mr-2" /> {tr("message", "Message")}
               </Button>
             </Link>
           </div>
         </div>
 
         {isMine && subscriptionModeEnabled ? (
-          <BoostPostDialog
-            open={boostOpen}
-            onOpenChange={setBoostOpen}
-            postId={post?.id}
-            me={me}
-          />
+          <BoostPostDialog open={boostOpen} onOpenChange={setBoostOpen} postId={post?.id} me={me} />
         ) : null}
       </CardContent>
     </Card>
@@ -773,25 +826,21 @@ export default function AgentDashboard({ user }) {
     commissionRate: 10,
     referralCode: "",
   });
-const [agent, setAgent] = useState(null);
+  const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileCompletion, setProfileCompletion] = useState({ isComplete: true });
 
-  // ✅ Agent can post (multi-media)
   const [composerText, setComposerText] = useState("");
   const fileInputRef = useRef(null);
-  const [attachments, setAttachments] = useState([]); // File[]
-  const [attachmentPreviews, setAttachmentPreviews] = useState([]); // {id,name,type,url}
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentPreviews, setAttachmentPreviews] = useState([]);
 
-  // ✅ Posting / feed
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState("");
-  const [quotaUsed, setQuotaUsed] = useState(0);
-  const [quotaMonth, setQuotaMonth] = useState("");
+  const [, setQuotaUsed] = useState(0);
+  const [, setQuotaMonth] = useState("");
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
-
-  // Cache: author uid -> { country, country_code }
   const [authorCountryByUid, setAuthorCountryByUid] = useState({});
 
   useEffect(() => {
@@ -799,7 +848,7 @@ const [agent, setAgent] = useState(null);
       try {
         const [agentData, students] = await Promise.all([
           Agent.filter({ user_id: user.id }),
-          User.filter({ referred_by_agent_id: user.id })
+          User.filter({ referred_by_agent_id: user.id }),
         ]);
 
         const agentRecord = agentData.length > 0 ? agentData[0] : null;
@@ -832,7 +881,6 @@ const [agent, setAgent] = useState(null);
     loadDashboardData();
   }, [user]);
 
-  // ✅ Live load: community posts (includes your own posts) — Option B
   useEffect(() => {
     if (!userId) return;
     setCommunityLoading(true);
@@ -850,19 +898,35 @@ const [agent, setAgent] = useState(null);
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         const now = new Date();
         list.sort((a, b) => {
-          const aUntil = a?.boosted_until?.toDate ? a.boosted_until.toDate() : a?.boosted_until?.seconds ? new Date(a.boosted_until.seconds * 1000) : null;
-          const bUntil = b?.boosted_until?.toDate ? b.boosted_until.toDate() : b?.boosted_until?.seconds ? new Date(b.boosted_until.seconds * 1000) : null;
+          const aUntil = a?.boosted_until?.toDate
+            ? a.boosted_until.toDate()
+            : a?.boosted_until?.seconds
+            ? new Date(a.boosted_until.seconds * 1000)
+            : null;
+          const bUntil = b?.boosted_until?.toDate
+            ? b.boosted_until.toDate()
+            : b?.boosted_until?.seconds
+            ? new Date(b.boosted_until.seconds * 1000)
+            : null;
           const aBoost = aUntil && aUntil > now;
           const bBoost = bUntil && bUntil > now;
           if (aBoost !== bBoost) return bBoost ? 1 : -1;
-          const aCreated = a?.createdAt?.toDate ? a.createdAt.toDate() : a?.createdAt?.seconds ? new Date(a.createdAt.seconds * 1000) : null;
-          const bCreated = b?.createdAt?.toDate ? b.createdAt.toDate() : b?.createdAt?.seconds ? new Date(b.createdAt.seconds * 1000) : null;
+          const aCreated = a?.createdAt?.toDate
+            ? a.createdAt.toDate()
+            : a?.createdAt?.seconds
+            ? new Date(a.createdAt.seconds * 1000)
+            : null;
+          const bCreated = b?.createdAt?.toDate
+            ? b.createdAt.toDate()
+            : b?.createdAt?.seconds
+            ? new Date(b.createdAt.seconds * 1000)
+            : null;
           const at = aCreated ? aCreated.getTime() : 0;
           const bt = bCreated ? bCreated.getTime() : 0;
           return bt - at;
         });
         setCommunityPosts(list);
-setCommunityLoading(false);
+        setCommunityLoading(false);
       },
       (err) => {
         console.error("community posts snapshot error:", err);
@@ -874,7 +938,6 @@ setCommunityLoading(false);
     return () => unsub();
   }, [userId]);
 
-  // ✅ Resolve author country from users/{uid} (picked during Onboarding)
   useEffect(() => {
     const ids = Array.from(
       new Set(
@@ -894,35 +957,26 @@ setCommunityLoading(false);
         const entries = await Promise.all(
           missing.map(async (uid) => {
             try {
-              // 1) Fast path: users/{uid}
               let d = {};
               try {
                 const snap = await getDoc(doc(db, "users", uid));
                 if (snap.exists()) d = snap.data() || {};
-              } catch (e) {
-                // ignore
-              }
+              } catch {}
 
-              // 2) Fallback: users where uid == <uid>
               if (!d || Object.keys(d).length === 0) {
                 try {
                   const q1 = query(collection(db, "users"), where("uid", "==", uid), limit(1));
                   const s1 = await getDocs(q1);
                   if (!s1.empty) d = s1.docs[0].data() || {};
-                } catch (e) {
-                  // ignore
-                }
+                } catch {}
               }
 
-              // 3) Fallback: users where user_id == <uid>
               if (!d || Object.keys(d).length === 0) {
                 try {
                   const q2 = query(collection(db, "users"), where("user_id", "==", uid), limit(1));
                   const s2 = await getDocs(q2);
                   if (!s2.empty) d = s2.docs[0].data() || {};
-                } catch (e) {
-                  // ignore
-                }
+                } catch {}
               }
 
               const country = d.country || d.country_name || "";
@@ -943,7 +997,6 @@ setCommunityLoading(false);
           return next;
         });
       } catch (e) {
-        // fail silently
         console.warn("author country lookup failed", e);
       }
     })();
@@ -953,7 +1006,6 @@ setCommunityLoading(false);
     };
   }, [communityPosts, authorCountryByUid]);
 
-  // ✅ Build & cleanup preview URLs
   useEffect(() => {
     attachmentPreviews.forEach((p) => {
       if (p?.url) URL.revokeObjectURL(p.url);
@@ -993,7 +1045,9 @@ setCommunityLoading(false);
   const removeAttachment = (id) => {
     const toRemove = attachmentPreviews.find((p) => p.id === id);
     if (!toRemove) return;
-    setAttachments((prev) => prev.filter((f) => !(f.name === toRemove.name && f.type === toRemove.type)));
+    setAttachments((prev) =>
+      prev.filter((f) => !(f.name === toRemove.name && f.type === toRemove.type))
+    );
   };
 
   const clearComposer = () => {
@@ -1030,23 +1084,18 @@ setCommunityLoading(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const canCreateEvent = !subscriptionModeEnabled || isSubscribed;
 
-
-
-  // ✅ Posting limit dialog
   const [limitOpen, setLimitOpen] = useState(false);
-// ✅ Listen to quota fields on the user doc (for disabling Post button + friendly prompt)
-useEffect(() => {
-  if (!userId) return;
-  const meRef = doc(db, "users", userId);
-  const unsub = onSnapshot(meRef, (snap) => {
-    if (!snap.exists()) return;
-    const d = snap.data() || {};
-    setQuotaUsed(Number(d.post_quota_used || 0));
-    setQuotaMonth(String(d.post_quota_month || ""));
-  });
-  return () => unsub();
-}, [userId]);
-
+  useEffect(() => {
+    if (!userId) return;
+    const meRef = doc(db, "users", userId);
+    const unsub = onSnapshot(meRef, (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data() || {};
+      setQuotaUsed(Number(d.post_quota_used || 0));
+      setQuotaMonth(String(d.post_quota_month || ""));
+    });
+    return () => unsub();
+  }, [userId]);
 
   if (loading) {
     return (
@@ -1068,7 +1117,6 @@ useEffect(() => {
 
     try {
       const authorName = user?.full_name || "Agent";
-
       const canEnforceLimit = subscriptionModeEnabled === true;
       const isUnlimited = isSubscribed === true;
 
@@ -1097,7 +1145,7 @@ useEffect(() => {
           authorName,
           text,
           media: [],
-          status: "published", // Cloud Function relies on this
+          status: "published",
           paid: false,
           boosted: false,
           boost_sort: 0,
@@ -1105,7 +1153,6 @@ useEffect(() => {
         });
       });
 
-      // Upload attachments (after post doc exists)
       if (postDocId && attachments.length > 0) {
         const uploaded = [];
         for (let i = 0; i < attachments.length; i++) {
@@ -1117,10 +1164,9 @@ useEffect(() => {
       clearComposer();
     } catch (e) {
       console.error("handlePost error:", e);
-
       if (String(e?.message || "").includes("POST_LIMIT_REACHED")) {
         setLimitOpen(true);
-        setPostError(tr("limit_desc","You’ve reached the posting limit. Subscribe to post more."));
+        setPostError(tr("limit_desc", "You’ve reached the posting limit. Subscribe to post more."));
       } else {
         setPostError("Failed to post. Please try again.");
       }
@@ -1129,18 +1175,15 @@ useEffect(() => {
     }
   };
 
-
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ✅ Posting limit prompt */}
       <Dialog open={limitOpen} onOpenChange={setLimitOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{tr("limit_title","Posting limit reached")}</DialogTitle>
+            <DialogTitle>{tr("limit_title", "Posting limit reached")}</DialogTitle>
           </DialogHeader>
           <div className="text-sm text-gray-700">
-            {tr("limit_desc","You’ve reached the posting limit. Subscribe to post more.")}
+            {tr("limit_desc", "You’ve reached the posting limit. Subscribe to post more.")}
           </div>
           <div className="mt-4 flex gap-2 justify-end">
             <Button type="button" variant="outline" onClick={() => setLimitOpen(false)}>
@@ -1155,24 +1198,25 @@ useEffect(() => {
         </DialogContent>
       </Dialog>
 
-      {/* ✅ Create Event */}
       <CreateEventDialog
         open={createEventOpen}
         onOpenChange={setCreateEventOpen}
         user={user}
         role="agent"
-        allowedPlatforms={["nasio","eventbrite"]}
-        disabledReason={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : null}
+        allowedPlatforms={["nasio", "eventbrite"]}
+        disabledReason={
+          !canCreateEvent ? tr("subscription_required", "Subscription required to create events") : null
+        }
       />
 
       <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="mx-auto max-w-[1800px]">
-          {/* Header (same style as student) */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{tr("welcome","Welcome")}, {firstName}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+                {tr("welcome", "Welcome")}, {firstName}
+              </h1>
             </div>
-
           </div>
 
           {subscriptionModeEnabled && !isSubscribed && (
@@ -1186,76 +1230,92 @@ useEffect(() => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-10">
-            {/* LEFT */}
             <div className="hidden lg:block lg:col-span-3">
               <div className="sticky top-4 space-y-4">
                 <div className="rounded-2xl border bg-white p-2">
-                  <div className="px-2 py-2 text-xs font-semibold text-gray-500">{tr("shortcuts","Shortcuts")}</div>
+                  <div className="px-2 py-2 text-xs font-semibold text-gray-500">
+                    {tr("shortcuts", "Shortcuts")}
+                  </div>
                   <div className="space-y-1">
-                    <Shortcut to={createPageUrl("MyStudents")} label={tr("my_students","My Students")} icon={<Users className="h-5 w-5 text-blue-600" />} />
-                    <Shortcut to={createPageUrl("AgentLeads")} label={tr("find_leads","Find Leads")} icon={<UserPlus className="h-5 w-5 text-orange-600" />} />
-                    <Shortcut to={createPageUrl("Events")} label={tr("events","Events")} icon={<Ticket className="h-5 w-5 text-emerald-600" />} />
-                    <Shortcut to={createPageUrl("Directory")} label={tr("directory","Directory")} icon={<Building2 className="h-5 w-5 text-blue-600" />} />
+                    <Shortcut
+                      to={createPageUrl("MyStudents")}
+                      label={tr("my_students", "My Students")}
+                      icon={<Users className="h-5 w-5 text-blue-600" />}
+                    />
+                    <Shortcut
+                      to={createPageUrl("AgentLeads")}
+                      label={tr("find_leads", "Find Leads")}
+                      icon={<UserPlus className="h-5 w-5 text-orange-600" />}
+                    />
+                    <Shortcut
+                      to={createPageUrl("Events")}
+                      label={tr("events", "Events")}
+                      icon={<Ticket className="h-5 w-5 text-emerald-600" />}
+                    />
+                    <Shortcut
+                      to={createPageUrl("Directory")}
+                      label={tr("directory", "Directory")}
+                      icon={<Building2 className="h-5 w-5 text-blue-600" />}
+                    />
                   </div>
                 </div>
               </div>
 
-{/* ✅ Invite CTA (below shortcuts) */}
-                <div className="mt-4 rounded-2xl border bg-white p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-gray-900">
-                      {tr("invite","Invite")}
-                    </div>
-                    <Button size="sm" onClick={() => setInviteOpen(true)}>
-                      {tr("invite","Invite")}
-                    </Button>
-                  </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {tr("invite_hint","Invite agents, schools, or students via link or email.")}
-                  </div>
-                </div>
-
-                <InviteUsersDialog
-                  open={inviteOpen}
-                  onOpenChange={setInviteOpen}
-                  allowedRoles={["agent","school","student"]}
-                  defaultRole="agent"
-                  title={tr("invite","Invite")}
-                />
-
-                {/* ✅ Create Event CTA (below shortcuts) */}
-                <div className="mt-4 rounded-2xl border bg-white p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-gray-900">
-                      {tr("create_event","Create Event")}
-                    </div>
-                    {!canCreateEvent ? (
-                      <Badge className="bg-yellow-100 text-yellow-800">
-                        {tr("pending","Pending")}
-                      </Badge>
-                    ) : null}
-                  </div>
-
-                  <Button
-                    type="button"
-                    className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
-                    onClick={() => setCreateEventOpen(true)}
-                    disabled={!canCreateEvent}
-                    title={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : undefined}
-                  >
-                    <Ticket className="h-4 w-4 mr-2" />
-                    {tr("create_event","Create Event")}
+              <div className="mt-4 rounded-2xl border bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-gray-900">{tr("invite", "Invite")}</div>
+                  <Button size="sm" onClick={() => setInviteOpen(true)}>
+                    {tr("invite", "Invite")}
                   </Button>
                 </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {tr("invite_hint", "Invite agents, schools, or students via link or email.")}
+                </div>
+              </div>
+
+              <InviteUsersDialog
+                open={inviteOpen}
+                onOpenChange={setInviteOpen}
+                allowedRoles={["agent", "school", "student"]}
+                defaultRole="agent"
+                title={tr("invite", "Invite")}
+              />
+
+              <div className="mt-4 rounded-2xl border bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-gray-900">
+                    {tr("create_event", "Create Event")}
+                  </div>
+                  {!canCreateEvent ? (
+                    <Badge className="bg-yellow-100 text-yellow-800">{tr("pending", "Pending")}</Badge>
+                  ) : null}
+                </div>
+
+                <Button
+                  type="button"
+                  className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
+                  onClick={() => setCreateEventOpen(true)}
+                  disabled={!canCreateEvent}
+                  title={
+                    !canCreateEvent
+                      ? tr("subscription_required", "Subscription required to create events")
+                      : undefined
+                  }
+                >
+                  <Ticket className="h-4 w-4 mr-2" />
+                  {tr("create_event", "Create Event")}
+                </Button>
+              </div>
             </div>
 
-            {/* CENTER */}
             <div className="lg:col-span-6 space-y-4">
-              {/* Composer */}
               <ActionBlocker
                 isBlocked={!profileCompletion.isComplete}
-                title={tr("block_post_title","Complete Profile to Post")}
-                message={tr("block_post_msg","Finish your agent profile to publish updates and announcements.")}
+                title={tr("block_post_title", "Complete Profile to Post")}
+                message={tr(
+                  "block_post_msg",
+                  "Finish your agent profile to publish updates and announcements."
+                )}
               >
                 <div className="rounded-2xl border bg-white">
                   <div className="p-3 flex items-start justify-between gap-3">
@@ -1263,17 +1323,19 @@ useEffect(() => {
                       <Avatar name={user?.full_name || "Agent"} />
                       <div className="w-full">
                         <div className="text-sm font-semibold text-gray-900">
-                          {tr("whats_on_your_mind","What’s on your mind,")} {firstName}?
+                          {tr("whats_on_your_mind", "What’s on your mind,")} {firstName}?
                         </div>
 
                         <textarea
                           value={composerText}
                           onChange={(e) => setComposerText(e.target.value)}
-                          placeholder={tr("composer_placeholder","Share an update about schools, events, or your agency...")}
+                          placeholder={tr(
+                            "composer_placeholder",
+                            "Share an update about schools, events, or your agency..."
+                          )}
                           className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200 min-h-[90px]"
                         />
 
-                        {/* Hidden file input (multi image/video) */}
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -1283,16 +1345,12 @@ useEffect(() => {
                           onChange={onFilesSelected}
                         />
 
-                        {/* Attachments preview */}
                         {attachmentPreviews.length > 0 ? (
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             {attachmentPreviews.map((p) => {
                               const isVideo = String(p.type || "").startsWith("video/");
                               return (
-                                <div
-                                  key={p.id}
-                                  className="relative overflow-hidden rounded-2xl border bg-gray-100"
-                                >
+                                <div key={p.id} className="relative overflow-hidden rounded-2xl border bg-gray-100">
                                   <button
                                     type="button"
                                     onClick={() => removeAttachment(p.id)}
@@ -1302,21 +1360,23 @@ useEffect(() => {
                                     <X className="h-4 w-4 text-gray-700" />
                                   </button>
 
-                                  {isVideo ? (
-                                    <video
-                                      src={p.url}
-                                      className="h-36 w-full object-cover"
-                                      preload="metadata"
-                                      muted
-                                    />
-                                  ) : (
-                                    <img
-                                      src={p.url}
-                                      alt={p.name}
-                                      className="h-36 w-full object-cover"
-                                      loading="lazy"
-                                    />
-                                  )}
+                                  <div className="flex h-36 w-full items-center justify-center bg-gray-100">
+                                    {isVideo ? (
+                                      <video
+                                        src={p.url}
+                                        className="h-full w-full object-contain bg-black"
+                                        preload="metadata"
+                                        muted
+                                      />
+                                    ) : (
+                                      <img
+                                        src={p.url}
+                                        alt={p.name}
+                                        className="h-full w-full object-contain"
+                                        loading="lazy"
+                                      />
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
@@ -1325,7 +1385,6 @@ useEffect(() => {
 
                         {postError ? <div className="mt-2 text-sm text-red-600">{postError}</div> : null}
 
-                        {/* ✅ ONLY Photo/video (removed Live video + Feeling/activity) */}
                         <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                           <Button
                             type="button"
@@ -1333,7 +1392,9 @@ useEffect(() => {
                             className="justify-center text-gray-700 w-full sm:w-auto"
                             onClick={openFilePicker}
                           >
-                            <ImageIcon className="h-4 w-4 mr-2 text-green-600" />{tr("photo_video","Photo/video")}</Button>
+                            <ImageIcon className="h-4 w-4 mr-2 text-green-600" />
+                            {tr("photo_video", "Photo/video")}
+                          </Button>
 
                           <Button
                             className="rounded-xl w-full sm:w-auto"
@@ -1351,8 +1412,6 @@ useEffect(() => {
                         </div>
                       </div>
                     </div>
-
-                    {/* (Removed) Empty 3-dots menu on composer */}
                   </div>
 
                   <div className="border-t px-3 py-2 flex items-center gap-2 text-xs text-gray-500">
@@ -1362,7 +1421,6 @@ useEffect(() => {
                 </div>
               </ActionBlocker>
 
-              {/* Feed */}
               <div className="space-y-4">
                 {communityLoading ? (
                   <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500">Loading posts…</div>
@@ -1385,24 +1443,21 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="hidden lg:block lg:col-span-3">
               <div className="sticky top-4 space-y-4">
-                {/* Stats (compact, like FB right sidebar widgets) */}
                 <div className="rounded-2xl border bg-white p-4">
-                  <div className="text-sm font-semibold text-gray-900 mb-3">{tr("highlights","Highlights")}</div>
+                  <div className="text-sm font-semibold text-gray-900 mb-3">{tr("highlights", "Highlights")}</div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border bg-gray-50 p-3">
-                      <div className="text-xs text-gray-500">{tr("students","Students")}</div>
+                      <div className="text-xs text-gray-500">{tr("students", "Students")}</div>
                       <div className="text-lg font-bold text-blue-600">{stats.totalStudents}</div>
                     </div>
                   </div>
                 </div>
 
-                {/* Contacts */}
                 <div className="rounded-2xl border bg-white p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm font-semibold text-gray-900">{tr("contacts","Contacts")}</div>
+                    <div className="text-sm font-semibold text-gray-900">{tr("contacts", "Contacts")}</div>
                     <Button variant="ghost" size="icon" className="text-gray-500">
                       <MoreHorizontal className="h-5 w-5" />
                     </Button>
@@ -1410,7 +1465,10 @@ useEffect(() => {
 
                   <div className="space-y-2">
                     {["GreenPass Support", "GAIN Fair Team", "School Rep", "Admissions Desk"].map((n) => (
-                      <div key={n} className="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-gray-50 transition">
+                      <div
+                        key={n}
+                        className="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-gray-50 transition"
+                      >
                         <Avatar name={n} size="sm" />
                         <div className="text-sm text-gray-800">{n}</div>
                       </div>
@@ -1424,7 +1482,9 @@ useEffect(() => {
       </div>
     </div>
   );
-}/* -------------------- Boost Modal -------------------- */
+}
+
+/* -------------------- Boost Modal -------------------- */
 const BOOST_PLANS = [
   { days: 7, price: 1.99 },
   { days: 15, price: 2.99 },
@@ -1484,7 +1544,12 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
       setDone(true);
     } catch (e) {
       console.error("boost update post failed:", e);
-      setErr(tr("payment_succeeded_but_failed","Payment succeeded, but we couldn\'t activate the boost. Please contact support."));
+      setErr(
+        tr(
+          "payment_succeeded_but_failed",
+          "Payment succeeded, but we couldn\'t activate the boost. Please contact support."
+        )
+      );
     } finally {
       setProcessing(false);
     }
@@ -1494,12 +1559,14 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
     <Dialog open={open} onOpenChange={(v) => (processing ? null : onOpenChange(v))}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{tr("boost_title","Boost your post")}</DialogTitle>
+          <DialogTitle>{tr("boost_title", "Boost your post")}</DialogTitle>
         </DialogHeader>
 
         {!done ? (
           <>
-            <div className="mt-1 text-sm text-gray-600">{tr("boost_subtitle","Choose a boost duration, then pay.")}</div>
+            <div className="mt-1 text-sm text-gray-600">
+              {tr("boost_subtitle", "Choose a boost duration, then pay.")}
+            </div>
 
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
               {BOOST_PLANS.map((p) => {
@@ -1529,7 +1596,7 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
                 onDoneProcessing={() => setProcessing(false)}
                 onError={(e) => {
                   console.error(e);
-                  setErr(tr("payment_failed","Payment failed. Please try again."));
+                  setErr(tr("payment_failed", "Payment failed. Please try again."));
                 }}
                 onCardPaymentSuccess={handleSuccess}
               />
@@ -1539,7 +1606,7 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
           </>
         ) : (
           <div className="mt-4">
-            <div className="text-sm text-emerald-700 font-medium">{tr("boost_activated","Boost activated ✅")}</div>
+            <div className="text-sm text-emerald-700 font-medium">{tr("boost_activated", "Boost activated ✅")}</div>
             <Button type="button" className="w-full mt-3" onClick={() => onOpenChange(false)}>
               Close
             </Button>
@@ -1549,5 +1616,3 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
     </Dialog>
   );
 };
-
-
