@@ -1,8 +1,7 @@
 // src/pages/SchoolDashboard.jsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import InviteUsersDialog from "@/components/invites/InviteUserDialog";
-import {
-  Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -29,20 +28,15 @@ import {
   Building2,
   Users,
   BookOpen,
-  DollarSign,
-  TrendingUp,
   ArrowRight,
   CreditCard,
   MoreHorizontal,
   Globe,
   Image as ImageIcon,
-  ThumbsUp,
   MessageCircle,
   Ticket,
-  ExternalLink,
   X,
   Loader2,
-  Sparkles
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -55,9 +49,8 @@ import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 import { auth, db, storage } from "@/firebase";
 import {
   collection,
-  getDocs,
-    getDoc,
-addDoc,
+  getDoc,
+  addDoc,
   doc,
   serverTimestamp,
   query,
@@ -65,13 +58,12 @@ addDoc,
   orderBy,
   limit,
   onSnapshot,
-  writeBatch,
   updateDoc,
   deleteDoc,
   runTransaction,
   Timestamp,
   increment,
-  getCountFromServer
+  getCountFromServer,
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useTr } from "@/i18n/useTr";
@@ -115,8 +107,12 @@ const fmt = (v, fmtStr = "MMM dd, h:mm a") => {
     return d.toLocaleString();
   }
 };
-/* --------------------------------------------------------------------- */
 
+const POST_PREVIEW_TEXT_LIMIT = 320;
+const MAX_DASHBOARD_MEDIA = 4;
+const buildPostDetailUrl = (postId) =>
+  `${createPageUrl("PostDetails")}?id=${encodeURIComponent(postId || "")}`;
+/* --------------------------------------------------------------------- */
 
 // 🌍 Flag helper (same as Onboarding.jsx)
 const flagUrlFromCode = (code) => {
@@ -124,7 +120,6 @@ const flagUrlFromCode = (code) => {
   if (!/^[a-z]{2}$/.test(cc)) return "";
   return `https://flagcdn.com/w20/${cc}.png`;
 };
-
 
 /* ✅ Uses your REAL user doc fields:
    - subscription_active (boolean)
@@ -139,24 +134,16 @@ function isSubscribedUser(u) {
   return ok.has(status);
 }
 
-/* ✅ School display name helper (matches Profile.jsx fields)
-   - Profile "Institution Name" is stored as form.school_name and saved to:
-     users/{uid}.school_profile.school_name and school_profiles/{uid}.school_name (and name)
-*/
+/* ✅ School display name helper */
 function schoolDisplayName(school, user) {
   const candidates = [
-    // from users doc role profile (Profile.jsx saves Institution Name here)
     user?.school_profile?.school_name,
     user?.school_profile?.name,
     user?.school_profile?.institution_name,
-
-    // from School entity row (common possibilities)
     school?.school_name,
     school?.institution_name,
     school?.institutionName,
     school?.name,
-
-    // fallback
     user?.full_name,
     user?.displayName,
   ];
@@ -231,8 +218,8 @@ const Avatar = ({ name = "School", size = "md" }) => {
   );
 };
 
-/* -------------------- Follow Button (Follow Request / Instagram-style) -------------------- */
-function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "", }) {
+/* -------------------- Follow Button -------------------- */
+function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", className = "" }) {
   const { tr } = useTr("school_dashboard");
 
   const [state, setState] = useState({ following: false, requested: false });
@@ -283,71 +270,122 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
 }
 
 /* -------------------- Media grid (images + videos) -------------------- */
-const MediaGallery = ({ media = [] }) => {
+const MediaGallery = ({ media = [], postId }) => {
   const { tr } = useTr("school_dashboard");
 
-  const items = Array.isArray(media) ? media : [];
-  if (!items.length) return null;
-  const many = items.length > 1;
+  const items = Array.isArray(media) ? media.filter((m) => m?.url) : [];
+  if (!items.length || !postId) return null;
+
+  const visibleItems = items.slice(0, MAX_DASHBOARD_MEDIA);
+  const remaining = Math.max(0, items.length - MAX_DASHBOARD_MEDIA);
+  const postDetailUrl = buildPostDetailUrl(postId);
+  const isSingle = visibleItems.length === 1;
+  const singleItem = visibleItems[0];
+  const singleType = String(singleItem?.type || "").toLowerCase();
+
+  if (isSingle) {
+    return (
+      <div className="px-4 pb-4">
+        <Link
+          to={postDetailUrl}
+          state={{ postId }}
+          className="block overflow-hidden rounded-2xl border bg-gray-100"
+          title={tr("view_post_details", "View post details")}
+        >
+          <div className="flex w-full items-center justify-center bg-gray-100">
+            {singleType === "video" ? (
+              <video
+                src={singleItem?.url}
+                preload="metadata"
+                muted
+                playsInline
+                controls={false}
+                className="block h-auto max-h-[42rem] w-auto max-w-full object-contain bg-black"
+              />
+            ) : singleType === "image" ? (
+              <img
+                src={singleItem?.url}
+                alt={singleItem?.name || "image-0"}
+                className="block h-auto max-h-[42rem] w-auto max-w-full object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex min-h-[18rem] w-full items-center justify-center text-sm text-gray-600">
+                {tr("open_media", "Open media")}
+              </div>
+            )}
+          </div>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 pb-4">
-      <div className={`grid gap-2 ${many ? "grid-cols-2" : "grid-cols-1"}`}>
-        {items.slice(0, 4).map((m, idx) => {
+      <div className="grid grid-cols-2 gap-2">
+        {visibleItems.map((m, idx) => {
           const type = String(m?.type || "").toLowerCase();
           const url = m?.url;
-          if (!url) return null;
-
-          if (type === "image") {
-            return (
-              <a
-                key={idx}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="block overflow-hidden rounded-2xl border bg-gray-100"
-                title={tr("open_image")}
-              >
-                <img
-                  src={url}
-                  alt={m?.name || `image-${idx}`}
-                  className="h-56 w-full object-cover hover:scale-[1.01] transition"
-                  loading="lazy"
-                />
-              </a>
-            );
-          }
-
-          if (type === "video") {
-            return (
-              <div key={idx} className="overflow-hidden rounded-2xl border bg-black">
-                <video src={url} controls preload="metadata" className="h-56 w-full object-cover" />
-              </div>
-            );
-          }
+          const showMoreOverlay = idx === MAX_DASHBOARD_MEDIA - 1 && remaining > 0;
 
           return (
-            <a
-              key={idx}
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-56 items-center justify-center rounded-2xl border bg-gray-50 text-sm text-gray-600"
+            <Link
+              key={`${url}-${idx}`}
+              to={postDetailUrl}
+              state={{ postId }}
+              className="relative block overflow-hidden rounded-2xl border bg-gray-100"
+              title={tr("view_post_details", "View post details")}
             >
-              {tr("open_media")}
-            </a>
+              <div className="relative flex h-56 w-full items-center justify-center bg-gray-100">
+                {type === "video" ? (
+                  <video
+                    src={url}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    className="h-full w-full object-contain bg-black"
+                  />
+                ) : type === "image" ? (
+                  <img
+                    src={url}
+                    alt={m?.name || `image-${idx}`}
+                    className="h-full w-full object-contain"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-gray-600">
+                    {tr("open_media", "Open media")}
+                  </div>
+                )}
+
+                {showMoreOverlay ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                    <div className="text-center text-white">
+                      <div className="text-2xl font-semibold">+{remaining}</div>
+                      <div className="text-xs opacity-90">{tr("view_all", "View all")}</div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </Link>
           );
         })}
       </div>
 
-      {items.length > 4 ? (
-        <div className="mt-2 text-xs text-gray-500">{tr("more_count", { count: items.length - 4 })}</div>
+      {items.length > MAX_DASHBOARD_MEDIA ? (
+        <div className="mt-2 flex justify-end">
+          <Link to={postDetailUrl} state={{ postId }}>
+            <Button type="button" variant="link" className="h-auto px-0 text-sm">
+              {tr("view_all_photos", "View all photos")}
+            </Button>
+          </Link>
+        </div>
       ) : null}
     </div>
   );
 };
 
-/* -------------------- Real Post Card (FOLLOW + MESSAGE only) -------------------- */
+/* -------------------- Real Post Card -------------------- */
 const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, authorCountryByUid }) => {
   const { tr } = useTr("school_dashboard");
 
@@ -364,81 +402,87 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
   const isMine = currentUserId && authorId && currentUserId === authorId;
   const [boostOpen, setBoostOpen] = useState(false);
 
-// ✅ 3-dots actions
-const [editOpen, setEditOpen] = useState(false);
-const [editText, setEditText] = useState(String(post?.text || ""));
-const [deleteOpen, setDeleteOpen] = useState(false);
-const [deleting, setDeleting] = useState(false);
+  // ✅ 3-dots actions
+  const [editOpen, setEditOpen] = useState(false);
+  const [editText, setEditText] = useState(String(post?.text || ""));
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-useEffect(() => {
-  // keep edit text in sync if post changes
-  setEditText(String(post?.text || ""));
-}, [post?.id]);
+  const postDetailUrl = buildPostDetailUrl(post?.id);
+  const fullText = String(post?.text || "");
+  const hasLongText = fullText.length > POST_PREVIEW_TEXT_LIMIT;
+  const previewText = hasLongText
+    ? `${fullText.slice(0, POST_PREVIEW_TEXT_LIMIT).trimEnd()}…`
+    : fullText;
 
-const postLink = useMemo(() => {
-  const base = typeof window !== "undefined" ? window.location.origin : "";
-  const path = createPageUrl("PostDetails") || "/postdetails";
-  return `${base}${path}?id=${encodeURIComponent(post?.id || "")}`;
-}, [post?.id]);
+  useEffect(() => {
+    setEditText(String(post?.text || ""));
+  }, [post?.id, post?.text]);
 
-const copyShareLink = async () => {
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(postLink);
-    } else {
-      const el = document.createElement("textarea");
-      el.value = postLink;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand("copy");
-      document.body.removeChild(el);
+  const postLink = useMemo(() => {
+    const base = typeof window !== "undefined" ? window.location.origin : "";
+    return `${base}${buildPostDetailUrl(post?.id)}`;
+  }, [post?.id]);
+
+  const copyShareLink = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(postLink);
+      } else {
+        const el = document.createElement("textarea");
+        el.value = postLink;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
-  }
-};
+  };
 
-const reportPost = async () => {
-  if (!currentUserId || !post?.id) return;
-  try {
-    await addDoc(collection(db, "reports"), {
-      type: "post",
-      postId: post.id,
-      postAuthorId: authorId || null,
-      reporterId: currentUserId,
-      createdAt: serverTimestamp(),
-      status: "pending",
-    });
-  } catch {
-    // ignore
-  }
-};
+  const reportPost = async () => {
+    if (!currentUserId || !post?.id) return;
+    try {
+      await addDoc(collection(db, "reports"), {
+        type: "post",
+        postId: post.id,
+        postAuthorId: authorId || null,
+        reporterId: currentUserId,
+        createdAt: serverTimestamp(),
+        status: "pending",
+      });
+    } catch {
+      // ignore
+    }
+  };
 
-const saveEdit = async () => {
-  if (!isMine || !post?.id) return;
-  try {
-    await updateDoc(doc(db, "posts", post.id), {
-      text: String(editText || "").trim(),
-      updatedAt: serverTimestamp(),
-    });
-    setEditOpen(false);
-  } catch {
-    // ignore
-  }
-};
+  const saveEdit = async () => {
+    if (!isMine || !post?.id) return;
+    try {
+      await updateDoc(doc(db, "posts", post.id), {
+        text: String(editText || "").trim(),
+        updatedAt: serverTimestamp(),
+      });
+      setEditOpen(false);
+    } catch {
+      // ignore
+    }
+  };
 
-const confirmDelete = async () => {
-  if (!isMine || !post?.id) return;
-  setDeleting(true);
-  try {
-    await deleteDoc(doc(db, "posts", post.id));
-    setDeleteOpen(false);
-  } catch {
-    // ignore
-  } finally {
-    setDeleting(false);
-  }
-};
+  const confirmDelete = async () => {
+    if (!isMine || !post?.id) return;
+    setDeleting(true);
+    try {
+      await deleteDoc(doc(db, "posts", post.id));
+      setDeleteOpen(false);
+    } catch {
+      // ignore
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
 
   return (
@@ -489,57 +533,67 @@ const confirmDelete = async () => {
             </div>
           </div>
 
-<DropdownMenu>
-  <DropdownMenuTrigger asChild>
-    <Button variant="ghost" size="icon" className="text-gray-500" type="button">
-      <MoreHorizontal className="h-5 w-5" />
-    </Button>
-  </DropdownMenuTrigger>
-  <DropdownMenuContent align="end" className="w-44">
-    {isMine ? (
-      <>
-        <DropdownMenuItem onClick={() => setEditOpen(true)}>
-          {tr("edit","Edit")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={copyShareLink}>
-          {tr("share_link","Share link")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="text-red-600 focus:text-red-700"
-          onClick={() => setDeleteOpen(true)}
-        >
-          {tr("delete","Delete")}
-        </DropdownMenuItem>
-      </>
-    ) : (
-      <>
-        <DropdownMenuItem onClick={copyShareLink}>
-          {tr("share_link","Share link")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={reportPost}>
-          {tr("report","Report")}
-        </DropdownMenuItem>
-      </>
-    )}
-  </DropdownMenuContent>
-</DropdownMenu>
-
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-gray-500" type="button">
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {isMine ? (
+                <>
+                  <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                    {tr("edit", "Edit")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={copyShareLink}>
+                    {tr("share_link", "Share link")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-700"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    {tr("delete", "Delete")}
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuItem onClick={copyShareLink}>
+                    {tr("share_link", "Share link")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={reportPost}>
+                    {tr("report", "Report")}
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        {post?.text ? (
-          <div className="px-4 pb-3 text-sm text-gray-800 whitespace-pre-line">{post.text}</div>
+        {fullText ? (
+          <div className="px-4 pb-3">
+            <div className="text-sm text-gray-800 whitespace-pre-line">{previewText}</div>
+            {hasLongText ? (
+              <div className="mt-2">
+                <Link to={postDetailUrl} state={{ postId: post?.id }}>
+                  <Button type="button" variant="link" className="h-auto px-0 text-sm font-medium">
+                    {tr("view_more", "View more")}
+                  </Button>
+                </Link>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
-        <MediaGallery media={post?.media || []} />
+        <MediaGallery media={post?.media || []} postId={post?.id} />
 
         <div className="px-4 pb-4">
           <div className="mt-3 border-t pt-2 grid grid-cols-2 gap-2">
             <div className="flex">
               {isMine ? (
                 <Button variant="outline" className="w-full justify-center text-gray-700" type="button" disabled>
-                  {tr("this_is_you","This is you")}
+                  {tr("this_is_you", "This is you")}
                 </Button>
               ) : (
                 <FollowButton
@@ -557,9 +611,9 @@ const confirmDelete = async () => {
                 className="w-full justify-center text-gray-700"
                 type="button"
                 disabled={!authorId || !currentUserId || isMine}
-                title={!authorId ? tr("missing_author_id","Missing author id") : isMine ? tr("cant_message_self","You can\'t message yourself") : tr("message","Message")}
+                title={!authorId ? tr("missing_author_id", "Missing author id") : isMine ? tr("cant_message_self", "You can't message yourself") : tr("message", "Message")}
               >
-                <MessageCircle className="h-4 w-4 mr-2" /> {tr("message","Message")}
+                <MessageCircle className="h-4 w-4 mr-2" /> {tr("message", "Message")}
               </Button>
             </Link>
           </div>
@@ -573,61 +627,61 @@ const confirmDelete = async () => {
             me={me}
           />
         ) : null}
-      
-{/* ✅ Edit post dialog */}
-<Dialog open={editOpen} onOpenChange={setEditOpen}>
-  <DialogContent className="sm:max-w-lg">
-    <DialogHeader>
-      <DialogTitle>{tr("edit_post","Edit post")}</DialogTitle>
-    </DialogHeader>
 
-    <div className="space-y-3">
-      <textarea
-        className="min-h-[140px] w-full rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500"
-        value={editText}
-        onChange={(e) => setEditText(e.target.value)}
-        placeholder={tr("write_something","Write something...")}
-      />
+        {/* ✅ Edit post dialog */}
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{tr("edit_post", "Edit post")}</DialogTitle>
+            </DialogHeader>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
-          {tr("cancel","Cancel")}
-        </Button>
-        <Button type="button" onClick={saveEdit} disabled={!String(editText || "").trim()}>
-          {tr("save","Save")}
-        </Button>
-      </div>
-    </div>
-  </DialogContent>
-</Dialog>
+            <div className="space-y-3">
+              <textarea
+                className="min-h-[140px] w-full rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                placeholder={tr("write_something", "Write something...")}
+              />
 
-{/* ✅ Delete confirmation dialog */}
-<AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>{tr("delete_post","Delete post?")}</AlertDialogTitle>
-      <AlertDialogDescription>
-        {tr("delete_post_desc","This will permanently delete this post. This can’t be undone.")}
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel disabled={deleting}>
-        {tr("cancel","Cancel")}
-      </AlertDialogCancel>
-      <AlertDialogAction
-        disabled={deleting}
-        onClick={(e) => {
-          e.preventDefault();
-          confirmDelete();
-        }}
-        className="bg-red-600 hover:bg-red-700"
-      >
-        {deleting ? tr("deleting","Deleting...") : tr("delete","Delete")}
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
-</CardContent>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                  {tr("cancel", "Cancel")}
+                </Button>
+                <Button type="button" onClick={saveEdit} disabled={!String(editText || "").trim()}>
+                  {tr("save", "Save")}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ✅ Delete confirmation dialog */}
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{tr("delete_post", "Delete post?")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {tr("delete_post_desc", "This will permanently delete this post. This can’t be undone.")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>
+                {tr("cancel", "Cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={deleting}
+                onClick={(e) => {
+                  e.preventDefault();
+                  confirmDelete();
+                }}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {deleting ? tr("deleting", "Deleting...") : tr("delete", "Delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </CardContent>
     </Card>
   );
 };
@@ -651,8 +705,8 @@ export default function SchoolDashboard({ user }) {
 
   // ✅ Multiple attachments (photos/videos)
   const fileInputRef = useRef(null);
-  const [attachments, setAttachments] = useState([]); // File[]
-  const [attachmentPreviews, setAttachmentPreviews] = useState([]); // {id,name,type,url}
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentPreviews, setAttachmentPreviews] = useState([]);
 
   // ✅ Posting / feed
   const [posting, setPosting] = useState(false);
@@ -662,7 +716,7 @@ export default function SchoolDashboard({ user }) {
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(true);
 
-  // ✅ Cache: author uid -> { country, country_code } (from users/{uid})
+  // ✅ Cache: author uid -> { country, country_code }
   const [authorCountryByUid, setAuthorCountryByUid] = useState({});
 
   // ✅ subscription based on your user doc fields
@@ -671,24 +725,23 @@ export default function SchoolDashboard({ user }) {
 
   const subscribeUrl = useMemo(() => createPageUrl("Pricing"), []);
 
-  
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const canCreateEvent = !subscriptionModeEnabled || isSubscribed;
-// ✅ Posting limit dialog
   const [limitOpen, setLimitOpen] = useState(false);
-// ✅ Listen to quota fields on the user doc (for disabling Post button + friendly prompt)
-useEffect(() => {
-  if (!userId) return;
-  const meRef = doc(db, "users", userId);
-  const unsub = onSnapshot(meRef, (snap) => {
-    if (!snap.exists()) return;
-    const d = snap.data() || {};
-    setQuotaUsed(Number(d.post_quota_used || 0));
-    setQuotaMonth(String(d.post_quota_month || ""));
-  });
-  return () => unsub();
-}, [userId]);
+
+  // ✅ Listen to quota fields on the user doc
+  useEffect(() => {
+    if (!userId) return;
+    const meRef = doc(db, "users", userId);
+    const unsub = onSnapshot(meRef, (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data() || {};
+      setQuotaUsed(Number(d.post_quota_used || 0));
+      setQuotaMonth(String(d.post_quota_month || ""));
+    });
+    return () => unsub();
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -706,7 +759,7 @@ useEffect(() => {
         const s = schoolRows[0];
         if (cancelled) return;
         setSchool(s);
-        // ✅ Programs count (Option A): program docs are in "schools" and owned by the logged-in user's UID
+
         let programCount = 0;
         try {
           const uid = auth.currentUser?.uid || userId;
@@ -725,7 +778,7 @@ useEffect(() => {
         setStats({
           totalPrograms: programCount,
         });
-} catch (e) {
+      } catch (e) {
         console.error("Error loading dashboard data:", e);
         if (e?.code === "permission-denied") setPermError(true);
       } finally {
@@ -738,7 +791,7 @@ useEffect(() => {
     };
   }, [userId]);
 
-  // ✅ Live load: community posts (includes your own posts) — Option B
+  // ✅ Live load: community posts
   useEffect(() => {
     if (!userId) return;
     setCommunityLoading(true);
@@ -768,7 +821,7 @@ useEffect(() => {
           return bt - at;
         });
         setCommunityPosts(list);
-setCommunityLoading(false);
+        setCommunityLoading(false);
       },
       (err) => {
         console.error("community posts snapshot error:", err);
@@ -780,8 +833,7 @@ setCommunityLoading(false);
     return () => unsub();
   }, [userId]);
 
-
-  // ✅ Load post-author countries from users/{uid} (country chosen in Onboarding)
+  // ✅ Load post-author countries from users/{uid}
   useEffect(() => {
     if (!communityPosts || communityPosts.length === 0) return;
 
@@ -864,11 +916,10 @@ setCommunityLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachments]);
 
-  // ✅ Use FULL Institute Name in greeting
-const firstName = useMemo(() => {
-  const n = String(schoolName || "").trim();
-  return n || "School";
-}, [schoolName]);
+  const firstName = useMemo(() => {
+    const n = String(schoolName || "").trim();
+    return n || "School";
+  }, [schoolName]);
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
@@ -985,7 +1036,7 @@ const firstName = useMemo(() => {
 
       if (String(e?.message || "").includes("POST_LIMIT_REACHED")) {
         setLimitOpen(true);
-        setPostError(tr("limit_desc","You’ve reached the posting limit. Subscribe to post more."));
+        setPostError(tr("limit_desc", "You’ve reached the posting limit. Subscribe to post more."));
       } else {
         setPostError("Failed to post. Please try again.");
       }
@@ -1033,7 +1084,7 @@ const firstName = useMemo(() => {
         user={user}
         role="school"
         allowedPlatforms={["eventbrite"]}
-        disabledReason={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : null}
+        disabledReason={!canCreateEvent ? tr("subscription_required", "Subscription required to create events") : null}
       />
 
       <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
@@ -1065,7 +1116,7 @@ const firstName = useMemo(() => {
               <SubscribeBanner to={subscribeUrl} user={user} />
             </div>
           )}
-          
+
           {permError && (
             <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-800">
               {tr("perm_warning")}
@@ -1105,50 +1156,50 @@ const firstName = useMemo(() => {
                 </div>
               </div>
 
-{/* ✅ Invite CTA (below shortcuts) */}
-                <div className="mt-4 rounded-2xl border bg-white p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-gray-900">
-                      {tr("invite_agents","Invite Agents")}
-                    </div>
-                    <Button size="sm" onClick={() => setInviteOpen(true)}>
-                      {tr("invite","Invite")}
-                    </Button>
+              {/* ✅ Invite CTA */}
+              <div className="mt-4 rounded-2xl border bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-gray-900">
+                    {tr("invite_agents", "Invite Agents")}
                   </div>
-                </div>
-
-                <InviteUsersDialog
-                  open={inviteOpen}
-                  onOpenChange={setInviteOpen}
-                  allowedRoles={["agent"]}
-                  defaultRole="agent"
-                  title={tr("invite_agents","Invite Agents")}
-                />
-
-                {/* ✅ Create Event CTA (below shortcuts) */}
-                <div className="mt-4 rounded-2xl border bg-white p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-gray-900">
-                      {tr("create_event","Create Event")}
-                    </div>
-                    {!canCreateEvent ? (
-                      <Badge className="bg-yellow-100 text-yellow-800">
-                        {tr("pending","Pending")}
-                      </Badge>
-                    ) : null}
-                  </div>
-
-                  <Button
-                    type="button"
-                    className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
-                    onClick={() => setCreateEventOpen(true)}
-                    disabled={!canCreateEvent}
-                    title={!canCreateEvent ? tr("subscription_required","Subscription required to create events") : undefined}
-                  >
-                    <Ticket className="h-4 w-4 mr-2" />
-                    {tr("create_event","Create Event")}
+                  <Button size="sm" onClick={() => setInviteOpen(true)}>
+                    {tr("invite", "Invite")}
                   </Button>
                 </div>
+              </div>
+
+              <InviteUsersDialog
+                open={inviteOpen}
+                onOpenChange={setInviteOpen}
+                allowedRoles={["agent"]}
+                defaultRole="agent"
+                title={tr("invite_agents", "Invite Agents")}
+              />
+
+              {/* ✅ Create Event CTA */}
+              <div className="mt-4 rounded-2xl border bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-gray-900">
+                    {tr("create_event", "Create Event")}
+                  </div>
+                  {!canCreateEvent ? (
+                    <Badge className="bg-yellow-100 text-yellow-800">
+                      {tr("pending", "Pending")}
+                    </Badge>
+                  ) : null}
+                </div>
+
+                <Button
+                  type="button"
+                  className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-1 ring-emerald-200"
+                  onClick={() => setCreateEventOpen(true)}
+                  disabled={!canCreateEvent}
+                  title={!canCreateEvent ? tr("subscription_required", "Subscription required to create events") : undefined}
+                >
+                  <Ticket className="h-4 w-4 mr-2" />
+                  {tr("create_event", "Create Event")}
+                </Button>
+              </div>
             </div>
 
             {/* CENTER: Composer + Feed */}
@@ -1170,7 +1221,7 @@ const firstName = useMemo(() => {
                         className="mt-2 w-full rounded-2xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200 min-h-[90px]"
                       />
 
-                      {/* ✅ Hidden file input (multiple photo/video) */}
+                      {/* ✅ Hidden file input */}
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -1199,14 +1250,14 @@ const firstName = useMemo(() => {
                                     {isVideo ? (
                                       <video
                                         src={p.url}
-                                        className="h-full w-full object-cover"
+                                        className="h-full w-full object-contain bg-black"
                                         muted
                                       />
                                     ) : (
                                       <img
                                         src={p.url}
                                         alt={p.name}
-                                        className="h-full w-full object-cover"
+                                        className="h-full w-full object-contain"
                                       />
                                     )}
                                   </div>
@@ -1256,7 +1307,11 @@ const firstName = useMemo(() => {
                         <Button
                           className="rounded-xl w-full sm:w-auto"
                           onClick={handlePost}
-                          disabled={posting || (!composerText.trim() && attachments.length === 0)}
+                          disabled={
+                            posting ||
+                            (!composerText.trim() && attachments.length === 0) ||
+                            (subscriptionModeEnabled && !isSubscribed && quotaMonth === monthKeyUTC() && quotaUsed >= 10)
+                          }
                           type="button"
                         >
                           {posting ? (
@@ -1294,25 +1349,31 @@ const firstName = useMemo(() => {
                   </div>
                 ) : (
                   communityPosts.map((p) => (
-                    <RealPostCard key={p.id} post={p} currentUserId={userId} me={user} subscriptionModeEnabled={subscriptionModeEnabled} authorCountryByUid={authorCountryByUid} />
+                    <RealPostCard
+                      key={p.id}
+                      post={p}
+                      currentUserId={userId}
+                      me={user}
+                      subscriptionModeEnabled={subscriptionModeEnabled}
+                      authorCountryByUid={authorCountryByUid}
+                    />
                   ))
                 )}
               </div>
             </div>
 
-            {/* RIGHT: Highlights + Leads widget */}
+            {/* RIGHT: Highlights */}
             <div className="hidden lg:block lg:col-span-3">
               <div className="sticky top-4 space-y-4">
                 <div className="rounded-2xl border bg-white p-4">
-                  <div className="text-sm font-semibold text-gray-900 mb-3">{tr("highlights","Highlights")}</div>
+                  <div className="text-sm font-semibold text-gray-900 mb-3">{tr("highlights", "Highlights")}</div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border bg-gray-50 p-3">
-                      <div className="text-xs text-gray-500">{tr("nav_programs","Programs")}</div>
+                      <div className="text-xs text-gray-500">{tr("nav_programs", "Programs")}</div>
                       <div className="text-lg font-bold text-blue-600">{stats.totalPrograms}</div>
                     </div>
-</div>
+                  </div>
                 </div>
-
               </div>
             </div>
           </div>
@@ -1322,7 +1383,9 @@ const firstName = useMemo(() => {
       </div>
     </div>
   );
-}/* -------------------- Boost Modal -------------------- */
+};
+
+/* -------------------- Boost Modal -------------------- */
 const BOOST_PLANS = [
   { days: 7, price: 1.99 },
   { days: 15, price: 2.99 },
@@ -1382,7 +1445,7 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
       setDone(true);
     } catch (e) {
       console.error("boost update post failed:", e);
-      setErr(tr("payment_succeeded_but_failed","Payment succeeded, but we couldn\'t activate the boost. Please contact support."));
+      setErr(tr("payment_succeeded_but_failed", "Payment succeeded, but we couldn\'t activate the boost. Please contact support."));
     } finally {
       setProcessing(false);
     }
@@ -1392,12 +1455,12 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
     <Dialog open={open} onOpenChange={(v) => (processing ? null : onOpenChange(v))}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{tr("boost_title","Boost your post")}</DialogTitle>
+          <DialogTitle>{tr("boost_title", "Boost your post")}</DialogTitle>
         </DialogHeader>
 
         {!done ? (
           <>
-            <div className="mt-1 text-sm text-gray-600">{tr("boost_subtitle","Choose a boost duration, then pay.")}</div>
+            <div className="mt-1 text-sm text-gray-600">{tr("boost_subtitle", "Choose a boost duration, then pay.")}</div>
 
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
               {BOOST_PLANS.map((p) => {
@@ -1427,7 +1490,7 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
                 onDoneProcessing={() => setProcessing(false)}
                 onError={(e) => {
                   console.error(e);
-                  setErr(tr("payment_failed","Payment failed. Please try again."));
+                  setErr(tr("payment_failed", "Payment failed. Please try again."));
                 }}
                 onCardPaymentSuccess={handleSuccess}
               />
@@ -1437,7 +1500,7 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
           </>
         ) : (
           <div className="mt-4">
-            <div className="text-sm text-emerald-700 font-medium">{tr("boost_activated","Boost activated ✅")}</div>
+            <div className="text-sm text-emerald-700 font-medium">{tr("boost_activated", "Boost activated ✅")}</div>
             <Button type="button" className="w-full mt-3" onClick={() => onOpenChange(false)}>
               Close
             </Button>
@@ -1447,4 +1510,3 @@ const BoostPostDialog = ({ open, onOpenChange, postId, me }) => {
     </Dialog>
   );
 };
-
