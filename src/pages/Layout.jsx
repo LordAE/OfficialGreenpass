@@ -86,8 +86,7 @@ import {
 } from "firebase/firestore";
 
 /* =========================
-   â
- Marketing Website URL (env-first)
+   Marketing Website URL (env-first)
 ========================= */
 const MARKETING_URL =
   (typeof import.meta !== "undefined" && import.meta?.env?.VITE_MARKETING_URL) ||
@@ -102,7 +101,10 @@ const normalizeUrl = (u = "") => {
 const getMarketingUrl = () => {
   const base = normalizeUrl(MARKETING_URL);
   try {
-    const lang = window?.localStorage?.getItem("gp_lang") || window?.localStorage?.getItem("i18nextLng") || "en";
+    const lang =
+      window?.localStorage?.getItem("gp_lang") ||
+      window?.localStorage?.getItem("i18nextLng") ||
+      "en";
     const u = new URL(base);
     u.searchParams.set("lang", lang);
     return u.toString();
@@ -117,16 +119,43 @@ const FALLBACK_TEXT = {
   profileSettings: "Profile Settings",
   more: "More",
   organization: "Organization",
-  // role-specific dropdown labels
   schoolProfile: "School Profile",
   schoolDetails: "School Details",
   myStudents: "My Students",
   leads: "Leads",
+  account: "Account",
+  accountSettings: "Account Settings",
+  dashboard: "Dashboard",
+  directory: "Directory",
+  connections: "Connections",
+  events: "Events",
+  messages: "Messages",
+  contactSupport: "Contact Support",
+  supportInbox: "Support Inbox",
+  institutionManagement: "Institution Management",
+  userManagement: "User Management",
+  agentAssignments: "Agent Assignments",
+  verifications: "Verifications",
+  paymentVerification: "Payment Verification",
+  paymentMonitoring: "Payment Monitoring",
+  walletManagement: "Wallet Management",
+  eventsAdmin: "Event Management",
+  schoolManagement: "School Management",
+  reports: "Reports",
+  brandSettings: "Brand Settings",
+  subscriptionMode: "Subscription Mode",
+  bankSettings: "Bank Settings",
+  chatSettings: "Chat Settings",
+  profile: "Profile",
+  signOut: "Sign Out",
+  myServices: "My Services",
+  seatReservations: "Seat Reservations",
+  myAgent: "My Agent",
+  findAgent: "Find Agent",
 };
 
 const fb = (key) => FALLBACK_TEXT[key] || key;
 
-// i18n helper for this file (avoids `tr is not defined` in sub-components)
 function useNavTr() {
   const { t } = useTranslation();
   return React.useCallback(
@@ -149,7 +178,6 @@ const SOCIAL_LINKS = [
   },
 ];
 
-// TikTok icon
 const TikTokIcon = ({ className = "h-5 w-5" }) => (
   <svg
     viewBox="0 0 256 256"
@@ -164,7 +192,6 @@ const TikTokIcon = ({ className = "h-5 w-5" }) => (
   </svg>
 );
 
-// Dots (App Launcher style) â matches the circular 9-dot icon
 const Dots9Icon = ({ className = "h-6 w-6" }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
     {[
@@ -211,7 +238,7 @@ function useClickOutside(ref, handler, when = true) {
 }
 
 /* =========================
-   Avatar + Account Button (Facebook-style)
+   Avatar + Account Button
 ========================= */
 const UserAvatar = ({
   user,
@@ -219,7 +246,8 @@ const UserAvatar = ({
   textClass = "text-lg",
   className = "",
 }) => {
-  const name = user?.full_name || "User";
+  const { t } = useTranslation();
+  const name = user?.full_name || t("nav.account", { defaultValue: "Account" });
   const initial = name.charAt(0).toUpperCase();
   const photo = user?.photo_url || user?.profile_picture || user?.photoURL;
 
@@ -244,7 +272,8 @@ const UserAvatar = ({
 
 const AccountTrigger = ({ currentUser, open, onClick }) => {
   const { t } = useTranslation();
-  const accountLabel = t("profile.account", { defaultValue: "Account" });
+  const accountLabel = t("nav.account", { defaultValue: "Account" });
+
   return (
     <button
       type="button"
@@ -266,7 +295,7 @@ const AccountTrigger = ({ currentUser, open, onClick }) => {
         textClass="text-base"
       />
       <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 opacity-80" />
-        </button>
+    </button>
   );
 };
 
@@ -276,13 +305,14 @@ const AccountDropdown = ({
   setOpen,
   onLogout,
   items = [],
-  title = "Account",
+  title,
 }) => {
-  const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
-
+  const { t } = useTranslation();
   const wrapRef = React.useRef(null);
   useClickOutside(wrapRef, () => setOpen(false), open);
+
+  const resolvedTitle =
+    title || t("nav.account", { defaultValue: "Account" });
 
   const MenuItem = ({ to, onClick, Icon, label, danger = false, chevron = false }) => {
     const base =
@@ -343,10 +373,10 @@ const AccountDropdown = ({
                 <UserAvatar user={currentUser} sizeClass="w-12 h-12" textClass="text-lg" />
                 <div className="min-w-0">
                   <div className="font-semibold text-gray-900 truncate">
-                    {currentUser?.full_name || "User"}
+                    {currentUser?.full_name || t("nav.account", { defaultValue: "Account" })}
                   </div>
                   <div className="text-xs text-gray-500 capitalize truncate">
-                    {currentUser?.user_type || "user"}
+                    {currentUser?.user_type || t("nav.account", { defaultValue: "Account" })}
                   </div>
                 </div>
               </div>
@@ -354,7 +384,7 @@ const AccountDropdown = ({
             </div>
 
             <div className="px-1 pb-1">
-              <div className="px-3 pb-2 text-xs text-gray-500">{title}</div>
+              <div className="px-3 pb-2 text-xs text-gray-500">{resolvedTitle}</div>
 
               {items.map((it) => (
                 <MenuItem
@@ -370,7 +400,12 @@ const AccountDropdown = ({
 
               <div className="my-2 h-px bg-gray-100" />
 
-              <MenuItem onClick={onLogout} Icon={LogOut} label={t("nav.logOut", { defaultValue: "Logout" })} danger />
+              <MenuItem
+                onClick={onLogout}
+                Icon={LogOut}
+                label={t("nav.logOut", { defaultValue: "Logout" })}
+                danger
+              />
             </div>
           </motion.div>
         )}
@@ -379,10 +414,8 @@ const AccountDropdown = ({
   );
 };
 
-/* ---------- Account menu items (put "extra" navs here) ---------- */
 function buildAccountMenuItems(currentUser, tr) {
   const role = String(currentUser?.user_type || currentUser?.role || "student").toLowerCase();
-  const supportMessagesUrl = role === "admin" ? withLang("/messages?inbox=support") : withLang("/messages?to=support&role=support");
 
   const items = [
     { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: Settings },
@@ -417,9 +450,7 @@ function buildAccountMenuItems(currentUser, tr) {
 }
 
 /* =========================
-   â
- Mobile Bottom Nav (restored)
-   NOTE: Notifications route removed from "More" (popover is in top bar)
+   Mobile Bottom Nav
 ========================= */
 const MobileBottomNav = ({ nav, isActive }) => {
   const tr = useNavTr();
@@ -509,15 +540,15 @@ const MobileBottomNav = ({ nav, isActive }) => {
             >
               <div className="px-4 pt-3 pb-2">
                 <div className="mx-auto h-1.5 w-12 rounded-full bg-gray-200" />
-                <div className="mt-3 text-sm font-semibold text-gray-900">More</div>
+                <div className="mt-3 text-sm font-semibold text-gray-900">
+                  {tr("more", "More")}
+                </div>
                 <div className="mt-2 h-px bg-gray-100" />
               </div>
 
               <div className="px-3 pb-6 max-h-[65vh] overflow-y-auto">
                 <div className="space-y-1">
-                  {/* â
- Website link first */}
-{more.map((it) => (
+                  {more.map((it) => (
                     <SheetItem key={it.url} to={it.url} Icon={it.icon} label={it.title} />
                   ))}
                 </div>
@@ -534,13 +565,11 @@ const MobileBottomNav = ({ nav, isActive }) => {
 const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   const location = useLocation();
   const navigate = useNavigate();
-
   const { t } = useTranslation();
 
   const headerRef = React.useRef(null);
   const [headerH, setHeaderH] = React.useState(72);
   const [measured, setMeasured] = React.useState(false);
-
   const [q, setQ] = React.useState("");
 
   React.useLayoutEffect(() => {
@@ -609,7 +638,6 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
       >
         <nav data-public-nav="1" className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
-            {/* LEFT */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Link
                 to={createPageUrl("")}
@@ -638,7 +666,6 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </form>
             </div>
 
-            {/* CENTER */}
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
@@ -658,7 +685,6 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
               <Link
                 to={createPageUrl("Directory")}
@@ -698,7 +724,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
   );
 };
 
-/* ---------- Shared helpers for role layouts ---------- */
+/* ---------- Shared helpers ---------- */
 const useHeaderMeasure = () => {
   const headerRef = React.useRef(null);
   const [headerH, setHeaderH] = React.useState(72);
@@ -739,30 +765,30 @@ const useIsActive = () => {
   );
 };
 
-/* ---------- School authenticated top navbar ---------- */
+const TopNavIconLink = ({ to, Icon, label, isActive, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
+  const active = isActive(to);
+
+  return (
+    <Link
+      to={to}
+      className={cn(
+        "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
+        active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+      )}
+      aria-label={label}
+      title={label}
+    >
+      <Icon className={iconClass} />
+    </Link>
+  );
+};
+
+/* ---------- Role authenticated top navs ---------- */
 const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
   const navigate = useNavigate();
   const isActive = useIsActive();
-  const { t, i18n } = useTranslation();
-  const [lang, setLangState] = React.useState(getLang());
-  React.useEffect(() => {
-    try {
-      const current = i18n.language || "en";
-      if (lang && current !== lang) i18n.changeLanguage(lang);
-    } catch {}
-  }, [lang, i18n]);
-
-  const tr = React.useCallback((key) => t(`nav.${key}`, { defaultValue: fb(key) }), [t]);
-
-  const onLangChange = async (e) => {
-    const code = e.target.value;
-    setLangState(code);
-    await setLang(code);
-    try {
-      await i18n.changeLanguage(code);
-    } catch {}
-  };
-
+  const { t } = useTranslation();
+  const tr = useNavTr();
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
   const [acctOpen, setAcctOpen] = React.useState(false);
@@ -777,28 +803,6 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
     [q, navigate]
   );
 
-  // IconLink was used below but not defined in the Admin layout scope
-const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
-  const active = isActive(to);
-
-  return (
-    <Link
-      to={to}
-      className={
-        "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition " +
-        (active
-          ? "bg-green-100 text-green-700"
-          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900")
-      }
-      aria-label={label}
-      title={label}
-    >
-      <Icon className={iconClass} />
-    </Link>
-  );
-};
-
-
   const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
@@ -806,7 +810,6 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
       <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <nav className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
-            {/* LEFT */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Link to={createPageUrl("Dashboard")} className="flex items-center shrink-0" aria-label="GreenPass" title="GreenPass">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
@@ -826,27 +829,25 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
               </form>
             </div>
 
-            {/* CENTER */}
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[560px] md:w-[640px] lg:w-[720px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -858,8 +859,6 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â
- POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -867,7 +866,7 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("profile.account", { defaultValue: "Account" })}
+                title={t("nav.account", { defaultValue: "Account" })}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -893,8 +892,8 @@ const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
 };
 
 const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
-  const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(`nav.${key}`, { defaultValue: def ?? fb(key) }), [t]);
+  const { t } = useTranslation();
+  const tr = useNavTr();
   const navigate = useNavigate();
   const isActive = useIsActive();
   const { headerRef, headerH, measured } = useHeaderMeasure();
@@ -911,23 +910,6 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
     [q, navigate]
   );
 
-  const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
-    const active = isActive(to);
-    return (
-      <Link
-        to={to}
-        className={cn(
-          "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
-          active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-        )}
-        aria-label={label}
-        title={label}
-      >
-        <Icon className={iconClass} />
-      </Link>
-    );
-  };
-
   const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
@@ -935,7 +917,6 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
       <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <nav className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
-            {/* LEFT */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Link to={createPageUrl("Dashboard")} className="flex items-center shrink-0" aria-label="GreenPass" title="GreenPass">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
@@ -955,27 +936,25 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
               </form>
             </div>
 
-            {/* CENTER */}
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -987,8 +966,6 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â
- POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -996,7 +973,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("profile.account", { defaultValue: "Account" })}
+                title={t("nav.account", { defaultValue: "Account" })}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1022,11 +999,10 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 };
 
 const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
-  const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(`nav.${key}`, { defaultValue: def ?? fb(key) }), [t]);
+  const { t } = useTranslation();
+  const tr = useNavTr();
   const navigate = useNavigate();
   const isActive = useIsActive();
-
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
   const [acctOpen, setAcctOpen] = React.useState(false);
@@ -1041,23 +1017,6 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
     [q, navigate]
   );
 
-  const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
-    const active = isActive(to);
-    return (
-      <Link
-        to={to}
-        className={cn(
-          "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
-          active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-        )}
-        aria-label={label}
-        title={label}
-      >
-        <Icon className={iconClass} />
-      </Link>
-    );
-  };
-
   const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
@@ -1065,7 +1024,6 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
       <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <nav className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
-            {/* LEFT */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Link to={createPageUrl("Dashboard")} className="flex items-center shrink-0" aria-label="GreenPass" title="GreenPass">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
@@ -1085,27 +1043,25 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
               </form>
             </div>
 
-            {/* CENTER */}
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -1117,8 +1073,6 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â
- POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1126,7 +1080,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("profile.account", { defaultValue: "Account" })}
+                title={t("nav.account", { defaultValue: "Account" })}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1152,11 +1106,10 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
 };
 
 const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLogout }) => {
-  const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(`nav.${key}`, { defaultValue: def ?? fb(key) }), [t]);
+  const { t } = useTranslation();
+  const tr = useNavTr();
   const navigate = useNavigate();
   const isActive = useIsActive();
-
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [q, setQ] = React.useState("");
   const [acctOpen, setAcctOpen] = React.useState(false);
@@ -1171,23 +1124,6 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
     [q, navigate]
   );
 
-  const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
-    const active = isActive(to);
-    return (
-      <Link
-        to={to}
-        className={cn(
-          "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
-          active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-        )}
-        aria-label={label}
-        title={label}
-      >
-        <Icon className={iconClass} />
-      </Link>
-    );
-  };
-
   const mobileNav = buildMobileNav(currentUser, false, null, tr);
 
   return (
@@ -1195,7 +1131,6 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
       <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <nav className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
-            {/* LEFT */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Link to={createPageUrl("Dashboard")} className="flex items-center shrink-0" aria-label="GreenPass" title="GreenPass">
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
@@ -1215,27 +1150,25 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
               </form>
             </div>
 
-            {/* CENTER */}
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[520px] md:w-[600px] lg:w-[680px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -1247,8 +1180,6 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â
- POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1256,7 +1187,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title={t("profile.account", { defaultValue: "Account" })}
+                title={t("nav.account", { defaultValue: "Account" })}
                 items={buildAccountMenuItems(currentUser, tr)}
               />
             </div>
@@ -1282,8 +1213,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
 };
 
 /* =========================
-   â
- ADMIN: Top Nav + Left Panel
+   ADMIN: Top Nav + Left Panel
 ========================= */
 const AdminAuthedTopNavWithLeftPanelLayout = ({
   currentUser,
@@ -1291,44 +1221,12 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
   getCompanyName,
   onLogout,
 }) => {
-  const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
-  const supportMessagesUrl = withLang("/messages?inbox=support");
-
-  const navigate = useNavigate(); // â
+  const { t } = useTranslation();
+  const tr = useNavTr();
+  const navigate = useNavigate();
   const isActive = useIsActive();
   const { headerRef, headerH, measured } = useHeaderMeasure();
   const [acctOpen, setAcctOpen] = React.useState(false);
-
-  
-
-  //  IconLink was used below but not defined in the Admin layout scope
-  const IconLink = ({ to, Icon, label, iconClass = "h-6 w-6 sm:h-7 sm:w-7" }) => {
-    const active = isActive(to);
-    return (
-      <Link
-        to={to}
-        className={cn(
-          "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
-          active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-        )}
-        aria-label={label}
-        title={label}
-      >
-        <Icon className={iconClass} />
-      </Link>
-    );
-  };
-const centerItems = React.useMemo(
-    () => [
-      { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
-      { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
-      { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
-      { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
-      { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
-    ],
-    [tr]
-  );
 
   const accountSettingsItems = React.useMemo(
     () => [
@@ -1345,7 +1243,7 @@ const centerItems = React.useMemo(
     () => [
       { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
       { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: FileText },
-      { title: "Payment Monitoring", url: createPageUrl("AdminPayments"), icon: DollarSign },
+      { title: tr("paymentMonitoring", "Payment Monitoring"), url: createPageUrl("AdminPayments"), icon: DollarSign },
       { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: DollarSign },
       { title: tr("eventsAdmin", "Event Management"), url: createPageUrl("AdminEvents"), icon: Calendar },
       { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: Building },
@@ -1353,23 +1251,6 @@ const centerItems = React.useMemo(
     ],
     [tr]
   );
-
-  const AdminTopLink = ({ item }) => {
-    const active = isActive(item.url);
-    return (
-      <Link
-        to={item.url}
-        className={cn(
-          "inline-flex items-center justify-center rounded-2xl p-3 sm:p-3.5 transition",
-          active ? "bg-green-100 text-green-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-        )}
-        aria-label={item.title}
-        title={item.title}
-      >
-        <item.icon className="h-6 w-6 sm:h-7 sm:w-7" />
-      </Link>
-    );
-  };
 
   const LeftPanelLink = ({ item }) => {
     const active = isActive(item.url);
@@ -1391,14 +1272,12 @@ const centerItems = React.useMemo(
 
   return (
     <div className="min-h-[100svh] bg-gray-50 font-sans text-gray-800">
-      {/* TOP NAV */}
       <header
         ref={headerRef}
         className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm"
       >
         <nav className="w-full px-4 sm:px-5 lg:px-7 py-2">
           <div className="relative flex items-center h-12 sm:h-14">
-            {/* LEFT */}
             <div className="flex items-center min-w-0">
               <Link
                 to={createPageUrl("Dashboard")}
@@ -1414,27 +1293,25 @@ const centerItems = React.useMemo(
               </Link>
             </div>
 
-            {/* CENTER */}
             <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[620px] md:w-[720px] lg:w-[820px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} />
+                    <TopNavIconLink to={createPageUrl("Dashboard")} Icon={Home} label={t("nav.dashboard", { defaultValue: "Dashboard" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} />
+                    <TopNavIconLink to={createPageUrl("Directory")} Icon={UsersIcon} label={t("nav.directory", { defaultValue: "Directory" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} />
+                    <TopNavIconLink to={createPageUrl("Connections")} Icon={UserCheck} label={t("nav.connections", { defaultValue: "Connections" })} isActive={isActive} />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <IconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} />
+                    <TopNavIconLink to={createPageUrl("Events")} Icon={Calendar} label={t("nav.events", { defaultValue: "Events" })} isActive={isActive} />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="ml-auto flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -1446,8 +1323,6 @@ const centerItems = React.useMemo(
                 <MessageSquare className="h-6 w-6" />
               </button>
 
-              {/* â
- POPUP Notifications (no route) */}
               <NotificationsBell currentUser={currentUser} createPageUrl={createPageUrl} />
 
               <AccountDropdown
@@ -1455,7 +1330,7 @@ const centerItems = React.useMemo(
                 open={acctOpen}
                 setOpen={setAcctOpen}
                 onLogout={onLogout}
-                title="Account Settings"
+                title={t("nav.accountSettings", { defaultValue: "Account Settings" })}
                 items={accountSettingsItems.map((it) => ({
                   label: it.title,
                   url: it.url,
@@ -1468,7 +1343,6 @@ const centerItems = React.useMemo(
         </nav>
       </header>
 
-      {/* BODY */}
       <div
         className="flex w-full"
         style={{
@@ -1476,13 +1350,12 @@ const centerItems = React.useMemo(
           visibility: measured ? "visible" : "hidden",
         }}
       >
-        {/* LEFT PANEL */}
         <aside className="hidden md:block w-[280px] shrink-0">
           <div className="sticky" style={{ top: headerH }}>
             <div className="h-[calc(100svh-theme(spacing.0))] max-h-[calc(100svh)] overflow-y-auto px-3 py-4">
               <div className="rounded-2xl bg-white border border-gray-200 shadow-sm p-3">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 py-2">
-                  Admin Tools
+                  {t("nav.admin", { defaultValue: "Admin" })}
                 </div>
                 <div className="space-y-1">
                   {leftPanelItems.map((it) => (
@@ -1491,12 +1364,11 @@ const centerItems = React.useMemo(
                 </div>
 
                 <div className="mt-3 h-px bg-gray-100" />
-</div>
+              </div>
             </div>
           </div>
         </aside>
 
-        {/* MAIN */}
         <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden touch-pan-y pb-[84px] lg:pb-0">
           <div className="px-4 sm:px-6 lg:px-8 py-5">
             <Outlet />
@@ -1510,33 +1382,33 @@ const centerItems = React.useMemo(
   );
 };
 
-/* ---------- Footer (aligned to existing routes only) ---------- */
+/* ---------- Footer ---------- */
 const Footer = ({ getCompanyName }) => {
-  const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
+  const { t } = useTranslation();
 
   const footerLinks = [
     {
-      column_title: "Explore",
+      column_title: t("footer.explore", { defaultValue: "Explore" }),
       links: [
-        { text: "Directory", url: createPageUrl("Directory") },
-        { text: "Events", url: createPageUrl("Events") },
-        { text: "Messages", url: createPageUrl("Messages") },
+        { text: t("nav.directory", { defaultValue: "Directory" }), url: createPageUrl("Directory") },
+        { text: t("nav.events", { defaultValue: "Events" }), url: createPageUrl("Events") },
+        { text: t("nav.messages", { defaultValue: "Messages" }), url: createPageUrl("Messages") },
       ],
     },
     {
-      column_title: "Account",
+      column_title: t("footer.account", { defaultValue: "Account" }),
       links: [
-        { text: "Welcome", url: createPageUrl("Welcome") },
-        { text: "Login", url: createPageUrl("Login") },
-        { text: "Profile", url: createPageUrl("Profile") },
+        { text: t("nav.login", { defaultValue: "Login" }), url: createPageUrl("Welcome") },
+        { text: t("nav.login", { defaultValue: "Login" }), url: createPageUrl("Login") },
+        { text: t("nav.profile", { defaultValue: "Profile" }), url: createPageUrl("Profile") },
       ],
     },
     {
-      column_title: "Legal",
-      links: [{ text: "Agent Agreement", url: createPageUrl("AgentAgreement") }],
+      column_title: t("footer.legal", { defaultValue: "Legal" }),
+      links: [
+        { text: t("footer.agentAgreement", { defaultValue: "Agent Agreement" }), url: createPageUrl("AgentAgreement") },
+      ],
     },
-
   ];
 
   return (
@@ -1549,9 +1421,9 @@ const Footer = ({ getCompanyName }) => {
               <ul className="mt-4 space-y-4">
                 {column.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
-                    {<Link to={link.url} className="text-base text-gray-300 hover:text-white">
-                        {link.text}
-                      </Link>}
+                    <Link to={link.url} className="text-base text-gray-300 hover:text-white">
+                      {link.text}
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -1575,7 +1447,9 @@ const Footer = ({ getCompanyName }) => {
             ))}
           </div>
           <p className="mt-8 text-base text-gray-400 md:mt-0 md:order-1">
-            &copy; {new Date().getFullYear()} {getCompanyName()}. All rights reserved.
+            {t("footer.copyright", {
+              defaultValue: `© ${getCompanyName()}. All rights reserved.`,
+            })}
           </p>
         </div>
       </div>
@@ -1583,50 +1457,40 @@ const Footer = ({ getCompanyName }) => {
   );
 };
 
-/* ---------- Nav builders (aligned to current App routes) ---------- */
-function buildDesktopNav(currentUser) {
-  const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
-
+/* ---------- Nav builders ---------- */
+function buildDesktopNav(currentUser, tr) {
   const role = (currentUser?.user_type || currentUser?.role || "student").toLowerCase();
 
-  // Admin uses the sidebar layout on desktop (so it needs the full admin nav here)
   if (role === "admin") {
     return [
       { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
       { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
       { title: tr("messages", "Messages"), url: createPageUrl("Messages"), icon: MessageSquare },
-
       { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: School },
       { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
       { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
-
       { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
       { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: DollarSign },
       { title: tr("payments", "Payments"), url: createPageUrl("AdminPayments"), icon: DollarSign },
       { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
-
-      { title: tr("events", "Events"), url: createPageUrl("AdminEvents"), icon: Calendar },
+      { title: tr("eventsAdmin", "Event Management"), url: createPageUrl("AdminEvents"), icon: Calendar },
       { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
       { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: DollarSign },
-
       { title: tr("brandSettings", "Brand Settings"), url: createPageUrl("AdminBrandSettings"), icon: Settings },
       { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
       { title: tr("bankSettings", "Bank Settings"), url: createPageUrl("AdminBankSettings"), icon: Landmark },
     ];
   }
 
-// Vendor (sidebar layout)
   if (role === "vendor") {
     return [
       { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
       { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
-      { title: "My Services", url: createPageUrl("MyServices"), icon: Store },
+      { title: tr("myServices", "My Services"), url: createPageUrl("MyServices"), icon: Store },
       { title: tr("messages", "Messages"), url: createPageUrl("Messages"), icon: MessageSquare },
     ];
   }
 
-  // Fallback (should rarely be used)
   return [
     { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
     { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
@@ -1637,10 +1501,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
   const tr = typeof trFn === "function" ? trFn : (key, def) => def;
   const role = (currentUser?.user_type || "student").toLowerCase();
 
-  // Removed Notifications route items from all "more" menus.
-  // Notifications are ONLY via <NotificationsBell /> in the top bar (popover).
-
-  // Agent (match desktop center icons: Dashboard / Directory / Events / My Students)
   if (role === "agent") {
     return {
       main: [
@@ -1658,7 +1518,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
     };
   }
 
-  // Tutor (match desktop center icons: Dashboard / Directory / Events / My Students)
   if (role === "tutor") {
     return {
       main: [
@@ -1676,7 +1535,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
     };
   }
 
-  // School (match desktop center icons: Dashboard / Directory / Events / School Profile / Details)
   if (role === "school") {
     return {
       main: [
@@ -1695,40 +1553,33 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
     };
   }
 
-  // Admin (desktop uses sidebar; keep a compact but complete mobile mapping)
-  // Admin (desktop uses sidebar; keep a compact but complete mobile mapping)
   if (role === "admin") {
     return {
       main: [
         { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
         { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
         { title: tr("messages", "Messages"), url: createPageUrl("Messages"), icon: MessageSquare },
-        { title: tr("events", "Events"), url: createPageUrl("AdminEvents"), icon: Calendar },
+        { title: tr("eventsAdmin", "Event Management"), url: createPageUrl("AdminEvents"), icon: Calendar },
       ],
       more: [
         { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: School },
         { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
         { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
-
         { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
         { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: DollarSign },
         { title: tr("payments", "Payments"), url: createPageUrl("AdminPayments"), icon: DollarSign },
         { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
-
         { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
         { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: DollarSign },
-
         { title: tr("brandSettings", "Brand Settings"), url: createPageUrl("AdminBrandSettings"), icon: Settings },
         { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
         { title: tr("bankSettings", "Bank Settings"), url: createPageUrl("AdminBankSettings"), icon: Landmark },
-
         { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: Settings },
         { title: tr("signOut", "Sign Out"), url: createPageUrl("Logout"), icon: LogOut },
       ],
     };
   }
 
-  // Vendor (match desktop sidebar: Dashboard / Events / My Services / Messages)
   if (role === "vendor") {
     return {
       main: [
@@ -1746,7 +1597,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
     };
   }
 
-  // Default: Student/User (match desktop center icons: Dashboard / Directory / Events)
   const main = [
     { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
     { title: tr("directory", "Directory"), url: createPageUrl("Directory"), icon: UsersIcon },
@@ -1766,7 +1616,6 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
   ];
 
   if (hasReservation && latestReservationId) {
-    // Insert after Agent item (index 2)
     more.splice(2, 0, {
       title: tr("seatReservations", "Seat Reservations"),
       url: `${createPageUrl("ReservationStatus")}?reservationId=${encodeURIComponent(latestReservationId)}`,
@@ -1782,34 +1631,49 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
 ========================= */
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+  const tr = useNavTr();
+  const isActive = useIsActive();
+
+  const [lang, setLangState] = React.useState(getLang());
+
   React.useEffect(() => {
-    const lang =
+    const nextLang =
       new URLSearchParams(location.search).get("lang") ||
       localStorage.getItem("gp_lang") ||
       "en";
 
-    localStorage.setItem("gp_lang", lang);
+    localStorage.setItem("gp_lang", nextLang);
+    setLangState(nextLang);
 
-    if (i18n.language !== lang) {
-      i18n.changeLanguage(lang);
+    if (i18n.language !== nextLang) {
+      i18n.changeLanguage(nextLang);
     }
 
-    document.documentElement.lang = lang;
+    document.documentElement.lang = nextLang;
     document.documentElement.dir =
-      ["ar","he","fa","ur"].includes(lang) ? "rtl" : "ltr";
-  }, [location.search]);
+      ["ar", "he", "fa", "ur"].includes(nextLang) ? "rtl" : "ltr";
+  }, [location.search, i18n]);
 
-  const { t, i18n } = useTranslation();
-  const tr = React.useCallback((key, def) => t(key, { defaultValue: def }), [t]);
- 
-  const navigate = useNavigate();
-  const isActive = useIsActive();
+  const onLangChange = async (e) => {
+    const code = e.target.value;
+    setLangState(code);
+    await setLang(code);
+    try {
+      await i18n.changeLanguage(code);
+    } catch {}
+
+    try {
+      const next = new URL(window.location.href);
+      next.searchParams.set("lang", code);
+      window.history.replaceState({}, "", `${next.pathname}${next.search}${next.hash}`);
+    } catch {}
+  };
 
   const [currentUser, setCurrentUser] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
-
   const profileUnsubRef = React.useRef(null);
-
   const [hasReservation, setHasReservation] = React.useState(false);
   const [latestReservationId, setLatestReservationId] = React.useState(null);
 
@@ -1920,7 +1784,7 @@ export default function Layout() {
     try {
       await signOut(auth);
       setCurrentUser(null);
-      // ✅ Force marketing-origin signOut by sending logout=1
+
       try {
         const base = getMarketingUrl();
         const u = new URL(base);
@@ -1930,7 +1794,7 @@ export default function Layout() {
         const base = getMarketingUrl();
         window.location.replace(base + (base.includes("?") ? "&" : "?") + "logout=1");
       }
-} catch {}
+    } catch {}
   }, []);
 
   const getLogoUrl = React.useCallback(
@@ -1939,6 +1803,10 @@ export default function Layout() {
     []
   );
   const getCompanyName = React.useCallback(() => "GreenPass", []);
+
+  const supportMessagesUrl = currentUser?.user_type === "admin"
+    ? withLang("/messages?inbox=support")
+    : withLang("/messages?to=support&role=support");
 
   React.useEffect(() => {
     if (currentUser?.onboarding_completed && location.pathname.toLowerCase().startsWith("/onboarding")) {
@@ -1980,86 +1848,65 @@ export default function Layout() {
 
   if (role === "admin") {
     return (
-      <>
-        <AdminAuthedTopNavWithLeftPanelLayout
-          currentUser={currentUser}
-          getLogoUrl={getLogoUrl}
-          getCompanyName={getCompanyName}
-          onLogout={handleLogout}
-        />
-        
-      </>
+      <AdminAuthedTopNavWithLeftPanelLayout
+        currentUser={currentUser}
+        getLogoUrl={getLogoUrl}
+        getCompanyName={getCompanyName}
+        onLogout={handleLogout}
+      />
     );
   }
 
   if (role === "school") {
     return (
-      <>
-        <SchoolAuthedTopNavLayout
-          currentUser={currentUser}
-          getLogoUrl={getLogoUrl}
-          getCompanyName={getCompanyName}
-          onLogout={handleLogout}
-        />
-        
-      </>
+      <SchoolAuthedTopNavLayout
+        currentUser={currentUser}
+        getLogoUrl={getLogoUrl}
+        getCompanyName={getCompanyName}
+        onLogout={handleLogout}
+      />
     );
   }
 
   if (role === "agent") {
     return (
-      <>
-        <AgentAuthedTopNavLayout
-          currentUser={currentUser}
-          getLogoUrl={getLogoUrl}
-          getCompanyName={getCompanyName}
-          onLogout={handleLogout}
-        />
-        
-      </>
+      <AgentAuthedTopNavLayout
+        currentUser={currentUser}
+        getLogoUrl={getLogoUrl}
+        getCompanyName={getCompanyName}
+        onLogout={handleLogout}
+      />
     );
   }
 
   if (role === "tutor") {
     return (
-      <>
-        <TutorAuthedTopNavLayout
-          currentUser={currentUser}
-          getLogoUrl={getLogoUrl}
-          getCompanyName={getCompanyName}
-          onLogout={handleLogout}
-        />
-        
-      </>
+      <TutorAuthedTopNavLayout
+        currentUser={currentUser}
+        getLogoUrl={getLogoUrl}
+        getCompanyName={getCompanyName}
+        onLogout={handleLogout}
+      />
     );
   }
 
   if (role === "user" || role === "student") {
     return (
-      <>
-        <UserAuthedTopNavLayout
-          currentUser={currentUser}
-          getLogoUrl={getLogoUrl}
-          getCompanyName={getCompanyName}
-          onLogout={handleLogout}
-        />
-        
-      </>
+      <UserAuthedTopNavLayout
+        currentUser={currentUser}
+        getLogoUrl={getLogoUrl}
+        getCompanyName={getCompanyName}
+        onLogout={handleLogout}
+      />
     );
   }
 
-  // everything else (sidebar layout: vendor/etc.)
-  const navigationItems = buildDesktopNav(currentUser);
+  const navigationItems = buildDesktopNav(currentUser, tr);
   const mobileNav = buildMobileNav(currentUser, hasReservation, latestReservationId, tr);
 
   return (
     <SidebarProvider>
       <div className="min-h-[100svh] flex w-full bg-gray-50">
-        {/*
-          Mobile/tablet UX:
-          Use `lg` as the breakpoint for the persistent sidebar so the UI still
-          feels "mobile" when the viewport is narrowed (e.g., split-screen, DevTools open).
-        */}
         <Sidebar className="border-r border-gray-200 bg-white hidden lg:flex">
           <SidebarHeader className="border-b border-gray-200 p-4">
             <Link
@@ -2093,17 +1940,8 @@ export default function Layout() {
                   </SidebarMenuItem>
                 );
               })}
-              <SidebarMenuItem className="rounded-lg">
-                <Link
-                  to={supportMessagesUrl}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
-                >
-                  <MessageSquare className="w-5 h-5 text-gray-600" />
-                  <span className="text-gray-700">{tr("contactSupport", "Contact Support")}</span>
-                </Link>
-              </SidebarMenuItem>
 
-              <SidebarMenuItem>
+              <SidebarMenuItem className="rounded-lg">
                 <Link
                   to={supportMessagesUrl}
                   className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"
@@ -2126,7 +1964,8 @@ export default function Layout() {
                 <LogOut className="w-4 h-4 mr-1" /> {t("nav.logOut", { defaultValue: "Logout" })}
               </Button>
             </div>
-<div className="mb-3">
+
+            <div className="mb-3">
               <div className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-2">
                 <Globe className="w-4 h-4" />
                 {t("common.language", { defaultValue: "Language" })}
@@ -2138,17 +1977,17 @@ export default function Layout() {
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="en">English</option>
-                <option value="vi">Tiáº¿ng Viá»t</option>
+                <option value="vi">Tiếng Việt</option>
                 <option value="fil">Filipino</option>
                 <option value="ceb">Bisaya</option>
-                <option value="es">EspaÃ±ol</option>
-                <option value="fr">FranÃ§ais</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
                 <option value="de">Deutsch</option>
-                <option value="pt-BR">PortuguÃªs (Brasil)</option>
-                <option value="ar">Ø§ÙØ¹Ø±Ø¨ÙØ©</option>
-                <option value="zh">ä¸­æ</option>
-                <option value="ja">æ¥æ¬èª</option>
-                <option value="ko">íêµ­ì´</option>
+                <option value="pt-BR">Português (Brasil)</option>
+                <option value="ar">العربية</option>
+                <option value="zh">中文</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
               </select>
             </div>
 
@@ -2182,8 +2021,6 @@ export default function Layout() {
           <MobileBottomNav nav={mobileNav} isActive={isActive} />
         </main>
       </div>
-
-      
     </SidebarProvider>
   );
 }
