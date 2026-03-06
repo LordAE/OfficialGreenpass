@@ -1,11 +1,34 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { User } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   MoreHorizontal,
   User as UserIcon,
@@ -18,7 +41,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
-import InviteUserModal from "../components/admin/InviteUserModal";
+import InviteUsersDialog from "@/components/invites/InviteUserDialog";
 
 const roleIcons = {
   admin: <Shield className="w-4 h-4 text-red-500" />,
@@ -30,63 +53,188 @@ const roleIcons = {
   user: <UserIcon className="w-4 h-4 text-gray-500" />,
 };
 
-function safeFormat(dateStr, fmt = "MMM dd, yyyy") {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? "—" : format(d, fmt);
+function flagUrlFromCode(code) {
+  const cc = (code || "").toString().trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) return "";
+  return `https://flagcdn.com/w20/${cc}.png`;
+}
+
+function toDate(value) {
+  if (!value) return null;
+
+  if (typeof value?.toDate === "function") {
+    const d = value.toDate();
+    return Number.isNaN(d?.getTime?.()) ? null : d;
+  }
+
+  if (value?.seconds) {
+    const d = new Date(value.seconds * 1000);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function safeFormat(value, fmt = "MMM dd, yyyy") {
+  const d = toDate(value);
+  return d ? format(d, fmt) : "—";
+}
+
+function getUserRole(user) {
+  return (
+    user?.user_type ||
+    user?.userType ||
+    user?.role ||
+    user?.selected_role ||
+    "user"
+  );
+}
+
+function getVerificationStatus(user) {
+  return (
+    user?.verification_status ||
+    user?.verification?.status ||
+    "not_submitted"
+  );
+}
+
+function getVerificationLabel(status) {
+  switch (status) {
+    case "approved":
+    case "verified":
+      return "Verified";
+    case "pending":
+      return "Pending";
+    case "rejected":
+      return "Rejected";
+    case "not_submitted":
+    default:
+      return "Not Submitted";
+  }
+}
+
+function getStatusClasses(status) {
+  switch (status) {
+    case "approved":
+    case "verified":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "pending":
+      return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    case "rejected":
+      return "bg-red-100 text-red-700 border-red-200";
+    case "not_submitted":
+    default:
+      return "bg-gray-100 text-gray-700 border-gray-200";
+  }
+}
+
+function CountryDisplay({ country, countryCode }) {
+  const flagUrl = flagUrlFromCode(countryCode);
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      {flagUrl ? (
+        <img
+          src={flagUrl}
+          alt={`${country || countryCode || "Country"} flag`}
+          width={20}
+          height={15}
+          className="rounded-[2px] border shrink-0"
+          loading="lazy"
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+        />
+      ) : null}
+
+      <div className="min-w-0">
+        <div className="truncate">{country || "N/A"}</div>
+        <div className="text-xs text-muted-foreground">
+          {countryCode || "—"}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [verificationFilter, setVerificationFilter] = useState("all");
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   useEffect(() => {
     const loadUsers = async () => {
       setLoading(true);
       try {
-        // Fetch without unsupported sort arg; sort on client
         const userData = await User.list();
-        const sorted = Array.isArray(userData)
-          ? [...userData].sort(
-              (a, b) =>
-                new Date(b?.created_date || 0).getTime() - new Date(a?.created_date || 0).getTime()
-            )
+
+        const normalized = Array.isArray(userData)
+          ? userData.map((user) => ({
+              ...user,
+              _resolvedRole: getUserRole(user),
+              _verificationStatus: getVerificationStatus(user),
+              _createdAt: toDate(user?.created_at),
+            }))
           : [];
+
+        const sorted = [...normalized].sort(
+          (a, b) =>
+            (b?._createdAt?.getTime?.() || 0) -
+            (a?._createdAt?.getTime?.() || 0)
+        );
+
         setUsers(sorted);
-        setFilteredUsers(sorted);
       } catch (error) {
         console.error("Error loading users:", error);
         setUsers([]);
-        setFilteredUsers([]);
       } finally {
         setLoading(false);
       }
     };
+
     loadUsers();
   }, []);
 
-  useEffect(() => {
-    let filtered = users;
+  const filteredUsers = useMemo(() => {
+    let filtered = [...users];
 
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (user) =>
-          (user.full_name && user.full_name.toLowerCase().includes(q)) ||
-          (user.email && user.email.toLowerCase().includes(q))
-      );
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+
+      filtered = filtered.filter((user) => {
+        const values = [
+          user.full_name,
+          user.email,
+          user.phone,
+          user.country,
+          user.country_code,
+          user.uid,
+          user._resolvedRole,
+          user._verificationStatus,
+        ];
+
+        return values.some((value) =>
+          String(value || "").toLowerCase().includes(q)
+        );
+      });
     }
 
     if (roleFilter !== "all") {
-      filtered = filtered.filter((user) => user.user_type === roleFilter);
+      filtered = filtered.filter((user) => user._resolvedRole === roleFilter);
     }
 
-    setFilteredUsers(filtered);
-  }, [searchTerm, roleFilter, users]);
+    if (verificationFilter !== "all") {
+      filtered = filtered.filter(
+        (user) => user._verificationStatus === verificationFilter
+      );
+    }
+
+    return filtered;
+  }, [users, searchTerm, roleFilter, verificationFilter]);
 
   if (loading) {
     return (
@@ -101,31 +249,45 @@ export default function UserManagement() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">User Management</h1>
-          <p className="text-gray-600 mt-1">Invite users and manage platform access</p>
+          <p className="text-gray-600 mt-1">
+            Invite users and manage platform access
+          </p>
         </div>
-        <Button onClick={() => setIsInviteModalOpen(true)} className="bg-green-600 hover:bg-green-700">
+
+        <Button
+          onClick={() => setInviteOpen(true)}
+          className="bg-green-600 hover:bg-green-700"
+        >
           <UserIcon className="w-4 h-4 mr-2" />
           Invite New User
         </Button>
       </div>
 
-      <InviteUserModal isOpen={isInviteModalOpen} onOpenChange={setIsInviteModalOpen} />
+      <InviteUsersDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        allowedRoles={["agent", "school", "student", "Tutor", "Vendor"]}
+        defaultRole="agent"
+        title="Invite User"
+      />
 
       <Card>
         <CardHeader>
           <CardTitle>All Users</CardTitle>
-          <div className="mt-4 flex flex-col sm:flex-row gap-4">
+
+          <div className="mt-4 flex flex-col lg:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
               <Input
-                placeholder="Search by name or email..."
+                placeholder="Search by name, email, phone, country, UID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
+
             <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full lg:w-52">
                 <SelectValue placeholder="Filter by role" />
               </SelectTrigger>
               <SelectContent>
@@ -137,12 +299,31 @@ export default function UserManagement() {
                 ))}
               </SelectContent>
             </Select>
+
+            <Select
+              value={verificationFilter}
+              onValueChange={setVerificationFilter}
+            >
+              <SelectTrigger className="w-full lg:w-56">
+                <SelectValue placeholder="Filter by verification" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Verification</SelectItem>
+                <SelectItem value="approved">Verified</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="not_submitted">Not Submitted</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
 
         <CardContent>
-          {/* Desktop Table */}
-          <div className="hidden md:block">
+          <div className="mb-4 text-sm text-muted-foreground">
+            Showing {filteredUsers.length} of {users.length} users
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -150,32 +331,139 @@ export default function UserManagement() {
                   <TableHead>Role</TableHead>
                   <TableHead>Country</TableHead>
                   <TableHead>Joined</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Verification</TableHead>
+                  <TableHead>Subscription</TableHead>
                   <TableHead>
                     <span className="sr-only">Actions</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <div className="font-medium">{user.full_name || "N/A"}</div>
-                      <div className="text-sm text-muted-foreground">{user.email || "—"}</div>
+                {filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="text-center py-10 text-muted-foreground"
+                    >
+                      No users found.
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 capitalize">
-                        {roleIcons[user.user_type] || <UserIcon className="w-4 h-4" />}
-                        {user.user_type || "—"}
+                  </TableRow>
+                ) : (
+                  filteredUsers.map((user) => {
+                    const role = user._resolvedRole;
+                    const verificationStatus = user._verificationStatus;
+                    const verificationLabel =
+                      getVerificationLabel(verificationStatus);
+
+                    return (
+                      <TableRow key={user.id || user.uid}>
+                        <TableCell>
+                          <div className="font-medium">
+                            {user.full_name || "N/A"}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {user.email || "—"}
+                          </div>
+                          {user.phone ? (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {user.phone}
+                            </div>
+                          ) : null}
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-2 capitalize">
+                            {roleIcons[role] || <UserIcon className="w-4 h-4" />}
+                            {role}
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <CountryDisplay
+                            country={user.country}
+                            countryCode={user.country_code}
+                          />
+                        </TableCell>
+
+                        <TableCell>{safeFormat(user.created_at)}</TableCell>
+
+                        <TableCell>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusClasses(
+                              verificationStatus
+                            )}`}
+                          >
+                            {verificationLabel}
+                          </span>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="capitalize">
+                            {user.subscription_status || "—"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {user.subscription_plan || "No plan"}
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem>View details</DropdownMenuItem>
+                              <DropdownMenuItem>Edit user</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="md:hidden grid grid-cols-1 gap-4">
+            {filteredUsers.length === 0 ? (
+              <Card className="p-6 text-center text-muted-foreground">
+                No users found.
+              </Card>
+            ) : (
+              filteredUsers.map((user) => {
+                const role = user._resolvedRole;
+                const verificationStatus = user._verificationStatus;
+                const verificationLabel =
+                  getVerificationLabel(verificationStatus);
+
+                return (
+                  <Card key={user.id || user.uid} className="p-4">
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold truncate">
+                          {user.full_name || "N/A"}
+                        </p>
+                        <p className="text-sm text-gray-500 truncate">
+                          {user.email || "—"}
+                        </p>
+                        {user.phone ? (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {user.phone}
+                          </p>
+                        ) : null}
                       </div>
-                    </TableCell>
-                    <TableCell>{user.country || "N/A"}</TableCell>
-                    <TableCell>{safeFormat(user.created_date)}</TableCell>
-                    <TableCell>{user.onboarding_completed ? "Verified" : "Pending"}</TableCell>
-                    <TableCell>
+
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
+                          <Button
+                            variant="ghost"
+                            className="h-8 w-8 p-0 shrink-0"
+                          >
                             <span className="sr-only">Open menu</span>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
@@ -185,44 +473,54 @@ export default function UserManagement() {
                           <DropdownMenuItem>Edit user</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                    </div>
 
-          {/* Mobile Card View */}
-          <div className="md:hidden grid grid-cols-1 gap-4">
-            {filteredUsers.map((user) => (
-              <Card key={user.id} className="p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-bold">{user.full_name || "N/A"}</p>
-                    <p className="text-sm text-gray-500">{user.email || "—"}</p>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Open menu</span>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>View details</DropdownMenuItem>
-                      <DropdownMenuItem>Edit user</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <div className="mt-4 pt-4 border-t flex justify-between text-sm">
-                  <div className="flex items-center gap-2 capitalize">
-                    {roleIcons[user.user_type] || <UserIcon className="w-4 h-4" />}
-                    {user.user_type || "—"}
-                  </div>
-                  <div className="text-gray-600">Joined: {safeFormat(user.created_date, "MMM yyyy")}</div>
-                </div>
-              </Card>
-            ))}
+                    <div className="mt-4 pt-4 border-t space-y-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500">Role</span>
+                        <div className="flex items-center gap-2 capitalize">
+                          {roleIcons[role] || <UserIcon className="w-4 h-4" />}
+                          {role}
+                        </div>
+                      </div>
+
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-gray-500">Country</span>
+                        <div className="max-w-[65%]">
+                          <CountryDisplay
+                            country={user.country}
+                            countryCode={user.country_code}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500">Joined</span>
+                        <span>{safeFormat(user.created_at, "MMM yyyy")}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500">Verification</span>
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusClasses(
+                            verificationStatus
+                          )}`}
+                        >
+                          {verificationLabel}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500">Subscription</span>
+                        <span className="capitalize">
+                          {user.subscription_status || "—"}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })
+            )}
           </div>
         </CardContent>
       </Card>

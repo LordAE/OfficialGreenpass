@@ -163,7 +163,7 @@ export default function AdminDashboard({ user }) {
       <InviteUsersDialog
         open={inviteOpen}
         onOpenChange={setInviteOpen}
-        allowedRoles={["agent", "school", "student"]}
+        allowedRoles={["agent", "school", "student","Tutor"]}
         defaultRole="agent"
         title="Invite User"
       />
