@@ -1257,13 +1257,24 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
 
   const leftPanelItems = React.useMemo(
     () => [
+      { title: tr("userManagement", "User Management"), url: createPageUrl("UserManagement"), icon: Users },
+      { title: tr("messages", "Messages"), url: createPageUrl("Messages"), icon: MessageSquare },
+      { title: tr("institutionManagement", "Institution Management"), url: createPageUrl("AdminInstitutions"), icon: Landmark },
+      { title: tr("agentAssignments", "Agent Assignments"), url: createPageUrl("AdminAgentAssignments"), icon: UserCheck },
+
       { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: UserCheck },
       { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: FileText },
       { title: tr("paymentMonitoring", "Payment Monitoring"), url: createPageUrl("AdminPayments"), icon: DollarSign },
-      { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: DollarSign },
+      { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
+
       { title: tr("eventsAdmin", "Event Management"), url: createPageUrl("AdminEvents"), icon: Calendar },
       { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: Building },
       { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: BarChart3 },
+
+      { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: DollarSign },
+      { title: tr("brandSettings", "Brand Settings"), url: createPageUrl("AdminBrandSettings"), icon: Palette },
+      { title: tr("chatSettings", "Chat Settings"), url: createPageUrl("AdminChatSettings"), icon: MessageSquare },
+      { title: tr("bankSettings", "Bank Settings"), url: createPageUrl("AdminBankSettings"), icon: Landmark },
     ],
     [tr]
   );
