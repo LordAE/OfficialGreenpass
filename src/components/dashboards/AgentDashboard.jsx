@@ -501,6 +501,7 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
   const [boostOpen, setBoostOpen] = useState(false);
   const messageUrl = `${createPageUrl("Messages")}?with=${encodeURIComponent(authorId || "")}`;
   const postDetailUrl = buildPostDetailUrl(post?.id);
+  const viewProfileUrl = authorId ? `/view-profile/${encodeURIComponent(authorId)}` : "";
   const fullText = String(post?.text || "");
   const hasLongText = fullText.length > POST_PREVIEW_TEXT_LIMIT;
   const previewText = hasLongText
@@ -625,7 +626,17 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
             <Avatar name={authorName} />
             <div className="leading-tight">
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="font-semibold text-gray-900">{authorName}</div>
+                {authorId ? (
+                  <Link
+                    to={viewProfileUrl}
+                    className="font-semibold text-gray-900 hover:underline cursor-pointer"
+                    title={tr("view_profile", "View profile")}
+                  >
+                    {authorName}
+                  </Link>
+                ) : (
+                  <div className="font-semibold text-gray-900">{authorName}</div>
+                )}
 
                 <Badge
                   variant="secondary"

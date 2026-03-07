@@ -337,6 +337,9 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
 function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
   const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
   const postDetailUrl = buildPostDetailUrl(post.id);
+  const viewProfileUrl = post?.authorId
+  ? `/view-profile/${encodeURIComponent(post.authorId)}`
+  : "";
   const fullText = String(post.text || "");
   const hasLongText = fullText.length > POST_PREVIEW_TEXT_LIMIT;
   const previewText = hasLongText
@@ -403,17 +406,20 @@ function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
             <Avatar name={post.authorName} role={post.authorRole} />
             <div className="min-w-0 leading-tight">
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="font-semibold text-gray-900 truncate">{post.authorName}</div>
-                <RoleBadge role={String(post.authorRole || "").toLowerCase()} tr={tr} />
+                {post?.authorId ? (
+                  <Link
+                    to={viewProfileUrl}
+                    className="font-semibold text-gray-900 truncate hover:underline cursor-pointer"
+                    title={tr("view_profile", "View profile")}
+                  >
+                    {post.authorName}
+                  </Link>
+                ) : (
+                  <div className="font-semibold text-gray-900 truncate">{post.authorName}</div>
+                )}
+                </div>
 
-                {post.isFeatured ? (
-                  <Badge className="bg-amber-500 text-white">
-                    <Sparkles className="h-3.5 w-3.5 mr-1" />
-                    {tr("featured", "Featured")}
-                  </Badge>
-                ) : null}
-              </div>
-
+  <RoleBadge role={String(post.authorRole || "").toLowerCase()} tr={tr} />
               {(() => {
                 const authorId =
                   post?.authorId ||

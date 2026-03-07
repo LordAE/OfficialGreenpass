@@ -74,7 +74,7 @@ function isSubscribedUser(u) {
 const POST_PREVIEW_TEXT_LIMIT = 320;
 const MAX_DASHBOARD_MEDIA = 4;
 const buildPostDetailUrl = (postId) =>
-  `${createPageUrl("PostDetails")}?id=${encodeURIComponent(postId || "")}`;
+  `${createPageUrl("PostDetail")}?id=${encodeURIComponent(postId || "")}`;
 
 // 🌍 Country flag helper
 const flagUrlFromCode = (code) => {
@@ -522,6 +522,10 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
     }
   };
 
+  const viewProfileUrl = authorId
+  ? `/view-profile/${encodeURIComponent(authorId)}`
+  : "";
+
   const handleSaveEdit = async () => {
     if (!isMine || !post?.id) return;
     const next = String(editText || "").trim();
@@ -603,7 +607,17 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
             <Avatar name={authorName} />
             <div className="leading-tight">
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="font-semibold text-gray-900">{authorName}</div>
+                {authorId ? (
+                  <Link
+                    to={viewProfileUrl}
+                    className="font-semibold text-gray-900 hover:underline cursor-pointer"
+                    title={tr?.("view_profile", "View profile")}
+                  >
+                    {authorName}
+                  </Link>
+                ) : (
+                  <div className="font-semibold text-gray-900">{authorName}</div>
+                )}
 
                 <Badge
                   variant="secondary"
@@ -611,15 +625,7 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, tr, au
                 >
                   {String(authorRole || "tutor").toUpperCase()}
                 </Badge>
-
-                {post?.paid ? <Badge className="bg-zinc-900 text-white">{tr?.("paid_post","Paid Post")}</Badge> : null}
-
-                {post?.boosted_until?.seconds &&
-                new Date(post.boosted_until.seconds * 1000) > new Date() ? (
-                  <Badge className="bg-amber-500 text-white">{tr?.("boosted","BOOSTED")}</Badge>
-                ) : null}
               </div>
-
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{created ? format(created, "MMM dd, h:mm a") : "—"}</span>
                 <span>•</span>

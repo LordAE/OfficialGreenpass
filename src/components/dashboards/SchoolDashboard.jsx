@@ -111,7 +111,7 @@ const fmt = (v, fmtStr = "MMM dd, h:mm a") => {
 const POST_PREVIEW_TEXT_LIMIT = 320;
 const MAX_DASHBOARD_MEDIA = 4;
 const buildPostDetailUrl = (postId) =>
-  `${createPageUrl("PostDetails")}?id=${encodeURIComponent(postId || "")}`;
+  `${createPageUrl("PostDetail")}?id=${encodeURIComponent(postId || "")}`;
 /* --------------------------------------------------------------------- */
 
 // 🌍 Flag helper (same as Onboarding.jsx)
@@ -415,6 +415,10 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
     ? `${fullText.slice(0, POST_PREVIEW_TEXT_LIMIT).trimEnd()}…`
     : fullText;
 
+  const viewProfileUrl = authorId
+  ? `/view-profile/${encodeURIComponent(authorId)}`
+  : "";
+
   useEffect(() => {
     setEditText(String(post?.text || ""));
   }, [post?.id, post?.text]);
@@ -493,7 +497,18 @@ const RealPostCard = ({ post, currentUserId, me, subscriptionModeEnabled, author
             <Avatar name={authorName} />
             <div className="leading-tight">
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="font-semibold text-gray-900">{authorName}</div>
+                {authorId ? (
+                  <Link
+                    to={viewProfileUrl}
+                    className="font-semibold text-gray-900 hover:underline cursor-pointer"
+                    title={tr("view_profile", "View profile")}
+                  >
+                    {authorName}
+                  </Link>
+                ) : (
+                  <div className="font-semibold text-gray-900">{authorName}</div>
+                )}
+
                 <Badge
                   variant="secondary"
                   className="bg-blue-50 text-blue-700 border border-blue-100"
