@@ -67,8 +67,6 @@ import {
 import { cn } from "@/lib/utils";
 import { getLang, setLang } from "@/lib/lang";
 import { AnimatePresence, motion } from "framer-motion";
-
-import ChatWidget from "@/components/chat/ChatWidget";
 import { Button } from "@/components/ui/button";
 
 /* ---------- Firebase auth/profile ---------- */
@@ -691,7 +689,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
                 />
               </Link>
 
-              <form onSubmit={onSubmitSearch} className="hidden sm:flex items-center min-w-0">
+              <form onSubmit={onSubmitSearch} className="hidden lg:flex items-center min-w-0">
                 <div className="relative min-w-0 w-[170px] md:w-[210px] lg:w-[240px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                   <input
@@ -865,7 +863,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
               </Link>
 
-              <form onSubmit={onSubmitSearch} className="hidden sm:flex items-center min-w-0">
+              <form onSubmit={onSubmitSearch} className="hidden lg:flex items-center min-w-0">
                 <div className="relative min-w-0 w-[170px] md:w-[210px] lg:w-[240px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                   <input
@@ -976,7 +974,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
               </Link>
 
-              <form onSubmit={onSubmitSearch} className="hidden sm:flex items-center min-w-0">
+              <form onSubmit={onSubmitSearch} className="hidden lg:flex items-center min-w-0">
                 <div className="relative min-w-0 w-[170px] md:w-[210px] lg:w-[240px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                   <input
@@ -1087,7 +1085,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
               </Link>
 
-              <form onSubmit={onSubmitSearch} className="hidden sm:flex items-center min-w-0">
+              <form onSubmit={onSubmitSearch} className="hidden lg:flex items-center min-w-0">
                 <div className="relative min-w-0 w-[170px] md:w-[210px] lg:w-[240px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                   <input
@@ -1198,7 +1196,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
                 <img src={getLogoUrl()} alt={`${getCompanyName()} Super App`} className="h-8 sm:h-9 w-auto" />
               </Link>
 
-              <form onSubmit={onSubmitSearch} className="hidden sm:flex items-center min-w-0">
+              <form onSubmit={onSubmitSearch} className="hidden lg:flex items-center min-w-0">
                 <div className="relative min-w-0 w-[170px] md:w-[210px] lg:w-[240px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
                   <input
@@ -1919,7 +1917,6 @@ export default function Layout() {
     return (
       <>
         <PublicLayout getLogoUrl={getLogoUrl} getCompanyName={getCompanyName} />
-        <ChatWidget />
       </>
     );
   }
