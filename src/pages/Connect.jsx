@@ -6,7 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Filter,
   Star,
@@ -43,6 +49,8 @@ import {
   unfollowUser,
 } from "@/api/follow";
 import { ensureConversation } from "@/api/messaging";
+
+const ITEMS_PER_PAGE = 7;
 
 const createPageUrl = (pageName) => {
   switch (pageName) {
@@ -112,7 +120,11 @@ function renderStars(value, interactive = false, onPick = null) {
         className={interactive ? "transition-transform hover:scale-110" : "cursor-default"}
         disabled={!interactive}
       >
-        <Star className={`h-4 w-4 ${active ? "fill-[#f59e0b] text-[#f59e0b]" : "text-slate-300"}`} />
+        <Star
+          className={`h-4 w-4 ${
+            active ? "fill-[#f59e0b] text-[#f59e0b]" : "text-slate-300"
+          }`}
+        />
       </button>
     );
   });
@@ -127,23 +139,29 @@ function StarSummary({
   onToggle = null,
 }) {
   const rounded = Math.round(Number(value) || 0);
+
   return (
     <div className={["flex items-center gap-2", className].join(" ")}>
       <span className="text-[15px] font-semibold text-slate-800">
         {(Number(value) || 0).toFixed(1)}
       </span>
+
       <div className="flex items-center gap-0.5">
         {Array.from({ length: 5 }).map((_, i) => {
           const active = i < rounded;
           return (
             <Star
               key={i}
-              className={`h-5 w-5 ${active ? "fill-[#f59e0b] text-[#f59e0b]" : "text-[#f59e0b]"}`}
+              className={`h-5 w-5 ${
+                active ? "fill-[#f59e0b] text-[#f59e0b]" : "text-[#f59e0b]"
+              }`}
             />
           );
         })}
       </div>
+
       <span className="text-[15px] font-semibold text-[#2C5E93]">({count})</span>
+
       {withDropdown ? (
         <button
           type="button"
@@ -160,11 +178,21 @@ function StarSummary({
 
 function normalizeReviewItem(item, idx) {
   if (!item || typeof item !== "object") return null;
+
   const author =
-    item.author || item.userName || item.name || item.full_name || item.displayName || `User ${idx + 1}`;
+    item.author ||
+    item.userName ||
+    item.name ||
+    item.full_name ||
+    item.displayName ||
+    `User ${idx + 1}`;
+
   const comment = item.comment || item.text || item.message || item.review || "";
   const ratingNum = Number(item.rating || item.stars || item.score || 0);
-  const rating = Number.isFinite(ratingNum) ? Math.max(1, Math.min(5, Math.round(ratingNum))) : 5;
+  const rating = Number.isFinite(ratingNum)
+    ? Math.max(1, Math.min(5, Math.round(ratingNum)))
+    : 5;
+
   return {
     id: item.id || `review-${idx}`,
     author,
@@ -191,11 +219,7 @@ function getCountryCode(item) {
 }
 
 function getAvatar(item) {
-  const fallbackName =
-    item?.full_name ||
-    item?.name ||
-    item?.company_name ||
-    "User";
+  const fallbackName = item?.full_name || item?.name || item?.company_name || "User";
 
   return (
     item?.profile_picture ||
@@ -206,7 +230,9 @@ function getAvatar(item) {
     item?.avatarUrl ||
     item?.image ||
     item?.imageUrl ||
-    `https://ui-avatars.com/api/?background=DFE8F1&color=173562&name=${encodeURIComponent(fallbackName)}`
+    `https://ui-avatars.com/api/?background=DFE8F1&color=173562&name=${encodeURIComponent(
+      fallbackName
+    )}`
   );
 }
 
@@ -215,6 +241,7 @@ function EntityListRow({ item, isSelected, onSelect, type, tr }) {
     type === "agent"
       ? item.company_name || item.full_name || tr("unknown", "Unknown")
       : item.full_name || item.name || tr("unknown", "Unknown");
+
   const avatar = getAvatar(item);
   const countryText = getCountryText(item);
   const countryCode = getCountryCode(item);
@@ -239,6 +266,7 @@ function EntityListRow({ item, isSelected, onSelect, type, tr }) {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff1dc] text-xs font-bold text-slate-700">
             <img src={avatar} alt={name} className="h-full w-full object-cover" />
           </div>
+
           <div className="min-w-0">
             <div className="truncate text-sm font-bold text-slate-900">{name}</div>
             <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
@@ -247,6 +275,7 @@ function EntityListRow({ item, isSelected, onSelect, type, tr }) {
             </div>
           </div>
         </div>
+
         <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
       </div>
     </motion.button>
@@ -264,6 +293,7 @@ function ReviewCard({ item }) {
             initialsFromName(item.author) || "U"
           )}
         </div>
+
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div className="truncate text-sm font-bold text-slate-900">{item.author}</div>
@@ -290,12 +320,17 @@ function ReviewBreakdownDropdown({ reviews = [] }) {
     <div className="mt-3 rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="space-y-2.5">
         {distribution.map((row) => (
-          <div key={row.star} className="grid grid-cols-[88px_minmax(0,1fr)_56px] items-center gap-4">
+          <div
+            key={row.star}
+            className="grid grid-cols-[88px_minmax(0,1fr)_56px] items-center gap-4"
+          >
             <div className="text-[15px] font-medium text-[#2C5E93]">{row.star} star</div>
             <div className="h-4 overflow-hidden rounded-full border border-slate-300 bg-white">
               <div className="h-full bg-[#ff6a00]" style={{ width: `${row.percentage}%` }} />
             </div>
-            <div className="text-right text-[15px] font-medium text-[#2C5E93]">{row.percentage}%</div>
+            <div className="text-right text-[15px] font-medium text-[#2C5E93]">
+              {row.percentage}%
+            </div>
           </div>
         ))}
       </div>
@@ -367,6 +402,9 @@ function RightSideDirectoryTabs({
   onCountryChange,
   countryOptions,
   hiddenRole,
+  currentPage,
+  onPageChange,
+  itemsPerPage = 7,
 }) {
   const visibleTabs = [
     hiddenRole !== "agent"
@@ -381,32 +419,36 @@ function RightSideDirectoryTabs({
   ].filter(Boolean);
 
   const list =
-    activeTab === "agent"
-      ? agentList
-      : activeTab === "tutor"
-      ? tutorList
-      : userList;
+    activeTab === "agent" ? agentList : activeTab === "tutor" ? tutorList : userList;
+
+  const totalPages = Math.max(1, Math.ceil(list.length / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * itemsPerPage;
+  const paginatedList = list.slice(startIndex, startIndex + itemsPerPage);
 
   return (
-    <Card className="h-full rounded-[22px] sm:rounded-[26px] border border-slate-200 bg-white shadow-none">
-      <CardContent className="flex h-full min-h-0 flex-col p-3 sm:p-4 lg:p-5">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
+    <Card className="h-full overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-none sm:rounded-[26px]">
+      <CardContent className="flex h-full min-h-0 flex-col overflow-hidden p-3 sm:p-4 lg:p-5">
+        <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
               {tr("directory", "Directory")}
             </div>
-            <div className="text-xs text-slate-500">{tr("select_from_list", "Select from the list")}</div>
+            <div className="text-xs text-slate-500">
+              {tr("select_from_list", "Select from the list")}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1 sm:min-w-[170px]">
               <Select value={selectedCountry} onValueChange={onCountryChange}>
                 <SelectTrigger className="h-10 rounded-full border-slate-200 bg-white">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
                     <Filter className="h-4 w-4 shrink-0 text-slate-500" />
                     <SelectValue placeholder={tr("country", "Country")} />
                   </div>
                 </SelectTrigger>
+
                 <SelectContent>
                   <SelectItem value="all">{tr("all_countries", "All Countries")}</SelectItem>
                   {countryOptions.map((country) => (
@@ -426,8 +468,10 @@ function RightSideDirectoryTabs({
 
         <Tabs value={activeTab} onValueChange={onTabChange} className="mb-4 shrink-0">
           <TabsList
-            className="grid h-auto min-h-12 w-full rounded-2xl sm:rounded-full bg-[#eef3f8] p-1"
-            style={{ gridTemplateColumns: `repeat(${Math.max(visibleTabs.length, 1)}, minmax(0, 1fr))` }}
+            className="grid h-auto min-h-12 w-full rounded-2xl bg-[#eef3f8] p-1 sm:rounded-full"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(visibleTabs.length, 1)}, minmax(0, 1fr))`,
+            }}
           >
             {visibleTabs.map((tab) => {
               const Icon = tab.icon;
@@ -435,7 +479,7 @@ function RightSideDirectoryTabs({
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="rounded-xl sm:rounded-full data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white"
+                  className="rounded-xl data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white sm:rounded-full"
                 >
                   <Icon className="mr-2 h-4 w-4" />
                   <span className="truncate">{tab.label}</span>
@@ -448,7 +492,7 @@ function RightSideDirectoryTabs({
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           <div className="space-y-2.5">
             {list.length ? (
-              list.map((item) => (
+              paginatedList.map((item) => (
                 <EntityListRow
                   key={item.id}
                   item={item}
@@ -469,6 +513,34 @@ function RightSideDirectoryTabs({
             )}
           </div>
         </div>
+
+        {list.length > itemsPerPage ? (
+          <div className="mt-4 flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onPageChange(Math.max(1, safePage - 1))}
+              disabled={safePage === 1}
+              className="rounded-full"
+            >
+              Previous
+            </Button>
+
+            <div className="text-sm font-medium text-slate-600">
+              Page {safePage} of {totalPages}
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onPageChange(Math.min(totalPages, safePage + 1))}
+              disabled={safePage === totalPages}
+              className="rounded-full"
+            >
+              Next
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -514,6 +586,8 @@ export default function Connect() {
   const [userHasSelected, setUserHasSelected] = useState(false);
   const [lockedDisplay, setLockedDisplay] = useState(null);
 
+  const [currentPage, setCurrentPage] = useState(1);
+
   const [followState, setFollowState] = useState({
     following: false,
     requested: false,
@@ -534,18 +608,20 @@ export default function Connect() {
     const byId = new Map();
 
     await Promise.all(
-      roles.flatMap((role) => [
-        query(usersRef, where("user_type", "==", role)),
-        query(usersRef, where("userType", "==", role)),
-        query(usersRef, where("role", "==", role)),
-        query(usersRef, where("selected_role", "==", role)),
-      ]).map(async (q1) => {
-        const snap = await getDocs(q1);
-        snap.forEach((docSnap) => {
-          const d = docSnap.data() || {};
-          byId.set(docSnap.id, { id: docSnap.id, ...d });
-        });
-      })
+      roles
+        .flatMap((role) => [
+          query(usersRef, where("user_type", "==", role)),
+          query(usersRef, where("userType", "==", role)),
+          query(usersRef, where("role", "==", role)),
+          query(usersRef, where("selected_role", "==", role)),
+        ])
+        .map(async (q1) => {
+          const snap = await getDocs(q1);
+          snap.forEach((docSnap) => {
+            const d = docSnap.data() || {};
+            byId.set(docSnap.id, { id: docSnap.id, ...d });
+          });
+        })
     );
 
     return Array.from(byId.values());
@@ -563,6 +639,7 @@ export default function Connect() {
 
       try {
         let myDoc = null;
+
         if (fbUser?.uid) {
           myDoc = await getUserDoc(fbUser.uid);
           setCurrentUserDoc(myDoc);
@@ -600,7 +677,8 @@ export default function Connect() {
   useEffect(() => {
     const filterByCountry = (u) =>
       selectedCountry === "all" ||
-      String(u.country || u.selected_country || u.countryName || "").toLowerCase() === selectedCountry.toLowerCase();
+      String(u.country || u.selected_country || u.countryName || "").toLowerCase() ===
+        selectedCountry.toLowerCase();
 
     setFilteredAgents(allAgents.filter(filterByCountry));
     setFilteredTutors(allTutors.filter(filterByCountry));
@@ -636,6 +714,10 @@ export default function Connect() {
     }
   }, [myRole, activeTab]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, selectedCountry]);
+
   const fallbackSelectedEntity = useMemo(() => {
     if (activeTab === "agent") {
       return filteredAgents.find((x) => x.id === selectedAgentId) || filteredAgents[0] || null;
@@ -644,15 +726,25 @@ export default function Connect() {
       return filteredTutors.find((x) => x.id === selectedTutorId) || filteredTutors[0] || null;
     }
     return filteredUsers.find((x) => x.id === selectedUserId) || filteredUsers[0] || null;
-  }, [activeTab, filteredAgents, filteredTutors, filteredUsers, selectedAgentId, selectedTutorId, selectedUserId]);
+  }, [
+    activeTab,
+    filteredAgents,
+    filteredTutors,
+    filteredUsers,
+    selectedAgentId,
+    selectedTutorId,
+    selectedUserId,
+  ]);
 
   const displayedEntity = userHasSelected && lockedDisplay ? lockedDisplay : fallbackSelectedEntity;
+
   const displayedRole =
     displayedEntity?.user_type ||
     displayedEntity?.userType ||
     displayedEntity?.role ||
     displayedEntity?.selected_role ||
     activeTab;
+
   const displayedEntityId = displayedEntity?.id || null;
 
   const normalizedDisplayedRole = useMemo(() => {
@@ -665,7 +757,9 @@ export default function Connect() {
     return !!auth?.currentUser?.uid && !!displayedEntityId && auth.currentUser.uid === displayedEntityId;
   }, [displayedEntityId]);
 
-  const showFollowButton = normalizedDisplayedRole === "agent" || normalizedDisplayedRole === "tutor";
+  const showFollowButton =
+    normalizedDisplayedRole === "agent" || normalizedDisplayedRole === "tutor";
+
   const showReviewsSection = normalizedDisplayedRole !== "user";
 
   useEffect(() => {
@@ -743,11 +837,7 @@ export default function Connect() {
 
   const countryOptions = useMemo(() => {
     const list =
-      activeTab === "agent"
-        ? allAgents
-        : activeTab === "tutor"
-        ? allTutors
-        : allUsers;
+      activeTab === "agent" ? allAgents : activeTab === "tutor" ? allTutors : allUsers;
 
     return Array.from(
       new Set(
@@ -763,7 +853,10 @@ export default function Connect() {
     let cancelled = false;
 
     const roleForReviews =
-      displayedRole === "agent" || displayedRole === "tutor" || displayedRole === "user" || displayedRole === "student"
+      displayedRole === "agent" ||
+      displayedRole === "tutor" ||
+      displayedRole === "user" ||
+      displayedRole === "student"
         ? displayedRole === "student"
           ? "user"
           : displayedRole
@@ -776,6 +869,7 @@ export default function Connect() {
       }
 
       setReviewsLoading(true);
+
       try {
         const reviewsRef = collection(db, "profile_reviews");
         const reviewsQuery = query(
@@ -831,23 +925,15 @@ export default function Connect() {
     const prevState = { ...followState };
 
     if (followState.following) {
-      setFollowState({
-        following: false,
-        requested: false,
-      });
+      setFollowState({ following: false, requested: false });
     } else if (followState.requested) {
-      setFollowState({
-        following: false,
-        requested: false,
-      });
+      setFollowState({ following: false, requested: false });
     } else {
-      setFollowState({
-        following: false,
-        requested: true,
-      });
+      setFollowState({ following: false, requested: true });
     }
 
     setFollowLoading(true);
+
     try {
       if (prevState.following) {
         await unfollowUser({
@@ -883,6 +969,7 @@ export default function Connect() {
     if (!displayedEntityId || isOwnProfile || messageLoading) return;
 
     setMessageLoading(true);
+
     try {
       const convo = await ensureConversation({
         meId: auth.currentUser.uid,
@@ -899,7 +986,8 @@ export default function Connect() {
         convo?.docId ||
         "";
 
-      const targetRoleParam = normalizedDisplayedRole === "user" ? "student" : normalizedDisplayedRole;
+      const targetRoleParam =
+        normalizedDisplayedRole === "user" ? "student" : normalizedDisplayedRole;
 
       const qs = new URLSearchParams();
       qs.set("to", displayedEntityId);
@@ -920,6 +1008,7 @@ export default function Connect() {
 
   const handleSubmitReview = async () => {
     const text = String(reviewText || "").trim();
+
     if (!text) {
       alert(tr("review_required", "Please write a comment first."));
       return;
@@ -936,7 +1025,10 @@ export default function Connect() {
     }
 
     const roleForReviews =
-      displayedRole === "agent" || displayedRole === "tutor" || displayedRole === "user" || displayedRole === "student"
+      displayedRole === "agent" ||
+      displayedRole === "tutor" ||
+      displayedRole === "user" ||
+      displayedRole === "student"
         ? displayedRole === "student"
           ? "user"
           : displayedRole
@@ -988,6 +1080,7 @@ export default function Connect() {
   const handleTabChange = (value) => {
     setActiveTab(value);
     setSelectedCountry("all");
+    setCurrentPage(1);
 
     if (value === "agent" && !selectedAgentId && filteredAgents.length) {
       setSelectedAgentId(filteredAgents[0].id);
@@ -1036,6 +1129,7 @@ export default function Connect() {
   const countryCode = getCountryCode(displayedEntity || {});
   const maskedEmail = maskEmail(getEmail(displayedEntity || {}));
   const maskedPhone = maskPhone(getPhone(displayedEntity || {}));
+
   const headline =
     displayedRole === "agent"
       ? displayedEntity?.full_name || tr("agent_representative", "Agent Representative")
@@ -1057,8 +1151,8 @@ export default function Connect() {
 
   if (loading) {
     return (
-      <div className="min-h-[calc(100vh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-        <div className="mx-auto flex min-h-[calc(100vh-88px)] max-w-[1600px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+      <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
+        <div className="mx-auto flex h-full max-w-[1600px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
           <Loader2 className="h-12 w-12 animate-spin text-[#0f2f63]" />
         </div>
       </div>
@@ -1067,8 +1161,8 @@ export default function Connect() {
 
   if (error) {
     return (
-      <div className="min-h-[calc(100vh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-        <div className="mx-auto flex min-h-[calc(100vh-88px)] max-w-4xl items-center justify-center rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+      <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
+        <div className="mx-auto flex h-full max-w-4xl items-center justify-center rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
           <div>
             <AlertCircle className="mx-auto mb-4 h-14 w-14 text-red-500" />
             <div className="text-2xl font-extrabold text-slate-900">Unable to Load Directory</div>
@@ -1080,15 +1174,15 @@ export default function Connect() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-      <div className="mx-auto flex min-h-[calc(100vh-88px)] max-w-[1500px] flex-col">
-        <div className="flex min-h-0 flex-1 overflow-hidden rounded-[22px] sm:rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-          <div className="min-h-0 flex-1 p-2 sm:p-3 lg:p-4">
+    <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
+      <div className="mx-auto flex h-full max-w-[1500px] flex-col overflow-hidden">
+        <div className="flex h-full min-h-0 flex-1 overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)] sm:rounded-[28px]">
+          <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-4">
             <div
               className={
                 userHasSelected
-                  ? "grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,1.18fr)_minmax(360px,0.98fr)]"
-                  : "grid h-full min-h-0 grid-cols-1"
+                  ? "grid h-full min-h-0 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1.18fr)_minmax(360px,0.98fr)]"
+                  : "grid h-full min-h-0 grid-cols-1 overflow-hidden"
               }
             >
               <AnimatePresence initial={false} mode="wait">
@@ -1096,31 +1190,35 @@ export default function Connect() {
                   <motion.div
                     key={`detail-${displayedRole}-${displayedEntityId || "selected"}`}
                     layout
-                    className="min-h-0 h-full order-2 xl:order-1"
+                    className="order-2 h-full min-h-0 overflow-hidden xl:order-1"
                     initial={{ opacity: 0, x: -18, scale: 0.985 }}
                     animate={{ opacity: 1, x: 0, scale: 1 }}
                     exit={{ opacity: 0, x: 18, scale: 0.985 }}
                     transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    <Card className="h-full overflow-hidden rounded-[20px] sm:rounded-[24px] border border-slate-200 bg-[#f8fbff] shadow-none xl:min-w-0">
-                      <CardContent className="flex h-full flex-col overflow-hidden p-3 sm:p-4">
-                        <div className="min-h-0 flex-1 rounded-[20px] sm:rounded-[26px] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
-                          <div className="grid gap-3 xl:grid-cols-[0.88fr_1.42fr]">
+                    <Card className="h-full overflow-hidden rounded-[20px] border border-slate-200 bg-[#f8fbff] shadow-none sm:rounded-[24px] xl:min-w-0">
+                      <CardContent className="flex h-full min-h-0 flex-col overflow-hidden p-3 sm:p-4">
+                        <div className="flex h-full min-h-0 flex-col rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm sm:rounded-[26px] sm:p-4">
+                          <div
+                            className={`grid shrink-0 gap-3 ${
+                              showReviewsSection ? "xl:grid-cols-[0.88fr_1.42fr]" : "xl:grid-cols-[0.88fr_1.42fr]"
+                            }`}
+                          >
                             <div className="rounded-[22px] border border-slate-100 bg-white p-3 shadow-sm">
                               <div className="mx-auto flex h-32 w-full items-center justify-center overflow-hidden rounded-[20px] bg-[#dfe8f1] text-4xl font-bold text-[#173562] sm:h-40">
                                 <img src={avatar} alt={name} className="h-full w-full object-cover" />
                               </div>
 
-                              <div className="mt-3 text-center text-[22px] sm:text-[28px] font-extrabold leading-tight tracking-tight text-[#0f2f63] line-clamp-2">
+                              <div className="mt-3 line-clamp-2 text-center text-[22px] font-extrabold leading-tight tracking-tight text-[#0f2f63] sm:text-[28px]">
                                 {name}
                               </div>
 
                               <div className="mt-1.5 text-center text-xs text-slate-500">{headline}</div>
 
                               <div className="mt-2 flex items-center justify-center gap-2">
-                                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 shadow-sm max-w-full">
+                                <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 shadow-sm">
                                   <CountryFlag code={countryCode} />
-                                  <span className="truncate max-w-[140px]">{countryText}</span>
+                                  <span className="max-w-[140px] truncate">{countryText}</span>
                                 </div>
                               </div>
                             </div>
@@ -1129,11 +1227,11 @@ export default function Connect() {
                               <div className="relative">
                                 <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
                                   <div className="flex items-start justify-between gap-3">
-                                    <div className="text-[20px] sm:text-[22px] font-extrabold leading-none text-slate-700">
+                                    <div className="text-[20px] font-extrabold leading-none text-slate-700 sm:text-[22px]">
                                       Success Rate
                                     </div>
 
-                                    <div className="text-[20px] sm:text-[22px] font-extrabold leading-none text-[#2C5E93]">
+                                    <div className="text-[20px] font-extrabold leading-none text-[#2C5E93] sm:text-[22px]">
                                       {`${Math.round((averageRating / 5) * 100)}%`}
                                     </div>
                                   </div>
@@ -1167,17 +1265,29 @@ export default function Connect() {
                               <div className="rounded-[18px] border border-slate-100 bg-white px-3 py-2.5 shadow-sm">
                                 <div className="flex min-w-0 items-center gap-3">
                                   <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff1dc] text-sm font-bold text-slate-700">
-                                    <img src={avatar} alt={personName} className="h-full w-full object-cover" />
+                                    <img
+                                      src={avatar}
+                                      alt={personName}
+                                      className="h-full w-full object-cover"
+                                    />
                                   </div>
 
                                   <div className="min-w-0">
-                                    <div className="truncate text-sm font-bold text-slate-900">{maskedEmail}</div>
-                                    <div className="truncate text-xs text-slate-500">{maskedPhone}</div>
+                                    <div className="truncate text-sm font-bold text-slate-900">
+                                      {maskedEmail}
+                                    </div>
+                                    <div className="truncate text-xs text-slate-500">
+                                      {maskedPhone}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
 
-                              <div className={`grid gap-3 ${showFollowButton ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+                              <div
+                                className={`grid gap-3 ${
+                                  showFollowButton ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
+                                }`}
+                              >
                                 {showFollowButton ? (
                                   <Button
                                     type="button"
@@ -1186,10 +1296,10 @@ export default function Connect() {
                                     className={[
                                       "h-11 rounded-full px-4 text-sm font-bold text-white",
                                       followState.following
-                                      ? "bg-slate-700 hover:bg-slate-800"
-                                      : followState.requested
-                                      ? "bg-slate-500 hover:bg-slate-600"
-                                      : "bg-[#ff9500] hover:bg-[#ea8a00]",
+                                        ? "bg-slate-700 hover:bg-slate-800"
+                                        : followState.requested
+                                        ? "bg-slate-500 hover:bg-slate-600"
+                                        : "bg-[#ff9500] hover:bg-[#ea8a00]",
                                     ].join(" ")}
                                   >
                                     {followLoading ? (
@@ -1221,28 +1331,38 @@ export default function Connect() {
                           </div>
 
                           {showReviewsSection ? (
-                            <div className="mt-4 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-[20px] sm:rounded-[24px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm">
-                              <div className="mb-3 flex items-center justify-between gap-3">
+                            <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm sm:rounded-[24px]">
+                              <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
                                 <div>
-                                  <div className="text-base font-extrabold text-slate-900">{tr("reviews", "Reviews")}</div>
+                                  <div className="text-base font-extrabold text-slate-900">
+                                    {tr("reviews", "Reviews")}
+                                  </div>
                                   <div className="text-xs text-slate-500">
                                     {tr("reviews_subtitle", "See comments and leave a rating")}
                                   </div>
                                 </div>
-                                <StarSummary value={averageRating} count={reviewCount} className="justify-end" />
+
+                                <StarSummary
+                                  value={averageRating}
+                                  count={reviewCount}
+                                  className="justify-end"
+                                />
                               </div>
 
-                              <div className="min-h-0 overflow-y-auto pr-1">
+                              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                                 <div className="space-y-2.5">
                                   {reviewsLoading ? (
                                     <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
                                       {tr("loading_reviews", "Loading reviews...")}
                                     </div>
                                   ) : reviews.length ? (
-                                    reviews.slice(0, 3).map((item) => <ReviewCard key={item.id} item={item} />)
+                                    reviews.map((item) => <ReviewCard key={item.id} item={item} />)
                                   ) : (
                                     <div className="rounded-[18px] border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
-                                      {tr("no_reviews_yet", "No reviews yet. Be the first to leave a comment.")}
+                                      {tr(
+                                        "no_reviews_yet",
+                                        "No reviews yet. Be the first to leave a comment."
+                                      )}
                                     </div>
                                   )}
 
@@ -1252,9 +1372,9 @@ export default function Connect() {
                                       {tr("leave_review", "Leave a review")}
                                     </div>
 
-                                    <div className="mt-3 flex items-center gap-1 flex-wrap">
+                                    <div className="mt-3 flex flex-wrap items-center gap-1">
                                       {renderStars(reviewRating, true, setReviewRating)}
-                                      <span className="ml-0 sm:ml-2 text-xs text-slate-500">
+                                      <span className="ml-0 text-xs text-slate-500 sm:ml-2">
                                         {tr("choose_rating", "Choose up to 5 stars")}
                                       </span>
                                     </div>
@@ -1293,9 +1413,9 @@ export default function Connect() {
                 initial={{ opacity: 0.98 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                className={userHasSelected ? "h-full min-h-0 order-1 xl:order-2" : "h-full min-h-0 w-full"}
+                className={userHasSelected ? "order-1 h-full min-h-0 overflow-hidden xl:order-2" : "h-full min-h-0 w-full overflow-hidden"}
               >
-                <div className="h-full min-h-0 xl:min-w-[420px]">
+                <div className="h-full min-h-0 overflow-hidden xl:min-w-[420px]">
                   <RightSideDirectoryTabs
                     tr={tr}
                     activeTab={activeTab}
@@ -1309,6 +1429,9 @@ export default function Connect() {
                     onCountryChange={setSelectedCountry}
                     countryOptions={countryOptions}
                     hiddenRole={myRole}
+                    currentPage={currentPage}
+                    onPageChange={setCurrentPage}
+                    itemsPerPage={ITEMS_PER_PAGE}
                   />
                 </div>
               </motion.div>
