@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,9 @@ import {
   Loader2,
   AlertCircle,
   Users,
+  UserPlus,
+  UserMinus,
+  Send,
 } from "lucide-react";
 
 import { auth, db } from "@/firebase";
@@ -29,10 +33,16 @@ import {
   where,
   doc,
   getDoc,
-  updateDoc,
   serverTimestamp,
   addDoc,
 } from "firebase/firestore";
+import {
+  listenFollowState,
+  sendFollowRequest,
+  cancelFollowRequest,
+  unfollowUser,
+} from "@/api/follow";
+import { ensureConversation } from "@/api/messaging";
 
 const createPageUrl = (pageName) => {
   switch (pageName) {
@@ -378,20 +388,22 @@ function RightSideDirectoryTabs({
       : userList;
 
   return (
-    <Card className="h-full rounded-[26px] border border-slate-200 bg-white shadow-none">
-      <CardContent className="flex h-full min-h-0 flex-col p-4 sm:p-5">
-        <div className="mb-4 flex items-start justify-between gap-3">
+    <Card className="h-full rounded-[22px] sm:rounded-[26px] border border-slate-200 bg-white shadow-none">
+      <CardContent className="flex h-full min-h-0 flex-col p-3 sm:p-4 lg:p-5">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="text-2xl font-extrabold tracking-tight text-slate-900">{tr("directory", "Directory")}</div>
+            <div className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
+              {tr("directory", "Directory")}
+            </div>
             <div className="text-xs text-slate-500">{tr("select_from_list", "Select from the list")}</div>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="min-w-[170px]">
+            <div className="min-w-0 flex-1 sm:min-w-[170px]">
               <Select value={selectedCountry} onValueChange={onCountryChange}>
                 <SelectTrigger className="h-10 rounded-full border-slate-200 bg-white">
-                  <div className="flex items-center gap-2">
-                    <Filter className="h-4 w-4 text-slate-500" />
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Filter className="h-4 w-4 shrink-0 text-slate-500" />
                     <SelectValue placeholder={tr("country", "Country")} />
                   </div>
                 </SelectTrigger>
@@ -406,7 +418,7 @@ function RightSideDirectoryTabs({
               </Select>
             </div>
 
-            <Badge className="rounded-full bg-[#0f2f63] px-4 py-2 text-white hover:bg-[#0f2f63]">
+            <Badge className="shrink-0 rounded-full bg-[#0f2f63] px-4 py-2 text-white hover:bg-[#0f2f63]">
               {list.length}
             </Badge>
           </div>
@@ -414,7 +426,7 @@ function RightSideDirectoryTabs({
 
         <Tabs value={activeTab} onValueChange={onTabChange} className="mb-4 shrink-0">
           <TabsList
-            className="grid h-12 w-full rounded-full bg-[#eef3f8] p-1"
+            className="grid h-auto min-h-12 w-full rounded-2xl sm:rounded-full bg-[#eef3f8] p-1"
             style={{ gridTemplateColumns: `repeat(${Math.max(visibleTabs.length, 1)}, minmax(0, 1fr))` }}
           >
             {visibleTabs.map((tab) => {
@@ -423,10 +435,10 @@ function RightSideDirectoryTabs({
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="rounded-full data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white"
+                  className="rounded-xl sm:rounded-full data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white"
                 >
                   <Icon className="mr-2 h-4 w-4" />
-                  {tab.label}
+                  <span className="truncate">{tab.label}</span>
                 </TabsTrigger>
               );
             })}
@@ -464,6 +476,7 @@ function RightSideDirectoryTabs({
 
 export default function Connect() {
   const { tr } = useTr("connect");
+  const navigate = useNavigate();
 
   const [currentUserDoc, setCurrentUserDoc] = useState(null);
 
@@ -501,9 +514,12 @@ export default function Connect() {
   const [userHasSelected, setUserHasSelected] = useState(false);
   const [lockedDisplay, setLockedDisplay] = useState(null);
 
-  const [selectingAgent, setSelectingAgent] = useState(null);
-  const [assignedAgent, setAssignedAgent] = useState(null);
-  const [pendingAgent, setPendingAgent] = useState(null);
+  const [followState, setFollowState] = useState({
+    following: false,
+    requested: false,
+  });
+  const [followLoading, setFollowLoading] = useState(false);
+  const [messageLoading, setMessageLoading] = useState(false);
 
   const [reviewText, setReviewText] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
@@ -540,40 +556,6 @@ export default function Connect() {
     return snap.exists() ? { id: uid, ...snap.data() } : null;
   }, []);
 
-  const fetchAssignedAgent = useCallback(async (user) => {
-    if (!user?.assigned_agent_id) {
-      setAssignedAgent(null);
-      return null;
-    }
-
-    try {
-      const agentUser = await getUserDoc(user.assigned_agent_id);
-      setAssignedAgent(agentUser);
-      return agentUser;
-    } catch {
-      setAssignedAgent(null);
-      return null;
-    }
-  }, [getUserDoc]);
-
-  const fetchPendingAgent = useCallback(async (user) => {
-    const req = user?.agent_reassignment_request;
-    const targetId = req?.new_agent_id;
-    if (!targetId || req?.status !== "pending") {
-      setPendingAgent(null);
-      return null;
-    }
-
-    try {
-      const agentUser = await getUserDoc(targetId);
-      setPendingAgent(agentUser);
-      return agentUser;
-    } catch {
-      setPendingAgent(null);
-      return null;
-    }
-  }, [getUserDoc]);
-
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       setLoading(true);
@@ -604,14 +586,6 @@ export default function Connect() {
         if (agents.length) setSelectedAgentId((prev) => prev || agents[0].id);
         if (tutors.length) setSelectedTutorId((prev) => prev || tutors[0].id);
         if (users.length) setSelectedUserId((prev) => prev || users[0].id);
-
-        if (myDoc) {
-          await fetchAssignedAgent(myDoc);
-          await fetchPendingAgent(myDoc);
-        } else {
-          setAssignedAgent(null);
-          setPendingAgent(null);
-        }
       } catch (e) {
         console.error(e);
         setError("Failed to load directory. Please try again later.");
@@ -621,7 +595,7 @@ export default function Connect() {
     });
 
     return () => unsub && unsub();
-  }, [fetchAssignedAgent, fetchPendingAgent, fetchUsersForRole, getUserDoc]);
+  }, [fetchUsersForRole, getUserDoc]);
 
   useEffect(() => {
     const filterByCountry = (u) =>
@@ -681,6 +655,19 @@ export default function Connect() {
     activeTab;
   const displayedEntityId = displayedEntity?.id || null;
 
+  const normalizedDisplayedRole = useMemo(() => {
+    const raw = String(displayedRole || activeTab || "").trim().toLowerCase();
+    if (raw === "student") return "user";
+    return raw;
+  }, [displayedRole, activeTab]);
+
+  const isOwnProfile = useMemo(() => {
+    return !!auth?.currentUser?.uid && !!displayedEntityId && auth.currentUser.uid === displayedEntityId;
+  }, [displayedEntityId]);
+
+  const showFollowButton = normalizedDisplayedRole === "agent" || normalizedDisplayedRole === "tutor";
+  const showReviewsSection = normalizedDisplayedRole !== "user";
+
   useEffect(() => {
     setLocalReviews([]);
     setReviewText("");
@@ -697,6 +684,43 @@ export default function Connect() {
       setLockedDisplay(refreshed);
     }
   }, [allAgents, allTutors, allUsers, lockedDisplay?.id, userHasSelected]);
+
+  useEffect(() => {
+    if (!auth?.currentUser?.uid || !displayedEntityId || !showFollowButton || isOwnProfile) {
+      setFollowState({
+        following: false,
+        requested: false,
+      });
+      return;
+    }
+
+    let unsub = null;
+
+    try {
+      unsub = listenFollowState(
+        {
+          meId: auth.currentUser.uid,
+          targetId: displayedEntityId,
+        },
+        (nextState) => {
+          setFollowState({
+            following: !!nextState?.following,
+            requested: !!nextState?.requested,
+          });
+        }
+      );
+    } catch (err) {
+      console.error("Failed to listen to follow state:", err);
+      setFollowState({
+        following: false,
+        requested: false,
+      });
+    }
+
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, [displayedEntityId, showFollowButton, isOwnProfile]);
 
   const reviews = useMemo(() => {
     const source = Array.isArray(displayedEntity?.reviews)
@@ -746,7 +770,7 @@ export default function Connect() {
         : activeTab;
 
     const loadReviews = async () => {
-      if (!displayedEntity?.id) {
+      if (!displayedEntity?.id || !showReviewsSection) {
         setRemoteReviews([]);
         return;
       }
@@ -794,46 +818,103 @@ export default function Connect() {
     return () => {
       cancelled = true;
     };
-  }, [displayedEntity?.id, displayedRole, activeTab]);
+  }, [displayedEntity?.id, displayedRole, activeTab, showReviewsSection]);
 
-  const handleSelectAgent = async (agent) => {
-    if (!currentUserDoc) {
+  const handleFollowClick = async () => {
+    if (!auth?.currentUser?.uid) {
       window.location.href = createPageUrl("Welcome");
       return;
     }
 
-    if (currentUserDoc?.assigned_agent_id) {
-      alert("You already have an assigned agent. Please contact support if you need to change your agent.");
-      return;
+    if (!displayedEntityId || !showFollowButton || isOwnProfile || followLoading) return;
+
+    const prevState = { ...followState };
+
+    if (followState.following) {
+      setFollowState({
+        following: false,
+        requested: false,
+      });
+    } else if (followState.requested) {
+      setFollowState({
+        following: false,
+        requested: false,
+      });
+    } else {
+      setFollowState({
+        following: false,
+        requested: true,
+      });
     }
 
-    if (currentUserDoc?.agent_reassignment_request?.status === "pending") {
-      alert("You already have a pending agent request. Please wait for admin approval.");
-      return;
-    }
-
-    setSelectingAgent(agent.id);
+    setFollowLoading(true);
     try {
-      const uref = doc(db, "users", currentUserDoc.id);
+      if (prevState.following) {
+        await unfollowUser({
+          followerId: auth.currentUser.uid,
+          followeeId: displayedEntityId,
+        });
+      } else if (prevState.requested) {
+        await cancelFollowRequest({
+          followerId: auth.currentUser.uid,
+          followeeId: displayedEntityId,
+        });
+      } else {
+        await sendFollowRequest({
+          followerId: auth.currentUser.uid,
+          followeeId: displayedEntityId,
+        });
+      }
+    } catch (err) {
+      console.error("Follow action failed:", err);
+      setFollowState(prevState);
+      alert(tr("follow_action_failed", "Could not update follow status right now."));
+    } finally {
+      setFollowLoading(false);
+    }
+  };
 
-      await updateDoc(uref, {
-        agent_reassignment_request: {
-          status: "pending",
-          new_agent_id: agent.id,
-          requested_at: serverTimestamp(),
-          requested_by: currentUserDoc.id,
-        },
+  const handleMessageClick = async () => {
+    if (!auth?.currentUser?.uid) {
+      window.location.href = createPageUrl("Welcome");
+      return;
+    }
+
+    if (!displayedEntityId || isOwnProfile || messageLoading) return;
+
+    setMessageLoading(true);
+    try {
+      const convo = await ensureConversation({
+        meId: auth.currentUser.uid,
+        meDoc: currentUserDoc || null,
+        targetId: displayedEntityId,
+        targetRole: normalizedDisplayedRole,
+        source: "connect",
       });
 
-      const updatedUser = await getUserDoc(currentUserDoc.id);
-      setCurrentUserDoc(updatedUser || currentUserDoc);
-      await fetchPendingAgent(updatedUser || currentUserDoc);
-      alert("Request submitted. An admin will verify and assign your selected agent.");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to submit request. Please try again.");
+      const conversationId =
+        convo?.id ||
+        convo?.conversationId ||
+        convo?.conversation_id ||
+        convo?.docId ||
+        "";
+
+      const targetRoleParam = normalizedDisplayedRole === "user" ? "student" : normalizedDisplayedRole;
+
+      const qs = new URLSearchParams();
+      qs.set("to", displayedEntityId);
+      qs.set("toRole", targetRoleParam);
+
+      if (conversationId) {
+        qs.set("conversation", conversationId);
+      }
+
+      navigate(`${createPageUrl("Messages")}?${qs.toString()}`);
+    } catch (err) {
+      console.error("Failed to open conversation:", err);
+      alert(tr("message_open_failed", "Could not open the conversation right now."));
     } finally {
-      setSelectingAgent(null);
+      setMessageLoading(false);
     }
   };
 
@@ -849,7 +930,7 @@ export default function Connect() {
       return;
     }
 
-    if (!displayedEntity?.id) {
+    if (!displayedEntity?.id || !showReviewsSection) {
       alert(tr("select_profile_first", "Please select a profile first."));
       return;
     }
@@ -962,10 +1043,22 @@ export default function Connect() {
       ? displayedEntity?.headline || displayedEntity?.title || tr("user", "User")
       : displayedEntity?.headline || displayedEntity?.title || tr("tutor", "Tutor");
 
+  const followButtonLabel = useMemo(() => {
+    if (followLoading) return tr("please_wait", "Please wait...");
+    if (followState.following) return tr("following", "Following");
+    if (followState.requested) return tr("requested", "Requested");
+    return tr("follow", "Follow");
+  }, [followLoading, followState, tr]);
+
+  const messageButtonLabel = useMemo(() => {
+    if (messageLoading) return tr("opening", "Opening...");
+    return tr("message", "Message");
+  }, [messageLoading, tr]);
+
   if (loading) {
     return (
-      <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-        <div className="mx-auto flex h-full max-w-[1600px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+      <div className="min-h-[calc(100vh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
+        <div className="mx-auto flex min-h-[calc(100vh-88px)] max-w-[1600px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
           <Loader2 className="h-12 w-12 animate-spin text-[#0f2f63]" />
         </div>
       </div>
@@ -974,8 +1067,8 @@ export default function Connect() {
 
   if (error) {
     return (
-      <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-        <div className="mx-auto flex h-full max-w-4xl items-center justify-center rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+      <div className="min-h-[calc(100vh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
+        <div className="mx-auto flex min-h-[calc(100vh-88px)] max-w-4xl items-center justify-center rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
           <div>
             <AlertCircle className="mx-auto mb-4 h-14 w-14 text-red-500" />
             <div className="text-2xl font-extrabold text-slate-900">Unable to Load Directory</div>
@@ -987,39 +1080,45 @@ export default function Connect() {
   }
 
   return (
-    <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-      <div className="mx-auto flex h-full max-w-[1500px] flex-col">
-        <div className="flex min-h-0 flex-1 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+    <div className="min-h-[calc(100vh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
+      <div className="mx-auto flex min-h-[calc(100vh-88px)] max-w-[1500px] flex-col">
+        <div className="flex min-h-0 flex-1 overflow-hidden rounded-[22px] sm:rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
           <div className="min-h-0 flex-1 p-2 sm:p-3 lg:p-4">
-            <div className={userHasSelected ? "grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,1.18fr)_minmax(400px,0.98fr)]" : "grid h-full min-h-0 grid-cols-1"}>
+            <div
+              className={
+                userHasSelected
+                  ? "grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,1.18fr)_minmax(360px,0.98fr)]"
+                  : "grid h-full min-h-0 grid-cols-1"
+              }
+            >
               <AnimatePresence initial={false} mode="wait">
                 {userHasSelected && displayedEntity ? (
                   <motion.div
                     key={`detail-${displayedRole}-${displayedEntityId || "selected"}`}
                     layout
-                    className="min-h-0 h-full"
+                    className="min-h-0 h-full order-2 xl:order-1"
                     initial={{ opacity: 0, x: -18, scale: 0.985 }}
                     animate={{ opacity: 1, x: 0, scale: 1 }}
                     exit={{ opacity: 0, x: 18, scale: 0.985 }}
                     transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    <Card className="h-full overflow-hidden rounded-[24px] border border-slate-200 bg-[#f8fbff] shadow-none xl:min-w-0">
+                    <Card className="h-full overflow-hidden rounded-[20px] sm:rounded-[24px] border border-slate-200 bg-[#f8fbff] shadow-none xl:min-w-0">
                       <CardContent className="flex h-full flex-col overflow-hidden p-3 sm:p-4">
-                        <div className="min-h-0 flex-1 rounded-[26px] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                        <div className="min-h-0 flex-1 rounded-[20px] sm:rounded-[26px] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
                           <div className="grid gap-3 xl:grid-cols-[0.88fr_1.42fr]">
                             <div className="rounded-[22px] border border-slate-100 bg-white p-3 shadow-sm">
                               <div className="mx-auto flex h-32 w-full items-center justify-center overflow-hidden rounded-[20px] bg-[#dfe8f1] text-4xl font-bold text-[#173562] sm:h-40">
                                 <img src={avatar} alt={name} className="h-full w-full object-cover" />
                               </div>
 
-                              <div className="mt-3 text-center text-[24px] font-extrabold leading-tight tracking-tight text-[#0f2f63] sm:text-[28px] line-clamp-2">
+                              <div className="mt-3 text-center text-[22px] sm:text-[28px] font-extrabold leading-tight tracking-tight text-[#0f2f63] line-clamp-2">
                                 {name}
                               </div>
 
                               <div className="mt-1.5 text-center text-xs text-slate-500">{headline}</div>
 
                               <div className="mt-2 flex items-center justify-center gap-2">
-                                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 shadow-sm">
+                                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 shadow-sm max-w-full">
                                   <CountryFlag code={countryCode} />
                                   <span className="truncate max-w-[140px]">{countryText}</span>
                                 </div>
@@ -1029,12 +1128,12 @@ export default function Connect() {
                             <div className="flex flex-col gap-3">
                               <div className="relative">
                                 <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
-                                  <div className="flex items-start justify-between">
-                                    <div className="text-[22px] font-extrabold leading-none text-slate-700">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="text-[20px] sm:text-[22px] font-extrabold leading-none text-slate-700">
                                       Success Rate
                                     </div>
 
-                                    <div className="mr-10 text-[22px] font-extrabold leading-none text-[#2C5E93]">
+                                    <div className="text-[20px] sm:text-[22px] font-extrabold leading-none text-[#2C5E93]">
                                       {`${Math.round((averageRating / 5) * 100)}%`}
                                     </div>
                                   </div>
@@ -1078,101 +1177,109 @@ export default function Connect() {
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-3">
-                                {displayedRole === "agent" ? (
-                                  !currentUserDoc?.assigned_agent_id &&
-                                  currentUserDoc?.agent_reassignment_request?.status !== "pending" ? (
-                                    <Button
-                                      onClick={() => handleSelectAgent(displayedEntity)}
-                                      disabled={selectingAgent === displayedEntity.id}
-                                      className="h-11 rounded-full bg-[#ff9500] text-sm font-bold text-white hover:bg-[#ea8a00]"
-                                    >
-                                      {selectingAgent === displayedEntity.id
-                                        ? tr("submitting", "Submitting...")
-                                        : tr("select_agent", "Select")}
-                                    </Button>
-                                  ) : (
-                                    <div className="flex h-11 items-center justify-center rounded-full bg-[#ff9500] px-4 text-sm font-bold text-white">
-                                      {tr("selected", "Selected")}
-                                    </div>
-                                  )
-                                ) : (
+                              <div className={`grid gap-3 ${showFollowButton ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+                                {showFollowButton ? (
                                   <Button
                                     type="button"
-                                    className="h-11 rounded-full bg-[#ff9500] px-4 text-sm font-bold text-white hover:bg-[#ea8a00]"
+                                    onClick={handleFollowClick}
+                                    disabled={followLoading || !displayedEntityId || isOwnProfile}
+                                    className={[
+                                      "h-11 rounded-full px-4 text-sm font-bold text-white",
+                                      followState.following
+                                      ? "bg-slate-700 hover:bg-slate-800"
+                                      : followState.requested
+                                      ? "bg-slate-500 hover:bg-slate-600"
+                                      : "bg-[#ff9500] hover:bg-[#ea8a00]",
+                                    ].join(" ")}
                                   >
-                                    {tr("follow", "Follow")}
+                                    {followLoading ? (
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : followState.following ? (
+                                      <UserMinus className="mr-2 h-4 w-4" />
+                                    ) : (
+                                      <UserPlus className="mr-2 h-4 w-4" />
+                                    )}
+                                    {followButtonLabel}
                                   </Button>
-                                )}
+                                ) : null}
 
                                 <Button
                                   type="button"
+                                  onClick={handleMessageClick}
+                                  disabled={messageLoading || !displayedEntityId || isOwnProfile}
                                   className="h-11 rounded-full bg-[#0f2f63] px-4 text-sm font-bold text-white hover:bg-[#123972]"
                                 >
-                                  {tr("message", "Message")}
+                                  {messageLoading ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Send className="mr-2 h-4 w-4" />
+                                  )}
+                                  {messageButtonLabel}
                                 </Button>
                               </div>
                             </div>
                           </div>
 
-                          <div className="mt-4 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-[24px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm">
-                            <div className="mb-3 flex items-center justify-between gap-3">
-                              <div>
-                                <div className="text-base font-extrabold text-slate-900">{tr("reviews", "Reviews")}</div>
-                                <div className="text-xs text-slate-500">
-                                  {tr("reviews_subtitle", "See comments and leave a rating")}
-                                </div>
-                              </div>
-                              <StarSummary value={averageRating} count={reviewCount} className="justify-end" />
-                            </div>
-
-                            <div className="min-h-0 overflow-y-auto pr-1">
-                              <div className="space-y-2.5">
-                                {reviewsLoading ? (
-                                  <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
-                                    {tr("loading_reviews", "Loading reviews...")}
-                                  </div>
-                                ) : reviews.length ? (
-                                  reviews.slice(0, 3).map((item) => <ReviewCard key={item.id} item={item} />)
-                                ) : (
-                                  <div className="rounded-[18px] border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
-                                    {tr("no_reviews_yet", "No reviews yet. Be the first to leave a comment.")}
-                                  </div>
-                                )}
-
-                                <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
-                                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                                    <MessageCircle className="h-4 w-4 text-slate-500" />
-                                    {tr("leave_review", "Leave a review")}
-                                  </div>
-
-                                  <div className="mt-3 flex items-center gap-1">
-                                    {renderStars(reviewRating, true, setReviewRating)}
-                                    <span className="ml-2 text-xs text-slate-500">
-                                      {tr("choose_rating", "Choose up to 5 stars")}
-                                    </span>
-                                  </div>
-
-                                  <Textarea
-                                    value={reviewText}
-                                    onChange={(e) => setReviewText(e.target.value)}
-                                    placeholder={tr("write_review", "Write your comment here...")}
-                                    className="mt-2.5 min-h-[72px] rounded-[14px] border-slate-200"
-                                  />
-
-                                  <div className="mt-3 flex justify-end">
-                                    <Button
-                                      type="button"
-                                      onClick={handleSubmitReview}
-                                      className="rounded-full bg-[#0f2f63] px-4 py-2 text-white hover:bg-[#123972]"
-                                    >
-                                      {tr("submit_review", "Submit Review")}
-                                    </Button>
+                          {showReviewsSection ? (
+                            <div className="mt-4 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-[20px] sm:rounded-[24px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-base font-extrabold text-slate-900">{tr("reviews", "Reviews")}</div>
+                                  <div className="text-xs text-slate-500">
+                                    {tr("reviews_subtitle", "See comments and leave a rating")}
                                   </div>
                                 </div>
+                                <StarSummary value={averageRating} count={reviewCount} className="justify-end" />
+                              </div>
+
+                              <div className="min-h-0 overflow-y-auto pr-1">
+                                <div className="space-y-2.5">
+                                  {reviewsLoading ? (
+                                    <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
+                                      {tr("loading_reviews", "Loading reviews...")}
+                                    </div>
+                                  ) : reviews.length ? (
+                                    reviews.slice(0, 3).map((item) => <ReviewCard key={item.id} item={item} />)
+                                  ) : (
+                                    <div className="rounded-[18px] border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
+                                      {tr("no_reviews_yet", "No reviews yet. Be the first to leave a comment.")}
+                                    </div>
+                                  )}
+
+                                  <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                                      <MessageCircle className="h-4 w-4 text-slate-500" />
+                                      {tr("leave_review", "Leave a review")}
+                                    </div>
+
+                                    <div className="mt-3 flex items-center gap-1 flex-wrap">
+                                      {renderStars(reviewRating, true, setReviewRating)}
+                                      <span className="ml-0 sm:ml-2 text-xs text-slate-500">
+                                        {tr("choose_rating", "Choose up to 5 stars")}
+                                      </span>
+                                    </div>
+
+                                    <Textarea
+                                      value={reviewText}
+                                      onChange={(e) => setReviewText(e.target.value)}
+                                      placeholder={tr("write_review", "Write your comment here...")}
+                                      className="mt-2.5 min-h-[72px] rounded-[14px] border-slate-200"
+                                    />
+
+                                    <div className="mt-3 flex justify-end">
+                                      <Button
+                                        type="button"
+                                        onClick={handleSubmitReview}
+                                        className="rounded-full bg-[#0f2f63] px-4 py-2 text-white hover:bg-[#123972]"
+                                      >
+                                        {tr("submit_review", "Submit Review")}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          ) : null}
                         </div>
                       </CardContent>
                     </Card>
@@ -1186,9 +1293,9 @@ export default function Connect() {
                 initial={{ opacity: 0.98 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                className={userHasSelected ? "h-full min-h-0" : "h-full min-h-0 w-full"}
+                className={userHasSelected ? "h-full min-h-0 order-1 xl:order-2" : "h-full min-h-0 w-full"}
               >
-                <div className="h-full min-h-0 xl:min-w-[460px]">
+                <div className="h-full min-h-0 xl:min-w-[420px]">
                   <RightSideDirectoryTabs
                     tr={tr}
                     activeTab={activeTab}
