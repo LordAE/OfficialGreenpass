@@ -1,7 +1,5 @@
 // src/pages/Directory.jsx
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { School } from "@/api/entities";
-import { Institution } from "@/api/entities";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,13 +36,11 @@ import CountrySelector from "@/components/CountrySelector";
 import { getProvinceLabel } from "../components/utils/CanadianProvinces";
 import _ from "lodash";
 
-// 🔥 Firebase
+// Firebase
 import { db, auth } from "@/firebase";
 import {
   collection,
   getDocs,
-  query,
-  where,
   doc,
   setDoc,
   serverTimestamp,
@@ -75,27 +71,26 @@ import {
 const PAGE_SIZE = 16;
 
 /* -----------------------------
-   Subscription helper (matches YOUR DB fields)
-   ----------------------------- */
+   Subscription helper
+----------------------------- */
 function hasActiveSubscription(userDoc) {
   const d = userDoc || {};
-  if (typeof d.subscription_active === "boolean")
+  if (typeof d.subscription_active === "boolean") {
     return d.subscription_active === true;
+  }
   const status = String(d.subscription_status || "").toLowerCase().trim();
   return status === "active";
 }
 
 /* -----------------------------
-   Country flag helpers (use IMAGE flags for reliability)
-   ----------------------------- */
+   Country flag helpers
+----------------------------- */
 const isIso2 = (code) => /^[A-Z]{2}$/.test((code || "").trim().toUpperCase());
 
 const codeToFlagEmoji = (code) => {
   const cc = (code || "").trim().toUpperCase();
   if (!isIso2(cc)) return "";
-  return String.fromCodePoint(
-    ...[...cc].map((c) => 127397 + c.charCodeAt(0))
-  );
+  return String.fromCodePoint(...[...cc].map((c) => 127397 + c.charCodeAt(0)));
 };
 
 const flagPngUrl = (code) => {
@@ -104,7 +99,6 @@ const flagPngUrl = (code) => {
   return `https://flagcdn.com/w40/${cc.toLowerCase()}.png`;
 };
 
-// Larger flag image for card backgrounds
 const flagCoverPngUrl = (code) => {
   const cc = String(code || "").trim().toUpperCase();
   if (!isIso2(cc)) return "";
@@ -122,10 +116,7 @@ function CountryFlag({ code, className = "" }) {
 
   if (!url || !imgOk) {
     return emoji ? (
-      <span
-        className={["text-base leading-none", className].join(" ")}
-        title={cc}
-      >
+      <span className={["text-base leading-none", className].join(" ")} title={cc}>
         {emoji}
       </span>
     ) : null;
@@ -135,9 +126,7 @@ function CountryFlag({ code, className = "" }) {
     <img
       src={url}
       alt={`${cc} flag`}
-      className={["h-4 w-6 rounded-sm border object-cover", className].join(
-        " "
-      )}
+      className={["h-4 w-6 rounded-sm border object-cover", className].join(" ")}
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setImgOk(false)}
@@ -146,32 +135,11 @@ function CountryFlag({ code, className = "" }) {
 }
 
 /* -----------------------------
-   Helpers: name normalization
-   ----------------------------- */
-const normalize = (s = "") =>
-  String(s)
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(
-      /\b(the|of|and|for|at|in|de|la|le|du|des|université|universite)\b/g,
-      ""
-    )
-    .replace(
-      /\b(university|college|institute|polytechnic|school|academy|centre|center)\b/g,
-      ""
-    )
-    .replace(/[^a-z0-9]/g, "")
-    .trim();
-
-/* -----------------------------
-   Helpers: location normalization (for reliable filtering)
-   - Handles case/whitespace differences
-   - Handles province values stored as codes OR labels
-   ----------------------------- */
+   Helpers
+----------------------------- */
 const normText = (v = "") => String(v || "").trim().toLowerCase();
 const eqText = (a, b) => normText(a) === normText(b);
 
-// Canonicalize country values so UI labels and DB codes match
 const canonCountry = (v = "") => {
   const x = String(v || "").trim();
   const lx = x.toLowerCase();
@@ -185,83 +153,9 @@ const canonCountry = (v = "") => {
   return x;
 };
 
-
 /* -----------------------------
-   Tabs (moved inside Directory for i18n)
-   ----------------------------- */
-
-/* -----------------------------
-   Left list row (schools/institutions)
-   ----------------------------- */
-const SchoolListRow = ({ item, isSelected, onSelect, tr }) => {
-  const name = item.name || item.school_name || item.institution_name || tr?.("directory.common.unknown", "Unknown");
-  const logo =
-    item.logoUrl ||
-    item.school_image_url ||
-    item.institution_logo_url ||
-    "https://images.unsplash.com/photo-1562774053-701939374585?w=800&h=600&fit=crop&q=80";
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={[
-        "w-full text-left rounded-lg border p-3 transition",
-        "focus:outline-none focus:ring-2 focus:ring-green-400",
-        isSelected
-          ? "border-green-400 bg-green-50"
-          : "border-gray-200 bg-white hover:bg-gray-50",
-      ].join(" ")}
-    >
-      <div className="flex gap-3">
-        <img src={logo} alt={name} className="h-12 w-12 rounded-md object-cover border" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <h4 className="font-semibold text-gray-900 truncate">{name}</h4>
-            <Badge variant="secondary" className="shrink-0">
-              {item.isInstitution ? tr?.("directory.common.institution","Institution") : (item.institution_type || tr?.("directory.tabs.school","School"))}
-            </Badge>
-          </div>
-
-          <div className="mt-1 flex items-center text-sm text-gray-600">
-            <MapPin className="w-4 h-4 mr-1 shrink-0" />
-            <span className="truncate">
-              {(item.city || item.school_city || tr?.("directory.common.city","City"))},{" "}
-              {getProvinceLabel(item.province || item.school_province) || tr?.("directory.common.province","Province")},{" "}
-              {item.country || item.school_country || tr?.("directory.common.country","Country")}
-            </span>
-          </div>
-
-          <div className="mt-2 text-sm text-gray-700">
-            <span className="font-medium text-blue-600">{item.programCount || 0}+</span> {tr?.("directory.common.programs","programs")}
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-};
-
-
-
-/* -----------------------------
-   ✅ Skeletons (loading placeholders)
-   ----------------------------- */
-const SkeletonListRow = () => (
-  <div className="w-full rounded-lg border border-gray-200 bg-white p-3 animate-pulse">
-    <div className="flex gap-3">
-      <div className="h-12 w-12 rounded-md bg-gray-200 border" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="h-4 bg-gray-200 rounded w-2/3" />
-          <div className="h-5 bg-gray-200 rounded w-20" />
-        </div>
-        <div className="mt-2 h-3 bg-gray-200 rounded w-4/5" />
-        <div className="mt-3 h-3 bg-gray-200 rounded w-24" />
-      </div>
-    </div>
-  </div>
-);
-
+   Skeletons
+----------------------------- */
 const SkeletonGridCard = () => (
   <div className="w-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm animate-pulse">
     <div className="h-20 bg-gray-200" />
@@ -306,7 +200,7 @@ const SkeletonDetailsPanel = () => (
 
 /* -----------------------------
    Carousel helpers
-   ----------------------------- */
+----------------------------- */
 const asArray = (v) => (Array.isArray(v) ? v : v ? [v] : []);
 
 const uniqStrings = (arr) => {
@@ -335,7 +229,6 @@ const getSchoolImageList = (item) => {
     item.school_image_url,
     item.institution_logo_url,
     item.logoUrl,
-
     ...asArray(item.images),
     ...asArray(item.imageUrls),
     ...asArray(item.photos),
@@ -350,9 +243,15 @@ const getSchoolImageList = (item) => {
 };
 
 /* -----------------------------
-   Right details panel (schools/institutions)
-   ----------------------------- */
-const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClick, tr }) => {
+   School details panel
+----------------------------- */
+const SchoolDetailsPanel = ({
+  item,
+  onContactClick,
+  programs = [],
+  onProgramClick,
+  tr,
+}) => {
   const [showPrograms, setShowPrograms] = useState(false);
   const [imgIndex, setImgIndex] = useState(0);
 
@@ -376,13 +275,17 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
     return (
       <Card className="h-full">
         <CardContent className="p-6 text-gray-600">
-          {tr?.("directory.school.select_school","Select a school from the list to see details.")}
+          {tr?.("directory.school.select_school", "Select a school from the list to see details.")}
         </CardContent>
       </Card>
     );
   }
 
-  const name = item.name || item.school_name || item.institution_name || tr?.("directory.common.unknown", "Unknown");
+  const name =
+    item.name ||
+    item.school_name ||
+    item.institution_name ||
+    tr?.("directory.common.unknown", "Unknown");
 
   const city = item.city || item.school_city || "—";
   const province = getProvinceLabel(item.province || item.school_province) || "—";
@@ -403,8 +306,8 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
   };
 
   return (
-    <Card className="h-full flex flex-col overflow-hidden">
-      <CardContent className="p-0 flex-1 min-h-0 overflow-auto">
+    <Card className="flex flex-col overflow-hidden">
+      <CardContent className="p-0">
         <div className="relative h-56 bg-gradient-to-br from-blue-100 to-green-100">
           <img
             src={images[imgIndex]}
@@ -470,7 +373,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <Badge variant="secondary" className="mb-2">
-                {item.isInstitution ? tr?.("directory.common.institution","Institution") : (item.institution_type || tr?.("directory.tabs.school","School"))}
+                {item.institution_type || tr?.("directory.tabs.school", "School")}
               </Badge>
 
               <h2 className="text-2xl font-bold text-gray-900">{name}</h2>
@@ -485,7 +388,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
               <div className="mt-4">
                 <Button className="w-full h-11 text-base" onClick={() => onContactClick?.(item)}>
                   <Mail className="w-4 h-4 mr-2" />
-                  {tr?.("directory.school.contact","Contact Us")}
+                  {tr?.("directory.school.contact", "Contact Us")}
                 </Button>
 
                 <button
@@ -493,15 +396,21 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
                   className="mt-3 text-sm text-blue-600 underline hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => setShowPrograms((v) => !v)}
                   disabled={!hasPrograms}
-                  title={!hasPrograms ? tr?.("directory.school.no_programs","No programs available for this school yet.") : undefined}
+                  title={
+                    !hasPrograms
+                      ? tr?.("directory.school.no_programs", "No programs available for this school yet.")
+                      : undefined
+                  }
                 >
-                  {showPrograms ? tr?.("directory.school.hide_programs","Hide programs -") : tr?.("directory.school.view_programs","View programs +")}
+                  {showPrograms
+                    ? tr?.("directory.school.hide_programs", "Hide programs -")
+                    : tr?.("directory.school.view_programs", "View programs +")}
                 </button>
               </div>
             </div>
 
             <div className="text-right shrink-0">
-              <p className="text-sm text-gray-500">{tr?.("directory.school.programs","Programs")}</p>
+              <p className="text-sm text-gray-500">{tr?.("directory.school.programs", "Programs")}</p>
               <p className="text-2xl font-bold text-blue-600">{item.programCount || 0}+</p>
             </div>
           </div>
@@ -509,7 +418,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
           {showPrograms && (
             <div className="mt-5 border rounded-lg overflow-hidden">
               <div className="px-4 py-3 bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
-                <span>{tr?.("directory.school.programs","Programs")}</span>
+                <span>{tr?.("directory.school.programs", "Programs")}</span>
                 <Badge variant="secondary">{list.length}</Badge>
               </div>
 
@@ -526,7 +435,9 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
                     >
                       <div className="text-sm font-medium text-gray-900">{title}</div>
                       {meta ? <div className="text-xs text-gray-500 mt-1">{meta}</div> : null}
-                      <div className="text-xs text-blue-600 underline mt-2">{tr?.("directory.common.open","Open")}</div>
+                      <div className="text-xs text-blue-600 underline mt-2">
+                        {tr?.("directory.common.open", "Open")}
+                      </div>
                     </button>
                   );
                 })}
@@ -536,7 +447,9 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
 
           {item.about && (
             <div className="mt-6">
-              <h3 className="font-semibold text-gray-900 mb-2">{tr?.("directory.school.overview","Overview")}</h3>
+              <h3 className="font-semibold text-gray-900 mb-2">
+                {tr?.("directory.school.overview", "Overview")}
+              </h3>
               <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{item.about}</p>
             </div>
           )}
@@ -546,7 +459,7 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
               <a href={item.website} target="_blank" rel="noopener noreferrer" className="block">
                 <Button variant="outline" className="w-full h-11 text-base">
                   <Globe className="w-4 h-4 mr-2" />
-                  {tr?.("directory.school.visit_website","Visit Website")}
+                  {tr?.("directory.school.visit_website", "Visit Website")}
                 </Button>
               </a>
             </div>
@@ -558,84 +471,31 @@ const SchoolDetailsPanel = ({ item, onContactClick, programs = [], onProgramClic
 };
 
 /* -----------------------------
-   User directory UI (FLAG IMAGE)
-   ----------------------------- */
-const UserListRow = ({ user, isSelected, onSelect, tr }) => {
-  const name = user.full_name || user.name || tr?.("directory.common.unnamed","Unnamed");
-  const country = user.country || "—";
-  const countryCode = (user.country_code || user.countryCode || "").trim().toUpperCase();
+   School grid card
+----------------------------- */
+const DirectoryGridCard = ({ item, onOpenDetails, tr }) => {
+  const name =
+    item.name ||
+    item.school_name ||
+    item.institution_name ||
+    tr?.("directory.common.unknown", "Unknown");
 
-  const photo =
-    user.profile_picture ||
-    user.photoURL ||
-    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" +
-      encodeURIComponent(name);
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={[
-        "w-full text-left rounded-lg border p-3 transition",
-        "focus:outline-none focus:ring-2 focus:ring-green-400",
-        isSelected
-          ? "border-green-400 bg-green-50"
-          : "border-gray-200 bg-white hover:bg-gray-50",
-      ].join(" ")}
-    >
-      <div className="flex gap-3 items-center">
-        <img src={photo} alt={name} className="h-12 w-12 rounded-full object-cover border" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <h4 className="font-semibold text-gray-900 truncate">{name}</h4>
-            <Badge variant="secondary" className="shrink-0 capitalize">
-              {user.user_type || user.userType || user.role || user.selected_role || "user"}
-            </Badge>
-          </div>
-
-          <div className="mt-1 flex items-center text-sm text-gray-600">
-            <MapPin className="w-4 h-4 mr-1 shrink-0" />
-            <span className="truncate flex items-center gap-2">
-              <CountryFlag code={countryCode} />
-              <span className="truncate">{country}</span>
-              {countryCode ? <span className="text-xs text-gray-400">({countryCode})</span> : null}
-            </span>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-};
-
-/* -----------------------------
-   LinkedIn-style grid card
-   - Clicking opens the SAME details panel as before (in a dialog)
-   ----------------------------- */
-const DirectoryGridCard = ({ browseTab, item, onOpenDetails, tr }) => {
-  const isSchool = browseTab === "school";
-
-  const name = isSchool
-    ? item.name || item.school_name || item.institution_name || tr?.("directory.common.unknown", "Unknown")
-    : item.full_name || item.name || tr?.("directory.common.unnamed", "Unnamed");
-
-  const country = isSchool
-    ? item.country || item.school_country || "—"
-    : item.country || "—";
-
-  const countryCodeRaw = isSchool
-    ? item.country_code || item.countryCode || item.iso2 || ""
-    : item.country_code || item.countryCode || "";
+  const country = item.country || item.school_country || "—";
+  const countryCodeRaw = item.country_code || item.countryCode || item.iso2 || "";
   const countryCode = String(countryCodeRaw || "").trim().toUpperCase();
 
   const coverUrl = flagCoverPngUrl(countryCode);
 
-  const avatar = isSchool
-    ? item.logoUrl || item.school_image_url || item.institution_logo_url || "https://images.unsplash.com/photo-1562774053-701939374585?w=256&h=256&fit=crop&q=80"
-    : item.profile_picture || item.photoURL || "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" + encodeURIComponent(name);
+  const avatar =
+    item.logoUrl ||
+    item.school_image_url ||
+    item.institution_logo_url ||
+    "https://images.unsplash.com/photo-1562774053-701939374585?w=256&h=256&fit=crop&q=80";
 
-  const basicInfo = isSchool
-    ? `${(item.city || item.school_city || tr?.("directory.common.city", "City"))}, ${getProvinceLabel(item.province || item.school_province) || tr?.("directory.common.province", "Province")}`
-    : (item.headline || item.title || item.position || item.job_title || item.bio || "");
+  const basicInfo = `${item.city || tr?.("directory.common.city", "City")}, ${
+    getProvinceLabel(item.province || item.school_province) ||
+    tr?.("directory.common.province", "Province")
+  }`;
 
   const isVerified = !!(
     item?.is_verified === true ||
@@ -650,7 +510,6 @@ const DirectoryGridCard = ({ browseTab, item, onOpenDetails, tr }) => {
       onClick={onOpenDetails}
       className="group w-full overflow-hidden rounded-2xl border border-gray-200 bg-white text-left shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500"
     >
-      {/* cover */}
       <div className="relative h-20 w-full bg-gray-100">
         {coverUrl ? (
           <img
@@ -664,9 +523,7 @@ const DirectoryGridCard = ({ browseTab, item, onOpenDetails, tr }) => {
         <div className="absolute inset-0 bg-black/10" />
       </div>
 
-      {/* body */}
       <div className="relative px-4 pb-4">
-        {/* avatar */}
         <div className="-mt-10 flex justify-center">
           <div className="h-20 w-20 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-sm">
             <img
@@ -679,7 +536,6 @@ const DirectoryGridCard = ({ browseTab, item, onOpenDetails, tr }) => {
           </div>
         </div>
 
-        {/* name + verified */}
         <div className="mt-2 text-center">
           <div className="flex items-center justify-center gap-1">
             <div className="max-w-[240px] truncate text-base font-semibold text-gray-900">
@@ -688,27 +544,18 @@ const DirectoryGridCard = ({ browseTab, item, onOpenDetails, tr }) => {
             {isVerified ? <Award className="h-4 w-4 text-emerald-600" /> : null}
           </div>
 
-          {/* info */}
-          {basicInfo ? (
-            <div className="mt-1 line-clamp-2 text-sm text-gray-600">
-              {basicInfo}
-            </div>
-          ) : (
-            <div className="mt-1 text-sm text-gray-400">&nbsp;</div>
-          )}
+          <div className="mt-1 line-clamp-2 text-sm text-gray-600">{basicInfo}</div>
         </div>
 
-        {/* country */}
         <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-600">
           <MapPin className="h-3.5 w-3.5" />
           <CountryFlag code={countryCode} />
           <span className="truncate">{country}</span>
         </div>
 
-        {/* bottom line */}
         <div className="mt-4 flex items-center justify-center">
           <span className="rounded-full border border-blue-500 px-6 py-2 text-sm font-semibold text-blue-600 group-hover:bg-blue-50">
-            {isSchool ? tr?.("directory.school.contact_us", "Contact Us") : tr?.("directory.profile.message_us", "Message Us")}
+            {tr?.("directory.school.contact_us", "Contact Us")}
           </span>
         </div>
       </div>
@@ -716,164 +563,38 @@ const DirectoryGridCard = ({ browseTab, item, onOpenDetails, tr }) => {
   );
 };
 
-/* -----------------------------
-   ✅ UserDetailsPanel
-   ----------------------------- */
-const UserDetailsPanel = ({ user, onMessageClick, tr }) => {
-  if (!user) {
-    return (
-      <Card className="h-full">
-        <CardContent className="p-6 text-gray-600">{tr?.("directory.profile.select_user","Select a user from the list to see details.")}</CardContent>
-      </Card>
-    );
-  }
-
-  const name = user.full_name || user.name || tr?.("directory.common.unnamed","Unnamed");
-  const role = user.user_type || user.userType || user.role || user.selected_role || "user";
-
-  const country = user.country || "—";
-  const countryCode = (user.country_code || user.countryCode || "").trim().toUpperCase();
-
-  const photo =
-    user.profile_picture ||
-    user.photoURL ||
-    "https://ui-avatars.com/api/?background=E5E7EB&color=111827&name=" +
-      encodeURIComponent(name);
-
-  const banner =
-    user.cover_photo ||
-    user.coverPhoto ||
-    user.banner ||
-    "https://images.unsplash.com/photo-1526498460520-4c246339dccb?w=1600&h=600&fit=crop&q=80";
-
-  const bio =
-    user.biography ||
-    user.bio ||
-    user.description ||
-    user.about ||
-    user.summary ||
-    user.profile_description ||
-    "";
-
-  return (
-    <Card className="h-full flex flex-col overflow-hidden">
-      <div className="relative shrink-0 h-44 bg-gradient-to-br from-gray-900 to-gray-700">
-        <img src={banner} alt="" className="w-full h-full object-cover opacity-90" />
-        <div className="absolute inset-0 bg-black/35" />
-
-        <div className="absolute left-1/2 -translate-x-1/2 -bottom-10">
-          <div className="relative h-24 w-24 rounded-full bg-white p-1 shadow-lg">
-            <img src={photo} alt={name} className="h-full w-full rounded-full object-cover border" />
-
-            {countryCode ? (
-              <div className="absolute -bottom-1 -right-1">
-                <div className="h-7 w-7 rounded-full bg-white shadow border flex items-center justify-center">
-                  <CountryFlag code={countryCode} className="h-4 w-6" />
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <CardContent className="flex-1 overflow-auto pt-14 pb-6">
-        <div className="flex flex-col items-center text-center">
-          <div className="text-sm text-gray-600">
-            {country}
-            {countryCode ? <span className="text-xs text-gray-400"> ({countryCode})</span> : null}
-          </div>
-
-          <h2 className="mt-2 text-2xl font-bold text-gray-900">{name}</h2>
-
-          <Badge variant="secondary" className="mt-2 capitalize">
-            {String(role).toLowerCase() === "user" || String(role).toLowerCase() === "student"
-              ? "Student / User"
-              : role}
-          </Badge>
-        </div>
-
-        <div className="mt-6">
-          <h3 className="font-semibold text-gray-900 mb-2">{tr("directory.profile.biography","Biography")}</h3>
-          {bio ? (
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{bio}</p>
-          ) : (
-            <p className="text-sm text-gray-500 italic">{tr("directory.profile.no_bio","No biography provided yet.")}</p>
-          )}
-        </div>
-
-        {/* ✅ Message Us bottom-right */}
-        <div className="mt-6 flex justify-end">
-          <Button className="h-11" onClick={() => onMessageClick?.(user)}>
-            <Mail className="w-4 h-4 mr-2" />
-            Message Us
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
 export default function Directory() {
   const { t } = useTranslation();
-  const tr = React.useCallback((key, def, vars = undefined) => t(key, { defaultValue: def, ...(vars || {}) }), [t]);
-
-  const BROWSE_TABS = useMemo(
-    () => [
-      { key: "school", label: tr("directory.tabs.school", "School") },
-      { key: "agent", label: tr("directory.tabs.agent", "Agent") },
-      { key: "tutor", label: tr("directory.tabs.tutor", "Tutor") },
-      { key: "user", label: tr("directory.tabs.user", "User") },
-    ],
-    [tr]
+  const tr = React.useCallback(
+    (key, def, vars = undefined) => t(key, { defaultValue: def, ...(vars || {}) }),
+    [t]
   );
-
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [browseTab, setBrowseTab] = useState("school");
-
-  // ✅ Simple in-memory caches to avoid refetch on tab switches
-  const usersCacheRef = useRef(new Map()); // role -> users[]
   const schoolsLoadedRef = useRef(false);
 
-  // Schools data
   const [allSchools, setAllSchools] = useState([]);
   const [allInstitutions, setAllInstitutions] = useState([]);
   const [filteredSchools, setFilteredSchools] = useState([]);
   const [loadingSchools, setLoadingSchools] = useState(true);
   const [loadingPrograms, setLoadingPrograms] = useState(true);
 
-  // User directory data
-  const [allUsers, setAllUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-
-  // Common filters
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCountry, setSelectedCountry] = useState("all");
-
-  // School filters
-const [selectedCity, setSelectedCity] = useState("all");
-const [page, setPage] = useState(1);
+  const [selectedCity, setSelectedCity] = useState("all");
+  const [page, setPage] = useState(1);
   const [selectedKey, setSelectedKey] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  // ✅ Auth state
   const [currentUser, setCurrentUser] = useState(null);
-
-  // ✅ Current user's Firestore doc (gating uses THIS)
   const [currentUserDoc, setCurrentUserDoc] = useState(null);
-
-  // ✅ current user's role (used to hide same-role tab)
   const [currentUserRole, setCurrentUserRole] = useState("");
 
-  // ✅ In-page Auth modal
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [forceStudentSignup, setForceStudentSignup] = useState(false);
-  const [authStep, setAuthStep] = useState("choice"); // "choice" | "login" | "role" | "signup_method" | "signup_email" | "oauth_finish"
-
-  // ✅ Pending post-auth action
+  const [authStep, setAuthStep] = useState("choice");
   const [pendingAction, setPendingAction] = useState(null);
 
   const [authLoading, setAuthLoading] = useState(false);
@@ -883,29 +604,25 @@ const [page, setPage] = useState(1);
   const [loginPassword, setLoginPassword] = useState("");
   const [loginShowPw, setLoginShowPw] = useState(false);
 
-  // ✅ Signup role selected FIRST (NO school)
-  const [signupRole, setSignupRole] = useState("user"); // user | agent | tutor
-
-  // Email signup fields
+  const [signupRole, setSignupRole] = useState("user");
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupPassword2, setSignupPassword2] = useState("");
   const [signupShowPw, setSignupShowPw] = useState(false);
 
-  // ✅ OAuth temporary state (Google/Apple)
-  const [oauthUser, setOauthUser] = useState(null); // { uid, email, full_name }
+  const [oauthUser, setOauthUser] = useState(null);
   const [oauthName, setOauthName] = useState("");
 
-  // role normalization helpers (IMPORTANT: student -> user)
   const normalizeRole = useCallback((r) => {
     const v = String(r || "").toLowerCase().trim();
     if (v === "student") return "user";
     if (v === "users") return "user";
     if (v === "tutors") return "tutor";
     if (v === "agents") return "agent";
-    if (["user", "agent", "tutor", "school", "admin", "vendor", "support"].includes(v))
+    if (["user", "agent", "tutor", "school", "admin", "vendor", "support"].includes(v)) {
       return v;
+    }
     return "";
   }, []);
 
@@ -917,7 +634,6 @@ const [page, setPage] = useState(1);
     [normalizeRole]
   );
 
-  // ✅ auth + user doc fetch
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setCurrentUser(u || null);
@@ -944,40 +660,10 @@ const [page, setPage] = useState(1);
     return () => unsub();
   }, [detectRoleFromUserDoc]);
 
-
-  // ✅ tabs visible:
-  // - If NOT logged in: show everything
-  // - If logged in: hide the tab that matches your own role
-  //   (school won't see School tab, agent won't see Agent tab, etc.)
-  // - Admin can see everything
-  const visibleTabs = useMemo(() => {
-    const role = normalizeRole(currentUserRole);
-    if (!role) return BROWSE_TABS;
-    if (role === "admin") return BROWSE_TABS;
-    return BROWSE_TABS.filter((t) => t.key !== role);
-  }, [currentUserRole, normalizeRole, BROWSE_TABS]);
-
-  // ✅ if current tab is hidden (ex: same-role tab), switch to the first visible tab
-  useEffect(() => {
-    const role = normalizeRole(currentUserRole);
-    if (!role) return;
-
-    const keys = (visibleTabs || []).map((t) => t.key);
-    if (keys.length === 0) return;
-
-    if (!keys.includes(browseTab)) {
-      setBrowseTab(keys[0]);
-      setSelectedCountry("all");
-      setSearchTerm("");
-      setSelectedCity("all");
-    }
-  }, [browseTab, currentUserRole, normalizeRole, visibleTabs]);
-
   useEffect(() => {
     const p = parseInt(searchParams.get("page") || "1", 10);
     setPage(Number.isFinite(p) && p > 0 ? p : 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!authDialogOpen) return;
@@ -990,139 +676,71 @@ const [page, setPage] = useState(1);
   const updatePage = useCallback(
     (nextPage) => {
       setPage(nextPage);
-      const next = new URLSearchParams(searchParams);
-      if (nextPage > 1) next.set("page", String(nextPage));
-      else next.delete("page");
-      setSearchParams(next, { replace: true });
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (nextPage > 1) next.set("page", String(nextPage));
+        else next.delete("page");
+        return next;
+      }, { replace: true });
     },
-    [searchParams, setSearchParams]
+    [setSearchParams]
   );
 
-  /* -----------------------------
-     Load institutions (schools list) + programs (from schools collection)
-     - institutions: actual schools
-     - schools: program docs, linked by school_id == institutions doc id
-   ----------------------------- */
-  
-const loadSchoolData = useCallback(async () => {
-  // Two-phase load:
-  // 1) institutions first (fast) => list renders quickly
-  // 2) programs after (can be large) => counts/details update when ready
-  setLoadingSchools(true);
-  setLoadingPrograms(true);
+  const loadSchoolData = useCallback(async () => {
+    setLoadingSchools(true);
+    setLoadingPrograms(true);
 
-  const instRef = collection(db, "institutions");
-  const progRef = collection(db, "schools");
+    const instRef = collection(db, "institutions");
+    const progRef = collection(db, "schools");
 
-  try {
-    const instSnap = await getDocs(instRef);
-    const institutionsData = instSnap.docs.map((d) => ({
-      id: d.id,
-      ...((d.data && d.data()) || {}),
-    }));
-    setAllInstitutions(institutionsData || []);
-  } catch (error) {
-    console.error("Error loading institutions:", error);
-    setAllInstitutions([]);
-  } finally {
-    // Let UI render institutions immediately
-    setLoadingSchools(false);
-  }
-
-  // Load programs in the background
-  try {
-    const progSnap = await getDocs(progRef);
-    const programsData = progSnap.docs.map((d) => ({
-      id: d.id,
-      ...((d.data && d.data()) || {}),
-    }));
-    setAllSchools(programsData || []);
-  } catch (error) {
-    console.error("Error loading programs:", error);
-    setAllSchools([]);
-  } finally {
-    setLoadingPrograms(false);
-  }
-}, []);
-
-
-  useEffect(() => {
-    if (browseTab !== "school") return;
-    if (schoolsLoadedRef.current) return;
-    schoolsLoadedRef.current = true;
-    loadSchoolData();
-  }, [browseTab, loadSchoolData]);
-
-  /* -----------------------------
-     Load users for directory
-   ----------------------------- */
-  const fetchUsersForRole = useCallback(async (role) => {
-    const r = String(role || "").toLowerCase().trim();
-    if (!r) {
-      setAllUsers([]);
-      return;
-    }
-
-    // ✅ Cache: switching tabs feels instant
-    const cached = usersCacheRef.current.get(r);
-    if (cached && Array.isArray(cached) && cached.length) {
-      setAllUsers(cached);
-      setLoadingUsers(false);
-      return;
-    }
-
-    setLoadingUsers(true);
     try {
-      const usersRef = collection(db, "users");
-
-      const qs = [
-        query(usersRef, where("user_type", "==", role)),
-        query(usersRef, where("userType", "==", role)),
-        query(usersRef, where("role", "==", role)),
-        query(usersRef, where("selected_role", "==", role)),
-      ];
-
-      const snaps = await Promise.all(qs.map((q1) => getDocs(q1)));
-      const byId = new Map();
-
-      snaps.forEach((snap) => {
-        snap.forEach((docSnap) => {
-          const d = docSnap.data() || {};
-          byId.set(docSnap.id, { id: docSnap.id, ...d });
-        });
-      });
-
-      const arr = Array.from(byId.values());
-      usersCacheRef.current.set(r, arr);
-      setAllUsers(arr);
-    } catch (e) {
-      console.error("Error loading users:", e);
-      setAllUsers([]);
+      const instSnap = await getDocs(instRef);
+      const institutionsData = instSnap.docs.map((d) => ({
+        id: d.id,
+        ...((d.data && d.data()) || {}),
+      }));
+      setAllInstitutions(institutionsData || []);
+    } catch (error) {
+      console.error("Error loading institutions:", error);
+      setAllInstitutions([]);
     } finally {
-      setLoadingUsers(false);
+      setLoadingSchools(false);
+    }
+
+    try {
+      const progSnap = await getDocs(progRef);
+      const programsData = progSnap.docs.map((d) => ({
+        id: d.id,
+        ...((d.data && d.data()) || {}),
+      }));
+      setAllSchools(programsData || []);
+    } catch (error) {
+      console.error("Error loading programs:", error);
+      setAllSchools([]);
+    } finally {
+      setLoadingPrograms(false);
     }
   }, []);
 
   useEffect(() => {
-    if (browseTab === "school") return;
-    fetchUsersForRole(browseTab);
-  }, [browseTab, fetchUsersForRole]);
+    if (schoolsLoadedRef.current) return;
+    schoolsLoadedRef.current = true;
+    loadSchoolData();
+  }, [loadSchoolData]);
 
-  /* -----------------------------
-     Programs grouped by institution id (school_id)
-   ----------------------------- */
   const programsBySchoolKey = useMemo(() => {
-    return _.groupBy(allSchools || [], (p) => String(p.school_id || p.institution_id || p.schoolId || "").trim() || "__unlinked__");
+    return _.groupBy(
+      allSchools || [],
+      (p) =>
+        String(p.school_id || p.institution_id || p.schoolId || "").trim() || "__unlinked__"
+    );
   }, [allSchools]);
 
-  /* -----------------------------
-     Build school cards from institutions collection
-     - Each card represents ONE institution
-     - programCount comes from programs in "schools" collection grouped by school_id
-   ----------------------------- */
   const mergedSchools = useMemo(() => {
     return (allInstitutions || []).map((inst) => {
-      const key = String(inst.id || inst.docId || inst.uid || "").trim() || String(inst.name || "").trim();
+      const key =
+        String(inst.id || inst.docId || inst.uid || "").trim() ||
+        String(inst.name || "").trim();
       const programs = (programsBySchoolKey && programsBySchoolKey[key]) || [];
 
       return {
@@ -1130,9 +748,13 @@ const loadSchoolData = useCallback(async () => {
         school_key: key,
         isInstitution: true,
         programCount: programs.length,
-
-        // normalized display fields
-        logoUrl: inst.logoUrl || inst.logo || inst.institution_logo_url || inst.image_url || inst.photo_url || null,
+        logoUrl:
+          inst.logoUrl ||
+          inst.logo ||
+          inst.institution_logo_url ||
+          inst.image_url ||
+          inst.photo_url ||
+          null,
         website: inst.website || inst.site || inst.url || null,
         about: inst.about || inst.description || inst.overview || null,
         institution_type: inst.type || inst.institution_type || null,
@@ -1144,25 +766,33 @@ const loadSchoolData = useCallback(async () => {
   }, [allInstitutions, programsBySchoolKey]);
 
   const schoolCountryOptions = useMemo(() => {
-    const raw = (mergedSchools || []).map((s) => s.country || s.school_country || s.country_code).filter(Boolean);
-    const priority = ["Canada", "US", "UK", "Australia", "Ireland", "Germany", "New Zealand"];
+    const raw = (mergedSchools || [])
+      .map((s) => s.country || s.school_country || s.country_code)
+      .filter(Boolean);
+    const priority = [
+      "Canada",
+      "US",
+      "UK",
+      "Australia",
+      "Ireland",
+      "Germany",
+      "New Zealand",
+    ];
     return Array.from(new Set([...raw.map(canonCountry), ...priority]));
   }, [mergedSchools]);
-  const userCountryOptions = useMemo(() => {
-    const fromData = (allUsers || []).map((u) => u.country).filter(Boolean);
-    return Array.from(new Set(fromData));
-  }, [allUsers]);
 
   const handleSearchChange = useCallback((e) => {
     e.preventDefault();
     setSearchTerm(e.target.value);
-  }, []);
+    updatePage(1);
+  }, [updatePage]);
 
   const handleCountryChange = useCallback((value) => {
     setSelectedCountry(value);
     setSelectedCity("all");
-  }, []);
-  // --- City options (grouped by country; derived from institutions) ---
+    updatePage(1);
+  }, [updatePage]);
+
   const schoolCityGroups = useMemo(() => {
     const map = new Map();
 
@@ -1170,11 +800,8 @@ const loadSchoolData = useCallback(async () => {
       const city = String(s.city || "").trim();
       if (!city) return;
 
-      const country = canonCountry(
-        s.country || s.country_code || s.school_country || ""
-      );
+      const country = canonCountry(s.country || s.country_code || s.school_country || "");
 
-      // Scope by selected country when set
       if (selectedCountry && selectedCountry !== "all") {
         if (canonCountry(selectedCountry) !== country) return;
       }
@@ -1191,31 +818,19 @@ const loadSchoolData = useCallback(async () => {
       .sort((a, b) => a.country.localeCompare(b.country));
   }, [mergedSchools, selectedCountry]);
 
-  useEffect(() => {
-    updatePage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    browseTab,
-    searchTerm,
-    selectedCountry,
-    selectedCity,
-    mergedSchools.length,
-    allUsers.length,
-  ]);
 
-  /* -----------------------------
-     Filter schools
-   ----------------------------- */
   useEffect(() => {
-    if (browseTab !== "school") return;
-
     let filtered = mergedSchools;
 
-    // ✅ Search: name/city/about + (for program-backed schools) any program title in that school
     if (searchTerm) {
       const q = searchTerm.toLowerCase().trim();
       filtered = filtered.filter((school) => {
-        const name = (school.name || school.school_name || school.institution_name || "").toLowerCase();
+        const name = (
+          school.name ||
+          school.school_name ||
+          school.institution_name ||
+          ""
+        ).toLowerCase();
         const city = (school.city || school.school_city || "").toLowerCase();
         const about = (school.about || "").toLowerCase();
 
@@ -1228,9 +843,12 @@ const loadSchoolData = useCallback(async () => {
       });
     }
 
-    // ✅ Filters: tolerate casing/spacing inconsistencies
     if (selectedCountry !== "all") {
-      filtered = filtered.filter((s) => canonCountry(s.country || s.country_code || s.school_country) === canonCountry(selectedCountry));
+      filtered = filtered.filter(
+        (s) =>
+          canonCountry(s.country || s.country_code || s.school_country) ===
+          canonCountry(selectedCountry)
+      );
     }
 
     if (selectedCity !== "all") {
@@ -1241,45 +859,9 @@ const loadSchoolData = useCallback(async () => {
     }
 
     setFilteredSchools(filtered);
-  }, [
-    browseTab,
-    mergedSchools,
-    programsBySchoolKey,
-    searchTerm,
-    selectedCountry,
-    selectedCity,
-  ]);
+  }, [mergedSchools, programsBySchoolKey, searchTerm, selectedCountry, selectedCity]);
 
-  /* -----------------------------
-     Filter users (directory)
-   ----------------------------- */
-  useEffect(() => {
-    if (browseTab === "school") return;
-
-    let filtered = allUsers;
-
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      filtered = filtered.filter((u) => {
-        const name = (u.full_name || u.name || "").toLowerCase();
-        const email = (u.email || "").toLowerCase();
-        const phone = (u.phone || "").toLowerCase();
-        const country = (u.country || "").toLowerCase();
-        return name.includes(q) || email.includes(q) || phone.includes(q) || country.includes(q);
-      });
-    }
-
-    if (selectedCountry !== "all") {
-      filtered = filtered.filter((u) => (u.country || "") === selectedCountry);
-    }
-
-    setFilteredUsers(filtered);
-  }, [browseTab, allUsers, searchTerm, selectedCountry]);
-
-  const isSchoolTab = browseTab === "school";
-  const loading = isSchoolTab ? loadingSchools : loadingUsers;
-
-  const totalCount = isSchoolTab ? filteredSchools.length : filteredUsers.length;
+  const totalCount = filteredSchools.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   useEffect(() => {
@@ -1291,9 +873,8 @@ const loadSchoolData = useCallback(async () => {
   const endIndex = Math.min(startIndex + PAGE_SIZE, totalCount);
 
   const pagedItems = useMemo(() => {
-    const src = isSchoolTab ? filteredSchools : filteredUsers;
-    return src.slice(startIndex, endIndex);
-  }, [isSchoolTab, filteredSchools, filteredUsers, startIndex, endIndex]);
+    return filteredSchools.slice(startIndex, endIndex);
+  }, [filteredSchools, startIndex, endIndex]);
 
   useEffect(() => {
     if (!pagedItems.length) {
@@ -1310,15 +891,18 @@ const loadSchoolData = useCallback(async () => {
 
   const selectedItem = useMemo(() => {
     if (!selectedKey) return null;
-    const src = isSchoolTab ? filteredSchools || [] : filteredUsers || [];
-    return src.find((s) => (s.school_key || s.id) === selectedKey) || null;
-  }, [isSchoolTab, filteredSchools, filteredUsers, selectedKey]);
+    return filteredSchools.find((s) => (s.school_key || s.id) === selectedKey) || null;
+  }, [filteredSchools, selectedKey]);
 
   const selectedPrograms = useMemo(() => {
-    if (!isSchoolTab || !selectedItem) return [];
-    const k = selectedItem.school_key || selectedItem.name || selectedItem.school_name || selectedItem.institution_name;
+    if (!selectedItem) return [];
+    const k =
+      selectedItem.school_key ||
+      selectedItem.name ||
+      selectedItem.school_name ||
+      selectedItem.institution_name;
     return programsBySchoolKey[k] || [];
-  }, [isSchoolTab, selectedItem, programsBySchoolKey]);
+  }, [selectedItem, programsBySchoolKey]);
 
   const getPageNumbers = (current, total) => {
     const pages = [];
@@ -1332,7 +916,13 @@ const loadSchoolData = useCallback(async () => {
 
     add(1);
     if (current - windowSize > 2) add("…");
-    for (let i = Math.max(2, current - windowSize); i <= Math.min(total - 1, current + windowSize); i++) add(i);
+    for (
+      let i = Math.max(2, current - windowSize);
+      i <= Math.min(total - 1, current + windowSize);
+      i++
+    ) {
+      add(i);
+    }
     if (current + windowSize < total - 1) add("…");
     add(total);
     return pages;
@@ -1345,9 +935,9 @@ const loadSchoolData = useCallback(async () => {
     setSearchTerm("");
     setSelectedCountry("all");
     setSelectedCity("all");
-  }, []);
+    updatePage(1);
+  }, [updatePage]);
 
-  // ✅ Helper to get my effective role from Firestore doc
   const myRole = useMemo(() => {
     return normalizeRole(
       currentUserDoc?.role ||
@@ -1358,9 +948,6 @@ const loadSchoolData = useCallback(async () => {
     );
   }, [currentUserDoc, normalizeRole]);
 
-  /* -----------------------------
-     ✅ Messaging navigation helpers
-   ----------------------------- */
   const navToMessages = useCallback(
     ({ studentId, targetId, targetRole }) => {
       const qs = new URLSearchParams();
@@ -1386,14 +973,11 @@ const loadSchoolData = useCallback(async () => {
   const onContactSchool = useCallback(
     (schoolItem) => {
       const uid = currentUser?.uid;
-
-      // If not logged in: handled by openAuthDialog from caller
       if (!uid) return;
 
       const norm = myRole;
       const supportTarget = { targetId: "support", targetRole: "support" };
 
-      // ✅ user/student never messages school: route to assigned agent or support
       if (norm === "user") {
         const assignedAgent = String(
           currentUserDoc?.assigned_agent_id ||
@@ -1403,7 +987,11 @@ const loadSchoolData = useCallback(async () => {
         ).trim();
 
         if (assignedAgent) {
-          navToMessages({ studentId: uid, targetId: assignedAgent, targetRole: "agent" });
+          navToMessages({
+            studentId: uid,
+            targetId: assignedAgent,
+            targetRole: "agent",
+          });
           return;
         }
 
@@ -1411,51 +999,11 @@ const loadSchoolData = useCallback(async () => {
         return;
       }
 
-      // All other roles: route to GP Team
       navToMessages({ studentId: uid, ...supportTarget });
     },
     [currentUser?.uid, currentUserDoc, myRole, navToMessages]
   );
 
-  const onMessageProfile = useCallback(
-    (profileUser, roleKey) => {
-      const uid = currentUser?.uid;
-      if (!uid) return;
-
-      const targetId = String(profileUser?.id || "").trim();
-      // ✅ Determine actual role from profile doc first (roleKey is ONLY a fallback)
-      const rRaw = String(
-        profileUser?.role ||
-          profileUser?.selected_role ||
-          profileUser?.user_type ||
-          profileUser?.userType ||
-          roleKey ||
-          "support"
-      );
-      const targetRole = normalizeRole(rRaw);
-
-      // ✅ FIX: ONLY user/student cannot message schools
-      const meRole = myRole || normalizeRole(currentUserDoc?.role || currentUserDoc?.user_type || "");
-      if ((meRole === "user" || meRole === "student") && targetRole === "school") {
-        navToMessages({ studentId: uid, targetId: "support", targetRole: "support" });
-        return;
-      }
-
-      // ✅ Support route
-      if (targetRole === "support") {
-        navToMessages({ studentId: uid, targetId: "support", targetRole: "support" });
-        return;
-      }
-
-      if (!targetId) return;
-      navToMessages({ studentId: uid, targetId, targetRole });
-    },
-    [currentUser?.uid, currentUserDoc, myRole, navToMessages, normalizeRole]
-  );
-
-  /* -----------------------------
-     Auth modal helpers
-   ----------------------------- */
   const resetAuthForm = useCallback(() => {
     setAuthError("");
     setAuthLoading(false);
@@ -1465,7 +1013,6 @@ const loadSchoolData = useCallback(async () => {
     setLoginShowPw(false);
 
     setSignupRole("user");
-
     setSignupName("");
     setSignupEmail("");
     setSignupPassword("");
@@ -1501,9 +1048,10 @@ const loadSchoolData = useCallback(async () => {
       setAuthError("");
       setAuthLoading(false);
 
-      // ✅ ALWAYS send NEW signups to onboarding
       if (onboardingRole) {
-        navigate(`/onboarding?role=${encodeURIComponent(String(onboardingRole))}`, { replace: true });
+        navigate(`/onboarding?role=${encodeURIComponent(String(onboardingRole))}`, {
+          replace: true,
+        });
         setPendingAction(null);
         return;
       }
@@ -1512,70 +1060,11 @@ const loadSchoolData = useCallback(async () => {
         navigate(pendingAction.url);
       } else if (pendingAction?.type === "contact" && pendingAction?.schoolItem) {
         onContactSchool(pendingAction.schoolItem);
-      } else if (pendingAction?.type === "message_profile" && pendingAction?.profile) {
-        onMessageProfile(pendingAction.profile, pendingAction.roleKey);
       }
 
       setPendingAction(null);
     },
-    [navigate, onContactSchool, onMessageProfile, pendingAction]
-  );
-
-  /* -----------------------------
-     ✅ Message click logic (directory)
-   ----------------------------- */
-  const onMessageClick = useCallback(
-    (profileUser) => {
-      if (!profileUser) return;
-
-      // If NOT logged in: force student signup when messaging agent/tutor
-      if (!currentUser || !currentUserDoc) {
-        const forceStudent = browseTab === "tutor" || browseTab === "agent";
-        openAuthDialog(
-          { type: "message_profile", profile: profileUser, roleKey: browseTab },
-          { forceStudent }
-        );
-        return;
-      }
-
-      const me = myRole || "";
-      // ✅ Determine the *actual* role of the clicked profile (do NOT let browseTab override real role)
-      const targetRole = normalizeRole(
-        profileUser?.role ||
-          profileUser?.selected_role ||
-          profileUser?.user_type ||
-          profileUser?.userType ||
-          browseTab ||
-          ""
-      );
-
-      // 🚫 Hard policy: schools cannot message students/users
-      if (me === "school" && targetRole === "user") {
-        window.alert("Schools cannot message students. Schools can only contact Admin/Advisor (GP Team).");
-        navToMessages({ studentId: currentUser.uid, targetId: "support", targetRole: "support" });
-        return;
-      }
-
-      // ✅ FIX: ONLY user/student cannot message schools (covers any future school-profile message button)
-      if ((me === "user" || me === "student") && targetRole === "school") {
-        navToMessages({ studentId: currentUser.uid, targetId: "support", targetRole: "support" });
-        return;
-      }
-
-      // ✅ Proceed
-      onMessageProfile(profileUser, browseTab);
-    },
-    [
-      browseTab,
-      currentUser,
-      currentUserDoc,
-      myRole,
-      navigate,
-      navToMessages,
-      normalizeRole,
-      onMessageProfile,
-      openAuthDialog,
-    ]
+    [navigate, onContactSchool, pendingAction]
   );
 
   const handleLogin = useCallback(async () => {
@@ -1583,7 +1072,9 @@ const loadSchoolData = useCallback(async () => {
     setAuthLoading(true);
     try {
       const email = (loginEmail || "").trim();
-      if (!email || !loginPassword) throw new Error("Please enter your email and password.");
+      if (!email || !loginPassword) {
+        throw new Error("Please enter your email and password.");
+      }
       await signInWithEmailAndPassword(auth, email, loginPassword);
       afterAuthSuccess();
     } catch (e) {
@@ -1628,18 +1119,21 @@ const loadSchoolData = useCallback(async () => {
         { merge: true }
       );
 
-      // ✅ email signup => onboarding
       afterAuthSuccess({ onboardingRole: signupRole });
     } catch (e) {
       setAuthError(e?.message || "Sign up failed. Please try again.");
     } finally {
       setAuthLoading(false);
     }
-  }, [afterAuthSuccess, signupEmail, signupName, signupPassword, signupPassword2, signupRole]);
+  }, [
+    afterAuthSuccess,
+    signupEmail,
+    signupName,
+    signupPassword,
+    signupPassword2,
+    signupRole,
+  ]);
 
-  /* -----------------------------
-     ✅ OAuth helpers
-   ----------------------------- */
   const ensureBasicUserDoc = useCallback(async (fbUser) => {
     if (!fbUser?.uid) return;
     const ref = doc(db, "users", fbUser.uid);
@@ -1812,7 +1306,7 @@ const loadSchoolData = useCallback(async () => {
           full_name: name || oauthUser.full_name || auth.currentUser?.displayName || "",
           user_type: role,
           userType: role,
-          role: role,
+          role,
           selected_role: role,
           updated_at: serverTimestamp(),
           created_at: serverTimestamp(),
@@ -1858,16 +1352,15 @@ const loadSchoolData = useCallback(async () => {
         onContactSchool(schoolItem);
         return;
       }
-      // ✅ Not logged in: require login; treat as prospective student
       openAuthDialog({ type: "contact", schoolItem }, { forceStudent: true });
     },
     [currentUser, currentUserDoc, onContactSchool, openAuthDialog]
   );
 
+  const loading = loadingSchools;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
-      {/* ✅ In-page Login / Signup prompt */}
       <Dialog
         open={authDialogOpen}
         onOpenChange={(v) => {
@@ -1882,9 +1375,12 @@ const loadSchoolData = useCallback(async () => {
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>{tr("auth.title","Sign in required")}</DialogTitle>
+            <DialogTitle>{tr("auth.title", "Sign in required")}</DialogTitle>
             <DialogDescription>
-              {tr("auth.subtitle","You need to log in to continue. You can use email/password, or sign in with Google / Apple.")}
+              {tr(
+                "auth.subtitle",
+                "You need to log in to continue. You can use email/password, or sign in with Google / Apple."
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -1894,7 +1390,6 @@ const loadSchoolData = useCallback(async () => {
             </div>
           ) : null}
 
-          {/* CHOICE */}
           {authStep === "choice" ? (
             <div className="mt-4 space-y-3">
               <Button
@@ -1907,7 +1402,7 @@ const loadSchoolData = useCallback(async () => {
                 ) : (
                   <Chrome className="w-4 h-4 mr-2" />
                 )}
-                {tr("auth.continueGoogle","Continue with Google")}
+                {tr("auth.continueGoogle", "Continue with Google")}
               </Button>
 
               <Button
@@ -1921,18 +1416,18 @@ const loadSchoolData = useCallback(async () => {
                 ) : (
                   <Apple className="w-4 h-4 mr-2" />
                 )}
-                {tr("auth.continueApple","Continue with Apple")}
+                {tr("auth.continueApple", "Continue with Apple")}
               </Button>
 
               <div className="flex items-center gap-3 my-2">
                 <div className="h-px bg-gray-200 flex-1" />
-                <div className="text-xs text-gray-500">{tr("auth.orContinueEmail","or")}</div>
+                <div className="text-xs text-gray-500">{tr("auth.orContinueEmail", "or")}</div>
                 <div className="h-px bg-gray-200 flex-1" />
               </div>
 
               <Button className="w-full h-11" onClick={() => setAuthStep("login")} disabled={authLoading}>
                 <LogIn className="w-4 h-4 mr-2" />
-                {tr("auth.signIn","Sign in")}
+                {tr("auth.signIn", "Sign in")}
               </Button>
 
               <Button
@@ -1958,7 +1453,6 @@ const loadSchoolData = useCallback(async () => {
             </div>
           ) : null}
 
-          {/* LOGIN */}
           {authStep === "login" ? (
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1983,7 +1477,7 @@ const loadSchoolData = useCallback(async () => {
                 <Input
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder={tr("auth.email_placeholder","you@example.com")}
+                  placeholder={tr("auth.email_placeholder", "you@example.com")}
                   type="email"
                   className="h-11"
                   autoComplete="email"
@@ -1996,7 +1490,7 @@ const loadSchoolData = useCallback(async () => {
                   <Input
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder={tr("auth.password_placeholder","Enter your password")}
+                    placeholder={tr("auth.password_placeholder", "Enter your password")}
                     type={loginShowPw ? "text" : "password"}
                     className="h-11 pr-10"
                     autoComplete="current-password"
@@ -2014,7 +1508,7 @@ const loadSchoolData = useCallback(async () => {
 
               <Button className="w-full h-11" onClick={handleLogin} disabled={authLoading}>
                 {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
-                {tr("auth.login","Log in")}
+                {tr("auth.login", "Log in")}
               </Button>
 
               <div className="flex gap-2">
@@ -2025,22 +1519,9 @@ const loadSchoolData = useCallback(async () => {
                   Cancel
                 </Button>
               </div>
-
-              <div className="text-sm text-gray-600 text-center">
-                No account yet?{" "}
-                <button
-                  type="button"
-                  className="text-blue-600 underline hover:text-blue-700"
-                  onClick={() => setAuthStep("role")}
-                  disabled={authLoading}
-                >
-                  Create one
-                </button>
-              </div>
             </div>
           ) : null}
 
-          {/* ✅ ROLE SELECT (FIRST STEP FOR SIGNUP) */}
           {authStep === "role" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm font-medium text-gray-900">Select your role</div>
@@ -2072,7 +1553,6 @@ const loadSchoolData = useCallback(async () => {
             </div>
           ) : null}
 
-          {/* ✅ SIGNUP METHOD (SECOND STEP) */}
           {authStep === "signup_method" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
@@ -2094,7 +1574,7 @@ const loadSchoolData = useCallback(async () => {
 
               <div className="flex items-center gap-3 my-2">
                 <div className="h-px bg-gray-200 flex-1" />
-                <div className="text-xs text-gray-500">{tr("auth.orContinueEmail","or")}</div>
+                <div className="text-xs text-gray-500">{tr("auth.orContinueEmail", "or")}</div>
                 <div className="h-px bg-gray-200 flex-1" />
               </div>
 
@@ -2114,7 +1594,6 @@ const loadSchoolData = useCallback(async () => {
             </div>
           ) : null}
 
-          {/* ✅ SIGNUP EMAIL FORM (THIRD STEP) */}
           {authStep === "signup_email" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
@@ -2126,12 +1605,25 @@ const loadSchoolData = useCallback(async () => {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Full name</label>
-                <Input value={signupName} onChange={(e) => setSignupName(e.target.value)} placeholder={tr("auth.name_placeholder","Your name")} className="h-11" autoComplete="name" />
+                <Input
+                  value={signupName}
+                  onChange={(e) => setSignupName(e.target.value)}
+                  placeholder={tr("auth.name_placeholder", "Your name")}
+                  className="h-11"
+                  autoComplete="name"
+                />
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Email</label>
-                <Input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} placeholder={tr("auth.email_placeholder","you@example.com")} type="email" className="h-11" autoComplete="email" />
+                <Input
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  placeholder={tr("auth.email_placeholder", "you@example.com")}
+                  type="email"
+                  className="h-11"
+                  autoComplete="email"
+                />
               </div>
 
               <div className="space-y-2">
@@ -2140,7 +1632,7 @@ const loadSchoolData = useCallback(async () => {
                   <Input
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
-                    placeholder={tr("auth.create_password_placeholder","Create a password")}
+                    placeholder={tr("auth.create_password_placeholder", "Create a password")}
                     type={signupShowPw ? "text" : "password"}
                     className="h-11 pr-10"
                     autoComplete="new-password"
@@ -2161,7 +1653,7 @@ const loadSchoolData = useCallback(async () => {
                 <Input
                   value={signupPassword2}
                   onChange={(e) => setSignupPassword2(e.target.value)}
-                  placeholder={tr("auth.confirm_password_placeholder","Confirm your password")}
+                  placeholder={tr("auth.confirm_password_placeholder", "Confirm your password")}
                   type={signupShowPw ? "text" : "password"}
                   className="h-11"
                   autoComplete="new-password"
@@ -2170,7 +1662,7 @@ const loadSchoolData = useCallback(async () => {
 
               <Button className="w-full h-11" onClick={handleSignupEmail} disabled={authLoading}>
                 {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
-                {tr("auth.create_account","Create account")}
+                {tr("auth.create_account", "Create account")}
               </Button>
 
               <div className="flex gap-2">
@@ -2181,17 +1673,9 @@ const loadSchoolData = useCallback(async () => {
                   Cancel
                 </Button>
               </div>
-
-              <div className="text-sm text-gray-600 text-center">
-                Already have an account?{" "}
-                <button type="button" className="text-blue-600 underline hover:text-blue-700" onClick={() => setAuthStep("login")} disabled={authLoading}>
-                  {tr("auth.login","Log in")}
-                </button>
-              </div>
             </div>
           ) : null}
 
-          {/* ✅ OAUTH FINISH */}
           {authStep === "oauth_finish" ? (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-gray-600">
@@ -2206,7 +1690,7 @@ const loadSchoolData = useCallback(async () => {
                 <Input
                   value={oauthName}
                   onChange={(e) => setOauthName(e.target.value)}
-                  placeholder={tr("auth.name_placeholder","Your name")}
+                  placeholder={tr("auth.name_placeholder", "Your name")}
                   className="h-11"
                   autoComplete="name"
                   disabled={authLoading}
@@ -2234,41 +1718,28 @@ const loadSchoolData = useCallback(async () => {
         </DialogContent>
       </Dialog>
 
-      {/* Details dialog (uses the SAME panels as the previous right-side UI) */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-5xl p-0 overflow-hidden">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle>
-              {browseTab === "school"
-                ? tr("directory.school.details", "School Details")
-                : tr("directory.profile.details", "Profile Details")}
-            </DialogTitle>
+        <DialogContent className="max-w-5xl p-0 overflow-hidden max-h-[90vh]">
+          <DialogHeader className="px-6 pt-6 shrink-0">
+            <DialogTitle>{tr("directory.school.details", "School Details")}</DialogTitle>
             <DialogDescription>
-              {browseTab === "school"
-                ? tr(
-                    "directory.school.details_sub",
-                    "View overview, programs, and contact options."
-                  )
-                : tr(
-                    "directory.profile.details_sub",
-                    "View profile details and message options."
-                  )}
+              {tr("directory.school.details_sub", "View overview, programs, and contact options.")}
             </DialogDescription>
           </DialogHeader>
-          <div className="px-6 pb-6">
+          <div className="px-6 pb-6 overflow-hidden">
             {loading ? (
-            <SkeletonDetailsPanel />
-          ) : browseTab === "school" ? (
-            <SchoolDetailsPanel
-              item={selectedItem}
-              programs={selectedPrograms}
-              onContactClick={onContactClick}
-              onProgramClick={onProgramClick}
-              tr={tr}
-            />
-          ) : (
-            <UserDetailsPanel user={selectedItem} onMessageClick={onMessageClick} tr={tr} />
-          )}
+              <SkeletonDetailsPanel />
+            ) : (
+              <div className="max-h-[calc(90vh-110px)] overflow-y-auto pr-2">
+                <SchoolDetailsPanel
+                  item={selectedItem}
+                  programs={selectedPrograms}
+                  onContactClick={onContactClick}
+                  onProgramClick={onProgramClick}
+                  tr={tr}
+                />
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -2276,49 +1747,18 @@ const loadSchoolData = useCallback(async () => {
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         <div className="mb-8 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-4">
-            {browseTab === "school"
-              ? tr("directory.header.school_title", "Browse Schools & Institutions")
-              : tr("directory.header.role_title", "Browse {{role}} Directory", {
-                  role: tr(`directory.tabs.${browseTab}`, browseTab),
-                })}
+            {tr("directory.header.school_title", "Browse Schools & Institutions")}
           </h1>
 
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-            {browseTab === "school"
-              ? tr(
-                  "directory.header.school_subtitle",
-                  "Explore schools and institutions, then expand to view programs and contact options."
-                )
-              : tr(
-                  "directory.header.role_subtitle",
-                  "Explore our public directory and connect with verified profiles by country and search."
-                )}
+            {tr(
+              "directory.header.school_subtitle",
+              "Explore schools and institutions, then expand to view programs and contact options."
+            )}
           </p>
         </div>
 
-        {/* Filters + Tabs */}
         <div className="relative mb-8">
-          <div className="absolute -top-6 right-4 z-10 flex items-center gap-2">
-            {visibleTabs.map((t) => (
-              <Button
-                key={t.key}
-                type="button"
-                variant={browseTab === t.key ? "default" : "outline"}
-                className={[
-                  "h-10 px-5 text-base rounded-xl shadow-sm",
-                  browseTab === t.key ? "shadow" : "",
-                ].join(" ")}
-                onClick={() => {
-                  setBrowseTab(t.key);
-                  setSelectedCountry("all");
-                  setSearchTerm("");
-                }}
-              >
-                {t.label}
-              </Button>
-            ))}
-          </div>
-
           <Card>
             <CardContent className="p-6">
               <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
@@ -2326,7 +1766,10 @@ const loadSchoolData = useCallback(async () => {
                   <div className="text-sm text-gray-600 flex items-center gap-2">
                     <Users className="w-4 h-4" />
                     <span>
-                      {tr("directory.filters.browse_label","Browse:")} <span className="font-semibold capitalize">{browseTab}</span>
+                      {tr("directory.filters.browse_label", "Browse:")}{" "}
+                      <span className="font-semibold capitalize">
+                        {tr("directory.tabs.school", "School")}
+                      </span>
                     </span>
                   </div>
                   <div />
@@ -2338,11 +1781,7 @@ const loadSchoolData = useCallback(async () => {
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                       <Input
                         type="text"
-                        placeholder={
-                          browseTab === "school"
-                            ? tr("directory.search_placeholder.schools","Search schools, institutions, programs...")
-                            : tr("directory.search_placeholder.users", `Search ${browseTab}s by name, country...`)
-                        }
+                        placeholder={tr("directory.search_placeholder.schools", "Search schools, institutions, programs...")}
                         value={searchTerm}
                         onChange={handleSearchChange}
                         className="pl-10 h-11 text-base"
@@ -2353,63 +1792,56 @@ const loadSchoolData = useCallback(async () => {
                   <CountrySelector
                     value={selectedCountry}
                     onChange={handleCountryChange}
-                    options={browseTab === "school" ? schoolCountryOptions : userCountryOptions}
+                    options={schoolCountryOptions}
                     includeAll
                     allLabel="All Countries"
-                    placeholder={tr("directory.filters.all_countries","All Countries")}
+                    placeholder={tr("directory.filters.all_countries", "All Countries")}
                     className="h-11"
                   />
 
-                  {browseTab === "school" ? (
-                    <>
-                      <Select value={selectedCity} onValueChange={setSelectedCity}>
-                        <SelectTrigger className="h-11">
-                          <SelectValue placeholder={tr("directory.filters.all_cities","All Cities")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Cities</SelectItem>
-                          {(schoolCityGroups || []).map((g) => (
-                            <React.Fragment key={g.country}>
-                              <div className="px-2 py-1 text-xs font-semibold text-gray-500">
-                                {g.country}
-                              </div>
-                              {(g.cities || []).map((city) => (
-                                <SelectItem
-                                  key={`${g.country}-${city}`}
-                                  value={`${g.country}::${city}`}
-                                >
-                                  {city}
-                                </SelectItem>
-                              ))}
-                              <div className="my-1 h-px bg-gray-100" />
-                            </React.Fragment>
+                  <Select
+                      value={selectedCity}
+                      onValueChange={(value) => {
+                        setSelectedCity(value);
+                        updatePage(1);
+                      }}
+                    >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder={tr("directory.filters.all_cities", "All Cities")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Cities</SelectItem>
+                      {(schoolCityGroups || []).map((g) => (
+                        <React.Fragment key={g.country}>
+                          <div className="px-2 py-1 text-xs font-semibold text-gray-500">
+                            {g.country}
+                          </div>
+                          {(g.cities || []).map((city) => (
+                            <SelectItem key={`${g.country}-${city}`} value={`${g.country}::${city}`}>
+                              {city}
+                            </SelectItem>
                           ))}
-                        </SelectContent>
-                      </Select>
-                    </>
-                  ) : (
-                    <>
-                      <div className="hidden lg:block" />
-                    </>
-                  )}
+                          <div className="my-1 h-px bg-gray-100" />
+                        </React.Fragment>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">
                     {totalCount > 0 ? (
                       <>
-                        Showing <span className="font-medium">{startIndex + 1}</span>–<span className="font-medium">{endIndex}</span> of{" "}
-                        <span className="font-medium">{totalCount}</span>{" "}
-                        {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}
-                        {browseTab === "school" ? (
-                          <>
-                            {" "}
-                            {loadingPrograms ? tr("directory.school.loading_programs","Loading programs…") : `${allSchools.length} programs`}, {allInstitutions.length} institutions
-                          </>
-                        ) : null}
+                        Showing <span className="font-medium">{startIndex + 1}</span>–
+                        <span className="font-medium">{endIndex}</span> of{" "}
+                        <span className="font-medium">{totalCount}</span> schools
+                        {" "}
+                        {loadingPrograms
+                          ? tr("directory.school.loading_programs", "Loading programs…")
+                          : `${allSchools.length} programs, ${allInstitutions.length} institutions`}
                       </>
                     ) : (
-                      <>Showing 0 {browseTab === "school" ? "schools & institutions" : `${browseTab}s`}</>
+                      <>Showing 0 schools</>
                     )}
                   </div>
 
@@ -2422,7 +1854,6 @@ const loadSchoolData = useCallback(async () => {
           </Card>
         </div>
 
-        {/* Grid layout (LinkedIn-style cards) */}
         <div className="mt-2">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {loading ? (
@@ -2433,7 +1864,6 @@ const loadSchoolData = useCallback(async () => {
                 return (
                   <DirectoryGridCard
                     key={key}
-                    browseTab={browseTab}
                     item={item}
                     tr={tr}
                     onOpenDetails={() => {
@@ -2454,7 +1884,6 @@ const loadSchoolData = useCallback(async () => {
             )}
           </div>
 
-          {/* Pagination */}
           {totalCount > 0 && totalPages > 1 && (
             <div className="pt-6 flex items-center justify-center gap-2 flex-wrap">
               <Button
@@ -2501,12 +1930,9 @@ const loadSchoolData = useCallback(async () => {
           )}
         </div>
 
-        {/* Empty state */}
         {totalCount === 0 && (
           <div className="text-center py-12">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No {browseTab === "school" ? "schools or institutions" : `${browseTab}s`} found
-            </h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No schools found</h3>
             <p className="text-gray-600 mb-4">
               Try adjusting your search criteria or clear filters to see all available options.
             </p>

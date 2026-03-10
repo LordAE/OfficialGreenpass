@@ -64,7 +64,7 @@ import EventDetails from "@/pages/EventDetails";
 
 import AdminPackages from "@/pages/AdminPackages";
 
-import FindAgent from "@/pages/FindAgent";
+import FindAgent from "@/pages/Connect";
 
 import Checkout from "@/pages/Checkout";
 

@@ -16,6 +16,7 @@ import {
   GraduationCap,
   Loader2,
   AlertCircle,
+  Users,
 } from "lucide-react";
 
 import { auth, db } from "@/firebase";
@@ -349,13 +350,32 @@ function RightSideDirectoryTabs({
   onTabChange,
   agentList,
   tutorList,
+  userList,
   selectedId,
   onSelectItem,
   selectedCountry,
   onCountryChange,
   countryOptions,
+  hiddenRole,
 }) {
-  const list = activeTab === "agent" ? agentList : tutorList;
+  const visibleTabs = [
+    hiddenRole !== "agent"
+      ? { value: "agent", label: tr("agents", "Agents"), icon: Briefcase }
+      : null,
+    hiddenRole !== "tutor"
+      ? { value: "tutor", label: tr("tutors", "Tutors"), icon: GraduationCap }
+      : null,
+    hiddenRole !== "user"
+      ? { value: "user", label: tr("users", "Users"), icon: Users }
+      : null,
+  ].filter(Boolean);
+
+  const list =
+    activeTab === "agent"
+      ? agentList
+      : activeTab === "tutor"
+      ? tutorList
+      : userList;
 
   return (
     <Card className="h-full rounded-[26px] border border-slate-200 bg-white shadow-none">
@@ -393,21 +413,23 @@ function RightSideDirectoryTabs({
         </div>
 
         <Tabs value={activeTab} onValueChange={onTabChange} className="mb-4 shrink-0">
-          <TabsList className="grid h-12 w-full grid-cols-2 rounded-full bg-[#eef3f8] p-1">
-            <TabsTrigger
-              value="agent"
-              className="rounded-full data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white"
-            >
-              <Briefcase className="mr-2 h-4 w-4" />
-              {tr("agents", "Agents")}
-            </TabsTrigger>
-            <TabsTrigger
-              value="tutor"
-              className="rounded-full data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white"
-            >
-              <GraduationCap className="mr-2 h-4 w-4" />
-              {tr("tutors", "Tutors")}
-            </TabsTrigger>
+          <TabsList
+            className="grid h-12 w-full rounded-full bg-[#eef3f8] p-1"
+            style={{ gridTemplateColumns: `repeat(${Math.max(visibleTabs.length, 1)}, minmax(0, 1fr))` }}
+          >
+            {visibleTabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="rounded-full data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white"
+                >
+                  <Icon className="mr-2 h-4 w-4" />
+                  {tab.label}
+                </TabsTrigger>
+              );
+            })}
           </TabsList>
         </Tabs>
 
@@ -428,7 +450,9 @@ function RightSideDirectoryTabs({
               <div className="rounded-[18px] border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
                 {activeTab === "agent"
                   ? tr("no_agents_found", "No agents found.")
-                  : tr("no_tutors_found", "No tutors found.")}
+                  : activeTab === "tutor"
+                  ? tr("no_tutors_found", "No tutors found.")
+                  : tr("no_users_found", "No users found.")}
               </div>
             )}
           </div>
@@ -438,16 +462,34 @@ function RightSideDirectoryTabs({
   );
 }
 
-export default function FindAgent() {
-  const { tr } = useTr("findAgent");
+export default function Connect() {
+  const { tr } = useTr("connect");
 
   const [currentUserDoc, setCurrentUserDoc] = useState(null);
+
+  const myRole = useMemo(() => {
+    const raw = String(
+      currentUserDoc?.role ||
+        currentUserDoc?.selected_role ||
+        currentUserDoc?.user_type ||
+        currentUserDoc?.userType ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (raw === "student") return "user";
+    if (["user", "agent", "tutor"].includes(raw)) return raw;
+    return "";
+  }, [currentUserDoc]);
 
   const [activeTab, setActiveTab] = useState("agent");
   const [allAgents, setAllAgents] = useState([]);
   const [allTutors, setAllTutors] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [filteredAgents, setFilteredAgents] = useState([]);
   const [filteredTutors, setFilteredTutors] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -455,6 +497,7 @@ export default function FindAgent() {
   const [selectedCountry, setSelectedCountry] = useState("all");
   const [selectedAgentId, setSelectedAgentId] = useState(null);
   const [selectedTutorId, setSelectedTutorId] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState(null);
   const [userHasSelected, setUserHasSelected] = useState(false);
   const [lockedDisplay, setLockedDisplay] = useState(null);
 
@@ -469,24 +512,25 @@ export default function FindAgent() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [showRatingBreakdown, setShowRatingBreakdown] = useState(false);
 
-  const fetchUsersForRole = useCallback(async (role) => {
+  const fetchUsersForRole = useCallback(async (roleOrRoles) => {
+    const roles = Array.isArray(roleOrRoles) ? roleOrRoles : [roleOrRoles];
     const usersRef = collection(db, "users");
-    const qs = [
-      query(usersRef, where("user_type", "==", role)),
-      query(usersRef, where("userType", "==", role)),
-      query(usersRef, where("role", "==", role)),
-      query(usersRef, where("selected_role", "==", role)),
-    ];
-
-    const snaps = await Promise.all(qs.map((q1) => getDocs(q1)));
     const byId = new Map();
 
-    snaps.forEach((snap) => {
-      snap.forEach((docSnap) => {
-        const d = docSnap.data() || {};
-        byId.set(docSnap.id, { id: docSnap.id, ...d });
-      });
-    });
+    await Promise.all(
+      roles.flatMap((role) => [
+        query(usersRef, where("user_type", "==", role)),
+        query(usersRef, where("userType", "==", role)),
+        query(usersRef, where("role", "==", role)),
+        query(usersRef, where("selected_role", "==", role)),
+      ]).map(async (q1) => {
+        const snap = await getDocs(q1);
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() || {};
+          byId.set(docSnap.id, { id: docSnap.id, ...d });
+        });
+      })
+    );
 
     return Array.from(byId.values());
   }, []);
@@ -544,18 +588,22 @@ export default function FindAgent() {
           setCurrentUserDoc(null);
         }
 
-        const [agents, tutors] = await Promise.all([
+        const [agents, tutors, users] = await Promise.all([
           fetchUsersForRole("agent"),
           fetchUsersForRole("tutor"),
+          fetchUsersForRole(["user", "student"]),
         ]);
 
         setAllAgents(agents);
         setAllTutors(tutors);
+        setAllUsers(users);
         setFilteredAgents(agents);
         setFilteredTutors(tutors);
+        setFilteredUsers(users);
 
         if (agents.length) setSelectedAgentId((prev) => prev || agents[0].id);
         if (tutors.length) setSelectedTutorId((prev) => prev || tutors[0].id);
+        if (users.length) setSelectedUserId((prev) => prev || users[0].id);
 
         if (myDoc) {
           await fetchAssignedAgent(myDoc);
@@ -576,23 +624,14 @@ export default function FindAgent() {
   }, [fetchAssignedAgent, fetchPendingAgent, fetchUsersForRole, getUserDoc]);
 
   useEffect(() => {
-    const filterAgents = allAgents.filter((u) => {
-      return (
-        selectedCountry === "all" ||
-        String(u.country || u.selected_country || u.countryName || "").toLowerCase() === selectedCountry.toLowerCase()
-      );
-    });
+    const filterByCountry = (u) =>
+      selectedCountry === "all" ||
+      String(u.country || u.selected_country || u.countryName || "").toLowerCase() === selectedCountry.toLowerCase();
 
-    const filterTutors = allTutors.filter((u) => {
-      return (
-        selectedCountry === "all" ||
-        String(u.country || u.selected_country || u.countryName || "").toLowerCase() === selectedCountry.toLowerCase()
-      );
-    });
-
-    setFilteredAgents(filterAgents);
-    setFilteredTutors(filterTutors);
-  }, [allAgents, allTutors, selectedCountry]);
+    setFilteredAgents(allAgents.filter(filterByCountry));
+    setFilteredTutors(allTutors.filter(filterByCountry));
+    setFilteredUsers(allUsers.filter(filterByCountry));
+  }, [allAgents, allTutors, allUsers, selectedCountry]);
 
   useEffect(() => {
     if (filteredAgents.length && !filteredAgents.some((x) => x.id === selectedAgentId)) {
@@ -608,12 +647,30 @@ export default function FindAgent() {
     if (!filteredTutors.length) setSelectedTutorId(null);
   }, [filteredTutors, selectedTutorId]);
 
+  useEffect(() => {
+    if (filteredUsers.length && !filteredUsers.some((x) => x.id === selectedUserId)) {
+      setSelectedUserId(filteredUsers[0].id);
+    }
+    if (!filteredUsers.length) setSelectedUserId(null);
+  }, [filteredUsers, selectedUserId]);
+
+  useEffect(() => {
+    const availableTabs = ["agent", "tutor", "user"].filter((tab) => tab !== myRole);
+    if (!availableTabs.length) return;
+    if (!availableTabs.includes(activeTab)) {
+      setActiveTab(availableTabs[0]);
+    }
+  }, [myRole, activeTab]);
+
   const fallbackSelectedEntity = useMemo(() => {
     if (activeTab === "agent") {
       return filteredAgents.find((x) => x.id === selectedAgentId) || filteredAgents[0] || null;
     }
-    return filteredTutors.find((x) => x.id === selectedTutorId) || filteredTutors[0] || null;
-  }, [activeTab, filteredAgents, filteredTutors, selectedAgentId, selectedTutorId]);
+    if (activeTab === "tutor") {
+      return filteredTutors.find((x) => x.id === selectedTutorId) || filteredTutors[0] || null;
+    }
+    return filteredUsers.find((x) => x.id === selectedUserId) || filteredUsers[0] || null;
+  }, [activeTab, filteredAgents, filteredTutors, filteredUsers, selectedAgentId, selectedTutorId, selectedUserId]);
 
   const displayedEntity = userHasSelected && lockedDisplay ? lockedDisplay : fallbackSelectedEntity;
   const displayedRole =
@@ -634,12 +691,12 @@ export default function FindAgent() {
   useEffect(() => {
     if (!userHasSelected || !lockedDisplay?.id) return;
 
-    const source = [...allAgents, ...allTutors];
+    const source = [...allAgents, ...allTutors, ...allUsers];
     const refreshed = source.find((item) => item.id === lockedDisplay.id);
     if (refreshed) {
       setLockedDisplay(refreshed);
     }
-  }, [allAgents, allTutors, lockedDisplay?.id, userHasSelected]);
+  }, [allAgents, allTutors, allUsers, lockedDisplay?.id, userHasSelected]);
 
   const reviews = useMemo(() => {
     const source = Array.isArray(displayedEntity?.reviews)
@@ -661,7 +718,13 @@ export default function FindAgent() {
   const reviewCount = useMemo(() => reviews.length, [reviews]);
 
   const countryOptions = useMemo(() => {
-    const list = activeTab === "agent" ? allAgents : allTutors;
+    const list =
+      activeTab === "agent"
+        ? allAgents
+        : activeTab === "tutor"
+        ? allTutors
+        : allUsers;
+
     return Array.from(
       new Set(
         list
@@ -670,13 +733,17 @@ export default function FindAgent() {
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b));
-  }, [activeTab, allAgents, allTutors]);
+  }, [activeTab, allAgents, allTutors, allUsers]);
 
   useEffect(() => {
     let cancelled = false;
 
     const roleForReviews =
-      displayedRole === "agent" || displayedRole === "tutor" ? displayedRole : activeTab;
+      displayedRole === "agent" || displayedRole === "tutor" || displayedRole === "user" || displayedRole === "student"
+        ? displayedRole === "student"
+          ? "user"
+          : displayedRole
+        : activeTab;
 
     const loadReviews = async () => {
       if (!displayedEntity?.id) {
@@ -788,7 +855,11 @@ export default function FindAgent() {
     }
 
     const roleForReviews =
-      displayedRole === "agent" || displayedRole === "tutor" ? displayedRole : activeTab;
+      displayedRole === "agent" || displayedRole === "tutor" || displayedRole === "user" || displayedRole === "student"
+        ? displayedRole === "student"
+          ? "user"
+          : displayedRole
+        : activeTab;
 
     const myName =
       auth?.currentUser?.displayName ||
@@ -843,6 +914,9 @@ export default function FindAgent() {
     if (value === "tutor" && !selectedTutorId && filteredTutors.length) {
       setSelectedTutorId(filteredTutors[0].id);
     }
+    if (value === "user" && !selectedUserId && filteredUsers.length) {
+      setSelectedUserId(filteredUsers[0].id);
+    }
   };
 
   const handleSelectItem = (id) => {
@@ -852,14 +926,23 @@ export default function FindAgent() {
       setSelectedAgentId(id);
       const picked = filteredAgents.find((item) => item.id === id) || null;
       if (picked) setLockedDisplay(picked);
-    } else {
+    } else if (activeTab === "tutor") {
       setSelectedTutorId(id);
       const picked = filteredTutors.find((item) => item.id === id) || null;
+      if (picked) setLockedDisplay(picked);
+    } else {
+      setSelectedUserId(id);
+      const picked = filteredUsers.find((item) => item.id === id) || null;
       if (picked) setLockedDisplay(picked);
     }
   };
 
-  const rightSideSelectedId = activeTab === "agent" ? selectedAgentId : selectedTutorId;
+  const rightSideSelectedId =
+    activeTab === "agent"
+      ? selectedAgentId
+      : activeTab === "tutor"
+      ? selectedTutorId
+      : selectedUserId;
 
   const name =
     displayedRole === "agent"
@@ -875,6 +958,8 @@ export default function FindAgent() {
   const headline =
     displayedRole === "agent"
       ? displayedEntity?.full_name || tr("agent_representative", "Agent Representative")
+      : displayedRole === "user" || displayedRole === "student"
+      ? displayedEntity?.headline || displayedEntity?.title || tr("user", "User")
       : displayedEntity?.headline || displayedEntity?.title || tr("tutor", "Tutor");
 
   if (loading) {
@@ -943,42 +1028,42 @@ export default function FindAgent() {
 
                             <div className="flex flex-col gap-3">
                               <div className="relative">
-  <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
-    <div className="flex items-start justify-between">
-      <div className="text-[22px] font-extrabold leading-none text-slate-700">
-        Success Rate
-      </div>
+                                <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
+                                  <div className="flex items-start justify-between">
+                                    <div className="text-[22px] font-extrabold leading-none text-slate-700">
+                                      Success Rate
+                                    </div>
 
-      <div className="mr-10 text-[22px] font-extrabold leading-none text-[#2C5E93]">
-        {`${Math.round((averageRating / 5) * 100)}%`}
-      </div>
-    </div>
+                                    <div className="mr-10 text-[22px] font-extrabold leading-none text-[#2C5E93]">
+                                      {`${Math.round((averageRating / 5) * 100)}%`}
+                                    </div>
+                                  </div>
 
-    <div className="mt-3">
-      <StarSummary
-        value={averageRating}
-        count={reviewCount}
-        withDropdown
-        isOpen={showRatingBreakdown}
-        onToggle={() => setShowRatingBreakdown((prev) => !prev)}
-      />
-    </div>
-  </div>
+                                  <div className="mt-3">
+                                    <StarSummary
+                                      value={averageRating}
+                                      count={reviewCount}
+                                      withDropdown
+                                      isOpen={showRatingBreakdown}
+                                      onToggle={() => setShowRatingBreakdown((prev) => !prev)}
+                                    />
+                                  </div>
+                                </div>
 
-  <AnimatePresence initial={false}>
-    {showRatingBreakdown ? (
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="absolute left-0 right-0 top-[calc(100%+10px)] z-20"
-      >
-        <ReviewBreakdownDropdown reviews={reviews} />
-      </motion.div>
-    ) : null}
-  </AnimatePresence>
-</div>
+                                <AnimatePresence initial={false}>
+                                  {showRatingBreakdown ? (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: -8 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -8 }}
+                                      transition={{ duration: 0.2, ease: "easeOut" }}
+                                      className="absolute left-0 right-0 top-[calc(100%+10px)] z-20"
+                                    >
+                                      <ReviewBreakdownDropdown reviews={reviews} />
+                                    </motion.div>
+                                  ) : null}
+                                </AnimatePresence>
+                              </div>
 
                               <div className="rounded-[18px] border border-slate-100 bg-white px-3 py-2.5 shadow-sm">
                                 <div className="flex min-w-0 items-center gap-3">
@@ -1110,11 +1195,13 @@ export default function FindAgent() {
                     onTabChange={handleTabChange}
                     agentList={filteredAgents}
                     tutorList={filteredTutors}
+                    userList={filteredUsers}
                     selectedId={rightSideSelectedId}
                     onSelectItem={handleSelectItem}
                     selectedCountry={selectedCountry}
                     onCountryChange={setSelectedCountry}
                     countryOptions={countryOptions}
+                    hiddenRole={myRole}
                   />
                 </div>
               </motion.div>

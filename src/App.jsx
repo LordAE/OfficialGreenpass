@@ -9,7 +9,7 @@ import Directory from "@/pages/Directory";
 import Dashboard from "@/pages/Dashboard";
 import EventsPage from "@/pages/Events";
 import Onboarding from "./pages/Onboarding";
-import FindAgent from "@/pages/FindAgent";
+import Connect from "@/pages/Connect";
 import MyAgent from "@/pages/MyAgent";
 import Tutors from "@/pages/Tutors";
 import MySessions from "@/pages/MySessions";
@@ -192,6 +192,14 @@ export default function App() {
           }
         />
         <Route
+          path="connect"
+          element={
+            <RequireAuth currentUser={currentUser} loading={loading}>
+              <Connect />
+            </RequireAuth>
+          }
+        />
+        <Route
           path="view-profile/:uid"
           element={
             <RequireAuth currentUser={currentUser} loading={loading}>
@@ -243,14 +251,6 @@ export default function App() {
         />
 
         {/* Student-only */}
-        <Route
-          path="findagent"
-          element={
-            <RequireRole currentUser={currentUser} loading={loading} allow={["student", "user"]}>
-              <FindAgent />
-            </RequireRole>
-          }
-        />
         <Route
           path="myagent"
           element={
