@@ -455,6 +455,16 @@ function buildAccountMenuItems(currentUser, tr) {
     );
   }
 
+  if (role === "user" || role === "student") {
+    items.unshift({
+      label: currentUser?.assigned_agent_id
+        ? tr("myAgent", "My Agent")
+        : tr("findAgent", "Find Agent"),
+      url: createPageUrl(currentUser?.assigned_agent_id ? "MyAgent" : "FindAgent"),
+      icon: UserCheck,
+    });
+  }
+
   return items;
 }
 

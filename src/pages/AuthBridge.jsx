@@ -1,5 +1,5 @@
-// src/pages/AuthBridge.jsx
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { signInWithCustomToken } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -16,16 +16,23 @@ import { auth, db } from "@/firebase";
  * - next=/accept-org-invite?invite=...&token=... (optional)
  * - role=student|agent|tutor|school|institution|provider (optional; for NEW users)
  * - lang=en (optional)
+ *
+ * ✅ Language handling:
+ * - Reads `lang` from query
+ * - Applies it to i18next immediately (so UI/status strings match SEO selection)
+ * - Persists to localStorage for app-wide reload consistency
  */
 export default function AuthBridge() {
+  const { t, i18n } = useTranslation();
   const [params] = useSearchParams();
   const role = params.get("role");
   const navigate = useNavigate();
-  const [status, setStatus] = React.useState("Exchanging sign-in code...");
 
   const code = params.get("code");
   const lang = params.get("lang") || "en";
   const nextHint = params.get("next") || "";
+
+  const [status, setStatus] = React.useState("…");
 
   const safeInternalPath = (p) => {
     if (!p) return null;
@@ -53,13 +60,28 @@ export default function AuthBridge() {
     import.meta.env?.VITE_EXCHANGE_AUTH_BRIDGE_URL ||
     "https://us-central1-greenpass-dc92d.cloudfunctions.net/exchangeAuthBridgeCode";
 
+  // ✅ Apply language ASAP (before showing any status)
+  React.useEffect(() => {
+    try {
+      // Persist for i18next default detector + your own helpers
+      localStorage.setItem("i18nextLng", lang);
+      localStorage.setItem("gp_lang", lang);
+    } catch {}
+    if (i18n?.language !== lang) {
+      i18n.changeLanguage(lang).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
   React.useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
       try {
+        setStatus(t("authBridge.status_exchanging", "Exchanging sign-in code…"));
+
         if (!code) {
-          setStatus("Missing sign-in code.");
+          setStatus(t("authBridge.status_missing_code", "Missing sign-in code."));
           navigate(`/login?mode=login&lang=${encodeURIComponent(lang)}`, { replace: true });
           return;
         }
@@ -80,14 +102,14 @@ export default function AuthBridge() {
         if (!customToken) throw new Error("No customToken returned from exchangeAuthBridgeCode.");
         if (cancelled) return;
 
-        setStatus("Signing you in...");
+        setStatus(t("authBridge.status_signing_in", "Signing you in…"));
         await signInWithCustomToken(auth, customToken);
         if (cancelled) return;
 
         const fbUser = auth.currentUser;
         if (!fbUser?.uid) throw new Error("Signed in but auth.currentUser is missing.");
 
-        setStatus("Checking your profile...");
+        setStatus(t("authBridge.status_checking_profile", "Checking your profile…"));
 
         const userRef = doc(db, "users", fbUser.uid);
         const snap = await getDoc(userRef);
@@ -135,13 +157,13 @@ export default function AuthBridge() {
 
         if (cancelled) return;
 
-        setStatus("Redirecting...");
+        setStatus(t("authBridge.status_redirecting", "Redirecting…"));
         window.location.replace(goTo);
       } catch (err) {
         console.error("[AuthBridge] error:", err);
         if (cancelled) return;
 
-        setStatus("Sign-in failed. Redirecting to login...");
+        setStatus(t("authBridge.status_failed_redirecting", "Sign-in failed. Redirecting to login…"));
         setTimeout(() => {
           navigate(`/login?mode=login&lang=${encodeURIComponent(lang)}&bridge=fail`, {
             replace: true,
@@ -154,7 +176,7 @@ export default function AuthBridge() {
     return () => {
       cancelled = true;
     };
-  }, [code, exchangeUrl, lang, nextHint, navigate, role]);
+  }, [code, exchangeUrl, lang, nextHint, navigate, role, t]);
 
   return (
     <div
@@ -168,10 +190,8 @@ export default function AuthBridge() {
         gap: 12,
       }}
     >
-      <div className="gp-spinner" aria-label="Loading" />
-      <div style={{ fontSize: 14, color: "#555", textAlign: "center" }}>
-        {status}
-      </div>
+      <div className="gp-spinner" aria-label={t("authBridge.aria_loading", "Loading")} />
+      <div style={{ fontSize: 14, color: "#555", textAlign: "center" }}>{status}</div>
 
       <style>{`
         .gp-spinner {

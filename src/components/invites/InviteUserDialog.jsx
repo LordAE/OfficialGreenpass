@@ -24,7 +24,7 @@ import { getAuth } from "firebase/auth";
  *  - VITE_FIREBASE_PROJECT_ID (fallback)
  */
 
-const ROLE_LABELS = { student: "Student", agent: "Agent", school: "School" };
+const ROLE_LABELS = { student: "Student", agent: "Agent", school: "School", tutor: "Tutor"};
 
 function getEnv(key) {
   try {

@@ -74,15 +74,16 @@ const createPageUrl =
       .trim()
       .replace(/\s+/g, "")
       .replace(/[^\w/]/g, "")
-      .toLowerCase()
-  );
+      .toLowerCase());
 
 /* =========================
-   ✅ Auth + Role Guards
+   Auth + Role Guards
 ========================= */
 
 function normalizeRole(u) {
-  return String(u?.user_type || u?.role || "student").toLowerCase();
+  const raw = String(u?.user_type || u?.role || "student").toLowerCase().trim();
+  if (raw === "user") return "student";
+  return raw;
 }
 
 function useCurrentUser() {
@@ -103,11 +104,9 @@ function useCurrentUser() {
         if (snap.exists()) {
           setCurrentUser({ uid: fbUser.uid, ...snap.data() });
         } else {
-          // If profile doc doesn't exist yet, still treat as authenticated (role defaults to student)
           setCurrentUser({ uid: fbUser.uid, user_type: "student" });
         }
-      } catch (e) {
-        // Fail safe: still allow auth shell, but role defaults
+      } catch {
         setCurrentUser({ uid: fbUser.uid, user_type: "student" });
       } finally {
         setLoading(false);
@@ -133,10 +132,9 @@ function RequireRole({ currentUser, loading, allow, children }) {
   if (!currentUser) return <Navigate to="/login" replace state={{ from: location }} />;
 
   const role = normalizeRole(currentUser);
-  const allowed = Array.isArray(allow) ? allow : [allow];
+  const allowed = (Array.isArray(allow) ? allow : [allow]).map((r) => normalizeRole({ user_type: r }));
 
   if (!allowed.includes(role)) {
-    // Prevent cross-role route access
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -234,22 +232,21 @@ export default function App() {
           }
         />
 
-
-{/* Organization (School/Agent/Tutor) */}
-<Route
-  path="organization"
-  element={
-    <RequireRole currentUser={currentUser} loading={loading} allow={["school", "agent", "tutor"]}>
-      <Organization />
-    </RequireRole>
-  }
-/>
+        {/* Organization (School/Agent/Tutor) */}
+        <Route
+          path="organization"
+          element={
+            <RequireRole currentUser={currentUser} loading={loading} allow={["school", "agent", "tutor"]}>
+              <Organization />
+            </RequireRole>
+          }
+        />
 
         {/* Student-only */}
         <Route
           path="findagent"
           element={
-            <RequireRole currentUser={currentUser} loading={loading} allow={["student"]}>
+            <RequireRole currentUser={currentUser} loading={loading} allow={["student", "user"]}>
               <FindAgent />
             </RequireRole>
           }
@@ -257,7 +254,7 @@ export default function App() {
         <Route
           path="myagent"
           element={
-            <RequireRole currentUser={currentUser} loading={loading} allow={["student"]}>
+            <RequireRole currentUser={currentUser} loading={loading} allow={["student", "user"]}>
               <MyAgent />
             </RequireRole>
           }
@@ -265,7 +262,7 @@ export default function App() {
         <Route
           path="mysessions"
           element={
-            <RequireRole currentUser={currentUser} loading={loading} allow={["student"]}>
+            <RequireRole currentUser={currentUser} loading={loading} allow={["student", "user"]}>
               <MySessions />
             </RequireRole>
           }
@@ -273,7 +270,7 @@ export default function App() {
         <Route
           path="reservationstatus"
           element={
-            <RequireRole currentUser={currentUser} loading={loading} allow={["student"]}>
+            <RequireRole currentUser={currentUser} loading={loading} allow={["student", "user"]}>
               <ReservationStatus />
             </RequireRole>
           }
@@ -356,7 +353,6 @@ export default function App() {
             </RequireRole>
           }
         />
-
         <Route
           path="programdetails"
           element={
@@ -366,7 +362,7 @@ export default function App() {
           }
         />
 
-{/* Vendor-only (kept for future; blocks student/tutor/agent/school/admin) */}
+        {/* Vendor-only */}
         <Route
           path="myservices"
           element={
