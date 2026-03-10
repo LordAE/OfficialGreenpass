@@ -703,7 +703,7 @@ const PublicLayout = ({ getLogoUrl, getCompanyName }) => {
               </form>
             </div>
 
-            <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
+            <div className="hidden lg:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[700px] md:w-[780px] lg:w-[860px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
@@ -877,7 +877,7 @@ const SchoolAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onL
               </form>
             </div>
 
-            <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
+            <div className="hidden lg:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[700px] md:w-[780px] lg:w-[860px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
@@ -988,7 +988,7 @@ const AgentAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
               </form>
             </div>
 
-            <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
+            <div className="hidden lg:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[700px] md:w-[780px] lg:w-[860px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
@@ -1099,7 +1099,7 @@ const TutorAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLo
               </form>
             </div>
 
-            <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
+            <div className="hidden lg:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[700px] md:w-[780px] lg:w-[860px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
@@ -1210,7 +1210,7 @@ const UserAuthedTopNavLayout = ({ currentUser, getLogoUrl, getCompanyName, onLog
               </form>
             </div>
 
-            <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
+            <div className="hidden lg:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[700px] md:w-[780px] lg:w-[860px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
@@ -1369,7 +1369,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
               </Link>
             </div>
 
-            <div className="hidden sm:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
+            <div className="hidden lg:flex absolute left-1/2 -translate-x-1/2 items-center justify-center pointer-events-none">
               <div className="pointer-events-auto w-[700px] md:w-[780px] lg:w-[860px]">
                 <div className="flex w-full">
                   <div className="flex-1 flex justify-center">
