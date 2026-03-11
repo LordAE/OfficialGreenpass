@@ -27,6 +27,7 @@ import {
   UserPlus,
   UserMinus,
   Send,
+  BookOpen,
 } from "lucide-react";
 
 import { auth, db } from "@/firebase";
@@ -236,6 +237,34 @@ function getAvatar(item) {
   );
 }
 
+function toArrayValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v || "").trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function getBiography(item) {
+  return String(item?.bio || "").trim();
+}
+
+function getStudentInterests(item) {
+  return {
+    courses: toArrayValue(item?.selected_courses),
+    countries: toArrayValue(item?.preferred_countries),
+    areas: toArrayValue(item?.study_areas),
+    languages: toArrayValue(item?.spoken_languages),
+  };
+}
+
 function EntityListRow({ item, isSelected, onSelect, type, tr }) {
   const name =
     type === "agent"
@@ -387,6 +416,30 @@ function maskPhone(phone) {
 
   const last4 = digits.slice(-4);
   return `+•• ••• ••• ${last4}`;
+}
+
+function InfoPillList({ title, values = [] }) {
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold text-slate-900">{title}</div>
+      {values.length ? (
+        <div className="flex flex-wrap gap-2">
+          {values.map((value, index) => (
+            <span
+              key={`${title}-${value}-${index}`}
+              className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700"
+            >
+              {value}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-[14px] border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-400">
+          No information added yet.
+        </div>
+      )}
+    </div>
+  );
 }
 
 function RightSideDirectoryTabs({
@@ -1134,8 +1187,15 @@ export default function Connect() {
     displayedRole === "agent"
       ? displayedEntity?.full_name || tr("agent_representative", "Agent Representative")
       : displayedRole === "user" || displayedRole === "student"
-      ? displayedEntity?.headline || displayedEntity?.title || tr("user", "User")
+      ? displayedEntity?.headline ||
+        displayedEntity?.current_level ||
+        displayedEntity?.title ||
+        tr("user", "User")
       : displayedEntity?.headline || displayedEntity?.title || tr("tutor", "Tutor");
+
+  const biography = getBiography(displayedEntity || {});
+  const studentInterests = getStudentInterests(displayedEntity || {});
+  const showStudentExtraInfo = normalizedDisplayedRole === "user";
 
   const followButtonLabel = useMemo(() => {
     if (followLoading) return tr("please_wait", "Please wait...");
@@ -1199,11 +1259,7 @@ export default function Connect() {
                     <Card className="h-full overflow-hidden rounded-[20px] border border-slate-200 bg-[#f8fbff] shadow-none sm:rounded-[24px] xl:min-w-0">
                       <CardContent className="flex h-full min-h-0 flex-col overflow-hidden p-3 sm:p-4">
                         <div className="flex h-full min-h-0 flex-col rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm sm:rounded-[26px] sm:p-4">
-                          <div
-                            className={`grid shrink-0 gap-3 ${
-                              showReviewsSection ? "xl:grid-cols-[0.88fr_1.42fr]" : "xl:grid-cols-[0.88fr_1.42fr]"
-                            }`}
-                          >
+                          <div className="grid shrink-0 gap-3 xl:grid-cols-[0.88fr_1.42fr]">
                             <div className="rounded-[22px] border border-slate-100 bg-white p-3 shadow-sm">
                               <div className="mx-auto flex h-32 w-full items-center justify-center overflow-hidden rounded-[20px] bg-[#dfe8f1] text-4xl font-bold text-[#173562] sm:h-40">
                                 <img src={avatar} alt={name} className="h-full w-full object-cover" />
@@ -1224,43 +1280,45 @@ export default function Connect() {
                             </div>
 
                             <div className="flex flex-col gap-3">
-                              <div className="relative">
-                                <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="text-[20px] font-extrabold leading-none text-slate-700 sm:text-[22px]">
-                                      Success Rate
+                              {showReviewsSection ? (
+                                <div className="relative">
+                                  <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="text-[20px] font-extrabold leading-none text-slate-700 sm:text-[22px]">
+                                        Success Rate
+                                      </div>
+
+                                      <div className="text-[20px] font-extrabold leading-none text-[#2C5E93] sm:text-[22px]">
+                                        {`${Math.round((averageRating / 5) * 100)}%`}
+                                      </div>
                                     </div>
 
-                                    <div className="text-[20px] font-extrabold leading-none text-[#2C5E93] sm:text-[22px]">
-                                      {`${Math.round((averageRating / 5) * 100)}%`}
+                                    <div className="mt-3">
+                                      <StarSummary
+                                        value={averageRating}
+                                        count={reviewCount}
+                                        withDropdown
+                                        isOpen={showRatingBreakdown}
+                                        onToggle={() => setShowRatingBreakdown((prev) => !prev)}
+                                      />
                                     </div>
                                   </div>
 
-                                  <div className="mt-3">
-                                    <StarSummary
-                                      value={averageRating}
-                                      count={reviewCount}
-                                      withDropdown
-                                      isOpen={showRatingBreakdown}
-                                      onToggle={() => setShowRatingBreakdown((prev) => !prev)}
-                                    />
-                                  </div>
+                                  <AnimatePresence initial={false}>
+                                    {showRatingBreakdown ? (
+                                      <motion.div
+                                        initial={{ opacity: 0, y: -8 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -8 }}
+                                        transition={{ duration: 0.2, ease: "easeOut" }}
+                                        className="absolute left-0 right-0 top-[calc(100%+10px)] z-20"
+                                      >
+                                        <ReviewBreakdownDropdown reviews={reviews} />
+                                      </motion.div>
+                                    ) : null}
+                                  </AnimatePresence>
                                 </div>
-
-                                <AnimatePresence initial={false}>
-                                  {showRatingBreakdown ? (
-                                    <motion.div
-                                      initial={{ opacity: 0, y: -8 }}
-                                      animate={{ opacity: 1, y: 0 }}
-                                      exit={{ opacity: 0, y: -8 }}
-                                      transition={{ duration: 0.2, ease: "easeOut" }}
-                                      className="absolute left-0 right-0 top-[calc(100%+10px)] z-20"
-                                    >
-                                      <ReviewBreakdownDropdown reviews={reviews} />
-                                    </motion.div>
-                                  ) : null}
-                                </AnimatePresence>
-                              </div>
+                              ) : null}
 
                               <div className="rounded-[18px] border border-slate-100 bg-white px-3 py-2.5 shadow-sm">
                                 <div className="flex min-w-0 items-center gap-3">
@@ -1329,6 +1387,47 @@ export default function Connect() {
                               </div>
                             </div>
                           </div>
+
+                          {showStudentExtraInfo ? (
+                            <div className="mt-4 rounded-[20px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm sm:rounded-[24px] sm:p-4">
+                              <div>
+                                <div className="mb-2 text-sm font-semibold text-slate-900">
+                                  Biography / Description
+                                </div>
+                                <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+                                  {biography || "No biography/description added yet."}
+                                </div>
+                              </div>
+
+                              <div className="mt-4">
+                                <div className="mb-3 flex items-center gap-2">
+                                  <BookOpen className="h-5 w-5 text-[#0f2f63]" />
+                                  <div className="text-base font-extrabold text-slate-900">
+                                    Interests
+                                  </div>
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <InfoPillList
+                                    title="Courses"
+                                    values={studentInterests.courses}
+                                  />
+                                  <InfoPillList
+                                    title="Countries"
+                                    values={studentInterests.countries}
+                                  />
+                                  <InfoPillList
+                                    title="Areas"
+                                    values={studentInterests.areas}
+                                  />
+                                  <InfoPillList
+                                    title="Languages"
+                                    values={studentInterests.languages}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
 
                           {showReviewsSection ? (
                             <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm sm:rounded-[24px]">
@@ -1413,7 +1512,11 @@ export default function Connect() {
                 initial={{ opacity: 0.98 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                className={userHasSelected ? "order-1 h-full min-h-0 overflow-hidden xl:order-2" : "h-full min-h-0 w-full overflow-hidden"}
+                className={
+                  userHasSelected
+                    ? "order-1 h-full min-h-0 overflow-hidden xl:order-2"
+                    : "h-full min-h-0 w-full overflow-hidden"
+                }
               >
                 <div className="h-full min-h-0 overflow-hidden xl:min-w-[420px]">
                   <RightSideDirectoryTabs

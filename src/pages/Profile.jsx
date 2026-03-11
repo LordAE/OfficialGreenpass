@@ -1,11 +1,28 @@
 // src/pages/Profile.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import {
+  User,
+  Globe,
+  BookOpen,
+  Briefcase,
+ Building,
+  Store,
+  Upload,
+  Loader2,
+  Save,
+  Check,
+  ChevronsUpDown,
+  Pencil,
+  X,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -24,20 +41,6 @@ import {
 } from "@/components/ui/command";
 
 import { UploadFile } from "@/api/integrations";
-
-import {
-  Loader2,
-  Save,
-  Upload,
-  User as UserIcon,
-  Briefcase,
-  BookOpen,
-  Building,
-  Store,
-  Check,
-  ChevronsUpDown,
-} from "lucide-react";
-
 import { auth, db, storage } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
@@ -47,14 +50,20 @@ import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 
 /* ---------------- helpers ---------------- */
 const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor"];
+
 const normalizeRole = (r) => {
   const v = String(r || "").trim().toLowerCase();
   return VALID_ROLES.includes(v) ? v : "user";
 };
 
-const csvToArray = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
-const arrayToCSV = (v) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
+const csvToArray = (s) =>
+  (s || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
 
+const arrayToCSV = (v) =>
+  Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "";
 
 const LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },
@@ -67,7 +76,6 @@ const LANGUAGE_OPTIONS = [
   { value: "ar", label: "العربية" },
 ];
 
-// 🌍 Country helpers (same behavior as Onboarding.jsx)
 const flagUrlFromCode = (code) => {
   const cc = (code || "").toString().trim().toLowerCase();
   if (!/^[a-z]{2}$/.test(cc)) return "";
@@ -80,7 +88,9 @@ const getAllCountriesIntl = () => {
     if (!Intl.supportedValuesOf) return [];
 
     const codes = Intl.supportedValuesOf("region") || [];
-    const dn = Intl.DisplayNames ? new Intl.DisplayNames(["en"], { type: "region" }) : null;
+    const dn = Intl.DisplayNames
+      ? new Intl.DisplayNames(["en"], { type: "region" })
+      : null;
 
     return codes
       .filter((code) => /^[A-Z]{2}$/.test(code))
@@ -109,7 +119,7 @@ async function getAllCountriesFallback() {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function CountrySelect({ valueCode, valueName, onChange }) {
+function CountrySelect({ valueCode, valueName, onChange, disabled = false }) {
   const tr0 = useTr();
   const tr = React.useCallback((key, fallback) => {
     if (typeof tr0 === "function") return tr0(key, fallback);
@@ -151,7 +161,8 @@ function CountrySelect({ valueCode, valueName, onChange }) {
   }, []);
 
   const selected = React.useMemo(() => {
-    const byCode = valueCode && countries.find((c) => c.code === valueCode.toUpperCase());
+    const byCode =
+      valueCode && countries.find((c) => c.code === String(valueCode).toUpperCase());
     if (byCode) return byCode;
 
     const n = (valueName || "").trim().toLowerCase();
@@ -165,9 +176,14 @@ function CountrySelect({ valueCode, valueName, onChange }) {
   }, [countries, valueCode, valueName]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="w-full justify-between mt-1">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          className="w-full justify-between disabled:opacity-100 disabled:cursor-default"
+        >
           <span className="flex items-center gap-2 truncate">
             {selected ? (
               <>
@@ -246,7 +262,43 @@ function CountrySelect({ valueCode, valueName, onChange }) {
   );
 }
 
-// 📎 Verification doc helpers (aligned with Onboarding.jsx)
+function SimpleArrayInput({
+  id,
+  label,
+  value,
+  disabled,
+  onChange,
+  placeholder,
+  helpText,
+}) {
+  const [text, setText] = React.useState(arrayToCSV(value));
+
+  React.useEffect(() => {
+    setText(arrayToCSV(value));
+  }, [value]);
+
+  const handleBlur = () => {
+    onChange(csvToArray(text));
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Textarea
+        id={id}
+        rows={3}
+        value={text}
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={handleBlur}
+        placeholder={placeholder}
+        className="resize-none"
+      />
+      {helpText ? <p className="text-sm text-gray-500">{helpText}</p> : null}
+    </div>
+  );
+}
+
 const safeExt = (name = "") => {
   const m = String(name).toLowerCase().match(/\.(pdf|png|jpg|jpeg|webp)$/);
   return m ? m[1] : "bin";
@@ -261,33 +313,75 @@ const isAllowedVerificationFile = (file) => {
 
 const buildVerificationFieldsForRole = (role, tr) => {
   const r = normalizeRole(role);
+
   if (r === "agent") {
     return [
-      { key: "agent_id_front", label: tr("verification.agent_id_front", "Valid ID (Front)"), required: true },
-      { key: "agent_id_back", label: tr("verification.agent_id_back", "Valid ID (Back)"), required: true },
-      { key: "agent_business_permit", label: tr("verification.agent_business_permit", "Business Permit / Registration"), required: true },
+      {
+        key: "agent_id_front",
+        label: tr("verification.agent_id_front", "Valid ID (Front)"),
+        required: true,
+      },
+      {
+        key: "agent_id_back",
+        label: tr("verification.agent_id_back", "Valid ID (Back)"),
+        required: true,
+      },
+      {
+        key: "agent_business_permit",
+        label: tr("verification.agent_business_permit", "Business Permit / Registration"),
+        required: true,
+      },
     ];
   }
+
   if (r === "tutor") {
     return [
-      { key: "tutor_id_front", label: tr("verification.tutor_id_front", "Valid ID (Front)"), required: true },
-      { key: "tutor_id_back", label: tr("verification.tutor_id_back", "Valid ID (Back)"), required: true },
-      { key: "tutor_proof", label: tr("verification.tutor_proof", "Proof of Qualification (optional)"), required: false },
+      {
+        key: "tutor_id_front",
+        label: tr("verification.tutor_id_front", "Valid ID (Front)"),
+        required: true,
+      },
+      {
+        key: "tutor_id_back",
+        label: tr("verification.tutor_id_back", "Valid ID (Back)"),
+        required: true,
+      },
+      {
+        key: "tutor_proof",
+        label: tr("verification.tutor_proof", "Proof of Qualification (optional)"),
+        required: false,
+      },
     ];
   }
+
   if (r === "school") {
     return [
-      { key: "school_dli_or_permit", label: tr("verification.school_dli_or_permit", "DLI / School Permit / Accreditation Proof"), required: true },
+      {
+        key: "school_dli_or_permit",
+        label: tr(
+          "verification.school_dli_or_permit",
+          "DLI / School Permit / Accreditation Proof"
+        ),
+        required: true,
+      },
     ];
   }
-  // user/student
+
   if (r === "user") {
     return [
-          { key: "student_id_front", label: "Valid ID (Front)", required: true },
-          { key: "student_id_back", label: "Valid ID (Back)", required: true },
+      {
+        key: "student_id_front",
+        label: tr("verification.student_id_front", "Valid ID (Front)"),
+        required: true,
+      },
+      {
+        key: "student_id_back",
+        label: tr("verification.student_id_back", "Valid ID (Back)"),
+        required: true,
+      },
     ];
   }
-  // vendor: none required in your onboarding
+
   return [];
 };
 
@@ -299,47 +393,41 @@ const slugify = (s) =>
     .replace(/(^-|-$)+/g, "");
 
 function roleMeta(role, tr) {
-  if (role === "agent") return { label: tr("role_agent", "Agent"), icon: <Briefcase className="w-5 h-5" /> };
-  if (role === "tutor") return { label: tr("role_tutor", "Tutor"), icon: <BookOpen className="w-5 h-5" /> };
-  if (role === "school") return { label: tr("role_school", "School"), icon: <Building className="w-5 h-5" /> };
-  if (role === "vendor") return { label: tr("role_vendor", "Vendor"), icon: <Store className="w-5 h-5" /> };
-  // Default = general user / student
-  return { label: tr("role_student", "Student"), icon: <UserIcon className="w-5 h-5" /> };
+  if (role === "agent") {
+    return { label: tr("role_agent", "Agent"), icon: <Briefcase className="w-5 h-5" /> };
+  }
+  if (role === "tutor") {
+    return { label: tr("role_tutor", "Tutor"), icon: <BookOpen className="w-5 h-5" /> };
+  }
+  if (role === "school") {
+    return { label: tr("role_school", "School"), icon: <Building className="w-5 h-5" /> };
+  }
+  if (role === "vendor") {
+    return { label: tr("role_vendor", "Vendor"), icon: <Store className="w-5 h-5" /> };
+  }
+  return { label: tr("role_student", "Student"), icon: <User className="w-5 h-5" /> };
 }
 
-/**
- * School merge helper:
- * - keeps redundancy low by syncing only the overlapping fields to institutions + school_profiles
- * - DOES NOT remove your SchoolProfile page
- */
 async function syncSchoolCollections({ uid, payload }) {
   const name = (payload.school_name || "").trim();
   if (!name) return "";
 
-  // Base institution id
   const baseInstitutionId =
     (payload.institution_id || "").trim() || `${slugify(name)}-${uid.substring(0, 6)}`;
 
-  // If an institutions doc already exists but has no user_id (older bad data),
-  // updates will always FAIL because rules check resource.data.user_id.
-  // So we detect that and generate a new id we own.
   let institutionId = baseInstitutionId;
 
   const tryPickInstitutionId = async () => {
     const instRef0 = doc(db, "institutions", institutionId);
     const instSnap0 = await getDoc(instRef0);
 
-    // Doesn’t exist yet → OK, we can create it with user_id
     if (!instSnap0.exists()) return { institutionId, instRef: instRef0 };
 
     const existing = instSnap0.data() || {};
     const existingOwner = existing.user_id;
 
-    // Already owned by me → OK to update
     if (existingOwner === uid) return { institutionId, instRef: instRef0 };
 
-    // If owned by someone else, do NOT overwrite. Create a new one.
-    // If missing owner (old bad doc), also create a new one because update is impossible via rules.
     const suffix = Date.now().toString(36);
     institutionId = `${baseInstitutionId}-${suffix}`;
     const instRef1 = doc(db, "institutions", institutionId);
@@ -350,7 +438,7 @@ async function syncSchoolCollections({ uid, payload }) {
   const spRef = doc(db, "school_profiles", uid);
 
   const institutionData = {
-    user_id: uid, // ✅ REQUIRED by Firestore rules for /institutions create
+    user_id: uid,
     name,
     short_name: name,
     website: payload.website || "",
@@ -362,17 +450,14 @@ async function syncSchoolCollections({ uid, payload }) {
   const schoolProfileData = {
     institution_id: finalInstitutionId,
     user_id: uid,
-
     name,
     school_name: name,
     type: payload.type || "",
     school_level: payload.type || "",
-
     location: payload.location || "",
     website: payload.website || "",
     about: payload.about || "",
     bio: payload.bio || "",
-
     updated_at: serverTimestamp(),
   };
 
@@ -384,51 +469,208 @@ async function syncSchoolCollections({ uid, payload }) {
   return finalInstitutionId;
 }
 
-export default function Profile() {
-  
-// Inline document viewer (no new tab)
-const [viewerOpen, setViewerOpen] = useState(false);
-const [viewerUrl, setViewerUrl] = useState("");
-const [viewerName, setViewerName] = useState("");
+/* ---------------- small UI wrappers ---------------- */
+function ProfileHeader({
+  tr,
+  displayName,
+  roleLabel,
+  profilePhoto,
+  initial,
+  avatarBg,
+  onUpload,
+  uploading,
+  isVerified,
+  isSubscribed,
+  verificationLabel,
+  subscriptionLabel,
+  isEditing,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  saving,
+}) {
+  return (
+    <div className="rounded-3xl bg-white border shadow-sm p-5 md:p-6">
+      <div className="flex flex-col md:flex-row md:items-center gap-5">
+        <div className="flex items-center gap-4">
+          <div className="relative shrink-0">
+            {profilePhoto ? (
+              <img
+                src={profilePhoto}
+                alt="Profile"
+                className="w-24 h-24 rounded-3xl object-cover border bg-white shadow-sm"
+              />
+            ) : (
+              <div
+                className={`w-24 h-24 rounded-3xl ${avatarBg} text-white flex items-center justify-center text-3xl font-bold shadow-sm`}
+              >
+                {initial}
+              </div>
+            )}
 
-const detectType = useCallback((url = "") => {
-  const u = String(url || "").toLowerCase();
-  if (u.includes(".pdf") || u.includes("application%2fpdf")) return "pdf";
-  if (u.match(/\.(png|jpg|jpeg|webp)(\?|$)/) || u.includes("image%2f")) return "image";
-  return "file";
-}, []);
-const tr0 = useTr("profile");
-  const tr = useCallback((key, fallback) => {
-    if (typeof tr0 === "function") return tr0(key, fallback);
-    if (tr0 && typeof tr0.tr === "function") return tr0.tr(key, fallback);
-    if (tr0 && typeof tr0.t === "function") return tr0.t(key, fallback);
-    return fallback ?? key;
-  }, [tr0]);
-const { subscriptionModeEnabled, loading: subscriptionModeLoading } = useSubscriptionMode();
-const [uid, setUid] = useState(null);
+            <input
+              type="file"
+              id="profile_picture_upload"
+              accept="image/*"
+              onChange={onUpload}
+              className="hidden"
+            />
+
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => document.getElementById("profile_picture_upload")?.click()}
+                disabled={uploading}
+                className="absolute -bottom-1 -right-1 h-9 w-9 rounded-full border bg-white shadow-sm flex items-center justify-center hover:bg-gray-50 disabled:opacity-60"
+                title={tr("upload_picture", "Upload Picture")}
+              >
+                {uploading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+              </button>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-semibold text-gray-900 truncate">
+              {displayName}
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">{roleLabel}</p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  isVerified
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-gray-200 bg-gray-50 text-gray-700"
+                }
+              >
+                {verificationLabel}
+              </Badge>
+
+              <Badge
+                variant="outline"
+                className={
+                  isSubscribed
+                    ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                    : "border-gray-200 bg-gray-50 text-gray-700"
+                }
+              >
+                {subscriptionLabel}
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        <div className="md:ml-auto flex items-center gap-2">
+          {!isEditing ? (
+            <Button type="button" variant="outline" onClick={onStartEdit} className="rounded-xl">
+              <Pencil className="w-4 h-4 mr-2" />
+              {tr("edit_profile", "Edit Profile")}
+            </Button>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancelEdit}
+                className="rounded-xl"
+              >
+                <X className="w-4 h-4 mr-2" />
+                {tr("cancel", "Cancel")}
+              </Button>
+
+              <Button
+                type="button"
+                className="rounded-xl bg-green-600 hover:bg-green-700"
+                onClick={onSave}
+                disabled={saving}
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4 mr-2" />
+                )}
+                {saving ? tr("saving", "Saving…") : tr("save_changes", "Save Changes")}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileSection({ title, icon: Icon, action, children }) {
+  return (
+    <Card className="rounded-3xl shadow-sm border">
+      <CardContent className="p-5 md:p-6">
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center shrink-0">
+              <Icon className="w-5 h-5 text-gray-700" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>
+          </div>
+          {action ? <div className="shrink-0">{action}</div> : null}
+        </div>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function Profile() {
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState("");
+  const [viewerName, setViewerName] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  const detectType = useCallback((url = "") => {
+    const u = String(url || "").toLowerCase();
+    if (u.includes(".pdf") || u.includes("application%2fpdf")) return "pdf";
+    if (u.match(/\.(png|jpg|jpeg|webp)(\?|$)/) || u.includes("image%2f")) return "image";
+    return "file";
+  }, []);
+
+  const tr0 = useTr("profile");
+  const tr = useCallback(
+    (key, fallback) => {
+      if (typeof tr0 === "function") return tr0(key, fallback);
+      if (tr0 && typeof tr0.tr === "function") return tr0.tr(key, fallback);
+      if (tr0 && typeof tr0.t === "function") return tr0.t(key, fallback);
+      return fallback ?? key;
+    },
+    [tr0]
+  );
+
+  const { subscriptionModeEnabled, loading: subscriptionModeLoading } = useSubscriptionMode();
+
+  const [uid, setUid] = useState(null);
   const [role, setRole] = useState("user");
-  const [userDoc, setUserDoc] = useState(null); // raw user document for badges/status
-  const meta = useMemo(() => roleMeta(role, tr), [role]);
+  const [userDoc, setUserDoc] = useState(null);
+
+  const meta = useMemo(() => roleMeta(role, tr), [role, tr]);
   const verificationFields = useMemo(() => buildVerificationFieldsForRole(role, tr), [role, tr]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveNotice, setSaveNotice] = useState(null); // { type: "success"|"error", text: string }
-
+  const [saveNotice, setSaveNotice] = useState(null);
   const [uploadingProfilePic, setUploadingProfilePic] = useState(false);
 
-  // ✅ ONE unified state = personal + role-specific
   const initialLang = (() => {
     try {
       const p = new URLSearchParams(window.location.search);
-      return p.get('lang') || localStorage.getItem('gp_lang') || 'en';
-    } catch (e) {
-      return 'en';
+      return p.get("lang") || localStorage.getItem("gp_lang") || "en";
+    } catch {
+      return "en";
     }
   })();
 
   const [form, setForm] = useState({
-    // Personal Information
     full_name: "",
     email: "",
     phone: "",
@@ -438,18 +680,28 @@ const [uid, setUid] = useState(null);
     profile_picture: "",
     bio: "",
 
-    // Agent
+    date_of_birth: "",
+    gender: "",
+    age: "",
+    interested_in: "",
+    current_level: "",
+    comments: "",
+    interests: [],
+    education: [],
+    selected_courses: [],
+    preferred_countries: [],
+    study_areas: [],
+    spoken_languages: [],
+
     company_name: "",
     business_license_mst: "",
     year_established: "",
     paypal_email: "",
 
-    // Tutor
     specializations: "",
     experience_years: "",
     hourly_rate: "",
 
-    // School (from onboarding)
     institution_id: "",
     school_name: "",
     type: "",
@@ -457,66 +709,54 @@ const [uid, setUid] = useState(null);
     website: "",
     about: "",
 
-    // Vendor
     business_name: "",
     service_categories: [],
   });
 
-  // Keep app language in sync (used by your translation layer)
-  useEffect(() => {
-    const v = form?.lang || "en";
-    try { localStorage.setItem("gp_lang", v); } catch {}
-    window.dispatchEvent(new CustomEvent("gp_lang_changed", { detail: v }));
-  }, [form?.lang]);
-
-
-  // ✅ Verification state (used for re-upload/resubmission directly in Profile)
   const [verification, setVerification] = useState({
-    status: "unverified", // unverified | pending | verified | rejected | denied
+    status: "unverified",
     reason: "",
-    docs: {}, // key -> url
+    docs: {},
   });
-  const [docUploading, setDocUploading] = useState({}); // key -> boolean
+  const [docUploading, setDocUploading] = useState({});
   const [submittingVerification, setSubmittingVerification] = useState(false);
-
 
   const setField = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
-  // 🌐 Language selection (applies instantly via reload)
-  const handleLanguageChange = useCallback(async (v) => {
-    if (!v) return;
-
-    // Update form state (so the dropdown reflects the selection)
-    setField("lang", v);
-
-    // Persist immediately for the whole app
+  useEffect(() => {
+    const v = form?.lang || "en";
     try {
       localStorage.setItem("gp_lang", v);
     } catch {}
+    window.dispatchEvent(new CustomEvent("gp_lang_changed", { detail: v }));
+  }, [form?.lang]);
 
-    // Keep URL query in sync (some pages read lang from ?lang=)
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set("lang", v);
-      window.history.replaceState({}, "", url.toString());
-    } catch {}
+  const handleLanguageChange = useCallback(
+    async (v) => {
+      if (!v || !isEditing) return;
 
-    // Persist preference to Firestore (best-effort; no need to click Save)
-    try {
-      if (uid) {
-        await updateDoc(doc(db, "users", uid), { lang: v, language: v });
-      }
-    } catch {}
+      setField("lang", v);
 
-    // Option A: force translations to apply everywhere immediately
-    window.location.reload();
-  }, [uid]);
+      try {
+        localStorage.setItem("gp_lang", v);
+      } catch {}
 
-  const isUserStudent = role === "user";
-  const showAgent = role === "agent";
-  const showTutor = role === "tutor";
-  const showSchool = role === "school";
-  const showVendor = role === "vendor";
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("lang", v);
+        window.history.replaceState({}, "", url.toString());
+      } catch {}
+
+      try {
+        if (uid) {
+          await updateDoc(doc(db, "users", uid), { lang: v, language: v });
+        }
+      } catch {}
+
+      window.location.reload();
+    },
+    [uid, isEditing]
+  );
 
   const vendorCategoryOptions = useMemo(
     () => [
@@ -545,11 +785,9 @@ const [uid, setUid] = useState(null);
   const loadProfile = useCallback(async (userId) => {
     setLoading(true);
     try {
-      // users doc
       const uref = doc(db, "users", userId);
       const usnap = await getDoc(uref);
 
-      // If missing, create minimal defaults so page doesn't break
       if (!usnap.exists()) {
         await setDoc(uref, {
           role: "user",
@@ -572,6 +810,13 @@ const [uid, setUid] = useState(null);
       setRole(resolvedRole);
       setUserDoc(u);
 
+      let schoolProfileDoc = null;
+      if (resolvedRole === "school") {
+        const spRef = doc(db, "school_profiles", userId);
+        const spSnap = await getDoc(spRef);
+        if (spSnap.exists()) schoolProfileDoc = spSnap.data();
+      }
+
       const resolvedBio =
         u.bio ||
         u.agent_profile?.bio ||
@@ -580,28 +825,39 @@ const [uid, setUid] = useState(null);
         u.vendor_profile?.bio ||
         "";
 
-      // Optional: if school, pull school_profiles to merge (no redundancy)
-      let schoolProfileDoc = null;
-      if (resolvedRole === "school") {
-        const spRef = doc(db, "school_profiles", userId);
-        const spSnap = await getDoc(spRef);
-        if (spSnap.exists()) schoolProfileDoc = spSnap.data();
-      }
+      const isStudentRole = resolvedRole === "user";
 
       setForm((p) => ({
         ...p,
-
-        // Personal
         full_name: u.full_name || "",
         email: u.email || auth.currentUser?.email || "",
         phone: u.phone || "",
         country: u.country || "",
         country_code: u.country_code || "",
-        lang: (typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("lang") || localStorage.getItem("gp_lang")) : null) || u.lang || u.language || "en",
+        lang:
+          (typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("lang") ||
+              localStorage.getItem("gp_lang")
+            : null) ||
+          u.lang ||
+          u.language ||
+          "en",
         profile_picture: u.profile_picture || "",
         bio: resolvedBio || "",
 
-        // Agent
+        date_of_birth: !isStudentRole ? u.date_of_birth || "" : "",
+        gender: !isStudentRole ? u.gender || "" : "",
+        age: isStudentRole ? String(u.age || "") : String(u.age || ""),
+        interested_in: isStudentRole ? u.interested_in || "" : u.interested_in || "",
+        current_level: isStudentRole ? u.current_level || "" : u.current_level || "",
+        comments: isStudentRole ? u.comments || "" : u.comments || "",
+        interests: Array.isArray(u.interests) ? u.interests : [],
+        education: Array.isArray(u.education) ? u.education : [],
+        selected_courses: Array.isArray(u.selected_courses) ? u.selected_courses : [],
+        preferred_countries: Array.isArray(u.preferred_countries) ? u.preferred_countries : [],
+        study_areas: Array.isArray(u.study_areas) ? u.study_areas : [],
+        spoken_languages: Array.isArray(u.spoken_languages) ? u.spoken_languages : [],
+
         company_name: u.agent_profile?.company_name || "",
         business_license_mst: u.agent_profile?.business_license_mst || "",
         year_established: u.agent_profile?.year_established || "",
@@ -611,12 +867,10 @@ const [uid, setUid] = useState(null);
           u.vendor_profile?.paypal_email ||
           "",
 
-        // Tutor
         specializations: arrayToCSV(u.tutor_profile?.specializations),
         experience_years: u.tutor_profile?.experience_years || "",
         hourly_rate: u.tutor_profile?.hourly_rate || "",
 
-        // School (prefer school_profiles if exists)
         institution_id: u.school_profile?.institution_id || schoolProfileDoc?.institution_id || "",
         school_name:
           u.school_profile?.school_name ||
@@ -628,12 +882,10 @@ const [uid, setUid] = useState(null);
         website: u.school_profile?.website || schoolProfileDoc?.website || "",
         about: u.school_profile?.about || schoolProfileDoc?.about || "",
 
-        // Vendor
         business_name: u.vendor_profile?.business_name || "",
         service_categories: u.vendor_profile?.service_categories || [],
       }));
 
-      // ✅ Load verification details (same keys as onboarding)
       const vStatus =
         (u.verification && u.verification.status) ||
         u.verification_status ||
@@ -656,7 +908,6 @@ const [uid, setUid] = useState(null);
         reason: vReason || "",
         docs: vDocs && typeof vDocs === "object" ? vDocs : {},
       });
-
     } catch (e) {
       console.error("Profile load error:", e);
     } finally {
@@ -674,11 +925,13 @@ const [uid, setUid] = useState(null);
       setUid(u.uid);
       await loadProfile(u.uid);
     });
+
     return () => unsub();
   }, [loadProfile]);
 
-  // ✅ Profile picture upload (kept)
   const handleUploadProfilePicture = async (e) => {
+    if (!isEditing) return;
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -687,7 +940,6 @@ const [uid, setUid] = useState(null);
       const { file_url } = await UploadFile({ file });
       setField("profile_picture", file_url);
 
-      // save immediately to users doc so avatar updates everywhere
       if (uid) {
         await updateDoc(doc(db, "users", uid), {
           profile_picture: file_url,
@@ -696,18 +948,15 @@ const [uid, setUid] = useState(null);
       }
     } catch (err) {
       console.error("Profile picture upload failed:", err);
-      alert(tr("alerts.upload_failed","Failed to upload profile picture. Please try again."));
+      alert(tr("alerts.upload_failed", "Failed to upload profile picture. Please try again."));
     } finally {
       setUploadingProfilePic(false);
       e.target.value = "";
     }
   };
 
-
-  // ✅ Upload / replace a verification document directly from Profile
   const uploadVerificationDoc = async (docKey, file) => {
-    if (!uid) return;
-    if (!file) return;
+    if (!uid || !file || !isEditing) return;
 
     if (!isAllowedVerificationFile(file)) {
       alert(tr("alerts.verification_bad_file", "Please upload a PDF, JPG, PNG, or WEBP file."));
@@ -724,13 +973,11 @@ const [uid, setUid] = useState(null);
       await uploadBytes(sref, file);
       const url = await getDownloadURL(sref);
 
-      // Update local state immediately
       setVerification((p) => ({
         ...p,
         docs: { ...(p.docs || {}), [docKey]: url },
       }));
 
-      // Persist to Firestore using dot-path to avoid overwriting other docs
       const uref = doc(db, "users", uid);
       await updateDoc(uref, {
         [`verification.docs.${docKey}`]: url,
@@ -745,7 +992,8 @@ const [uid, setUid] = useState(null);
   };
 
   const clearVerificationDoc = async (docKey) => {
-    if (!uid) return;
+    if (!uid || !isEditing) return;
+
     setVerification((p) => {
       const next = { ...(p.docs || {}) };
       delete next[docKey];
@@ -763,17 +1011,12 @@ const [uid, setUid] = useState(null);
     }
   };
 
-  // ✅ Submit (or resubmit) documents for admin review
   const submitVerificationForReview = async () => {
-    if (!uid) return;
+    if (!uid || !isEditing) return;
 
     const fields = buildVerificationFieldsForRole(role, tr);
     const docs = verification.docs || {};
-
-    // Required doc check
-    const missingRequired = fields
-      .filter((f) => f.required)
-      .filter((f) => !docs?.[f.key]);
+    const missingRequired = fields.filter((f) => f.required).filter((f) => !docs?.[f.key]);
 
     if (missingRequired.length) {
       alert(
@@ -809,50 +1052,80 @@ const [uid, setUid] = useState(null);
     }
   };
 
-  // ✅ Single Save button saves EVERYTHING
   const handleSaveAll = async () => {
     if (!uid) return;
 
-    // Align with onboarding basic requirements
-    if (!form.full_name?.trim()) return alert(tr("alerts.required_full_name","Full name is required."));
-    if (!form.phone?.trim()) return alert(tr("alerts.required_phone","Phone is required."));
-    if (!form.country?.trim()) return alert(tr("alerts.required_country","Country is required."));
+    if (!form.full_name?.trim()) {
+      return alert(tr("alerts.required_full_name", "Full name is required."));
+    }
+    if (!form.phone?.trim()) {
+      return alert(tr("alerts.required_phone", "Phone is required."));
+    }
+    if (!form.country?.trim()) {
+      return alert(tr("alerts.required_country", "Country is required."));
+    }
 
-    // Align with onboarding role-specific requirements
     if (role === "agent") {
-      if (!form.company_name?.trim()) return alert(tr("alerts.required_company_name","Company name is required."));
-      if (!form.business_license_mst?.trim()) return alert(tr("alerts.required_business_license","Business license (MST) is required."));
-      if (!form.paypal_email?.trim()) return alert(tr("alerts.required_paypal_email","PayPal email is required."));
+      if (!form.company_name?.trim()) {
+        return alert(tr("alerts.required_company_name", "Company name is required."));
+      }
+      if (!form.business_license_mst?.trim()) {
+        return alert(tr("alerts.required_business_license", "Business license (MST) is required."));
+      }
+      if (!form.paypal_email?.trim()) {
+        return alert(tr("alerts.required_paypal_email", "PayPal email is required."));
+      }
     }
 
     if (role === "tutor") {
-      if (csvToArray(form.specializations).length === 0) return alert(tr("alerts.required_specializations","Specializations are required."));
-      if (!String(form.experience_years).trim()) return alert(tr("alerts.required_experience_years","Years of experience is required."));
-      if (!String(form.hourly_rate).trim()) return alert(tr("alerts.required_hourly_rate","Hourly rate is required."));
-      if (!form.paypal_email?.trim()) return alert(tr("alerts.required_paypal_email","PayPal email is required."));
+      if (csvToArray(form.specializations).length === 0) {
+        return alert(tr("alerts.required_specializations", "Specializations are required."));
+      }
+      if (!String(form.experience_years).trim()) {
+        return alert(tr("alerts.required_experience_years", "Years of experience is required."));
+      }
+      if (!String(form.hourly_rate).trim()) {
+        return alert(tr("alerts.required_hourly_rate", "Hourly rate is required."));
+      }
+      if (!form.paypal_email?.trim()) {
+        return alert(tr("alerts.required_paypal_email", "PayPal email is required."));
+      }
     }
 
     if (role === "school") {
-      if (!form.school_name?.trim()) return alert(tr("alerts.required_institution_name","Institution name is required."));
-      if (!form.type?.trim()) return alert(tr("alerts.required_school_type","School type is required."));
-      if (!form.location?.trim()) return alert(tr("alerts.required_city_location","City/Location is required."));
-      if (!form.website?.trim()) return alert(tr("alerts.required_website","Website is required."));
+      if (!form.school_name?.trim()) {
+        return alert(tr("alerts.required_institution_name", "Institution name is required."));
+      }
+      if (!form.type?.trim()) {
+        return alert(tr("alerts.required_school_type", "School type is required."));
+      }
+      if (!form.location?.trim()) {
+        return alert(tr("alerts.required_city_location", "City/Location is required."));
+      }
+      if (!form.website?.trim()) {
+        return alert(tr("alerts.required_website", "Website is required."));
+      }
     }
 
     if (role === "vendor") {
-      if (!form.business_name?.trim()) return alert(tr("alerts.required_business_name","Business name is required."));
-      if (!Array.isArray(form.service_categories) || form.service_categories.length === 0)
-        return alert(tr("alerts.required_service_category","Select at least 1 service category."));
-      if (!form.paypal_email?.trim()) return alert(tr("alerts.required_paypal_email","PayPal email is required."));
+      if (!form.business_name?.trim()) {
+        return alert(tr("alerts.required_business_name", "Business name is required."));
+      }
+      if (!Array.isArray(form.service_categories) || form.service_categories.length === 0) {
+        return alert(tr("alerts.required_service_category", "Select at least 1 service category."));
+      }
+      if (!form.paypal_email?.trim()) {
+        return alert(tr("alerts.required_paypal_email", "PayPal email is required."));
+      }
     }
 
     setSaveNotice(null);
     setSaving(true);
+
     try {
       const uref = doc(db, "users", uid);
 
       const updates = {
-        // personal
         full_name: form.full_name || "",
         phone: form.phone || "",
         country: form.country || "",
@@ -861,11 +1134,24 @@ const [uid, setUid] = useState(null);
         language: form.lang || "en",
         profile_picture: form.profile_picture || "",
         bio: form.bio || "",
-
+        age: form.age ? Number(form.age) : "",
+        current_level: form.current_level || "",
+        interested_in: form.interested_in || "",
+        comments: form.comments || "",
+        interests: Array.isArray(form.interests) ? form.interests : [],
+        education: Array.isArray(form.education) ? form.education : [],
+        selected_courses: Array.isArray(form.selected_courses) ? form.selected_courses : [],
+        preferred_countries: Array.isArray(form.preferred_countries) ? form.preferred_countries : [],
+        study_areas: Array.isArray(form.study_areas) ? form.study_areas : [],
+        spoken_languages: Array.isArray(form.spoken_languages) ? form.spoken_languages : [],
         updated_at: serverTimestamp(),
       };
 
-      // keep nested profiles consistent with onboarding
+      if (role !== "user") {
+        updates.date_of_birth = form.date_of_birth || "";
+        updates.gender = form.gender || "";
+      }
+
       if (role === "agent") {
         updates.agent_profile = {
           company_name: form.company_name || "",
@@ -921,21 +1207,85 @@ const [uid, setUid] = useState(null);
       }
 
       await updateDoc(uref, updates);
-      try { localStorage.setItem("gp_lang", updates.lang || "en"); } catch {}
+
+      try {
+        localStorage.setItem("gp_lang", updates.lang || "en");
+      } catch {}
+
       window.dispatchEvent(new CustomEvent("gp_lang_changed", { detail: updates.lang || "en" }));
-      setSaveNotice({ type: "success", text: tr("alerts.saved","Saved! All changes were updated.") });
-      // auto-hide after 4 seconds
+
+      setSaveNotice({
+        type: "success",
+        text: tr("alerts.saved", "Saved! All changes were updated."),
+      });
+
       setTimeout(() => setSaveNotice(null), 4000);
+      setIsEditing(false);
       await loadProfile(uid);
     } catch (e) {
       console.error("Save failed:", e);
-      setSaveNotice({ type: "error", text: tr("alerts.save_failed","Failed to save changes. Please try again.") });
-      // auto-hide after 6 seconds
+      setSaveNotice({
+        type: "error",
+        text: tr("alerts.save_failed", "Failed to save changes. Please try again."),
+      });
       setTimeout(() => setSaveNotice(null), 6000);
     } finally {
       setSaving(false);
     }
   };
+
+  const handleCancelEdit = async () => {
+    setIsEditing(false);
+    if (uid) {
+      await loadProfile(uid);
+    }
+  };
+
+  const displayName = (form.full_name || tr("default_user", "User")).trim();
+  const initial = displayName.charAt(0).toUpperCase() || "U";
+  const avatarBg = "bg-gradient-to-br from-green-500 to-blue-500";
+  const profilePhoto = form.profile_picture || form.photo_url || form.photoURL || "";
+
+  const isVerified = verification?.status === "verified" || Boolean(userDoc?.is_verified);
+  const isSubscribed =
+    Boolean(userDoc?.subscription_active) ||
+    ["active", "subscribed"].includes(String(userDoc?.subscription_status || "").toLowerCase());
+
+  const subscriptionLabel = isSubscribed
+    ? tr("subscription.subscribed", "Subscribed")
+    : tr("subscription.not_subscribed", "Not subscribed");
+
+  const verificationLabel = isVerified
+    ? tr("verification.verified", "Verified")
+    : tr("verification.unverified", "Unverified");
+
+  const memberSince = useMemo(() => {
+    const raw = userDoc?.created_at;
+
+    try {
+      const date =
+        typeof raw?.toDate === "function"
+          ? raw.toDate()
+          : raw instanceof Date
+            ? raw
+            : null;
+
+      if (!date || Number.isNaN(date.getTime())) {
+        return tr("member_since_unknown", "Recently joined");
+      }
+
+      return date.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch {
+      return tr("member_since_unknown", "Recently joined");
+    }
+  }, [userDoc?.created_at, tr]);
+
+  const languageLabel =
+    LANGUAGE_OPTIONS.find((l) => l.value === (form.lang || "en"))?.label || "English";
 
   if (loading) {
     return (
@@ -945,645 +1295,687 @@ const [uid, setUid] = useState(null);
     );
   }
 
-  // ✅ Avatar fallback should match Layout.jsx (same gradient + initial)
-  const displayName = (form.full_name || tr("default_user","User")).trim();
-  const initial = displayName.charAt(0).toUpperCase() || "U";
-  const avatarBg = "bg-gradient-to-br from-green-500 to-blue-500";
-  const profilePhoto = form.profile_picture || form.photo_url || form.photoURL || "";
-
-  // ✅ Status chips (verification + subscription)
-  const isVerified = (verification?.status === "verified") || Boolean(userDoc?.is_verified);
-  const isSubscribed = Boolean(userDoc?.subscription_active) || ["active", "subscribed"].includes(String(userDoc?.subscription_status || "").toLowerCase());
-  const subscriptionLabel = isSubscribed ? tr("subscription.subscribed", "Subscribed") : tr("subscription.not_subscribed", "Not subscribed");
-  const verificationLabel = isVerified ? tr("verification.verified", "Verified") : tr("verification.unverified", "Unverified");
+  const showStudent = role === "user";
+  const showAgent = role === "agent";
+  const showTutor = role === "tutor";
+  const showSchool = role === "school";
+  const showVendor = role === "vendor";
 
   return (
     <>
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-white border p-2">{meta.icon}</div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{tr("title","Profile")}</h1>
-            <p className="text-sm text-gray-600">
-              {tr("role_prefix","Role:")} <span className="font-semibold">{meta.label}</span>
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${isVerified ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-100 text-gray-700 border border-gray-200"}`}>
-                {verificationLabel}
-              </span>
-              {!subscriptionModeLoading && subscriptionModeEnabled && (
-          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${isSubscribed ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "bg-gray-100 text-gray-700 border border-gray-200"}`}>
-                {subscriptionLabel}
-              </span>
-        )}
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+          <ProfileHeader
+            tr={tr}
+            displayName={displayName}
+            roleLabel={meta.label}
+            profilePhoto={profilePhoto}
+            initial={initial}
+            avatarBg={avatarBg}
+            onUpload={handleUploadProfilePicture}
+            uploading={uploadingProfilePic}
+            isVerified={isVerified}
+            isSubscribed={!subscriptionModeLoading && subscriptionModeEnabled && isSubscribed}
+            verificationLabel={verificationLabel}
+            subscriptionLabel={subscriptionLabel}
+            isEditing={isEditing}
+            onStartEdit={() => setIsEditing(true)}
+            onCancelEdit={handleCancelEdit}
+            onSave={handleSaveAll}
+            saving={saving}
+          />
 
-
-{saveNotice && (
-  <div
-    className={[
-      "rounded-2xl border px-4 py-3 text-sm",
-      saveNotice.type === "success"
-        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-        : "border-rose-200 bg-rose-50 text-rose-900",
-    ].join(" ")}
-    role="status"
-    aria-live="polite"
-  >
-    <div className="flex items-start justify-between gap-3">
-      <div className="leading-5">{saveNotice.text}</div>
-      <button
-        type="button"
-        onClick={() => setSaveNotice(null)}
-        className="rounded-full px-2 py-1 text-xs font-semibold hover:bg-white/60"
-        aria-label={tr("close","Close")}
-      >
-        ✕
-      </button>
-    </div>
-  </div>
-)}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-4">
-              <CardTitle>{tr("personal_information","Personal Information")}</CardTitle>
-
-              {/* Language selection (at the top) */}
-              <div className="min-w-[220px]">
-                <Label className="text-xs text-gray-600">{tr("language","Language")}</Label>
-                <Select value={form.lang || "en"} onValueChange={handleLanguageChange}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder={tr("language_select","Select language")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LANGUAGE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-6">
-            {/* Profile picture upload (kept) */}
-            <div>
-              <Label>{tr("profile_picture","Profile Picture")}</Label>
-              <div className="flex items-center gap-4 mt-2">
-                <input
-                  type="file"
-                  id="profile_picture"
-                  accept="image/*"
-                  onChange={handleUploadProfilePicture}
-                  className="hidden"
-                />
-                <Button
+          {saveNotice && (
+            <div
+              className={[
+                "rounded-2xl border px-4 py-3 text-sm",
+                saveNotice.type === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : "border-rose-200 bg-rose-50 text-rose-900",
+              ].join(" ")}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="leading-5">{saveNotice.text}</div>
+                <button
                   type="button"
-                  variant="outline"
-                  onClick={() => document.getElementById("profile_picture")?.click()}
-                  disabled={uploadingProfilePic}
+                  onClick={() => setSaveNotice(null)}
+                  className="rounded-full px-2 py-1 text-xs font-semibold hover:bg-white/60"
                 >
-                  {uploadingProfilePic ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Upload className="w-4 h-4 mr-2" />
-                  )}
-                  {uploadingProfilePic ? tr("uploading","Uploading…") : tr("upload_picture","Upload Picture")}
-                </Button>
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
-                {profilePhoto ? (
-                  <img
-                    src={profilePhoto}
-                    alt="Profile"
-                    className="w-16 h-16 rounded-full object-cover border border-white shadow-sm"
-                    onError={(e) => {
-                      e.currentTarget.src = "";
-                      setField("profile_picture", "");
-                    }}
-                  />
-                ) : (
-                  <div
-                    className={`w-16 h-16 rounded-full ${avatarBg} text-white border border-white shadow-sm flex items-center justify-center font-bold text-xl`}
-                  >
-                    {initial}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1 space-y-6">
+              <ProfileSection title={tr("about", "About")} icon={User}>
+                <div className="space-y-3 text-sm text-gray-600">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">{tr("role", "Role")}</p>
+                    <Badge variant="outline">{meta.label}</Badge>
                   </div>
-                )}
-              </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">
+                      {tr("member_since", "Member Since")}
+                    </p>
+                    <p>{memberSince}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">{tr("status", "Status")}</p>
+                    <Badge
+                      variant="secondary"
+                      className={
+                        isVerified
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-yellow-50 text-yellow-700 border-yellow-200"
+                      }
+                    >
+                      {verificationLabel}
+                    </Badge>
+                  </div>
+                </div>
+              </ProfileSection>
             </div>
 
-            {/* Basic info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>{tr("full_name","Full Name *")}</Label>
-                <Input
-                  value={form.full_name}
-                  onChange={(e) => setField("full_name", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+            <div className="lg:col-span-2 space-y-6">
+              <ProfileSection
+                title={tr("personal_information", "Personal Information")}
+                icon={Globe}
+                action={
+                  <Select
+                    value={form.lang || "en"}
+                    onValueChange={handleLanguageChange}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LANGUAGE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                }
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="full_name">
+                      {tr("full_name", "Full Name")} <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="full_name"
+                      value={form.full_name}
+                      disabled={!isEditing}
+                      onChange={(e) => setField("full_name", e.target.value)}
+                      placeholder={tr("enter_full_name", "Enter your full name")}
+                    />
+                  </div>
 
-              <div>
-                <Label>{tr("email_login","Email (Login)")}</Label>
-                <Input value={form.email} disabled className="mt-1 bg-gray-100" />
-              </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="email">
+                      {tr("email_login", "Email (Login)")} <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={form.email}
+                      disabled
+                      className="bg-gray-50"
+                    />
+                  </div>
 
-              <div>
-                <Label>{tr("phone","Phone *")}</Label>
-                <Input
-                  value={form.phone}
-                  onChange={(e) => setField("phone", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="phone">
+                      {tr("phone", "Phone")} <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={form.phone}
+                      disabled={!isEditing}
+                      onChange={(e) => setField("phone", e.target.value)}
+                      placeholder="+1 234 567 8900"
+                    />
+                  </div>
 
-              <div>
-                <Label>{tr("country","Country *")}</Label>
-                <CountrySelect
-                  valueCode={form.country_code}
-                  valueName={form.country}
-                  onChange={({ code, name }) => {
-                    setField("country", name || "");
-                    setField("country_code", (code || "").toUpperCase());
-                  }}
-                />
-              </div>
-            </div>
+                  {showStudent ? (
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="current_level">{tr("current_level", "Current Level")}</Label>
+                      <Input
+                        id="current_level"
+                        value={form.current_level}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("current_level", e.target.value)}
+                        placeholder={tr("current_level_placeholder", "e.g. Masters")}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="date_of_birth">{tr("date_of_birth", "Date of Birth")}</Label>
+                      <Input
+                        id="date_of_birth"
+                        type="date"
+                        value={form.date_of_birth}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("date_of_birth", e.target.value)}
+                      />
+                    </div>
+                  )}
 
-            {/* Biography (fixed + saved) */}
-            <div>
-              <Label>{tr("bio_label","Biography / Description")}</Label>
-              <Textarea
-                value={form.bio}
-                onChange={(e) => setField("bio", e.target.value)}
-                className="mt-1"
-                rows={4}
-                placeholder={tr("bio_placeholder","Write a short bio/description shown on your profile...")}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {tr("bio_help","Optional, but recommended for better profile visibility.")}
-              </p>
-            </div>
+                  {showStudent ? (
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="age">{tr("age", "Age")}</Label>
+                      <Input
+                        id="age"
+                        type="number"
+                        min="0"
+                        value={form.age}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("age", e.target.value)}
+                        placeholder={tr("age_placeholder", "Enter your age")}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="gender">{tr("gender", "Gender")}</Label>
+                      <Select
+                        value={form.gender}
+                        onValueChange={(value) => isEditing && setField("gender", value)}
+                        disabled={!isEditing}
+                      >
+                        <SelectTrigger id="gender">
+                          <SelectValue placeholder={tr("select_gender", "Select gender")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                          <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
-            {/* ✅ Hide these “requirements/verification” UI for user/student */}
-            {isUserStudent ? null : (
-              <div className="rounded-md border bg-white p-4 text-sm text-gray-600">
-                {tr("roles_require_note","Some roles may require verification or additional details before appearing publicly.")}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  <div className="flex flex-col gap-2 md:col-span-2">
+                    <Label htmlFor="country">
+                      {tr("country", "Country")} <span className="text-red-500">*</span>
+                    </Label>
+                    <CountrySelect
+                      disabled={!isEditing}
+                      valueCode={form.country_code}
+                      valueName={form.country}
+                      onChange={({ code, name }) => {
+                        setField("country", name || "");
+                        setField("country_code", (code || "").toUpperCase());
+                      }}
+                    />
+                  </div>
+                </div>
 
-        {/* Role-specific sections (kept) */}
-        
-
-            {/* ✅ Verification status + documents (re-upload happens here on Profile) */}
-            <Card className="border-emerald-100 bg-emerald-50/40">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between gap-3">
-                  <span>{tr("verification.title", "Verification")}</span>
-                  <span className="text-sm font-semibold">
-                    {verification.status === "verified" ? (
-                      <span className="text-emerald-700">{tr("verification.verified", "Verified")}</span>
-                    ) : verification.status === "pending" ? (
-                      <span className="text-amber-700">{tr("verification.pending", "Pending")}</span>
-                    ) : verification.status === "rejected" || verification.status === "denied" ? (
-                      <span className="text-red-700">{tr("verification.denied", "Unverified")}</span>
-                    ) : (
-                      <span className="text-gray-700">{tr("verification.unverified", "Unverified")}</span>
+                <div className="flex flex-col gap-2 mt-6">
+                  <Label htmlFor="bio">{tr("bio_label", "Biography / Description")}</Label>
+                  <Textarea
+                    id="bio"
+                    value={form.bio}
+                    disabled={!isEditing}
+                    onChange={(e) => setField("bio", e.target.value)}
+                    placeholder={tr(
+                      "bio_placeholder",
+                      "Write a short bio/description shown on your profile..."
                     )}
-                  </span>
-                </CardTitle>
-              </CardHeader>
+                    rows={6}
+                    className="resize-none"
+                  />
+                  <p className="text-sm text-gray-500">
+                    {tr(
+                      "bio_help_long",
+                      "Tell others about yourself, your interests, and what makes you unique."
+                    )}
+                  </p>
+                </div>
+              </ProfileSection>
 
-              <CardContent className="space-y-4">
-                {(verification.status === "rejected" || verification.status === "denied") && verification.reason ? (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                    <div className="font-semibold">{tr("verification.denied_title", "Verification denied")}</div>
-                    <div className="mt-1">{verification.reason}</div>
-                    <div className="mt-3 text-xs text-red-700">
-                      {tr("verification.resubmit_hint", "Please re-upload the correct documents below, then submit again.")}
+              {showStudent && (
+                <ProfileSection title={tr("interests", "Interests")} icon={BookOpen}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <SimpleArrayInput
+                      id="selected_courses"
+                      label={tr("courses", "Courses")}
+                      value={form.selected_courses}
+                      disabled={!isEditing}
+                      onChange={(v) => setField("selected_courses", v)}
+                      placeholder={tr(
+                        "courses_placeholder",
+                        "Example: Language Programs, Business, Engineering"
+                      )}
+                      helpText={tr("comma_help", "Separate multiple values with commas.")}
+                    />
+
+                    <SimpleArrayInput
+                      id="preferred_countries"
+                      label={tr("countries", "Countries")}
+                      value={form.preferred_countries}
+                      disabled={!isEditing}
+                      onChange={(v) => setField("preferred_countries", v)}
+                      placeholder={tr(
+                        "countries_placeholder",
+                        "Example: South Korea, Canada, Australia"
+                      )}
+                      helpText={tr("comma_help", "Separate multiple values with commas.")}
+                    />
+
+                    <SimpleArrayInput
+                      id="study_areas"
+                      label={tr("areas", "Areas")}
+                      value={form.study_areas}
+                      disabled={!isEditing}
+                      onChange={(v) => setField("study_areas", v)}
+                      placeholder={tr(
+                        "areas_placeholder",
+                        "Example: Business and Management, Film Media and Communication"
+                      )}
+                      helpText={tr("comma_help", "Separate multiple values with commas.")}
+                    />
+
+                    <SimpleArrayInput
+                      id="spoken_languages"
+                      label={tr("languages", "Languages")}
+                      value={form.spoken_languages}
+                      disabled={!isEditing}
+                      onChange={(v) => setField("spoken_languages", v)}
+                      placeholder={tr("languages_placeholder", "Example: English, French, Korean")}
+                      helpText={tr("comma_help", "Separate multiple values with commas.")}
+                    />
+                  </div>
+                </ProfileSection>
+              )}
+
+              <ProfileSection title={tr("validation.title", "Validation")} icon={Briefcase}>
+                <div className="space-y-4">
+                  {(verification.status === "rejected" || verification.status === "denied") &&
+                  verification.reason ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                      <div className="font-semibold">
+                        {tr("verification.denied_title", "Verification denied")}
+                      </div>
+                      <div className="mt-1">{verification.reason}</div>
+                    </div>
+                  ) : null}
+
+                  {verificationFields.length === 0 ? (
+                    <div className="text-sm text-gray-600">
+                      {tr(
+                        "verification.none_required",
+                        "No verification documents required for your role."
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {verificationFields.map((f) => {
+                        const url = verification.docs?.[f.key] || "";
+                        const uploading = !!docUploading?.[f.key];
+
+                        return (
+                          <div key={f.key} className="rounded-2xl border bg-white p-4 space-y-3">
+                            <div className="font-medium text-gray-900">
+                              {f.label} {f.required ? "*" : ""}
+                            </div>
+
+                            {url ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  setViewerUrl(url);
+                                  setViewerName(f.label);
+                                  setViewerOpen(true);
+                                }}
+                              >
+                                {tr("verification.view", "View uploaded document")}
+                              </Button>
+                            ) : (
+                              <div className="text-sm text-gray-500">
+                                {tr("verification.no_file", "No file uploaded yet")}
+                              </div>
+                            )}
+
+                            {isEditing && (
+                              <div className="flex items-center gap-2">
+                                {url ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => clearVerificationDoc(f.key)}
+                                  >
+                                    {tr("verification.remove", "Remove")}
+                                  </Button>
+                                ) : null}
+
+                                <label className="inline-flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="file"
+                                    accept=".pdf,image/*"
+                                    className="hidden"
+                                    disabled={uploading}
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0] || null;
+                                      e.target.value = "";
+                                      if (file) uploadVerificationDoc(f.key, file);
+                                    }}
+                                  />
+                                  <span
+                                    className={
+                                      "inline-flex items-center rounded-md border px-3 py-2 text-sm " +
+                                      (uploading
+                                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                        : "bg-white hover:bg-gray-50 text-gray-900")
+                                    }
+                                  >
+                                    {uploading ? (
+                                      <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        {tr("verification.uploading", "Uploading...")}
+                                      </>
+                                    ) : url ? (
+                                      tr("verification.replace", "Replace")
+                                    ) : (
+                                      tr("verification.upload", "Upload")
+                                    )}
+                                  </span>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {verificationFields.length && isEditing ? (
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        onClick={submitVerificationForReview}
+                        disabled={submittingVerification || verification.status === "verified"}
+                        className="bg-emerald-600 hover:bg-emerald-700"
+                      >
+                        {submittingVerification ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            {tr("verification.submitting", "Submitting...")}
+                          </>
+                        ) : verification.status === "pending" ? (
+                          tr("verification.resubmit", "Submit again")
+                        ) : (
+                          tr("verification.submit", "Submit for review")
+                        )}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              </ProfileSection>
+
+              {showAgent && (
+                <ProfileSection title={tr("agent_details", "Agent Details")} icon={Briefcase}>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>{tr("company_name", "Company Name *")}</Label>
+                      <Input
+                        value={form.company_name}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("company_name", e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>{tr("business_license_mst", "Business License (MST) *")}</Label>
+                      <Input
+                        value={form.business_license_mst}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("business_license_mst", e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>{tr("year_established", "Year Established")}</Label>
+                      <Input
+                        type="number"
+                        value={form.year_established}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("year_established", e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>{tr("paypal_email", "PayPal Email *")}</Label>
+                      <Input
+                        type="email"
+                        value={form.paypal_email}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("paypal_email", e.target.value)}
+                        className="mt-1"
+                      />
                     </div>
                   </div>
-                ) : null}
+                </ProfileSection>
+              )}
 
-                {verificationFields.length === 0 ? (
-                  <div className="text-sm text-gray-600">
-                    {tr("verification.none_required", "No verification documents required for your role.")}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {verificationFields.map((f) => {
-                      const url = verification.docs?.[f.key] || "";
-                      const uploading = !!docUploading?.[f.key];
+              {showTutor && (
+                <ProfileSection title={tr("tutor_details", "Tutor Details")} icon={BookOpen}>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>{tr("specializations", "Specializations *")}</Label>
+                      <Input
+                        value={form.specializations}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("specializations", e.target.value)}
+                        className="mt-1"
+                        placeholder={tr("specializations_placeholder", "IELTS, TOEFL...")}
+                      />
+                    </div>
 
-                      return (
-                        <div key={f.key} className="rounded-xl border bg-white p-4 space-y-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-medium text-gray-900">
-                                {f.label} {f.required ? "*" : ""}
-                              </div>
-                              {url ? (
-                                <Button type="button" variant="outline" onClick={() => { setViewerUrl(url); setViewerName(f.label); setViewerOpen(true); }}>
-  {tr("verification.view", "View uploaded document")}
-</Button>
-                              ) : (
-                                <div className="text-sm text-gray-600">
-                                  {tr("verification.no_file", "No file uploaded yet")}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="shrink-0 flex items-center gap-2">
-                              {url ? (
-                                <button
-                                  type="button"
-                                  onClick={() => clearVerificationDoc(f.key)}
-                                  className="text-xs text-gray-500 hover:text-red-600"
-                                >
-                                  {tr("verification.remove", "Remove")}
-                                </button>
-                              ) : null}
-
-                              <label className="inline-flex items-center gap-2 cursor-pointer">
-                                <input
-                                  type="file"
-                                  accept=".pdf,image/*"
-                                  className="hidden"
-                                  disabled={uploading}
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0] || null;
-                                    e.target.value = "";
-                                    if (file) uploadVerificationDoc(f.key, file);
-                                  }}
-                                />
-                                <span
-                                  className={
-                                    "inline-flex items-center rounded-md border px-3 py-2 text-sm " +
-                                    (uploading
-                                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                      : "bg-white hover:bg-gray-50 text-gray-900")
-                                  }
-                                >
-                                  {uploading ? (
-                                    <>
-                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                      {tr("verification.uploading", "Uploading...")}
-                                    
-</>
-                                  ) : url ? (
-                                    tr("verification.replace", "Replace")
-                                  ) : (
-                                    tr("verification.upload", "Upload")
-                                  )}
-                                </span>
-                              </label>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-
-                {(() => {
-                  const expected = new Set((verificationFields || []).map((f) => f.key));
-                  const allDocs = verification.docs && typeof verification.docs === "object" ? verification.docs : {};
-                  const extraKeys = Object.keys(allDocs).filter((k) => !expected.has(k) && allDocs[k]);
-                  if (!extraKeys.length) return null;
-
-                  return (
-                    <div className="rounded-xl border bg-white p-4">
-                      <div className="font-medium text-gray-900">
-                        {tr("verification.other_docs", "Other uploaded documents")}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>{tr("experience_years", "Years of Experience *")}</Label>
+                        <Input
+                          type="number"
+                          value={form.experience_years}
+                          disabled={!isEditing}
+                          onChange={(e) => setField("experience_years", e.target.value)}
+                          className="mt-1"
+                        />
                       </div>
-                      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {extraKeys.map((k) => (
-                          <Button
-                            key={k}
-                            type="button"
-                            variant="outline"
-                            onClick={() => {
-                              const url = allDocs[k];
-                              setViewerUrl(url);
-                              setViewerName(k);
-                              setViewerOpen(true);
-                            }}
-                            className="justify-start"
-                          >
-                            {k}
-                          </Button>
+                      <div>
+                        <Label>{tr("hourly_rate_usd", "Hourly Rate (USD) *")}</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={form.hourly_rate}
+                          disabled={!isEditing}
+                          onChange={(e) => setField("hourly_rate", e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>{tr("paypal_email", "PayPal Email *")}</Label>
+                      <Input
+                        type="email"
+                        value={form.paypal_email}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("paypal_email", e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                </ProfileSection>
+              )}
+
+              {showVendor && (
+                <ProfileSection title={tr("vendor_details", "Vendor Details")} icon={Store}>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>{tr("business_name", "Business Name *")}</Label>
+                      <Input
+                        value={form.business_name}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("business_name", e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label>{tr("service_categories", "Service Categories *")}</Label>
+                      <div className="grid grid-cols-2 gap-3 mt-2">
+                        {vendorCategoryOptions.map(({ value, label }) => (
+                          <div key={value} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`cat-${value}`}
+                              checked={form.service_categories?.includes(value) || false}
+                              disabled={!isEditing}
+                              onChange={(e) => {
+                                const cur = form.service_categories || [];
+                                const next = e.target.checked
+                                  ? [...cur, value]
+                                  : cur.filter((c) => c !== value);
+                                setField("service_categories", next);
+                              }}
+                              className="h-4 w-4"
+                            />
+                            <label htmlFor={`cat-${value}`} className="text-sm text-gray-700">
+                              {label}
+                            </label>
+                          </div>
                         ))}
                       </div>
-                      <div className="mt-2 text-xs text-gray-600">
-                        {tr(
-                          "verification.other_docs_hint",
-                          "These were found in your verification record but don’t match the expected document fields for your current role."
-                        )}
-                      </div>
                     </div>
-                  );
-                })()}
 
-
-                {verificationFields.length ? (
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      onClick={submitVerificationForReview}
-                      disabled={submittingVerification || verification.status === "verified"}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      {submittingVerification ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          {tr("verification.submitting", "Submitting...")}
-                        </>
-                      ) : verification.status === "pending" ? (
-                        tr("verification.resubmit", "Submit again")
-                      ) : (
-                        tr("verification.submit", "Submit for review")
-                      )}
-                    </Button>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-
-{showAgent && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{tr("agent_details","Agent Details")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>{tr("company_name","Company Name *")}</Label>
-                <Input
-                  value={form.company_name}
-                  onChange={(e) => setField("company_name", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>{tr("business_license_mst","Business License (MST) *")}</Label>
-                <Input
-                  value={form.business_license_mst}
-                  onChange={(e) => setField("business_license_mst", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>{tr("year_established","Year Established")}</Label>
-                <Input
-                  type="number"
-                  value={form.year_established}
-                  onChange={(e) => setField("year_established", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>{tr("paypal_email","PayPal Email *")}</Label>
-                <Input
-                  type="email"
-                  value={form.paypal_email}
-                  onChange={(e) => setField("paypal_email", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {showTutor && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{tr("tutor_details","Tutor Details")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>{tr("specializations","Specializations *")}</Label>
-                <Input
-                  value={form.specializations}
-                  onChange={(e) => setField("specializations", e.target.value)}
-                  className="mt-1"
-                  placeholder={tr("specializations_placeholder","IELTS, TOEFL...")}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label>{tr("experience_years","Years of Experience *")}</Label>
-                  <Input
-                    type="number"
-                    value={form.experience_years}
-                    onChange={(e) => setField("experience_years", e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label>{tr("hourly_rate_usd","Hourly Rate (USD) *")}</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={form.hourly_rate}
-                    onChange={(e) => setField("hourly_rate", e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label>{tr("paypal_email","PayPal Email *")}</Label>
-                <Input
-                  type="email"
-                  value={form.paypal_email}
-                  onChange={(e) => setField("paypal_email", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {showVendor && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{tr("vendor_details","Vendor Details")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>{tr("business_name","Business Name *")}</Label>
-                <Input
-                  value={form.business_name}
-                  onChange={(e) => setField("business_name", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label>{tr("service_categories","Service Categories *")}</Label>
-                <div className="grid grid-cols-2 gap-3 mt-2">
-                  {vendorCategoryOptions.map(({ value, label }) => (
-                    <div key={value} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id={`cat-${value}`}
-                        checked={form.service_categories?.includes(value) || false}
-                        onChange={(e) => {
-                          const cur = form.service_categories || [];
-                          const next = e.target.checked
-                            ? [...cur, value]
-                            : cur.filter((c) => c !== value);
-                          setField("service_categories", next);
-                        }}
-                        className="h-4 w-4"
+                    <div>
+                      <Label>{tr("paypal_email", "PayPal Email *")}</Label>
+                      <Input
+                        type="email"
+                        value={form.paypal_email}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("paypal_email", e.target.value)}
+                        className="mt-1"
                       />
-                      <label htmlFor={`cat-${value}`} className="text-sm text-gray-700">
-                        {label}
-                      </label>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+                </ProfileSection>
+              )}
 
-              <div>
-                <Label>{tr("paypal_email","PayPal Email *")}</Label>
-                <Input
-                  type="email"
-                  value={form.paypal_email}
-                  onChange={(e) => setField("paypal_email", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              {showSchool && (
+                <ProfileSection title={tr("school_details", "School Details")} icon={Building}>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>{tr("institution_name", "Institution Name *")}</Label>
+                      <Input
+                        value={form.school_name}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("school_name", e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
 
-        {showSchool && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{tr("school_details","School Details")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>{tr("institution_name","Institution Name *")}</Label>
-                <Input
-                  value={form.school_name}
-                  onChange={(e) => setField("school_name", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+                    <div>
+                      <Label>{tr("school_type", "School Type *")}</Label>
+                      <Select
+                        value={form.type || ""}
+                        onValueChange={(v) => isEditing && setField("type", v)}
+                        disabled={!isEditing}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue
+                            placeholder={tr("select_institution_type", "Select institution type")}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {schoolTypeOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-              <div>
-                <Label>{tr("school_type","School Type *")}</Label>
-                <Select value={form.type || ""} onValueChange={(v) => setField("type", v)}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder={tr("select_institution_type","Select institution type")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schoolTypeOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                    <div>
+                      <Label>{tr("city_location", "City/Location *")}</Label>
+                      <Input
+                        value={form.location}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("location", e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
 
-              <div>
-                <Label>{tr("city_location","City/Location *")}</Label>
-                <Input
-                  value={form.location}
-                  onChange={(e) => setField("location", e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+                    <div>
+                      <Label>{tr("official_website", "Official Website *")}</Label>
+                      <Input
+                        value={form.website}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("website", e.target.value)}
+                        className="mt-1"
+                        placeholder="https://..."
+                      />
+                    </div>
 
-              <div>
-                <Label>{tr("official_website","Official Website *")}</Label>
-                <Input
-                  value={form.website}
-                  onChange={(e) => setField("website", e.target.value)}
-                  className="mt-1"
-                  placeholder="https://..."
-                />
-              </div>
-
-              <div>
-                <Label>{tr("about_institution","About Your Institution")}</Label>
-                <Textarea
-                  value={form.about}
-                  onChange={(e) => setField("about", e.target.value)}
-                  className="mt-1"
-                  rows={3}
-                />
-              </div>
-
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ✅ ONLY ONE BUTTON (saves ALL changes) */}
-        <div className="flex justify-end">
-          <Button
-            onClick={handleSaveAll}
-            disabled={saving}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4 mr-2" />
-            )}
-            {saving ? tr("saving","Saving…") : tr("save_changes","Save Changes")}
-          </Button>
-        </div>
-      </div>
-    </div>
-
-  {/* ✅ Document viewer modal */}
-  <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
-  <DialogContent className="max-w-3xl">
-    <DialogHeader>
-      <DialogTitle>{viewerName || tr("verification.document", "Document")}</DialogTitle>
-    </DialogHeader>
-
-    <div className="w-full">
-      {detectType(viewerUrl) === "image" ? (
-        <img
-          src={viewerUrl}
-          alt={viewerName}
-          className="w-full max-h-[70vh] object-contain rounded-lg"
-        />
-      ) : detectType(viewerUrl) === "pdf" ? (
-        <iframe
-          src={viewerUrl}
-          title={viewerName || tr("verification.document", "Document")}
-          className="w-full h-[70vh] rounded-lg border"
-        />
-      ) : (
-        <div className="text-sm text-gray-700">
-          {tr("verification.cannot_preview", "This file type can’t be previewed here.")}
-          <div className="mt-3">
-            <a className="underline" href={viewerUrl} target="_blank" rel="noreferrer">
-              {tr("verification.open_new_tab", "Open in new tab")}
-            </a>
+                    <div>
+                      <Label>{tr("about_institution", "About Your Institution")}</Label>
+                      <Textarea
+                        value={form.about}
+                        disabled={!isEditing}
+                        onChange={(e) => setField("about", e.target.value)}
+                        className="mt-1"
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                </ProfileSection>
+              )}
+            </div>
           </div>
         </div>
-      )}
-    </div>
-  </DialogContent>
-</Dialog>
+      </div>
+
+      <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{viewerName || tr("verification.document", "Document")}</DialogTitle>
+          </DialogHeader>
+
+          <div className="w-full">
+            {detectType(viewerUrl) === "image" ? (
+              <img
+                src={viewerUrl}
+                alt={viewerName}
+                className="w-full max-h-[70vh] object-contain rounded-lg"
+              />
+            ) : detectType(viewerUrl) === "pdf" ? (
+              <iframe
+                src={viewerUrl}
+                title={viewerName || tr("verification.document", "Document")}
+                className="w-full h-[70vh] rounded-lg border"
+              />
+            ) : (
+              <div className="text-sm text-gray-700">
+                {tr("verification.cannot_preview", "This file type can’t be previewed here.")}
+                <div className="mt-3">
+                  <a className="underline" href={viewerUrl} target="_blank" rel="noreferrer">
+                    {tr("verification.open_new_tab", "Open in new tab")}
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
-
-
-
   );
 }
