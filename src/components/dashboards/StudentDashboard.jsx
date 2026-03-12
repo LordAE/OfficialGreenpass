@@ -16,7 +16,6 @@ import {
   UserPlus,
   UserMinus,
   Send,
-  Sparkles,
   ShieldCheck,
   Building2,
   GraduationCap,
@@ -27,7 +26,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
 // 🤝 Follow helpers
-import { listenFollowState, sendFollowRequest, cancelFollowRequest, unfollowUser } from "@/api/follow";
+import {
+  listenFollowState,
+  sendFollowRequest,
+  cancelFollowRequest,
+  unfollowUser,
+} from "@/api/follow";
 
 // 🌍 i18n
 import { useTr } from "@/i18n/useTr";
@@ -79,8 +83,28 @@ const timeAgo = (dt) => {
 
 const POST_PREVIEW_TEXT_LIMIT = 320;
 const MAX_DASHBOARD_MEDIA = 4;
+
 const buildPostDetailUrl = (postId) =>
   `${createPageUrl("PostDetails")}?id=${encodeURIComponent(postId || "")}`;
+
+const buildCreatorProfileRoute = (post) => {
+  const authorId = String(post?.authorId || "").trim();
+  const authorRole = String(post?.authorRole || "").toLowerCase().trim();
+
+  if (!authorId) return null;
+
+  if (authorRole === "school") {
+    return {
+      pathname: "/schooldetails",
+      search: `?id=${encodeURIComponent(authorId)}`,
+    };
+  }
+
+  return {
+    pathname: `/view-profile/${encodeURIComponent(authorId)}`,
+    search: "",
+  };
+};
 
 const Avatar = ({ name = "User", role = "user" }) => {
   const initials = String(name)
@@ -335,11 +359,12 @@ function FollowButton({ currentUserId, creatorId, creatorRole, size = "sm", clas
 
 /* -------------------- Post Card UI -------------------- */
 function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
+  const navigate = useNavigate();
   const canMessage = String(post.authorRole || "").toLowerCase() !== "school";
   const postDetailUrl = buildPostDetailUrl(post.id);
-  const viewProfileUrl = post?.authorId
-  ? `/view-profile/${encodeURIComponent(post.authorId)}`
-  : "";
+  const creatorProfileRoute = buildCreatorProfileRoute(post);
+  const isSchool = String(post?.authorRole || "").toLowerCase().trim() === "school";
+
   const fullText = String(post.text || "");
   const hasLongText = fullText.length > POST_PREVIEW_TEXT_LIMIT;
   const previewText = hasLongText
@@ -406,20 +431,25 @@ function FeedPostCard({ post, myUid, onMessage, authorCountryByUid, tr }) {
             <Avatar name={post.authorName} role={post.authorRole} />
             <div className="min-w-0 leading-tight">
               <div className="flex items-center gap-2 flex-wrap">
-                {post?.authorId ? (
-                  <Link
-                    to={viewProfileUrl}
-                    className="font-semibold text-gray-900 truncate hover:underline cursor-pointer"
-                    title={tr("view_profile", "View profile")}
+                {post?.authorId && creatorProfileRoute ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      console.log("Navigating to creator route:", creatorProfileRoute);
+                      navigate(creatorProfileRoute);
+                    }}
+                    className="font-semibold text-gray-900 truncate hover:underline cursor-pointer text-left bg-transparent border-0 p-0"
+                    title={isSchool ? tr("view_school_details", "View school details") : tr("view_profile", "View profile")}
                   >
                     {post.authorName}
-                  </Link>
+                  </button>
                 ) : (
                   <div className="font-semibold text-gray-900 truncate">{post.authorName}</div>
                 )}
-                </div>
 
-  <RoleBadge role={String(post.authorRole || "").toLowerCase()} tr={tr} />
+                <RoleBadge role={String(post.authorRole || "").toLowerCase()} tr={tr} />
+              </div>
+
               {(() => {
                 const authorId =
                   post?.authorId ||

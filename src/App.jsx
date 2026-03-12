@@ -127,12 +127,13 @@ function RequireAuth({ currentUser, loading, children }) {
 }
 
 function RequireRole({ currentUser, loading, allow, children }) {
-  const location = useLocation();
   if (loading) return null;
-  if (!currentUser) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (!currentUser) return <Navigate to="/login" replace />;
 
   const role = normalizeRole(currentUser);
-  const allowed = (Array.isArray(allow) ? allow : [allow]).map((r) => normalizeRole({ user_type: r }));
+  const allowed = (Array.isArray(allow) ? allow : [allow]).map((r) =>
+    normalizeRole({ user_type: r })
+  );
 
   if (!allowed.includes(role)) {
     return <Navigate to="/dashboard" replace />;
@@ -240,11 +241,35 @@ export default function App() {
           }
         />
 
+        {/* ✅ Changed from school-only to any authenticated user */}
+        <Route
+          path="schooldetails"
+          element={
+            <RequireAuth currentUser={currentUser} loading={loading}>
+              <SchoolDetails />
+            </RequireAuth>
+          }
+        />
+
+        {/* ✅ Changed from school-only to any authenticated user */}
+        <Route
+          path="programdetails"
+          element={
+            <RequireAuth currentUser={currentUser} loading={loading}>
+              <ProgramDetails />
+            </RequireAuth>
+          }
+        />
+
         {/* Organization (School/Agent/Tutor) */}
         <Route
           path="organization"
           element={
-            <RequireRole currentUser={currentUser} loading={loading} allow={["school", "agent", "tutor"]}>
+            <RequireRole
+              currentUser={currentUser}
+              loading={loading}
+              allow={["school", "agent", "tutor"]}
+            >
               <Organization />
             </RequireRole>
           }
@@ -342,22 +367,6 @@ export default function App() {
           element={
             <RequireRole currentUser={currentUser} loading={loading} allow={["school"]}>
               <SchoolLeads />
-            </RequireRole>
-          }
-        />
-        <Route
-          path="schooldetails"
-          element={
-            <RequireRole currentUser={currentUser} loading={loading} allow={["school"]}>
-              <SchoolDetails />
-            </RequireRole>
-          }
-        />
-        <Route
-          path="programdetails"
-          element={
-            <RequireRole currentUser={currentUser} loading={loading} allow={["school"]}>
-              <ProgramDetails />
             </RequireRole>
           }
         />

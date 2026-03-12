@@ -1,4 +1,3 @@
-// src/pages/SchoolDetails.jsx
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +16,8 @@ import {
   User as UserIcon,
   Eye,
   EyeOff,
+  Heart,
+  Loader2,
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 
@@ -95,6 +96,14 @@ const normalizeUrl = (url) => {
   if (!s) return "";
   if (s.startsWith("http://") || s.startsWith("https://")) return s;
   return `https://${s}`;
+};
+
+const buildNextHref = (nextPage) => {
+  const s = (nextPage || "").toString().trim();
+  if (!s) return createPageUrl("Dashboard");
+  if (s.startsWith("/")) return s;
+  if (s.includes("?") || s.includes("/")) return s;
+  return createPageUrl(s);
 };
 
 /* ---------- safe Firestore get (swallow permission-denied) ---------- */
@@ -182,7 +191,7 @@ async function routeAfterAuth(navigate, fbUser, entryRole, nextPage) {
     return navigate(`${createPageUrl("Onboarding")}?${qp.toString()}`);
   }
 
-  return navigate(createPageUrl(nextPage || "Dashboard"));
+  return navigate(buildNextHref(nextPage || "Dashboard"));
 }
 
 /* ---------- Inline Login Dialog ---------- */
@@ -511,11 +520,16 @@ export default function SchoolDetails() {
   const [fbProfile, setFbProfile] = useState(null);
 
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
-  const [chosenRole] = useState("school");
+  const [chosenRole, setChosenRole] = useState("school");
+  const [loginNextPage, setLoginNextPage] = useState("SchoolDetails");
 
   const [programDialogOpen, setProgramDialogOpen] = useState(false);
   const [programSaving, setProgramSaving] = useState(false);
   const [editingProgram, setEditingProgram] = useState(null);
+
+  const [interestedLoading, setInterestedLoading] = useState(false);
+  const [alreadyInterested, setAlreadyInterested] = useState(false);
+  const [pendingInterest, setPendingInterest] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -548,8 +562,44 @@ export default function SchoolDetails() {
   }, [fbUser]);
 
   const resolveInstitutionId = useCallback(async () => {
-    if (schoolIdParam) return schoolIdParam;
-    if (!authReady) return null;
+    if (!authReady && !schoolIdParam) return null;
+
+    if (schoolIdParam) {
+      try {
+        const directInst = await safeGetDoc("institutions", schoolIdParam);
+        if (directInst.exists()) return schoolIdParam;
+      } catch {}
+
+      try {
+        const instQ = query(
+          collection(db, "institutions"),
+          where("user_id", "==", schoolIdParam),
+          limit(1)
+        );
+        const instSnap = await getDocs(instQ);
+        if (!instSnap.empty) return instSnap.docs[0].id;
+      } catch {}
+
+      try {
+        const spQ = query(
+          collection(db, "school_profiles"),
+          where("user_id", "==", schoolIdParam),
+          limit(1)
+        );
+        const spSnap = await getDocs(spQ);
+
+        if (!spSnap.empty) {
+          const sp = spSnap.docs[0].data() || {};
+          const linkedInstitutionId =
+            sp.institution_id || sp.institutionId || sp.school_id || sp.schoolId || null;
+
+          if (linkedInstitutionId) return linkedInstitutionId;
+        }
+      } catch {}
+
+      return null;
+    }
+
     if (!fbUser) return null;
 
     const uid = fbUser.uid;
@@ -558,9 +608,7 @@ export default function SchoolDetails() {
       const instQ = query(collection(db, "institutions"), where("user_id", "==", uid), limit(1));
       const instSnap = await getDocs(instQ);
       if (!instSnap.empty) return instSnap.docs[0].id;
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     return null;
   }, [schoolIdParam, authReady, fbUser]);
@@ -598,16 +646,27 @@ export default function SchoolDetails() {
         const instData = instSnap.exists() ? { id: instSnap.id, ...instSnap.data() } : null;
 
         let spData = null;
-        if (fbUser?.uid) {
-          try {
-            const spQ = query(collection(db, "school_profiles"), where("user_id", "==", fbUser.uid), limit(1));
+
+        try {
+          const schoolOwnerId =
+            pickFirst(
+              instData?.user_id,
+              schoolIdParam && schoolIdParam !== institutionId ? schoolIdParam : null
+            ) || null;
+
+          if (schoolOwnerId) {
+            const spQ = query(
+              collection(db, "school_profiles"),
+              where("user_id", "==", schoolOwnerId),
+              limit(1)
+            );
             const spSnap = await getDocs(spQ);
             if (!spSnap.empty) {
               spData = { id: spSnap.docs[0].id, ...spSnap.docs[0].data() };
             }
-          } catch {
-            spData = null;
           }
+        } catch {
+          spData = null;
         }
 
         if (!instData && !spData) {
@@ -655,10 +714,11 @@ export default function SchoolDetails() {
         if (!cancelled) setSchool(merged);
 
         const programsFound = [];
+        const programOwnerId = pickFirst(instData?.user_id, spData?.user_id, schoolIdParam);
 
         try {
-          if (fbUser?.uid) {
-            const q1 = query(collection(db, "schools"), where("user_id", "==", fbUser.uid), limit(500));
+          if (programOwnerId) {
+            const q1 = query(collection(db, "schools"), where("user_id", "==", programOwnerId), limit(500));
             const snap1 = await getDocs(q1);
             snap1.forEach((d) => programsFound.push({ id: d.id, ...d.data() }));
           }
@@ -706,7 +766,7 @@ export default function SchoolDetails() {
     };
   }, [schoolIdParam, fbUser, authReady, resolveInstitutionId]);
 
-  const role = normalizeRole(fbProfile?.user_type || fbProfile?.role || "school");
+  const role = normalizeRole(fbProfile?.user_type || fbProfile?.role || "user");
   const isSignedIn = !!fbUser;
 
   const ownerIds = useMemo(() => {
@@ -722,6 +782,11 @@ export default function SchoolDetails() {
   const canManageSchool = useMemo(() => {
     return !!fbUser && role === "school" && ownerIds.includes(String(fbUser.uid));
   }, [fbUser, role, ownerIds]);
+
+  const currentPageHref = useMemo(
+    () => `${window.location.pathname}${window.location.search}`,
+    []
+  );
 
   const avgTuition = useMemo(() => {
     const vals = programs
@@ -744,7 +809,7 @@ export default function SchoolDetails() {
   const currentPrograms = programs.slice(startIndex, endIndex);
   const totalPages = Math.max(1, Math.ceil(totalPrograms / programsPerPage));
 
-  const nextPage = useMemo(() => "SchoolDetails", []);
+  const defaultNextPage = useMemo(() => "SchoolDetails", []);
 
   const openAddProgram = () => {
     if (!canManageSchool) return;
@@ -853,6 +918,106 @@ export default function SchoolDetails() {
     }
   };
 
+  const checkInterestStatus = useCallback(async () => {
+    if (!school?.id || !fbUser?.uid) {
+      setAlreadyInterested(false);
+      return;
+    }
+
+    try {
+      const qLead = query(
+        collection(db, "school_leads"),
+        where("school_id", "==", school.id),
+        where("student_id", "==", fbUser.uid),
+        limit(1)
+      );
+      const snap = await getDocs(qLead);
+      setAlreadyInterested(!snap.empty);
+    } catch (e) {
+      console.error("Error checking interest status:", e);
+      setAlreadyInterested(false);
+    }
+  }, [school?.id, fbUser?.uid]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    checkInterestStatus();
+  }, [authReady, checkInterestStatus]);
+
+  const submitInterest = useCallback(async () => {
+    if (!school?.id || !fbUser?.uid) return;
+    if (canManageSchool) return;
+
+    setInterestedLoading(true);
+    try {
+      const qLead = query(
+        collection(db, "school_leads"),
+        where("school_id", "==", school.id),
+        where("student_id", "==", fbUser.uid),
+        limit(1)
+      );
+      const existing = await getDocs(qLead);
+
+      if (!existing.empty) {
+        setAlreadyInterested(true);
+        return;
+      }
+
+      await addDoc(collection(db, "school_leads"), {
+        school_id: school.id,
+        institution_id: school.id,
+        institutionId: school.id,
+        school_name: school.name || "",
+        school_owner_user_id: school.user_id || "",
+        student_id: fbUser.uid,
+        student_name: pickFirst(fbProfile?.full_name, fbUser.displayName, ""),
+        student_email: fbUser.email || "",
+        student_phone: pickFirst(fbProfile?.phone, ""),
+        status: "interested",
+        source: "school_details",
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+
+      setAlreadyInterested(true);
+    } catch (e) {
+      console.error("Error saving school lead:", e);
+      alert("Failed to save interest. Please try again.");
+    } finally {
+      setInterestedLoading(false);
+      setPendingInterest(false);
+    }
+  }, [school, fbUser, fbProfile, canManageSchool]);
+
+  useEffect(() => {
+    if (!pendingInterest) return;
+    if (!authReady) return;
+    if (!fbUser?.uid) return;
+    if (!school?.id) return;
+
+    submitInterest();
+  }, [pendingInterest, authReady, fbUser?.uid, school?.id, submitInterest]);
+
+  const handleInterestedClick = async () => {
+    if (!school?.id) return;
+    if (canManageSchool) return;
+
+    if (!isSignedIn) {
+      setChosenRole("user");
+      setLoginNextPage(currentPageHref);
+      setPendingInterest(true);
+      setLoginDialogOpen(true);
+      return;
+    }
+
+    if (role !== "user") {
+      alert("Only student or parent accounts can mark a school as interested.");
+      return;
+    }
+
+    await submitInterest();
+  };
+
   const formatLocation = (s) => {
     const parts = [s?.location, s?.province, s?.country].filter(Boolean);
     return parts.join(", ");
@@ -876,7 +1041,14 @@ export default function SchoolDetails() {
             <div className="text-sm text-gray-600">
               School Details is only available to your own school account.
             </div>
-            <Button onClick={() => setLoginDialogOpen(true)} className="w-full">
+            <Button
+              onClick={() => {
+                setChosenRole("school");
+                setLoginNextPage(defaultNextPage);
+                setLoginDialogOpen(true);
+              }}
+              className="w-full"
+            >
               Sign in
             </Button>
           </CardContent>
@@ -886,7 +1058,7 @@ export default function SchoolDetails() {
           open={loginDialogOpen}
           onOpenChange={setLoginDialogOpen}
           entryRole={chosenRole}
-          nextPage={nextPage}
+          nextPage={loginNextPage}
         />
       </div>
     );
@@ -1018,6 +1190,28 @@ export default function SchoolDetails() {
                     <p>{school.about}</p>
                   </div>
                 ) : null}
+
+                {!canManageSchool && (
+                  <div className="flex flex-wrap items-center gap-3 pt-3">
+                    <Button
+                      onClick={handleInterestedClick}
+                      disabled={interestedLoading || alreadyInterested}
+                      className="gap-2"
+                      variant={alreadyInterested ? "secondary" : "default"}
+                    >
+                      {interestedLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Heart className="h-4 w-4" />
+                      )}
+                      {alreadyInterested ? "Interested" : "I'm Interested"}
+                    </Button>
+
+                    <p className="text-sm text-gray-500">
+                      Click this if you want this school to see you in their lead list.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
@@ -1252,6 +1446,13 @@ export default function SchoolDetails() {
             </div>
           </CardContent>
         </Card>
+
+        <LoginDialog
+          open={loginDialogOpen}
+          onOpenChange={setLoginDialogOpen}
+          entryRole={chosenRole}
+          nextPage={loginNextPage}
+        />
       </div>
     </div>
   );
