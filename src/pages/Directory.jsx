@@ -34,6 +34,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import CountrySelector from "@/components/CountrySelector";
 import { getProvinceLabel } from "../components/utils/CanadianProvinces";
+import { createPageUrl } from "@/utils";
 import _ from "lodash";
 
 // Firebase
@@ -676,12 +677,15 @@ export default function Directory() {
   const updatePage = useCallback(
     (nextPage) => {
       setPage(nextPage);
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        if (nextPage > 1) next.set("page", String(nextPage));
-        else next.delete("page");
-        return next;
-      }, { replace: true });
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (nextPage > 1) next.set("page", String(nextPage));
+          else next.delete("page");
+          return next;
+        },
+        { replace: true }
+      );
     },
     [setSearchParams]
   );
@@ -781,17 +785,23 @@ export default function Directory() {
     return Array.from(new Set([...raw.map(canonCountry), ...priority]));
   }, [mergedSchools]);
 
-  const handleSearchChange = useCallback((e) => {
-    e.preventDefault();
-    setSearchTerm(e.target.value);
-    updatePage(1);
-  }, [updatePage]);
+  const handleSearchChange = useCallback(
+    (e) => {
+      e.preventDefault();
+      setSearchTerm(e.target.value);
+      updatePage(1);
+    },
+    [updatePage]
+  );
 
-  const handleCountryChange = useCallback((value) => {
-    setSelectedCountry(value);
-    setSelectedCity("all");
-    updatePage(1);
-  }, [updatePage]);
+  const handleCountryChange = useCallback(
+    (value) => {
+      setSelectedCountry(value);
+      setSelectedCity("all");
+      updatePage(1);
+    },
+    [updatePage]
+  );
 
   const schoolCityGroups = useMemo(() => {
     const map = new Map();
@@ -817,7 +827,6 @@ export default function Directory() {
       }))
       .sort((a, b) => a.country.localeCompare(b.country));
   }, [mergedSchools, selectedCountry]);
-
 
   useEffect(() => {
     let filtered = mergedSchools;
@@ -930,13 +939,16 @@ export default function Directory() {
 
   const pageNumbers = getPageNumbers(page, totalPages);
 
-  const clearAllFilters = useCallback((e) => {
-    e.preventDefault();
-    setSearchTerm("");
-    setSelectedCountry("all");
-    setSelectedCity("all");
-    updatePage(1);
-  }, [updatePage]);
+  const clearAllFilters = useCallback(
+    (e) => {
+      e.preventDefault();
+      setSearchTerm("");
+      setSelectedCountry("all");
+      setSelectedCity("all");
+      updatePage(1);
+    },
+    [updatePage]
+  );
 
   const myRole = useMemo(() => {
     return normalizeRole(
@@ -1057,7 +1069,7 @@ export default function Directory() {
       }
 
       if (pendingAction?.type === "navigate" && pendingAction?.url) {
-        navigate(pendingAction.url);
+        navigate(pendingAction.url, { state: pendingAction?.state || {} });
       } else if (pendingAction?.type === "contact" && pendingAction?.schoolItem) {
         onContactSchool(pendingAction.schoolItem);
       }
@@ -1150,7 +1162,8 @@ export default function Directory() {
     );
   }, []);
 
-  const isValidRole = (r) => ["user", "agent", "tutor"].includes(String(r || "").toLowerCase().trim());
+  const isValidRole = (r) =>
+    ["user", "agent", "tutor"].includes(String(r || "").toLowerCase().trim());
 
   const handleOAuthSignIn = useCallback(
     async (providerKey, intent = "login") => {
@@ -1325,23 +1338,43 @@ export default function Directory() {
 
   const onProgramClick = useCallback(
     (program, schoolItem) => {
-      const programId = program?.id || program?.program_id || "";
-      const url = programId
-        ? `/programdetails?id=${encodeURIComponent(String(programId))}`
-        : `/schooldetails?school=${encodeURIComponent(
-            schoolItem?.school_key ||
-              schoolItem?.name ||
-              schoolItem?.school_name ||
-              schoolItem?.institution_name ||
-              ""
-          )}`;
+      const programId = String(
+        program?.id || program?.program_id || program?.programId || ""
+      ).trim();
+
+      const schoolId = String(
+        schoolItem?.id ||
+          schoolItem?.school_key ||
+          schoolItem?.school_id ||
+          schoolItem?.institution_id ||
+          program?.school_id ||
+          program?.schoolId ||
+          program?.institution_id ||
+          ""
+      ).trim();
+
+      if (!programId) return;
+
+      const params = new URLSearchParams();
+      params.set("programId", programId);
+      if (schoolId) params.set("schoolId", schoolId);
+
+      const base = createPageUrl("ProgramDetails");
+      const url = `${base}${base.includes("?") ? "&" : "?"}${params.toString()}`;
+
+      const navState = {
+        from: `${window.location.pathname}${window.location.search}`,
+        fromLabel: "Directory",
+        schoolId,
+      };
 
       if (currentUser) {
-        navigate(url);
+        setDetailsOpen(false);
+        navigate(url, { state: navState });
         return;
       }
 
-      openAuthDialog({ type: "navigate", url });
+      openAuthDialog({ type: "navigate", url, state: navState });
     },
     [currentUser, navigate, openAuthDialog]
   );
@@ -1425,7 +1458,11 @@ export default function Directory() {
                 <div className="h-px bg-gray-200 flex-1" />
               </div>
 
-              <Button className="w-full h-11" onClick={() => setAuthStep("login")} disabled={authLoading}>
+              <Button
+                className="w-full h-11"
+                onClick={() => setAuthStep("login")}
+                disabled={authLoading}
+              >
                 <LogIn className="w-4 h-4 mr-2" />
                 {tr("auth.signIn", "Sign in")}
               </Button>
@@ -1447,7 +1484,12 @@ export default function Directory() {
                 Create an account
               </Button>
 
-              <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => setAuthDialogOpen(false)}
+                disabled={authLoading}
+              >
                 Cancel
               </Button>
             </div>
@@ -1456,12 +1498,29 @@ export default function Directory() {
           {authStep === "login" ? (
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Button className="h-11" onClick={() => handleOAuthSignIn("google", "login")} disabled={authLoading}>
-                  {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Chrome className="w-4 h-4 mr-2" />}
+                <Button
+                  className="h-11"
+                  onClick={() => handleOAuthSignIn("google", "login")}
+                  disabled={authLoading}
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Chrome className="w-4 h-4 mr-2" />
+                  )}
                   Google
                 </Button>
-                <Button variant="outline" className="h-11" onClick={() => handleOAuthSignIn("apple", "login")} disabled={authLoading}>
-                  {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Apple className="w-4 h-4 mr-2" />}
+                <Button
+                  variant="outline"
+                  className="h-11"
+                  onClick={() => handleOAuthSignIn("apple", "login")}
+                  disabled={authLoading}
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Apple className="w-4 h-4 mr-2" />
+                  )}
                   Apple
                 </Button>
               </div>
@@ -1507,15 +1566,29 @@ export default function Directory() {
               </div>
 
               <Button className="w-full h-11" onClick={handleLogin} disabled={authLoading}>
-                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <LogIn className="w-4 h-4 mr-2" />
+                )}
                 {tr("auth.login", "Log in")}
               </Button>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="w-full" onClick={() => setAuthStep("choice")} disabled={authLoading}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setAuthStep("choice")}
+                  disabled={authLoading}
+                >
                   Back
                 </Button>
-                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setAuthDialogOpen(false)}
+                  disabled={authLoading}
+                >
                   Cancel
                 </Button>
               </div>
@@ -1527,26 +1600,55 @@ export default function Directory() {
               <div className="text-sm font-medium text-gray-900">Select your role</div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <Button variant={signupRole === "user" ? "default" : "outline"} className="h-11" onClick={() => setSignupRole("user")} disabled={authLoading}>
+                <Button
+                  variant={signupRole === "user" ? "default" : "outline"}
+                  className="h-11"
+                  onClick={() => setSignupRole("user")}
+                  disabled={authLoading}
+                >
                   Student
                 </Button>
-                <Button variant={signupRole === "agent" ? "default" : "outline"} className="h-11" onClick={() => setSignupRole("agent")} disabled={authLoading}>
+                <Button
+                  variant={signupRole === "agent" ? "default" : "outline"}
+                  className="h-11"
+                  onClick={() => setSignupRole("agent")}
+                  disabled={authLoading}
+                >
                   Agent
                 </Button>
-                <Button variant={signupRole === "tutor" ? "default" : "outline"} className="h-11" onClick={() => setSignupRole("tutor")} disabled={authLoading}>
+                <Button
+                  variant={signupRole === "tutor" ? "default" : "outline"}
+                  className="h-11"
+                  onClick={() => setSignupRole("tutor")}
+                  disabled={authLoading}
+                >
                   Tutor
                 </Button>
               </div>
 
-              <Button className="w-full h-11" onClick={() => setAuthStep("signup_method")} disabled={authLoading}>
+              <Button
+                className="w-full h-11"
+                onClick={() => setAuthStep("signup_method")}
+                disabled={authLoading}
+              >
                 Continue
               </Button>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="w-full" onClick={() => setAuthStep("choice")} disabled={authLoading}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setAuthStep("choice")}
+                  disabled={authLoading}
+                >
                   Back
                 </Button>
-                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setAuthDialogOpen(false)}
+                  disabled={authLoading}
+                >
                   Cancel
                 </Button>
               </div>
@@ -1562,13 +1664,30 @@ export default function Directory() {
                 </span>
               </div>
 
-              <Button className="w-full h-11" onClick={() => handleOAuthSignIn("google", "signup")} disabled={authLoading}>
-                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Chrome className="w-4 h-4 mr-2" />}
+              <Button
+                className="w-full h-11"
+                onClick={() => handleOAuthSignIn("google", "signup")}
+                disabled={authLoading}
+              >
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Chrome className="w-4 h-4 mr-2" />
+                )}
                 Sign up with Google
               </Button>
 
-              <Button variant="outline" className="w-full h-11" onClick={() => handleOAuthSignIn("apple", "signup")} disabled={authLoading}>
-                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Apple className="w-4 h-4 mr-2" />}
+              <Button
+                variant="outline"
+                className="w-full h-11"
+                onClick={() => handleOAuthSignIn("apple", "signup")}
+                disabled={authLoading}
+              >
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Apple className="w-4 h-4 mr-2" />
+                )}
                 Sign up with Apple
               </Button>
 
@@ -1578,16 +1697,30 @@ export default function Directory() {
                 <div className="h-px bg-gray-200 flex-1" />
               </div>
 
-              <Button className="w-full h-11" onClick={() => setAuthStep("signup_email")} disabled={authLoading}>
+              <Button
+                className="w-full h-11"
+                onClick={() => setAuthStep("signup_email")}
+                disabled={authLoading}
+              >
                 <Mail className="w-4 h-4 mr-2" />
                 Sign up with Email
               </Button>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="w-full" onClick={() => setAuthStep("role")} disabled={authLoading}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setAuthStep("role")}
+                  disabled={authLoading}
+                >
                   Back
                 </Button>
-                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setAuthDialogOpen(false)}
+                  disabled={authLoading}
+                >
                   Cancel
                 </Button>
               </div>
@@ -1661,15 +1794,29 @@ export default function Directory() {
               </div>
 
               <Button className="w-full h-11" onClick={handleSignupEmail} disabled={authLoading}>
-                {authLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <UserPlus className="w-4 h-4 mr-2" />
+                )}
                 {tr("auth.create_account", "Create account")}
               </Button>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="w-full" onClick={() => setAuthStep("signup_method")} disabled={authLoading}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setAuthStep("signup_method")}
+                  disabled={authLoading}
+                >
                   Back
                 </Button>
-                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setAuthDialogOpen(false)}
+                  disabled={authLoading}
+                >
                   Cancel
                 </Button>
               </div>
@@ -1706,10 +1853,20 @@ export default function Directory() {
               </Button>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="w-full" onClick={() => setAuthStep("signup_method")} disabled={authLoading}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setAuthStep("signup_method")}
+                  disabled={authLoading}
+                >
                   Back
                 </Button>
-                <Button variant="ghost" className="w-full" onClick={() => setAuthDialogOpen(false)} disabled={authLoading}>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setAuthDialogOpen(false)}
+                  disabled={authLoading}
+                >
                   Cancel
                 </Button>
               </div>
@@ -1781,7 +1938,10 @@ export default function Directory() {
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                       <Input
                         type="text"
-                        placeholder={tr("directory.search_placeholder.schools", "Search schools, institutions, programs...")}
+                        placeholder={tr(
+                          "directory.search_placeholder.schools",
+                          "Search schools, institutions, programs..."
+                        )}
                         value={searchTerm}
                         onChange={handleSearchChange}
                         className="pl-10 h-11 text-base"
@@ -1800,12 +1960,12 @@ export default function Directory() {
                   />
 
                   <Select
-                      value={selectedCity}
-                      onValueChange={(value) => {
-                        setSelectedCity(value);
-                        updatePage(1);
-                      }}
-                    >
+                    value={selectedCity}
+                    onValueChange={(value) => {
+                      setSelectedCity(value);
+                      updatePage(1);
+                    }}
+                  >
                     <SelectTrigger className="h-11">
                       <SelectValue placeholder={tr("directory.filters.all_cities", "All Cities")} />
                     </SelectTrigger>
@@ -1834,8 +1994,7 @@ export default function Directory() {
                       <>
                         Showing <span className="font-medium">{startIndex + 1}</span>–
                         <span className="font-medium">{endIndex}</span> of{" "}
-                        <span className="font-medium">{totalCount}</span> schools
-                        {" "}
+                        <span className="font-medium">{totalCount}</span> schools{" "}
                         {loadingPrograms
                           ? tr("directory.school.loading_programs", "Loading programs…")
                           : `${allSchools.length} programs, ${allInstitutions.length} institutions`}
