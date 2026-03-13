@@ -1,6 +1,7 @@
 // src/pages/Organization.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import {
   collection,
   getDocs,
@@ -17,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/firebase";
+import { createPageUrl } from "@/utils";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,17 +43,24 @@ import {
   Send,
   RefreshCcw,
   Ban,
+  MessageSquare,
 } from "lucide-react";
 
 function clamp(n, a, b) {
   return Math.max(a, Math.min(b, n));
 }
 
-
 function capWord(s) {
   const x = String(s || "").trim();
   if (!x) return "";
   return x.charAt(0).toUpperCase() + x.slice(1);
+}
+
+function normalizeIncomingRoleParam(r) {
+  const role = String(r || "").toLowerCase().trim();
+  if (!role) return "member";
+  if (role === "user") return "student";
+  return role;
 }
 
 function ProgressBar({ value = 0 }) {
@@ -119,6 +128,7 @@ async function postAuthed(path, body) {
 
 export default function Organization() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   const [fbUser, setFbUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -126,9 +136,9 @@ export default function Organization() {
   const [org, setOrg] = useState(null);
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
-const pendingInvites = useMemo(() => {
-  return (invites || []).filter((inv) => String(inv?.status || "pending").toLowerCase() === "pending");
-}, [invites]);
+  const pendingInvites = useMemo(() => {
+    return (invites || []).filter((inv) => String(inv?.status || "pending").toLowerCase() === "pending");
+  }, [invites]);
   const [loading, setLoading] = useState(true);
 
   const [creating, setCreating] = useState(false);
@@ -188,8 +198,6 @@ const pendingInvites = useMemo(() => {
     const mSnap = await getDocs(query(collection(db, "organization_members"), where("orgId", "==", orgDoc.id)));
     setMembers(mSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
-    // Owner status list comes from Firestore reads (writes are server-only)
-    // Invites are visible to owner/admin only (rules enforce this too)
     if (orgDoc?.ownerId === uid) {
       const iSnap = await getDocs(
         query(collection(db, "org_invites"), where("orgId", "==", orgDoc.id), orderBy("createdAt", "desc"), limit(50))
@@ -261,7 +269,6 @@ const pendingInvites = useMemo(() => {
         createdAt: serverTimestamp(),
       });
 
-      // IMPORTANT: member doc id is now deterministic in accept flow, but for owner we keep original style
       await addDoc(collection(db, "organization_members"), {
         orgId: orgRef.id,
         userId: fbUser.uid,
@@ -327,37 +334,52 @@ const pendingInvites = useMemo(() => {
   };
 
   const resendInvite = async (inv) => {
-  // Resend should NOT create duplicate rows. We revoke the existing pending invite,
-  // then create a fresh one (new token) for the same email/role.
-  try {
-    const status = String(inv?.status || "pending").toLowerCase();
-    if (status !== "pending") {
-      setInviteActionMsg("This invitation is already accepted (or no longer pending).");
-      return;
+    try {
+      const status = String(inv?.status || "pending").toLowerCase();
+      if (status !== "pending") {
+        setInviteActionMsg("This invitation is already accepted (or no longer pending).");
+        return;
+      }
+
+      setInviteActionBusyId(inv.id);
+      setInviteActionMsg("");
+
+      await postAuthed("revokeOrgInvite", { inviteId: inv.id });
+
+      await postAuthed("createOrgInvite", {
+        orgId: inv.orgId,
+        email: inv.email,
+        role: inv.role || "member",
+      });
+
+      await refreshOrg(fbUser.uid);
+      setInviteActionMsg("Invitation resent.");
+    } catch (e) {
+      console.error(e);
+      setInviteActionMsg(e?.message || "Failed to resend invitation.");
+    } finally {
+      setInviteActionBusyId(null);
     }
+  };
 
-    setInviteActionBusyId(inv.id);
-    setInviteActionMsg("");
+  const handleMessageMember = (member) => {
+    const targetId = String(member?.userId || "").trim();
+    if (!targetId) return;
+    if (targetId === String(fbUser?.uid || "")) return;
 
-    // Revoke old pending invite first so the list stays clean.
-    await postAuthed("revokeOrgInvite", { inviteId: inv.id });
+    const qs = new URLSearchParams();
+    qs.set("to", targetId);
+    qs.set("toRole", normalizeIncomingRoleParam(member?.role || "member"));
 
-    // Create a new invite (fresh token) for the same email + role
-    await postAuthed("createOrgInvite", {
-      orgId: inv.orgId,
-      email: inv.email,
-      role: inv.role || "member",
+    navigate(`${createPageUrl("Messages")}?${qs.toString()}`, {
+      state: {
+        source: "organization_members",
+        orgId: org?.id || "",
+        memberId: member?.id || "",
+        memberUserId: targetId,
+      },
     });
-
-    await refreshOrg(fbUser.uid);
-    setInviteActionMsg("Invitation resent.");
-  } catch (e) {
-    console.error(e);
-    setInviteActionMsg(e?.message || "Failed to resend invitation.");
-  } finally {
-    setInviteActionBusyId(null);
-  }
-};
+  };
 
   if (loading) {
     return (
@@ -366,7 +388,8 @@ const pendingInvites = useMemo(() => {
           <Card className="rounded-3xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />{t("organization", "Organization")}</CardTitle>
+                <Building2 className="h-5 w-5" />{t("organization", "Organization")}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -393,7 +416,8 @@ const pendingInvites = useMemo(() => {
           <Card className="rounded-3xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />{t("organization", "Organization")}</CardTitle>
+                <Building2 className="h-5 w-5" />{t("organization", "Organization")}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-gray-600">{t("organization_page.sign_in_hint", "Please sign in to manage your organization.")}</p>
@@ -613,7 +637,8 @@ const pendingInvites = useMemo(() => {
           <Card className="rounded-3xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />{t("members", "Members")}</CardTitle>
+                <Users className="h-5 w-5" />{t("members", "Members")}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {members.length === 0 ? (
@@ -626,19 +651,42 @@ const pendingInvites = useMemo(() => {
                 </div>
               ) : (
                 <div className="divide-y">
-                  {members.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between py-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{m.email || m.userId || m.id}</div>
-                        <div className="text-xs text-gray-500">{capWord(m.role ? m.role : "member")} {m.status ? `• ${capWord(m.status)}` : ""}</div>
+                  {members.map((m) => {
+                    const memberUserId = String(m.userId || "").trim();
+                    const canMessage = !!memberUserId && memberUserId !== String(fbUser?.uid || "");
+
+                    return (
+                      <div key={m.id} className="flex items-center justify-between py-3 gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">{m.email || m.userId || m.id}</div>
+                          <div className="text-xs text-gray-500">
+                            {capWord(m.role ? m.role : "member")} {m.status ? `• ${capWord(m.status)}` : ""}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {canMessage ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-xl"
+                              onClick={() => handleMessageMember(m)}
+                              title={t("organization_page.message_member", "Message member")}
+                            >
+                              <MessageSquare className="h-4 w-4 mr-1" />
+                              {t("message", "Message")}
+                            </Button>
+                          ) : null}
+
+                          {m.role === "owner" ? (
+                            <Badge className="rounded-full" variant="secondary">{t("owner", "Owner")}</Badge>
+                          ) : (
+                            <Badge className="rounded-full" variant="outline">{t("member", "Member")}</Badge>
+                          )}
+                        </div>
                       </div>
-                      {m.role === "owner" ? (
-                        <Badge className="rounded-full" variant="secondary">{t("owner", "Owner")}</Badge>
-                      ) : (
-                        <Badge className="rounded-full" variant="outline">{t("member", "Member")}</Badge>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -674,12 +722,24 @@ const pendingInvites = useMemo(() => {
                         <StatusBadge status={capWord(inv.status)} />
                         {String(inv.status || "pending").toLowerCase() === "pending" ? (
                           <>
-                            <Button size="sm" variant="outline" className="rounded-xl" disabled={inviteActionBusyId === inv.id}
-                              onClick={() => resendInvite(inv)} title={t("organization_page.resend_new_invite", "Resend (new invite)")}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-xl"
+                              disabled={inviteActionBusyId === inv.id}
+                              onClick={() => resendInvite(inv)}
+                              title={t("organization_page.resend_new_invite", "Resend (new invite)")}
+                            >
                               <RefreshCcw className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" className="rounded-xl" disabled={inviteActionBusyId === inv.id}
-                              onClick={() => revokeInvite(inv.id)} title={t("organization_page.revoke", "Revoke")}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-xl"
+                              disabled={inviteActionBusyId === inv.id}
+                              onClick={() => revokeInvite(inv.id)}
+                              title={t("organization_page.revoke", "Revoke")}
+                            >
                               <Ban className="h-4 w-4" />
                             </Button>
                           </>
@@ -700,8 +760,11 @@ const pendingInvites = useMemo(() => {
         orgId={org?.id}
         orgName={org?.name}
         onSent={async () => {
-          try { await refreshOrg(fbUser.uid); } catch {}
+          try {
+            await refreshOrg(fbUser.uid);
+          } catch {}
         }}
-      /></div>
+      />
+    </div>
   );
 }

@@ -28,6 +28,7 @@ import {
   UserMinus,
   Send,
   BookOpen,
+  ArrowLeft,
 } from "lucide-react";
 
 import { auth, db } from "@/firebase";
@@ -57,8 +58,10 @@ const createPageUrl = (pageName) => {
   switch (pageName) {
     case "Welcome":
       return "/welcome";
+    case "Messages":
+      return "/messages";
     default:
-      return `/${pageName.toLowerCase()}`;
+      return `/${String(pageName || "").toLowerCase()}`;
   }
 };
 
@@ -75,6 +78,32 @@ const flagPngUrl = (code) => {
   if (!isIso2(cc)) return "";
   return `https://flagcdn.com/w40/${cc.toLowerCase()}.png`;
 };
+
+function useIsCompactView(breakpoint = 1280) {
+  const [isCompact, setIsCompact] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < breakpoint;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const media = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const update = () => setIsCompact(media.matches);
+
+    update();
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", update);
+      return () => media.removeEventListener("change", update);
+    }
+
+    media.addListener(update);
+    return () => media.removeListener(update);
+  }, [breakpoint]);
+
+  return isCompact;
+}
 
 function CountryFlag({ code, className = "" }) {
   const cc = (code || "").trim().toUpperCase();
@@ -265,108 +294,6 @@ function getStudentInterests(item) {
   };
 }
 
-function EntityListRow({ item, isSelected, onSelect, type, tr }) {
-  const name =
-    type === "agent"
-      ? item.company_name || item.full_name || tr("unknown", "Unknown")
-      : item.full_name || item.name || tr("unknown", "Unknown");
-
-  const avatar = getAvatar(item);
-  const countryText = getCountryText(item);
-  const countryCode = getCountryCode(item);
-
-  return (
-    <motion.button
-      type="button"
-      layout
-      onClick={onSelect}
-      whileTap={{ scale: 0.995 }}
-      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className={[
-        "w-full text-left rounded-[18px] border p-3 shadow-sm",
-        "transition-[border-color,box-shadow,background-color,transform] duration-200",
-        isSelected
-          ? "border-[#0f2f63] bg-white shadow-[0_4px_18px_rgba(15,47,99,0.08)]"
-          : "border-slate-200 bg-white hover:bg-slate-50",
-      ].join(" ")}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff1dc] text-xs font-bold text-slate-700">
-            <img src={avatar} alt={name} className="h-full w-full object-cover" />
-          </div>
-
-          <div className="min-w-0">
-            <div className="truncate text-sm font-bold text-slate-900">{name}</div>
-            <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-              <CountryFlag code={countryCode} />
-              <span className="truncate">{countryText}</span>
-            </div>
-          </div>
-        </div>
-
-        <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
-      </div>
-    </motion.button>
-  );
-}
-
-function ReviewCard({ item }) {
-  return (
-    <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff1dc] text-xs font-bold text-slate-700">
-          {item.avatar ? (
-            <img src={item.avatar} alt={item.author} className="h-full w-full object-cover" />
-          ) : (
-            initialsFromName(item.author) || "U"
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <div className="truncate text-sm font-bold text-slate-900">{item.author}</div>
-            <div className="flex shrink-0 items-center gap-0.5">{renderStars(item.rating)}</div>
-          </div>
-          <div className="mt-1 text-sm leading-6 text-slate-600">{item.comment}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ReviewBreakdownDropdown({ reviews = [] }) {
-  const distribution = useMemo(() => {
-    const total = reviews.length || 0;
-    return [5, 4, 3, 2, 1].map((star) => {
-      const count = reviews.filter((item) => Math.round(Number(item.rating || 0)) === star).length;
-      const percentage = total ? Math.round((count / total) * 100) : 0;
-      return { star, count, percentage };
-    });
-  }, [reviews]);
-
-  return (
-    <div className="mt-3 rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="space-y-2.5">
-        {distribution.map((row) => (
-          <div
-            key={row.star}
-            className="grid grid-cols-[88px_minmax(0,1fr)_56px] items-center gap-4"
-          >
-            <div className="text-[15px] font-medium text-[#2C5E93]">{row.star} star</div>
-            <div className="h-4 overflow-hidden rounded-full border border-slate-300 bg-white">
-              <div className="h-full bg-[#ff6a00]" style={{ width: `${row.percentage}%` }} />
-            </div>
-            <div className="text-right text-[15px] font-medium text-[#2C5E93]">
-              {row.percentage}%
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function maskEmail(email) {
   const value = String(email || "").trim();
   if (!value || !value.includes("@")) return "No email available";
@@ -418,6 +345,62 @@ function maskPhone(phone) {
   return `+•• ••• ••• ${last4}`;
 }
 
+function ReviewCard({ item }) {
+  return (
+    <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff1dc] text-xs font-bold text-slate-700">
+          {item.avatar ? (
+            <img src={item.avatar} alt={item.author} className="h-full w-full object-cover" />
+          ) : (
+            initialsFromName(item.author) || "U"
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="truncate text-sm font-bold text-slate-900">{item.author}</div>
+            <div className="flex shrink-0 items-center gap-0.5">{renderStars(item.rating)}</div>
+          </div>
+          <div className="mt-1 text-sm leading-6 text-slate-600">{item.comment}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewBreakdownDropdown({ reviews = [] }) {
+  const distribution = useMemo(() => {
+    const total = reviews.length || 0;
+    return [5, 4, 3, 2, 1].map((star) => {
+      const count = reviews.filter((item) => Math.round(Number(item.rating || 0)) === star).length;
+      const percentage = total ? Math.round((count / total) * 100) : 0;
+      return { star, count, percentage };
+    });
+  }, [reviews]);
+
+  return (
+    <div className="mt-3 rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="space-y-2.5">
+        {distribution.map((row) => (
+          <div
+            key={row.star}
+            className="grid grid-cols-[72px_minmax(0,1fr)_52px] items-center gap-3 sm:grid-cols-[88px_minmax(0,1fr)_56px] sm:gap-4"
+          >
+            <div className="text-sm font-medium text-[#2C5E93] sm:text-[15px]">{row.star} star</div>
+            <div className="h-4 overflow-hidden rounded-full border border-slate-300 bg-white">
+              <div className="h-full bg-[#ff6a00]" style={{ width: `${row.percentage}%` }} />
+            </div>
+            <div className="text-right text-sm font-medium text-[#2C5E93] sm:text-[15px]">
+              {row.percentage}%
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function InfoPillList({ title, values = [] }) {
   return (
     <div>
@@ -439,6 +422,53 @@ function InfoPillList({ title, values = [] }) {
         </div>
       )}
     </div>
+  );
+}
+
+function EntityListRow({ item, isSelected, onSelect, type, tr }) {
+  const name =
+    type === "agent"
+      ? item.company_name || item.full_name || tr("unknown", "Unknown")
+      : item.full_name || item.name || tr("unknown", "Unknown");
+
+  const avatar = getAvatar(item);
+  const countryText = getCountryText(item);
+  const countryCode = getCountryCode(item);
+
+  return (
+    <motion.button
+      type="button"
+      layout
+      onClick={onSelect}
+      whileTap={{ scale: 0.995 }}
+      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      className={[
+        "w-full text-left rounded-[18px] border p-3 shadow-sm",
+        "transition-[border-color,box-shadow,background-color,transform] duration-200",
+        "touch-manipulation",
+        isSelected
+          ? "border-[#0f2f63] bg-white shadow-[0_4px_18px_rgba(15,47,99,0.08)]"
+          : "border-slate-200 bg-white hover:bg-slate-50",
+      ].join(" ")}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff1dc] text-xs font-bold text-slate-700">
+            <img src={avatar} alt={name} className="h-full w-full object-cover" />
+          </div>
+
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-slate-900">{name}</div>
+            <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+              <CountryFlag code={countryCode} />
+              <span className="truncate">{countryText}</span>
+            </div>
+          </div>
+        </div>
+
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+      </div>
+    </motion.button>
   );
 }
 
@@ -480,8 +510,8 @@ function RightSideDirectoryTabs({
   const paginatedList = list.slice(startIndex, startIndex + itemsPerPage);
 
   return (
-    <Card className="h-full overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-none sm:rounded-[26px]">
-      <CardContent className="flex h-full min-h-0 flex-col overflow-hidden p-3 sm:p-4 lg:p-5">
+    <Card className="h-full rounded-[22px] border border-slate-200 bg-white shadow-none sm:rounded-[26px]">
+      <CardContent className="flex h-full min-h-0 flex-col p-3 sm:p-4 lg:p-5">
         <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
@@ -532,9 +562,9 @@ function RightSideDirectoryTabs({
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="rounded-xl data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white sm:rounded-full"
+                  className="min-h-[44px] rounded-xl data-[state=active]:bg-[#0f2f63] data-[state=active]:text-white sm:rounded-full"
                 >
-                  <Icon className="mr-2 h-4 w-4" />
+                  <Icon className="mr-2 h-4 w-4 shrink-0" />
                   <span className="truncate">{tab.label}</span>
                 </TabsTrigger>
               );
@@ -599,9 +629,281 @@ function RightSideDirectoryTabs({
   );
 }
 
+function ProfileDetailsPanel({
+  tr,
+  displayedEntity,
+  displayedRole,
+  displayedEntityId,
+  normalizedDisplayedRole,
+  isOwnProfile,
+  showFollowButton,
+  showReviewsSection,
+  avatar,
+  name,
+  personName,
+  countryCode,
+  countryText,
+  headline,
+  maskedEmail,
+  maskedPhone,
+  followState,
+  followLoading,
+  handleFollowClick,
+  followButtonLabel,
+  messageLoading,
+  handleMessageClick,
+  messageButtonLabel,
+  averageRating,
+  reviewCount,
+  showRatingBreakdown,
+  setShowRatingBreakdown,
+  reviews,
+  reviewsLoading,
+  reviewRating,
+  setReviewRating,
+  reviewText,
+  setReviewText,
+  handleSubmitReview,
+  biography,
+  studentInterests,
+  showStudentExtraInfo,
+  showBackButton = false,
+  onBack = null,
+}) {
+  return (
+    <Card className="h-full overflow-visible rounded-[20px] border border-slate-200 bg-[#f8fbff] shadow-none sm:rounded-[24px] xl:min-w-0">
+      <CardContent className="flex h-full min-h-0 flex-col p-3 sm:p-4">
+        {showBackButton ? (
+          <div className="mb-3 shrink-0">
+            <Button type="button" variant="outline" onClick={onBack} className="rounded-full">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              {tr("back_to_directory", "Back to Directory")}
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="flex h-full min-h-0 flex-col rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm sm:rounded-[26px] sm:p-4">
+          <div className="grid shrink-0 gap-3 xl:grid-cols-[0.88fr_1.42fr]">
+            <div className="rounded-[22px] border border-slate-100 bg-white p-3 shadow-sm">
+              <div className="mx-auto flex h-32 w-full items-center justify-center overflow-hidden rounded-[20px] bg-[#dfe8f1] text-4xl font-bold text-[#173562] sm:h-40">
+                <img src={avatar} alt={name} className="h-full w-full object-cover" />
+              </div>
+
+              <div className="mt-3 line-clamp-2 text-center text-[22px] font-extrabold leading-tight tracking-tight text-[#0f2f63] sm:text-[28px]">
+                {name}
+              </div>
+
+              <div className="mt-1.5 text-center text-xs text-slate-500">{headline}</div>
+
+              <div className="mt-2 flex items-center justify-center gap-2">
+                <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 shadow-sm">
+                  <CountryFlag code={countryCode} />
+                  <span className="max-w-[140px] truncate">{countryText}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {showReviewsSection ? (
+                <div className="relative">
+                  <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-[20px] font-extrabold leading-none text-slate-700 sm:text-[22px]">
+                        Success Rate
+                      </div>
+
+                      <div className="text-[20px] font-extrabold leading-none text-[#2C5E93] sm:text-[22px]">
+                        {`${Math.round((averageRating / 5) * 100)}%`}
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <StarSummary
+                        value={averageRating}
+                        count={reviewCount}
+                        withDropdown
+                        isOpen={showRatingBreakdown}
+                        onToggle={() => setShowRatingBreakdown((prev) => !prev)}
+                      />
+                    </div>
+                  </div>
+
+                  <AnimatePresence initial={false}>
+                    {showRatingBreakdown ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="absolute left-0 right-0 top-[calc(100%+10px)] z-20"
+                      >
+                        <ReviewBreakdownDropdown reviews={reviews} />
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
+              ) : null}
+
+              <div className="rounded-[18px] border border-slate-100 bg-white px-3 py-2.5 shadow-sm">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff1dc] text-sm font-bold text-slate-700">
+                    <img src={avatar} alt={personName} className="h-full w-full object-cover" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold text-slate-900">{maskedEmail}</div>
+                    <div className="truncate text-xs text-slate-500">{maskedPhone}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`grid gap-3 ${
+                  showFollowButton ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
+                }`}
+              >
+                {showFollowButton ? (
+                  <Button
+                    type="button"
+                    onClick={handleFollowClick}
+                    disabled={followLoading || !displayedEntityId || isOwnProfile}
+                    className={[
+                      "h-11 rounded-full px-4 text-sm font-bold text-white",
+                      followState.following
+                        ? "bg-slate-700 hover:bg-slate-800"
+                        : followState.requested
+                        ? "bg-slate-500 hover:bg-slate-600"
+                        : "bg-[#ff9500] hover:bg-[#ea8a00]",
+                    ].join(" ")}
+                  >
+                    {followLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : followState.following ? (
+                      <UserMinus className="mr-2 h-4 w-4" />
+                    ) : (
+                      <UserPlus className="mr-2 h-4 w-4" />
+                    )}
+                    {followButtonLabel}
+                  </Button>
+                ) : null}
+
+                <Button
+                  type="button"
+                  onClick={handleMessageClick}
+                  disabled={messageLoading || !displayedEntityId || isOwnProfile}
+                  className="h-11 rounded-full bg-[#0f2f63] px-4 text-sm font-bold text-white hover:bg-[#123972]"
+                >
+                  {messageLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="mr-2 h-4 w-4" />
+                  )}
+                  {messageButtonLabel}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {showStudentExtraInfo ? (
+            <div className="mt-4 rounded-[20px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm sm:rounded-[24px] sm:p-4">
+              <div>
+                <div className="mb-2 text-sm font-semibold text-slate-900">
+                  Biography / Description
+                </div>
+                <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+                  {biography || "No biography/description added yet."}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-[#0f2f63]" />
+                  <div className="text-base font-extrabold text-slate-900">Interests</div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <InfoPillList title="Courses" values={studentInterests.courses} />
+                  <InfoPillList title="Countries" values={studentInterests.countries} />
+                  <InfoPillList title="Areas" values={studentInterests.areas} />
+                  <InfoPillList title="Languages" values={studentInterests.languages} />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {showReviewsSection ? (
+            <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm sm:rounded-[24px]">
+              <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+                <div>
+                  <div className="text-base font-extrabold text-slate-900">
+                    {tr("reviews", "Reviews")}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {tr("reviews_subtitle", "See comments and leave a rating")}
+                  </div>
+                </div>
+
+                <StarSummary value={averageRating} count={reviewCount} className="justify-end" />
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                <div className="space-y-2.5">
+                  {reviewsLoading ? (
+                    <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
+                      {tr("loading_reviews", "Loading reviews...")}
+                    </div>
+                  ) : reviews.length ? (
+                    reviews.map((item) => <ReviewCard key={item.id} item={item} />)
+                  ) : (
+                    <div className="rounded-[18px] border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
+                      {tr("no_reviews_yet", "No reviews yet. Be the first to leave a comment.")}
+                    </div>
+                  )}
+
+                  <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <MessageCircle className="h-4 w-4 text-slate-500" />
+                      {tr("leave_review", "Leave a review")}
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-1">
+                      {renderStars(reviewRating, true, setReviewRating)}
+                      <span className="ml-0 text-xs text-slate-500 sm:ml-2">
+                        {tr("choose_rating", "Choose up to 5 stars")}
+                      </span>
+                    </div>
+
+                    <Textarea
+                      value={reviewText}
+                      onChange={(e) => setReviewText(e.target.value)}
+                      placeholder={tr("write_review", "Write your comment here...")}
+                      className="mt-2.5 min-h-[72px] rounded-[14px] border-slate-200"
+                    />
+
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        type="button"
+                        onClick={handleSubmitReview}
+                        className="rounded-full bg-[#0f2f63] px-4 py-2 text-white hover:bg-[#123972]"
+                      >
+                        {tr("submit_review", "Submit Review")}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Connect() {
   const { tr } = useTr("connect");
   const navigate = useNavigate();
+  const isCompactView = useIsCompactView(1280);
 
   const [currentUserDoc, setCurrentUserDoc] = useState(null);
 
@@ -724,7 +1026,9 @@ export default function Connect() {
       }
     });
 
-    return () => unsub && unsub();
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
   }, [fetchUsersForRole, getUserDoc]);
 
   useEffect(() => {
@@ -814,6 +1118,11 @@ export default function Connect() {
     normalizedDisplayedRole === "agent" || normalizedDisplayedRole === "tutor";
 
   const showReviewsSection = normalizedDisplayedRole !== "user";
+
+  useEffect(() => {
+    if (!isCompactView) return;
+    setShowRatingBreakdown(false);
+  }, [isCompactView, displayedEntityId]);
 
   useEffect(() => {
     setLocalReviews([]);
@@ -1134,6 +1443,12 @@ export default function Connect() {
     setActiveTab(value);
     setSelectedCountry("all");
     setCurrentPage(1);
+    setShowRatingBreakdown(false);
+
+    if (isCompactView) {
+      setUserHasSelected(false);
+      setLockedDisplay(null);
+    }
 
     if (value === "agent" && !selectedAgentId && filteredAgents.length) {
       setSelectedAgentId(filteredAgents[0].id);
@@ -1148,6 +1463,7 @@ export default function Connect() {
 
   const handleSelectItem = (id) => {
     setUserHasSelected(true);
+    setShowRatingBreakdown(false);
 
     if (activeTab === "agent") {
       setSelectedAgentId(id);
@@ -1162,6 +1478,12 @@ export default function Connect() {
       const picked = filteredUsers.find((item) => item.id === id) || null;
       if (picked) setLockedDisplay(picked);
     }
+  };
+
+  const handleBackToDirectory = () => {
+    setUserHasSelected(false);
+    setLockedDisplay(null);
+    setShowRatingBreakdown(false);
   };
 
   const rightSideSelectedId =
@@ -1211,8 +1533,8 @@ export default function Connect() {
 
   if (loading) {
     return (
-      <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-        <div className="mx-auto flex h-full max-w-[1600px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+      <div className="min-h-[calc(100dvh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:h-[calc(100dvh-72px)] lg:overflow-hidden lg:px-4">
+        <div className="mx-auto flex min-h-[calc(100dvh-88px)] max-w-[1600px] items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)] lg:h-full lg:min-h-0">
           <Loader2 className="h-12 w-12 animate-spin text-[#0f2f63]" />
         </div>
       </div>
@@ -1221,8 +1543,8 @@ export default function Connect() {
 
   if (error) {
     return (
-      <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-        <div className="mx-auto flex h-full max-w-4xl items-center justify-center rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+      <div className="min-h-[calc(100dvh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:h-[calc(100dvh-72px)] lg:overflow-hidden lg:px-4">
+        <div className="mx-auto flex min-h-[calc(100dvh-88px)] max-w-4xl items-center justify-center rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-[0_18px_60px_rgba(15,23,42,0.08)] lg:h-full lg:min-h-0">
           <div>
             <AlertCircle className="mx-auto mb-4 h-14 w-14 text-red-500" />
             <div className="text-2xl font-extrabold text-slate-900">Unable to Load Directory</div>
@@ -1234,311 +1556,196 @@ export default function Connect() {
   }
 
   return (
-    <div className="h-[calc(100vh-72px)] overflow-hidden bg-[#eef3f8] px-2 py-2 sm:px-3 lg:px-4">
-      <div className="mx-auto flex h-full max-w-[1500px] flex-col overflow-hidden">
-        <div className="flex h-full min-h-0 flex-1 overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)] sm:rounded-[28px]">
-          <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-3 lg:p-4">
-            <div
-              className={
-                userHasSelected
-                  ? "grid h-full min-h-0 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1.18fr)_minmax(360px,0.98fr)]"
-                  : "grid h-full min-h-0 grid-cols-1 overflow-hidden"
-              }
-            >
-              <AnimatePresence initial={false} mode="wait">
-                {userHasSelected && displayedEntity ? (
-                  <motion.div
-                    key={`detail-${displayedRole}-${displayedEntityId || "selected"}`}
-                    layout
-                    className="order-2 h-full min-h-0 overflow-hidden xl:order-1"
-                    initial={{ opacity: 0, x: -18, scale: 0.985 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                    exit={{ opacity: 0, x: 18, scale: 0.985 }}
-                    transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                  >
-                    <Card className="h-full overflow-hidden rounded-[20px] border border-slate-200 bg-[#f8fbff] shadow-none sm:rounded-[24px] xl:min-w-0">
-                      <CardContent className="flex h-full min-h-0 flex-col overflow-hidden p-3 sm:p-4">
-                        <div className="flex h-full min-h-0 flex-col rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm sm:rounded-[26px] sm:p-4">
-                          <div className="grid shrink-0 gap-3 xl:grid-cols-[0.88fr_1.42fr]">
-                            <div className="rounded-[22px] border border-slate-100 bg-white p-3 shadow-sm">
-                              <div className="mx-auto flex h-32 w-full items-center justify-center overflow-hidden rounded-[20px] bg-[#dfe8f1] text-4xl font-bold text-[#173562] sm:h-40">
-                                <img src={avatar} alt={name} className="h-full w-full object-cover" />
-                              </div>
-
-                              <div className="mt-3 line-clamp-2 text-center text-[22px] font-extrabold leading-tight tracking-tight text-[#0f2f63] sm:text-[28px]">
-                                {name}
-                              </div>
-
-                              <div className="mt-1.5 text-center text-xs text-slate-500">{headline}</div>
-
-                              <div className="mt-2 flex items-center justify-center gap-2">
-                                <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 shadow-sm">
-                                  <CountryFlag code={countryCode} />
-                                  <span className="max-w-[140px] truncate">{countryText}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-col gap-3">
-                              {showReviewsSection ? (
-                                <div className="relative">
-                                  <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="text-[20px] font-extrabold leading-none text-slate-700 sm:text-[22px]">
-                                        Success Rate
-                                      </div>
-
-                                      <div className="text-[20px] font-extrabold leading-none text-[#2C5E93] sm:text-[22px]">
-                                        {`${Math.round((averageRating / 5) * 100)}%`}
-                                      </div>
-                                    </div>
-
-                                    <div className="mt-3">
-                                      <StarSummary
-                                        value={averageRating}
-                                        count={reviewCount}
-                                        withDropdown
-                                        isOpen={showRatingBreakdown}
-                                        onToggle={() => setShowRatingBreakdown((prev) => !prev)}
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <AnimatePresence initial={false}>
-                                    {showRatingBreakdown ? (
-                                      <motion.div
-                                        initial={{ opacity: 0, y: -8 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -8 }}
-                                        transition={{ duration: 0.2, ease: "easeOut" }}
-                                        className="absolute left-0 right-0 top-[calc(100%+10px)] z-20"
-                                      >
-                                        <ReviewBreakdownDropdown reviews={reviews} />
-                                      </motion.div>
-                                    ) : null}
-                                  </AnimatePresence>
-                                </div>
-                              ) : null}
-
-                              <div className="rounded-[18px] border border-slate-100 bg-white px-3 py-2.5 shadow-sm">
-                                <div className="flex min-w-0 items-center gap-3">
-                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff1dc] text-sm font-bold text-slate-700">
-                                    <img
-                                      src={avatar}
-                                      alt={personName}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-bold text-slate-900">
-                                      {maskedEmail}
-                                    </div>
-                                    <div className="truncate text-xs text-slate-500">
-                                      {maskedPhone}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div
-                                className={`grid gap-3 ${
-                                  showFollowButton ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
-                                }`}
-                              >
-                                {showFollowButton ? (
-                                  <Button
-                                    type="button"
-                                    onClick={handleFollowClick}
-                                    disabled={followLoading || !displayedEntityId || isOwnProfile}
-                                    className={[
-                                      "h-11 rounded-full px-4 text-sm font-bold text-white",
-                                      followState.following
-                                        ? "bg-slate-700 hover:bg-slate-800"
-                                        : followState.requested
-                                        ? "bg-slate-500 hover:bg-slate-600"
-                                        : "bg-[#ff9500] hover:bg-[#ea8a00]",
-                                    ].join(" ")}
-                                  >
-                                    {followLoading ? (
-                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    ) : followState.following ? (
-                                      <UserMinus className="mr-2 h-4 w-4" />
-                                    ) : (
-                                      <UserPlus className="mr-2 h-4 w-4" />
-                                    )}
-                                    {followButtonLabel}
-                                  </Button>
-                                ) : null}
-
-                                <Button
-                                  type="button"
-                                  onClick={handleMessageClick}
-                                  disabled={messageLoading || !displayedEntityId || isOwnProfile}
-                                  className="h-11 rounded-full bg-[#0f2f63] px-4 text-sm font-bold text-white hover:bg-[#123972]"
-                                >
-                                  {messageLoading ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Send className="mr-2 h-4 w-4" />
-                                  )}
-                                  {messageButtonLabel}
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-
-                          {showStudentExtraInfo ? (
-                            <div className="mt-4 rounded-[20px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm sm:rounded-[24px] sm:p-4">
-                              <div>
-                                <div className="mb-2 text-sm font-semibold text-slate-900">
-                                  Biography / Description
-                                </div>
-                                <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
-                                  {biography || "No biography/description added yet."}
-                                </div>
-                              </div>
-
-                              <div className="mt-4">
-                                <div className="mb-3 flex items-center gap-2">
-                                  <BookOpen className="h-5 w-5 text-[#0f2f63]" />
-                                  <div className="text-base font-extrabold text-slate-900">
-                                    Interests
-                                  </div>
-                                </div>
-
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <InfoPillList
-                                    title="Courses"
-                                    values={studentInterests.courses}
-                                  />
-                                  <InfoPillList
-                                    title="Countries"
-                                    values={studentInterests.countries}
-                                  />
-                                  <InfoPillList
-                                    title="Areas"
-                                    values={studentInterests.areas}
-                                  />
-                                  <InfoPillList
-                                    title="Languages"
-                                    values={studentInterests.languages}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {showReviewsSection ? (
-                            <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm sm:rounded-[24px]">
-                              <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
-                                <div>
-                                  <div className="text-base font-extrabold text-slate-900">
-                                    {tr("reviews", "Reviews")}
-                                  </div>
-                                  <div className="text-xs text-slate-500">
-                                    {tr("reviews_subtitle", "See comments and leave a rating")}
-                                  </div>
-                                </div>
-
-                                <StarSummary
-                                  value={averageRating}
-                                  count={reviewCount}
-                                  className="justify-end"
-                                />
-                              </div>
-
-                              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                                <div className="space-y-2.5">
-                                  {reviewsLoading ? (
-                                    <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
-                                      {tr("loading_reviews", "Loading reviews...")}
-                                    </div>
-                                  ) : reviews.length ? (
-                                    reviews.map((item) => <ReviewCard key={item.id} item={item} />)
-                                  ) : (
-                                    <div className="rounded-[18px] border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
-                                      {tr(
-                                        "no_reviews_yet",
-                                        "No reviews yet. Be the first to leave a comment."
-                                      )}
-                                    </div>
-                                  )}
-
-                                  <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
-                                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                                      <MessageCircle className="h-4 w-4 text-slate-500" />
-                                      {tr("leave_review", "Leave a review")}
-                                    </div>
-
-                                    <div className="mt-3 flex flex-wrap items-center gap-1">
-                                      {renderStars(reviewRating, true, setReviewRating)}
-                                      <span className="ml-0 text-xs text-slate-500 sm:ml-2">
-                                        {tr("choose_rating", "Choose up to 5 stars")}
-                                      </span>
-                                    </div>
-
-                                    <Textarea
-                                      value={reviewText}
-                                      onChange={(e) => setReviewText(e.target.value)}
-                                      placeholder={tr("write_review", "Write your comment here...")}
-                                      className="mt-2.5 min-h-[72px] rounded-[14px] border-slate-200"
-                                    />
-
-                                    <div className="mt-3 flex justify-end">
-                                      <Button
-                                        type="button"
-                                        onClick={handleSubmitReview}
-                                        className="rounded-full bg-[#0f2f63] px-4 py-2 text-white hover:bg-[#123972]"
-                                      >
-                                        {tr("submit_review", "Submit Review")}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-
-              <motion.div
-                layout
-                key={`list-${activeTab}`}
-                initial={{ opacity: 0.98 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                className={
-                  userHasSelected
-                    ? "order-1 h-full min-h-0 overflow-hidden xl:order-2"
-                    : "h-full min-h-0 w-full overflow-hidden"
-                }
-              >
-                <div className="h-full min-h-0 overflow-hidden xl:min-w-[420px]">
-                  <RightSideDirectoryTabs
+    <div className="min-h-[calc(100dvh-72px)] bg-[#eef3f8] px-2 py-2 sm:px-3 lg:h-[calc(100dvh-72px)] lg:overflow-hidden lg:px-4">
+      <div className="mx-auto flex max-w-[1500px] flex-col lg:h-full lg:overflow-hidden">
+        <div className="flex flex-1 flex-col rounded-[22px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)] sm:rounded-[28px] lg:min-h-0 lg:overflow-hidden">
+          <div className="flex-1 p-2 sm:p-3 lg:min-h-0 lg:overflow-hidden lg:p-4">
+            {isCompactView ? (
+              <div className="h-full min-h-0">
+                <AnimatePresence mode="wait" initial={false}>
+                  {!userHasSelected ? (
+                    <motion.div
+                      key="compact-list"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.2 }}
+                      className="h-full"
+                    >
+                      <RightSideDirectoryTabs
+                        tr={tr}
+                        activeTab={activeTab}
+                        onTabChange={handleTabChange}
+                        agentList={filteredAgents}
+                        tutorList={filteredTutors}
+                        userList={filteredUsers}
+                        selectedId={rightSideSelectedId}
+                        onSelectItem={handleSelectItem}
+                        selectedCountry={selectedCountry}
+                        onCountryChange={setSelectedCountry}
+                        countryOptions={countryOptions}
+                        hiddenRole={myRole}
+                        currentPage={currentPage}
+                        onPageChange={setCurrentPage}
+                        itemsPerPage={ITEMS_PER_PAGE}
+                      />
+                    </motion.div>
+                  ) : displayedEntity ? (
+                    <motion.div
+                      key={`compact-detail-${displayedRole}-${displayedEntityId || "selected"}`}
+                      initial={{ opacity: 0, x: 12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 12 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className="h-full"
+                    >
+                      <ProfileDetailsPanel
+                        tr={tr}
+                        displayedEntity={displayedEntity}
+                        displayedRole={displayedRole}
+                        displayedEntityId={displayedEntityId}
+                        normalizedDisplayedRole={normalizedDisplayedRole}
+                        isOwnProfile={isOwnProfile}
+                        showFollowButton={showFollowButton}
+                        showReviewsSection={showReviewsSection}
+                        avatar={avatar}
+                        name={name}
+                        personName={personName}
+                        countryCode={countryCode}
+                        countryText={countryText}
+                        headline={headline}
+                        maskedEmail={maskedEmail}
+                        maskedPhone={maskedPhone}
+                        followState={followState}
+                        followLoading={followLoading}
+                        handleFollowClick={handleFollowClick}
+                        followButtonLabel={followButtonLabel}
+                        messageLoading={messageLoading}
+                        handleMessageClick={handleMessageClick}
+                        messageButtonLabel={messageButtonLabel}
+                        averageRating={averageRating}
+                        reviewCount={reviewCount}
+                        showRatingBreakdown={showRatingBreakdown}
+                        setShowRatingBreakdown={setShowRatingBreakdown}
+                        reviews={reviews}
+                        reviewsLoading={reviewsLoading}
+                        reviewRating={reviewRating}
+                        setReviewRating={setReviewRating}
+                        reviewText={reviewText}
+                        setReviewText={setReviewText}
+                        handleSubmitReview={handleSubmitReview}
+                        biography={biography}
+                        studentInterests={studentInterests}
+                        showStudentExtraInfo={showStudentExtraInfo}
+                        showBackButton
+                        onBack={handleBackToDirectory}
+                      />
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            ) : !userHasSelected ? (
+              <div className="h-full min-h-0">
+                <RightSideDirectoryTabs
+                  tr={tr}
+                  activeTab={activeTab}
+                  onTabChange={handleTabChange}
+                  agentList={filteredAgents}
+                  tutorList={filteredTutors}
+                  userList={filteredUsers}
+                  selectedId={rightSideSelectedId}
+                  onSelectItem={handleSelectItem}
+                  selectedCountry={selectedCountry}
+                  onCountryChange={setSelectedCountry}
+                  countryOptions={countryOptions}
+                  hiddenRole={myRole}
+                  currentPage={currentPage}
+                  onPageChange={setCurrentPage}
+                  itemsPerPage={ITEMS_PER_PAGE}
+                />
+              </div>
+            ) : (
+              <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,1.18fr)_minmax(360px,0.98fr)]">
+                <motion.div
+                  key={`detail-${displayedRole}-${displayedEntityId || "selected"}`}
+                  layout
+                  className="h-full min-h-0 overflow-hidden"
+                  initial={{ opacity: 0, x: -18, scale: 0.985 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: 18, scale: 0.985 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <ProfileDetailsPanel
                     tr={tr}
-                    activeTab={activeTab}
-                    onTabChange={handleTabChange}
-                    agentList={filteredAgents}
-                    tutorList={filteredTutors}
-                    userList={filteredUsers}
-                    selectedId={rightSideSelectedId}
-                    onSelectItem={handleSelectItem}
-                    selectedCountry={selectedCountry}
-                    onCountryChange={setSelectedCountry}
-                    countryOptions={countryOptions}
-                    hiddenRole={myRole}
-                    currentPage={currentPage}
-                    onPageChange={setCurrentPage}
-                    itemsPerPage={ITEMS_PER_PAGE}
+                    displayedEntity={displayedEntity}
+                    displayedRole={displayedRole}
+                    displayedEntityId={displayedEntityId}
+                    normalizedDisplayedRole={normalizedDisplayedRole}
+                    isOwnProfile={isOwnProfile}
+                    showFollowButton={showFollowButton}
+                    showReviewsSection={showReviewsSection}
+                    avatar={avatar}
+                    name={name}
+                    personName={personName}
+                    countryCode={countryCode}
+                    countryText={countryText}
+                    headline={headline}
+                    maskedEmail={maskedEmail}
+                    maskedPhone={maskedPhone}
+                    followState={followState}
+                    followLoading={followLoading}
+                    handleFollowClick={handleFollowClick}
+                    followButtonLabel={followButtonLabel}
+                    messageLoading={messageLoading}
+                    handleMessageClick={handleMessageClick}
+                    messageButtonLabel={messageButtonLabel}
+                    averageRating={averageRating}
+                    reviewCount={reviewCount}
+                    showRatingBreakdown={showRatingBreakdown}
+                    setShowRatingBreakdown={setShowRatingBreakdown}
+                    reviews={reviews}
+                    reviewsLoading={reviewsLoading}
+                    reviewRating={reviewRating}
+                    setReviewRating={setReviewRating}
+                    reviewText={reviewText}
+                    setReviewText={setReviewText}
+                    handleSubmitReview={handleSubmitReview}
+                    biography={biography}
+                    studentInterests={studentInterests}
+                    showStudentExtraInfo={showStudentExtraInfo}
                   />
-                </div>
-              </motion.div>
-            </div>
+                </motion.div>
+
+                <motion.div
+                  layout
+                  key={`list-${activeTab}`}
+                  initial={{ opacity: 0.98 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  className="h-full min-h-0 overflow-hidden"
+                >
+                  <div className="h-full min-h-0 overflow-y-auto">
+                    <RightSideDirectoryTabs
+                      tr={tr}
+                      activeTab={activeTab}
+                      onTabChange={handleTabChange}
+                      agentList={filteredAgents}
+                      tutorList={filteredTutors}
+                      userList={filteredUsers}
+                      selectedId={rightSideSelectedId}
+                      onSelectItem={handleSelectItem}
+                      selectedCountry={selectedCountry}
+                      onCountryChange={setSelectedCountry}
+                      countryOptions={countryOptions}
+                      hiddenRole={myRole}
+                      currentPage={currentPage}
+                      onPageChange={setCurrentPage}
+                      itemsPerPage={ITEMS_PER_PAGE}
+                    />
+                  </div>
+                </motion.div>
+              </div>
+            )}
           </div>
         </div>
       </div>
