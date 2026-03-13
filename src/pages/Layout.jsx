@@ -127,6 +127,7 @@ const getMarketingUrl = () => {
 };
 
 const FALLBACK_TEXT = {
+  schoolLeads: "School Leads",
   login: "Login",
   logOut: "Log Out",
   profileSettings: "Profile Settings",
@@ -469,7 +470,8 @@ function buildAccountMenuItems(currentUser, tr) {
     items.push(
       { label: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Briefcase },
       { label: tr("schoolProfile", "School Profile"), url: createPageUrl("SchoolProfile"), icon: Building2 },
-      { label: tr("schoolDetails", "School Details"), url: createPageUrl("SchoolDetails"), icon: ClipboardList }
+      { label: tr("schoolDetails", "School Details"), url: createPageUrl("SchoolDetails"), icon: ClipboardList },
+      { label: tr("schoolLeads", "School Leads"), url: createPageUrl("SchoolLeads"), icon: Users }
     );
   }
 
@@ -1311,6 +1313,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
         { title: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Briefcase },
         { title: tr("schoolProfile", "School Profile"), url: createPageUrl("SchoolProfile"), icon: Building2 },
         { title: tr("schoolDetails", "School Details"), url: createPageUrl("SchoolDetails"), icon: ClipboardList },
+        { title: tr("schoolLeads", "School Leads"), url: createPageUrl("SchoolLeads"), icon: Users },
         { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: UserCog },
       ]),
     };
