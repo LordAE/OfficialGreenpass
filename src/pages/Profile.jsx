@@ -5,7 +5,7 @@ import {
   Globe,
   BookOpen,
   Briefcase,
- Building,
+  Building,
   Store,
   Upload,
   Loader2,
@@ -39,6 +39,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { UploadFile } from "@/api/integrations";
 import { auth, db, storage } from "@/firebase";
@@ -121,12 +122,15 @@ async function getAllCountriesFallback() {
 
 function CountrySelect({ valueCode, valueName, onChange, disabled = false }) {
   const tr0 = useTr();
-  const tr = React.useCallback((key, fallback) => {
-    if (typeof tr0 === "function") return tr0(key, fallback);
-    if (tr0 && typeof tr0.tr === "function") return tr0.tr(key, fallback);
-    if (tr0 && typeof tr0.t === "function") return tr0.t(key, fallback);
-    return fallback ?? key;
-  }, [tr0]);
+  const tr = React.useCallback(
+    (key, fallback) => {
+      if (typeof tr0 === "function") return tr0(key, fallback);
+      if (tr0 && typeof tr0.tr === "function") return tr0.tr(key, fallback);
+      if (tr0 && typeof tr0.t === "function") return tr0.t(key, fallback);
+      return fallback ?? key;
+    },
+    [tr0]
+  );
 
   const [open, setOpen] = React.useState(false);
   const [countries, setCountries] = React.useState([]);
@@ -652,6 +656,7 @@ export default function Profile() {
   const [uid, setUid] = useState(null);
   const [role, setRole] = useState("user");
   const [userDoc, setUserDoc] = useState(null);
+  const [activeTab, setActiveTab] = useState("personal");
 
   const meta = useMemo(() => roleMeta(role, tr), [role, tr]);
   const verificationFields = useMemo(() => buildVerificationFieldsForRole(role, tr), [role, tr]);
@@ -693,6 +698,19 @@ export default function Profile() {
     study_areas: [],
     spoken_languages: [],
 
+    gpa: "",
+    ielts: "",
+    budget: "",
+    intake_year: "",
+    preferred_programs: [],
+    target_country: "",
+    target_program: "",
+    scholarship_interest: "",
+    academic_background: "",
+    high_school: "",
+    university: "",
+    achievements: "",
+
     company_name: "",
     business_license_mst: "",
     year_established: "",
@@ -730,6 +748,10 @@ export default function Profile() {
     } catch {}
     window.dispatchEvent(new CustomEvent("gp_lang_changed", { detail: v }));
   }, [form?.lang]);
+
+  useEffect(() => {
+    setActiveTab("personal");
+  }, [role]);
 
   const handleLanguageChange = useCallback(
     async (v) => {
@@ -847,16 +869,29 @@ export default function Profile() {
 
         date_of_birth: !isStudentRole ? u.date_of_birth || "" : "",
         gender: !isStudentRole ? u.gender || "" : "",
-        age: isStudentRole ? String(u.age || "") : String(u.age || ""),
-        interested_in: isStudentRole ? u.interested_in || "" : u.interested_in || "",
-        current_level: isStudentRole ? u.current_level || "" : u.current_level || "",
-        comments: isStudentRole ? u.comments || "" : u.comments || "",
+        age: String(u.age || ""),
+        interested_in: u.interested_in || "",
+        current_level: u.current_level || "",
+        comments: u.comments || "",
         interests: Array.isArray(u.interests) ? u.interests : [],
         education: Array.isArray(u.education) ? u.education : [],
         selected_courses: Array.isArray(u.selected_courses) ? u.selected_courses : [],
         preferred_countries: Array.isArray(u.preferred_countries) ? u.preferred_countries : [],
         study_areas: Array.isArray(u.study_areas) ? u.study_areas : [],
         spoken_languages: Array.isArray(u.spoken_languages) ? u.spoken_languages : [],
+
+        gpa: u.gpa || "",
+        ielts: u.ielts || "",
+        budget: u.budget || "",
+        intake_year: u.intake_year || "",
+        preferred_programs: Array.isArray(u.preferred_programs) ? u.preferred_programs : [],
+        target_country: u.target_country || "",
+        target_program: u.target_program || "",
+        scholarship_interest: u.scholarship_interest || "",
+        academic_background: u.academic_background || "",
+        high_school: u.high_school || "",
+        university: u.university || "",
+        achievements: u.achievements || "",
 
         company_name: u.agent_profile?.company_name || "",
         business_license_mst: u.agent_profile?.business_license_mst || "",
@@ -1065,6 +1100,15 @@ export default function Profile() {
       return alert(tr("alerts.required_country", "Country is required."));
     }
 
+    if (role === "user") {
+      if (!form.target_country?.trim()) {
+        return alert(tr("alerts.required_target_country", "Target country is required."));
+      }
+      if (!form.target_program?.trim()) {
+        return alert(tr("alerts.required_target_program", "Target program is required."));
+      }
+    }
+
     if (role === "agent") {
       if (!form.company_name?.trim()) {
         return alert(tr("alerts.required_company_name", "Company name is required."));
@@ -1144,6 +1188,18 @@ export default function Profile() {
         preferred_countries: Array.isArray(form.preferred_countries) ? form.preferred_countries : [],
         study_areas: Array.isArray(form.study_areas) ? form.study_areas : [],
         spoken_languages: Array.isArray(form.spoken_languages) ? form.spoken_languages : [],
+        gpa: form.gpa || "",
+        ielts: form.ielts || "",
+        budget: form.budget || "",
+        intake_year: form.intake_year || "",
+        preferred_programs: Array.isArray(form.preferred_programs) ? form.preferred_programs : [],
+        target_country: form.target_country || "",
+        target_program: form.target_program || "",
+        scholarship_interest: form.scholarship_interest || "",
+        academic_background: form.academic_background || "",
+        high_school: form.high_school || "",
+        university: form.university || "",
+        achievements: form.achievements || "",
         updated_at: serverTimestamp(),
       };
 
@@ -1284,9 +1340,6 @@ export default function Profile() {
     }
   }, [userDoc?.created_at, tr]);
 
-  const languageLabel =
-    LANGUAGE_OPTIONS.find((l) => l.value === (form.lang || "en"))?.label || "English";
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -1300,6 +1353,16 @@ export default function Profile() {
   const showTutor = role === "tutor";
   const showSchool = role === "school";
   const showVendor = role === "vendor";
+
+  const detailsTabLabel = showStudent
+    ? tr("student_profile", "Student Profile")
+    : showAgent
+      ? tr("agent_details", "Agent Details")
+      : showTutor
+        ? tr("tutor_details", "Tutor Details")
+        : showSchool
+          ? tr("school_details", "School Details")
+          : tr("vendor_details", "Vendor Details");
 
   return (
     <>
@@ -1379,566 +1442,772 @@ export default function Profile() {
             </div>
 
             <div className="lg:col-span-2 space-y-6">
-              <ProfileSection
-                title={tr("personal_information", "Personal Information")}
-                icon={Globe}
-                action={
-                  <Select
-                    value={form.lang || "en"}
-                    onValueChange={handleLanguageChange}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger className="w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {LANGUAGE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                }
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="full_name">
-                      {tr("full_name", "Full Name")} <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="full_name"
-                      value={form.full_name}
-                      disabled={!isEditing}
-                      onChange={(e) => setField("full_name", e.target.value)}
-                      placeholder={tr("enter_full_name", "Enter your full name")}
-                    />
-                  </div>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="w-full grid grid-cols-3 rounded-2xl h-auto p-1">
+                  <TabsTrigger value="personal" className="rounded-xl">
+                    {tr("personal_information", "Personal Information")}
+                  </TabsTrigger>
+                  <TabsTrigger value="details" className="rounded-xl">
+                    {detailsTabLabel}
+                  </TabsTrigger>
+                  <TabsTrigger value="validation" className="rounded-xl">
+                    {tr("validation.title", "Validation")}
+                  </TabsTrigger>
+                </TabsList>
 
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="email">
-                      {tr("email_login", "Email (Login)")} <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={form.email}
-                      disabled
-                      className="bg-gray-50"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="phone">
-                      {tr("phone", "Phone")} <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      value={form.phone}
-                      disabled={!isEditing}
-                      onChange={(e) => setField("phone", e.target.value)}
-                      placeholder="+1 234 567 8900"
-                    />
-                  </div>
-
-                  {showStudent ? (
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="current_level">{tr("current_level", "Current Level")}</Label>
-                      <Input
-                        id="current_level"
-                        value={form.current_level}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("current_level", e.target.value)}
-                        placeholder={tr("current_level_placeholder", "e.g. Masters")}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="date_of_birth">{tr("date_of_birth", "Date of Birth")}</Label>
-                      <Input
-                        id="date_of_birth"
-                        type="date"
-                        value={form.date_of_birth}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("date_of_birth", e.target.value)}
-                      />
-                    </div>
-                  )}
-
-                  {showStudent ? (
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="age">{tr("age", "Age")}</Label>
-                      <Input
-                        id="age"
-                        type="number"
-                        min="0"
-                        value={form.age}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("age", e.target.value)}
-                        placeholder={tr("age_placeholder", "Enter your age")}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="gender">{tr("gender", "Gender")}</Label>
+                <TabsContent value="personal" className="mt-6">
+                  <ProfileSection
+                    title={tr("personal_information", "Personal Information")}
+                    icon={Globe}
+                    action={
                       <Select
-                        value={form.gender}
-                        onValueChange={(value) => isEditing && setField("gender", value)}
+                        value={form.lang || "en"}
+                        onValueChange={handleLanguageChange}
                         disabled={!isEditing}
                       >
-                        <SelectTrigger id="gender">
-                          <SelectValue placeholder={tr("select_gender", "Select gender")} />
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                          <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-2 md:col-span-2">
-                    <Label htmlFor="country">
-                      {tr("country", "Country")} <span className="text-red-500">*</span>
-                    </Label>
-                    <CountrySelect
-                      disabled={!isEditing}
-                      valueCode={form.country_code}
-                      valueName={form.country}
-                      onChange={({ code, name }) => {
-                        setField("country", name || "");
-                        setField("country_code", (code || "").toUpperCase());
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2 mt-6">
-                  <Label htmlFor="bio">{tr("bio_label", "Biography / Description")}</Label>
-                  <Textarea
-                    id="bio"
-                    value={form.bio}
-                    disabled={!isEditing}
-                    onChange={(e) => setField("bio", e.target.value)}
-                    placeholder={tr(
-                      "bio_placeholder",
-                      "Write a short bio/description shown on your profile..."
-                    )}
-                    rows={6}
-                    className="resize-none"
-                  />
-                  <p className="text-sm text-gray-500">
-                    {tr(
-                      "bio_help_long",
-                      "Tell others about yourself, your interests, and what makes you unique."
-                    )}
-                  </p>
-                </div>
-              </ProfileSection>
-
-              {showStudent && (
-                <ProfileSection title={tr("interests", "Interests")} icon={BookOpen}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <SimpleArrayInput
-                      id="selected_courses"
-                      label={tr("courses", "Courses")}
-                      value={form.selected_courses}
-                      disabled={!isEditing}
-                      onChange={(v) => setField("selected_courses", v)}
-                      placeholder={tr(
-                        "courses_placeholder",
-                        "Example: Language Programs, Business, Engineering"
-                      )}
-                      helpText={tr("comma_help", "Separate multiple values with commas.")}
-                    />
-
-                    <SimpleArrayInput
-                      id="preferred_countries"
-                      label={tr("countries", "Countries")}
-                      value={form.preferred_countries}
-                      disabled={!isEditing}
-                      onChange={(v) => setField("preferred_countries", v)}
-                      placeholder={tr(
-                        "countries_placeholder",
-                        "Example: South Korea, Canada, Australia"
-                      )}
-                      helpText={tr("comma_help", "Separate multiple values with commas.")}
-                    />
-
-                    <SimpleArrayInput
-                      id="study_areas"
-                      label={tr("areas", "Areas")}
-                      value={form.study_areas}
-                      disabled={!isEditing}
-                      onChange={(v) => setField("study_areas", v)}
-                      placeholder={tr(
-                        "areas_placeholder",
-                        "Example: Business and Management, Film Media and Communication"
-                      )}
-                      helpText={tr("comma_help", "Separate multiple values with commas.")}
-                    />
-
-                    <SimpleArrayInput
-                      id="spoken_languages"
-                      label={tr("languages", "Languages")}
-                      value={form.spoken_languages}
-                      disabled={!isEditing}
-                      onChange={(v) => setField("spoken_languages", v)}
-                      placeholder={tr("languages_placeholder", "Example: English, French, Korean")}
-                      helpText={tr("comma_help", "Separate multiple values with commas.")}
-                    />
-                  </div>
-                </ProfileSection>
-              )}
-
-              <ProfileSection title={tr("validation.title", "Validation")} icon={Briefcase}>
-                <div className="space-y-4">
-                  {(verification.status === "rejected" || verification.status === "denied") &&
-                  verification.reason ? (
-                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                      <div className="font-semibold">
-                        {tr("verification.denied_title", "Verification denied")}
-                      </div>
-                      <div className="mt-1">{verification.reason}</div>
-                    </div>
-                  ) : null}
-
-                  {verificationFields.length === 0 ? (
-                    <div className="text-sm text-gray-600">
-                      {tr(
-                        "verification.none_required",
-                        "No verification documents required for your role."
-                      )}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {verificationFields.map((f) => {
-                        const url = verification.docs?.[f.key] || "";
-                        const uploading = !!docUploading?.[f.key];
-
-                        return (
-                          <div key={f.key} className="rounded-2xl border bg-white p-4 space-y-3">
-                            <div className="font-medium text-gray-900">
-                              {f.label} {f.required ? "*" : ""}
-                            </div>
-
-                            {url ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => {
-                                  setViewerUrl(url);
-                                  setViewerName(f.label);
-                                  setViewerOpen(true);
-                                }}
-                              >
-                                {tr("verification.view", "View uploaded document")}
-                              </Button>
-                            ) : (
-                              <div className="text-sm text-gray-500">
-                                {tr("verification.no_file", "No file uploaded yet")}
-                              </div>
-                            )}
-
-                            {isEditing && (
-                              <div className="flex items-center gap-2">
-                                {url ? (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => clearVerificationDoc(f.key)}
-                                  >
-                                    {tr("verification.remove", "Remove")}
-                                  </Button>
-                                ) : null}
-
-                                <label className="inline-flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="file"
-                                    accept=".pdf,image/*"
-                                    className="hidden"
-                                    disabled={uploading}
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0] || null;
-                                      e.target.value = "";
-                                      if (file) uploadVerificationDoc(f.key, file);
-                                    }}
-                                  />
-                                  <span
-                                    className={
-                                      "inline-flex items-center rounded-md border px-3 py-2 text-sm " +
-                                      (uploading
-                                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                        : "bg-white hover:bg-gray-50 text-gray-900")
-                                    }
-                                  >
-                                    {uploading ? (
-                                      <>
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        {tr("verification.uploading", "Uploading...")}
-                                      </>
-                                    ) : url ? (
-                                      tr("verification.replace", "Replace")
-                                    ) : (
-                                      tr("verification.upload", "Upload")
-                                    )}
-                                  </span>
-                                </label>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {verificationFields.length && isEditing ? (
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        onClick={submitVerificationForReview}
-                        disabled={submittingVerification || verification.status === "verified"}
-                        className="bg-emerald-600 hover:bg-emerald-700"
-                      >
-                        {submittingVerification ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            {tr("verification.submitting", "Submitting...")}
-                          </>
-                        ) : verification.status === "pending" ? (
-                          tr("verification.resubmit", "Submit again")
-                        ) : (
-                          tr("verification.submit", "Submit for review")
-                        )}
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              </ProfileSection>
-
-              {showAgent && (
-                <ProfileSection title={tr("agent_details", "Agent Details")} icon={Briefcase}>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>{tr("company_name", "Company Name *")}</Label>
-                      <Input
-                        value={form.company_name}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("company_name", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>{tr("business_license_mst", "Business License (MST) *")}</Label>
-                      <Input
-                        value={form.business_license_mst}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("business_license_mst", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>{tr("year_established", "Year Established")}</Label>
-                      <Input
-                        type="number"
-                        value={form.year_established}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("year_established", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>{tr("paypal_email", "PayPal Email *")}</Label>
-                      <Input
-                        type="email"
-                        value={form.paypal_email}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("paypal_email", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                </ProfileSection>
-              )}
-
-              {showTutor && (
-                <ProfileSection title={tr("tutor_details", "Tutor Details")} icon={BookOpen}>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>{tr("specializations", "Specializations *")}</Label>
-                      <Input
-                        value={form.specializations}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("specializations", e.target.value)}
-                        className="mt-1"
-                        placeholder={tr("specializations_placeholder", "IELTS, TOEFL...")}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label>{tr("experience_years", "Years of Experience *")}</Label>
-                        <Input
-                          type="number"
-                          value={form.experience_years}
-                          disabled={!isEditing}
-                          onChange={(e) => setField("experience_years", e.target.value)}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label>{tr("hourly_rate_usd", "Hourly Rate (USD) *")}</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={form.hourly_rate}
-                          disabled={!isEditing}
-                          onChange={(e) => setField("hourly_rate", e.target.value)}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label>{tr("paypal_email", "PayPal Email *")}</Label>
-                      <Input
-                        type="email"
-                        value={form.paypal_email}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("paypal_email", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                </ProfileSection>
-              )}
-
-              {showVendor && (
-                <ProfileSection title={tr("vendor_details", "Vendor Details")} icon={Store}>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>{tr("business_name", "Business Name *")}</Label>
-                      <Input
-                        value={form.business_name}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("business_name", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-
-                    <div>
-                      <Label>{tr("service_categories", "Service Categories *")}</Label>
-                      <div className="grid grid-cols-2 gap-3 mt-2">
-                        {vendorCategoryOptions.map(({ value, label }) => (
-                          <div key={value} className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id={`cat-${value}`}
-                              checked={form.service_categories?.includes(value) || false}
-                              disabled={!isEditing}
-                              onChange={(e) => {
-                                const cur = form.service_categories || [];
-                                const next = e.target.checked
-                                  ? [...cur, value]
-                                  : cur.filter((c) => c !== value);
-                                setField("service_categories", next);
-                              }}
-                              className="h-4 w-4"
-                            />
-                            <label htmlFor={`cat-${value}`} className="text-sm text-gray-700">
-                              {label}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label>{tr("paypal_email", "PayPal Email *")}</Label>
-                      <Input
-                        type="email"
-                        value={form.paypal_email}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("paypal_email", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                </ProfileSection>
-              )}
-
-              {showSchool && (
-                <ProfileSection title={tr("school_details", "School Details")} icon={Building}>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>{tr("institution_name", "Institution Name *")}</Label>
-                      <Input
-                        value={form.school_name}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("school_name", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-
-                    <div>
-                      <Label>{tr("school_type", "School Type *")}</Label>
-                      <Select
-                        value={form.type || ""}
-                        onValueChange={(v) => isEditing && setField("type", v)}
-                        disabled={!isEditing}
-                      >
-                        <SelectTrigger className="mt-1">
-                          <SelectValue
-                            placeholder={tr("select_institution_type", "Select institution type")}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {schoolTypeOptions.map((opt) => (
+                          {LANGUAGE_OPTIONS.map((opt) => (
                             <SelectItem key={opt.value} value={opt.value}>
                               {opt.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                    }
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="full_name">
+                          {tr("full_name", "Full Name")} <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="full_name"
+                          value={form.full_name}
+                          disabled={!isEditing}
+                          onChange={(e) => setField("full_name", e.target.value)}
+                          placeholder={tr("enter_full_name", "Enter your full name")}
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="email">
+                          {tr("email_login", "Email (Login)")}{" "}
+                          <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={form.email}
+                          disabled
+                          className="bg-gray-50"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="phone">
+                          {tr("phone", "Phone")} <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="phone"
+                          type="tel"
+                          value={form.phone}
+                          disabled={!isEditing}
+                          onChange={(e) => setField("phone", e.target.value)}
+                          placeholder="+1 234 567 8900"
+                        />
+                      </div>
+
+                      {showStudent ? (
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="current_level">
+                            {tr("current_level", "Current Level")}
+                          </Label>
+                          <Input
+                            id="current_level"
+                            value={form.current_level}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("current_level", e.target.value)}
+                            placeholder={tr("current_level_placeholder", "e.g. Masters")}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="date_of_birth">
+                            {tr("date_of_birth", "Date of Birth")}
+                          </Label>
+                          <Input
+                            id="date_of_birth"
+                            type="date"
+                            value={form.date_of_birth}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("date_of_birth", e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      {showStudent ? (
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="age">{tr("age", "Age")}</Label>
+                          <Input
+                            id="age"
+                            type="number"
+                            min="0"
+                            value={form.age}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("age", e.target.value)}
+                            placeholder={tr("age_placeholder", "Enter your age")}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="gender">{tr("gender", "Gender")}</Label>
+                          <Select
+                            value={form.gender}
+                            onValueChange={(value) => isEditing && setField("gender", value)}
+                            disabled={!isEditing}
+                          >
+                            <SelectTrigger id="gender">
+                              <SelectValue
+                                placeholder={tr("select_gender", "Select gender")}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                              <SelectItem value="prefer-not-to-say">
+                                Prefer not to say
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-2 md:col-span-2">
+                        <Label htmlFor="country">
+                          {tr("country", "Country")} <span className="text-red-500">*</span>
+                        </Label>
+                        <CountrySelect
+                          disabled={!isEditing}
+                          valueCode={form.country_code}
+                          valueName={form.country}
+                          onChange={({ code, name }) => {
+                            setField("country", name || "");
+                            setField("country_code", (code || "").toUpperCase());
+                          }}
+                        />
+                      </div>
                     </div>
 
-                    <div>
-                      <Label>{tr("city_location", "City/Location *")}</Label>
-                      <Input
-                        value={form.location}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("location", e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-
-                    <div>
-                      <Label>{tr("official_website", "Official Website *")}</Label>
-                      <Input
-                        value={form.website}
-                        disabled={!isEditing}
-                        onChange={(e) => setField("website", e.target.value)}
-                        className="mt-1"
-                        placeholder="https://..."
-                      />
-                    </div>
-
-                    <div>
-                      <Label>{tr("about_institution", "About Your Institution")}</Label>
+                    <div className="flex flex-col gap-2 mt-6">
+                      <Label htmlFor="bio">{tr("bio_label", "Biography / Description")}</Label>
                       <Textarea
-                        value={form.about}
+                        id="bio"
+                        value={form.bio}
                         disabled={!isEditing}
-                        onChange={(e) => setField("about", e.target.value)}
-                        className="mt-1"
-                        rows={3}
+                        onChange={(e) => setField("bio", e.target.value)}
+                        placeholder={tr(
+                          "bio_placeholder",
+                          "Write a short bio/description shown on your profile..."
+                        )}
+                        rows={6}
+                        className="resize-none"
                       />
+                      <p className="text-sm text-gray-500">
+                        {tr(
+                          "bio_help_long",
+                          "Tell others about yourself, your interests, and what makes you unique."
+                        )}
+                      </p>
                     </div>
-                  </div>
-                </ProfileSection>
-              )}
+                  </ProfileSection>
+                </TabsContent>
+
+                <TabsContent value="details" className="mt-6">
+                  {showStudent && (
+                    <ProfileSection title={tr("student_profile", "Student Profile")} icon={BookOpen}>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="gpa">{tr("gpa", "GPA")}</Label>
+                          <Input
+                            id="gpa"
+                            value={form.gpa}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("gpa", e.target.value)}
+                            placeholder={tr("gpa_placeholder", "e.g. 3.5 / 4.0")}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="ielts">{tr("ielts", "IELTS")}</Label>
+                          <Input
+                            id="ielts"
+                            value={form.ielts}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("ielts", e.target.value)}
+                            placeholder={tr("ielts_placeholder", "e.g. 6.5")}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="budget">{tr("budget", "Budget")}</Label>
+                          <Input
+                            id="budget"
+                            value={form.budget}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("budget", e.target.value)}
+                            placeholder={tr("budget_placeholder", "e.g. 20000 USD")}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="intake_year">{tr("intake_year", "Intake Year")}</Label>
+                          <Input
+                            id="intake_year"
+                            value={form.intake_year}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("intake_year", e.target.value)}
+                            placeholder={tr("intake_year_placeholder", "e.g. 2026")}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="target_country">
+                            {tr("target_country", "Target Country")}
+                          </Label>
+                          <Input
+                            id="target_country"
+                            value={form.target_country}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("target_country", e.target.value)}
+                            placeholder={tr("target_country_placeholder", "e.g. Canada")}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="target_program">
+                            {tr("target_program", "Target Program")}
+                          </Label>
+                          <Input
+                            id="target_program"
+                            value={form.target_program}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("target_program", e.target.value)}
+                            placeholder={tr(
+                              "target_program_placeholder",
+                              "e.g. Computer Science"
+                            )}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2 md:col-span-2">
+                          <Label htmlFor="academic_background">
+                            {tr("academic_background", "Academic Background")}
+                          </Label>
+                          <Textarea
+                            id="academic_background"
+                            rows={4}
+                            value={form.academic_background}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("academic_background", e.target.value)}
+                            placeholder={tr(
+                              "academic_background_placeholder",
+                              "Summarize your academic background"
+                            )}
+                            className="resize-none"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="high_school">{tr("high_school", "High School")}</Label>
+                          <Input
+                            id="high_school"
+                            value={form.high_school}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("high_school", e.target.value)}
+                            placeholder={tr("high_school_placeholder", "Enter your high school")}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="university">{tr("university", "University")}</Label>
+                          <Input
+                            id="university"
+                            value={form.university}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("university", e.target.value)}
+                            placeholder={tr("university_placeholder", "Enter your university")}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2 md:col-span-2">
+                          <Label htmlFor="achievements">
+                            {tr("achievements", "Achievements")}
+                          </Label>
+                          <Textarea
+                            id="achievements"
+                            rows={4}
+                            value={form.achievements}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("achievements", e.target.value)}
+                            placeholder={tr(
+                              "achievements_placeholder",
+                              "Awards, honors, recognitions, leadership, etc."
+                            )}
+                            className="resize-none"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="scholarship_interest">
+                            {tr("scholarship_interest", "Scholarship Interest")}
+                          </Label>
+                          <Select
+                            value={form.scholarship_interest || ""}
+                            onValueChange={(value) =>
+                              isEditing && setField("scholarship_interest", value)
+                            }
+                            disabled={!isEditing}
+                          >
+                            <SelectTrigger id="scholarship_interest">
+                              <SelectValue
+                                placeholder={tr(
+                                  "scholarship_interest_placeholder",
+                                  "Select scholarship interest"
+                                )}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="yes">{tr("yes", "Yes")}</SelectItem>
+                              <SelectItem value="no">{tr("no", "No")}</SelectItem>
+                              <SelectItem value="maybe">{tr("maybe", "Maybe")}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <SimpleArrayInput
+                          id="preferred_programs"
+                          label={tr("preferred_programs", "Preferred Programs")}
+                          value={form.preferred_programs}
+                          disabled={!isEditing}
+                          onChange={(v) => setField("preferred_programs", v)}
+                          placeholder={tr(
+                            "preferred_programs_placeholder",
+                            "Example: MBA, BS Nursing, Computer Engineering"
+                          )}
+                          helpText={tr("comma_help", "Separate multiple values with commas.")}
+                        />
+
+                        <SimpleArrayInput
+                          id="selected_courses"
+                          label={tr("courses", "Courses")}
+                          value={form.selected_courses}
+                          disabled={!isEditing}
+                          onChange={(v) => setField("selected_courses", v)}
+                          placeholder={tr(
+                            "courses_placeholder",
+                            "Example: Language Programs, Business, Engineering"
+                          )}
+                          helpText={tr("comma_help", "Separate multiple values with commas.")}
+                        />
+
+                        <SimpleArrayInput
+                          id="preferred_countries"
+                          label={tr("countries", "Countries")}
+                          value={form.preferred_countries}
+                          disabled={!isEditing}
+                          onChange={(v) => setField("preferred_countries", v)}
+                          placeholder={tr(
+                            "countries_placeholder",
+                            "Example: South Korea, Canada, Australia"
+                          )}
+                          helpText={tr("comma_help", "Separate multiple values with commas.")}
+                        />
+
+                        <SimpleArrayInput
+                          id="study_areas"
+                          label={tr("areas", "Areas")}
+                          value={form.study_areas}
+                          disabled={!isEditing}
+                          onChange={(v) => setField("study_areas", v)}
+                          placeholder={tr(
+                            "areas_placeholder",
+                            "Example: Business and Management, Film Media and Communication"
+                          )}
+                          helpText={tr("comma_help", "Separate multiple values with commas.")}
+                        />
+
+                        <SimpleArrayInput
+                          id="spoken_languages"
+                          label={tr("languages", "Languages")}
+                          value={form.spoken_languages}
+                          disabled={!isEditing}
+                          onChange={(v) => setField("spoken_languages", v)}
+                          placeholder={tr(
+                            "languages_placeholder",
+                            "Example: English, French, Korean"
+                          )}
+                          helpText={tr("comma_help", "Separate multiple values with commas.")}
+                        />
+                      </div>
+                    </ProfileSection>
+                  )}
+
+                  {showAgent && (
+                    <ProfileSection title={tr("agent_details", "Agent Details")} icon={Briefcase}>
+                      <div className="space-y-4">
+                        <div>
+                          <Label>{tr("company_name", "Company Name *")}</Label>
+                          <Input
+                            value={form.company_name}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("company_name", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label>{tr("business_license_mst", "Business License (MST) *")}</Label>
+                          <Input
+                            value={form.business_license_mst}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("business_license_mst", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label>{tr("year_established", "Year Established")}</Label>
+                          <Input
+                            type="number"
+                            value={form.year_established}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("year_established", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label>{tr("paypal_email", "PayPal Email *")}</Label>
+                          <Input
+                            type="email"
+                            value={form.paypal_email}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("paypal_email", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                    </ProfileSection>
+                  )}
+
+                  {showTutor && (
+                    <ProfileSection title={tr("tutor_details", "Tutor Details")} icon={BookOpen}>
+                      <div className="space-y-4">
+                        <div>
+                          <Label>{tr("specializations", "Specializations *")}</Label>
+                          <Input
+                            value={form.specializations}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("specializations", e.target.value)}
+                            className="mt-1"
+                            placeholder={tr("specializations_placeholder", "IELTS, TOEFL...")}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <Label>{tr("experience_years", "Years of Experience *")}</Label>
+                            <Input
+                              type="number"
+                              value={form.experience_years}
+                              disabled={!isEditing}
+                              onChange={(e) => setField("experience_years", e.target.value)}
+                              className="mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label>{tr("hourly_rate_usd", "Hourly Rate (USD) *")}</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={form.hourly_rate}
+                              disabled={!isEditing}
+                              onChange={(e) => setField("hourly_rate", e.target.value)}
+                              className="mt-1"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label>{tr("paypal_email", "PayPal Email *")}</Label>
+                          <Input
+                            type="email"
+                            value={form.paypal_email}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("paypal_email", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                    </ProfileSection>
+                  )}
+
+                  {showVendor && (
+                    <ProfileSection title={tr("vendor_details", "Vendor Details")} icon={Store}>
+                      <div className="space-y-4">
+                        <div>
+                          <Label>{tr("business_name", "Business Name *")}</Label>
+                          <Input
+                            value={form.business_name}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("business_name", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+
+                        <div>
+                          <Label>{tr("service_categories", "Service Categories *")}</Label>
+                          <div className="grid grid-cols-2 gap-3 mt-2">
+                            {vendorCategoryOptions.map(({ value, label }) => (
+                              <div key={value} className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={`cat-${value}`}
+                                  checked={form.service_categories?.includes(value) || false}
+                                  disabled={!isEditing}
+                                  onChange={(e) => {
+                                    const cur = form.service_categories || [];
+                                    const next = e.target.checked
+                                      ? [...cur, value]
+                                      : cur.filter((c) => c !== value);
+                                    setField("service_categories", next);
+                                  }}
+                                  className="h-4 w-4"
+                                />
+                                <label htmlFor={`cat-${value}`} className="text-sm text-gray-700">
+                                  {label}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label>{tr("paypal_email", "PayPal Email *")}</Label>
+                          <Input
+                            type="email"
+                            value={form.paypal_email}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("paypal_email", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                    </ProfileSection>
+                  )}
+
+                  {showSchool && (
+                    <ProfileSection title={tr("school_details", "School Details")} icon={Building}>
+                      <div className="space-y-4">
+                        <div>
+                          <Label>{tr("institution_name", "Institution Name *")}</Label>
+                          <Input
+                            value={form.school_name}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("school_name", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+
+                        <div>
+                          <Label>{tr("school_type", "School Type *")}</Label>
+                          <Select
+                            value={form.type || ""}
+                            onValueChange={(v) => isEditing && setField("type", v)}
+                            disabled={!isEditing}
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue
+                                placeholder={tr(
+                                  "select_institution_type",
+                                  "Select institution type"
+                                )}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {schoolTypeOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label>{tr("city_location", "City/Location *")}</Label>
+                          <Input
+                            value={form.location}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("location", e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+
+                        <div>
+                          <Label>{tr("official_website", "Official Website *")}</Label>
+                          <Input
+                            value={form.website}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("website", e.target.value)}
+                            className="mt-1"
+                            placeholder="https://..."
+                          />
+                        </div>
+
+                        <div>
+                          <Label>{tr("about_institution", "About Your Institution")}</Label>
+                          <Textarea
+                            value={form.about}
+                            disabled={!isEditing}
+                            onChange={(e) => setField("about", e.target.value)}
+                            className="mt-1"
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+                    </ProfileSection>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="validation" className="mt-6">
+                  <ProfileSection title={tr("validation.title", "Validation")} icon={Briefcase}>
+                    <div className="space-y-4">
+                      {(verification.status === "rejected" || verification.status === "denied") &&
+                      verification.reason ? (
+                        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                          <div className="font-semibold">
+                            {tr("verification.denied_title", "Verification denied")}
+                          </div>
+                          <div className="mt-1">{verification.reason}</div>
+                        </div>
+                      ) : null}
+
+                      {verificationFields.length === 0 ? (
+                        <div className="text-sm text-gray-600">
+                          {tr(
+                            "verification.none_required",
+                            "No verification documents required for your role."
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {verificationFields.map((f) => {
+                            const url = verification.docs?.[f.key] || "";
+                            const uploading = !!docUploading?.[f.key];
+
+                            return (
+                              <div key={f.key} className="rounded-2xl border bg-white p-4 space-y-3">
+                                <div className="font-medium text-gray-900">
+                                  {f.label} {f.required ? "*" : ""}
+                                </div>
+
+                                {url ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setViewerUrl(url);
+                                      setViewerName(f.label);
+                                      setViewerOpen(true);
+                                    }}
+                                  >
+                                    {tr("verification.view", "View uploaded document")}
+                                  </Button>
+                                ) : (
+                                  <div className="text-sm text-gray-500">
+                                    {tr("verification.no_file", "No file uploaded yet")}
+                                  </div>
+                                )}
+
+                                {isEditing && (
+                                  <div className="flex items-center gap-2">
+                                    {url ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => clearVerificationDoc(f.key)}
+                                      >
+                                        {tr("verification.remove", "Remove")}
+                                      </Button>
+                                    ) : null}
+
+                                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="file"
+                                        accept=".pdf,image/*"
+                                        className="hidden"
+                                        disabled={uploading}
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0] || null;
+                                          e.target.value = "";
+                                          if (file) uploadVerificationDoc(f.key, file);
+                                        }}
+                                      />
+                                      <span
+                                        className={
+                                          "inline-flex items-center rounded-md border px-3 py-2 text-sm " +
+                                          (uploading
+                                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                            : "bg-white hover:bg-gray-50 text-gray-900")
+                                        }
+                                      >
+                                        {uploading ? (
+                                          <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            {tr("verification.uploading", "Uploading...")}
+                                          </>
+                                        ) : url ? (
+                                          tr("verification.replace", "Replace")
+                                        ) : (
+                                          tr("verification.upload", "Upload")
+                                        )}
+                                      </span>
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {verificationFields.length && isEditing ? (
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            onClick={submitVerificationForReview}
+                            disabled={submittingVerification || verification.status === "verified"}
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                          >
+                            {submittingVerification ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                {tr("verification.submitting", "Submitting...")}
+                              </>
+                            ) : verification.status === "pending" ? (
+                              tr("verification.resubmit", "Submit again")
+                            ) : (
+                              tr("verification.submit", "Submit for review")
+                            )}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </ProfileSection>
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
         </div>
