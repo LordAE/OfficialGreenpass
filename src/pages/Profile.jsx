@@ -1,4 +1,3 @@
-// src/pages/Profile.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   User,
@@ -81,8 +80,7 @@ const LANGUAGE_OPTIONS = [
   { value: "ar", label: "العربية" },
 ];
 
-const SEO_BASE =
-  "https://greenpassgroup.com";
+const SEO_BASE = "https://greenpassgroup.com";
 
 const FUNCTIONS_BASE =
   import.meta.env.VITE_FUNCTIONS_BASE ||
@@ -520,7 +518,6 @@ async function syncSchoolCollections({ uid, payload }) {
   return finalInstitutionId;
 }
 
-/* ---------------- small UI wrappers ---------------- */
 function ProfileHeader({
   tr,
   displayName,
@@ -1618,8 +1615,7 @@ export default function Profile() {
 
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="email">
-                          {tr("email_login", "Email (Login)")}{" "}
-                          <span className="text-red-500">*</span>
+                          {tr("email_login", "Email (Login)")} <span className="text-red-500">*</span>
                         </Label>
                         <Input
                           id="email"
@@ -1646,9 +1642,7 @@ export default function Profile() {
 
                       {showStudent ? (
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="current_level">
-                            {tr("current_level", "Current Level")}
-                          </Label>
+                          <Label htmlFor="current_level">{tr("current_level", "Current Level")}</Label>
                           <Input
                             id="current_level"
                             value={form.current_level}
@@ -1659,9 +1653,7 @@ export default function Profile() {
                         </div>
                       ) : (
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="date_of_birth">
-                            {tr("date_of_birth", "Date of Birth")}
-                          </Label>
+                          <Label htmlFor="date_of_birth">{tr("date_of_birth", "Date of Birth")}</Label>
                           <Input
                             id="date_of_birth"
                             type="date"
@@ -1694,17 +1686,13 @@ export default function Profile() {
                             disabled={!isEditing}
                           >
                             <SelectTrigger id="gender">
-                              <SelectValue
-                                placeholder={tr("select_gender", "Select gender")}
-                              />
+                              <SelectValue placeholder={tr("select_gender", "Select gender")} />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="male">Male</SelectItem>
                               <SelectItem value="female">Female</SelectItem>
                               <SelectItem value="other">Other</SelectItem>
-                              <SelectItem value="prefer-not-to-say">
-                                Prefer not to say
-                              </SelectItem>
+                              <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1799,9 +1787,7 @@ export default function Profile() {
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="target_country">
-                            {tr("target_country", "Target Country")}
-                          </Label>
+                          <Label htmlFor="target_country">{tr("target_country", "Target Country")}</Label>
                           <Input
                             id="target_country"
                             value={form.target_country}
@@ -1812,9 +1798,7 @@ export default function Profile() {
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="target_program">
-                            {tr("target_program", "Target Program")}
-                          </Label>
+                          <Label htmlFor="target_program">{tr("target_program", "Target Program")}</Label>
                           <Input
                             id="target_program"
                             value={form.target_program}
@@ -1868,9 +1852,7 @@ export default function Profile() {
                         </div>
 
                         <div className="flex flex-col gap-2 md:col-span-2">
-                          <Label htmlFor="achievements">
-                            {tr("achievements", "Achievements")}
-                          </Label>
+                          <Label htmlFor="achievements">{tr("achievements", "Achievements")}</Label>
                           <Textarea
                             id="achievements"
                             rows={4}
@@ -2234,7 +2216,7 @@ export default function Profile() {
                               <p className="text-sm text-gray-600 mt-1">
                                 {tr(
                                   "qr.agent_help",
-                                  "Students who register using this QR will be added to your client list after they sign up or accept the referral."
+                                  "Students who use this QR will open signup with the Student role already selected, then get linked to your referral after signup or acceptance."
                                 )}
                               </p>
                             </div>
@@ -2304,7 +2286,7 @@ export default function Profile() {
                             <p>
                               {tr(
                                 "qr.how_it_works_body",
-                                "Share this QR with students. New students can sign up through it on the SEO site, while existing students can accept the referral and be added to your client list."
+                                "Share this QR with students. New users who open it will go straight into signup with Student preselected, while existing students can still accept the referral and be added to your client list."
                               )}
                             </p>
                           </div>
