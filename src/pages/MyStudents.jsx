@@ -5,7 +5,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, FileCheck, X, Plus, ClipboardList, MessageSquare, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  Search,
+  FileCheck,
+  X,
+  Plus,
+  ClipboardList,
+  MessageSquare,
+  Trash2,
+} from "lucide-react";
 import { createPageUrl } from "@/utils";
 
 // Firebase
@@ -45,7 +54,7 @@ const chunk = (arr, size = 10) => {
 
 const makeRelId = (agentId, clientId) => `${agentId}_${clientId}`;
 
-const defaultDocTemplate = () => ([
+const defaultDocTemplate = () => [
   { name: "Passport bio page" },
   { name: "Study plan / SOP" },
   { name: "School documents (LOA / offer)" },
@@ -56,7 +65,7 @@ const defaultDocTemplate = () => ([
   { name: "Birth certificate" },
   { name: "National ID (if applicable)" },
   { name: "Photos (passport size)" },
-]);
+];
 
 // Simple id generator without deps
 const cryptoRandomId = () => {
@@ -83,7 +92,15 @@ const normalizeDocs = (docs) => {
 function ProgressBadge({ docs }) {
   const total = Array.isArray(docs) ? docs.length : 0;
   const done = Array.isArray(docs) ? docs.filter((d) => d.submitted).length : 0;
-  if (!total) return <Badge variant="secondary" className="rounded-full">0</Badge>;
+
+  if (!total) {
+    return (
+      <Badge variant="secondary" className="rounded-full">
+        0
+      </Badge>
+    );
+  }
+
   return (
     <Badge variant={done === total ? "default" : "secondary"} className="rounded-full">
       {done}/{total}
@@ -93,6 +110,7 @@ function ProgressBadge({ docs }) {
 
 function Modal({ open, title, onClose, children }) {
   if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -116,13 +134,12 @@ function Modal({ open, title, onClose, children }) {
 
 export default function MyStudents() {
   const [clients, setClients] = useState([]);
-  const [manualClientIds, setManualClientIds] = useState(new Set()); // from agent_students
+  const [manualClientIds, setManualClientIds] = useState(new Set());
   const [checklistsByClient, setChecklistsByClient] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [errorText, setErrorText] = useState("");
 
-  // Modal state
   const [docsOpen, setDocsOpen] = useState(false);
   const [activeClient, setActiveClient] = useState(null);
   const [docsSaving, setDocsSaving] = useState(false);
@@ -202,7 +219,13 @@ export default function MyStudents() {
 
     const next = [
       ...activeDocs,
-      { id: cryptoRandomId(), name, submitted: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      {
+        id: cryptoRandomId(),
+        name,
+        submitted: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
     ];
 
     setDocsSaving(true);
@@ -268,16 +291,16 @@ export default function MyStudents() {
     const me = auth.currentUser;
     if (!me || !client?.id) return;
 
-    // Only removable if it was manually added
     if (!manualClientIds.has(client.id)) return;
 
-    const ok = window.confirm(`Remove ${client.full_name || client.email || "this client"} from your client list?`);
+    const ok = window.confirm(
+      `Remove ${client.full_name || client.email || "this client"} from your client list?`
+    );
     if (!ok) return;
 
     try {
       await deleteDoc(doc(db, "agent_students", makeRelId(me.uid, client.id)));
 
-      // cleanup checklist for this agent+client
       try {
         await deleteDoc(doc(db, CHECKLIST_COLLECTION, makeRelId(me.uid, client.id)));
       } catch {}
@@ -303,6 +326,7 @@ export default function MyStudents() {
     const fetchData = async () => {
       setLoading(true);
       setErrorText("");
+
       try {
         const auth = getAuth();
         const me = auth.currentUser;
@@ -315,15 +339,34 @@ export default function MyStudents() {
           return;
         }
 
-        // Clients via referral
-        const referredQ = query(collection(db, "users"), where("referred_by_agent_id", "==", me.uid));
-        const referredSnap = await getDocs(referredQ);
-        const referredDocs = referredSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // 1) Clients via referral fields on users
+        const referralQueries = [
+          query(collection(db, "users"), where("referredByAgentId", "==", me.uid)),
+          query(collection(db, "users"), where("assigned_agent_id", "==", me.uid)),
+          query(collection(db, "users"), where("referred_by_agent_id", "==", me.uid)),
+        ];
 
-        // Clients manually added
+        const referralSnapshots = await Promise.all(
+          referralQueries.map((qRef) =>
+            getDocs(qRef).catch((err) => {
+              console.error("Referral query failed:", err);
+              return { docs: [] };
+            })
+          )
+        );
+
+        const referredDocs = referralSnapshots
+          .flatMap((snap) => snap.docs || [])
+          .map((d) => ({ id: d.id, ...d.data() }));
+
+        // 2) Clients manually added via agent_students
         const relQ = query(collection(db, "agent_students"), where("agent_id", "==", me.uid));
         const relSnap = await getDocs(relQ);
-        const relClientIds = relSnap.docs.map((d) => d.data()?.student_id).filter(Boolean);
+
+        const relClientIds = relSnap.docs
+          .map((d) => d.data()?.student_id)
+          .filter(Boolean);
+
         setManualClientIds(new Set(relClientIds));
 
         const relUsers = [];
@@ -336,6 +379,7 @@ export default function MyStudents() {
           }
         }
 
+        // Merge and dedupe
         const merged = [...referredDocs, ...relUsers];
         const seen = new Set();
         const clientDocs = merged.filter((u) => {
@@ -347,16 +391,18 @@ export default function MyStudents() {
 
         setClients(clientDocs);
 
-        // Fetch all checklists for this agent (for badges)
+        // 3) Fetch all checklists for this agent
         const checklistQ = query(collection(db, CHECKLIST_COLLECTION), where("agent_id", "==", me.uid));
         const checklistSnap = await getDocs(checklistQ);
         const map = {};
+
         checklistSnap.docs.forEach((d) => {
           const data = d.data() || {};
           const cid = data.client_id;
           if (!cid) return;
           map[cid] = Array.isArray(data.documents) ? data.documents : [];
         });
+
         setChecklistsByClient(map);
       } catch (err) {
         console.error("Error fetching clients/checklists:", err);
@@ -372,6 +418,7 @@ export default function MyStudents() {
   const filteredClients = useMemo(() => {
     const s = searchTerm.toLowerCase().trim();
     if (!s) return clients;
+
     return clients.filter(
       (c) =>
         String(c.full_name || "").toLowerCase().includes(s) ||
@@ -423,7 +470,6 @@ export default function MyStudents() {
         </CardHeader>
 
         <CardContent>
-          {/* Desktop Table */}
           <div className="hidden md:block">
             <Table>
               <TableHeader>
@@ -438,11 +484,14 @@ export default function MyStudents() {
               <TableBody>
                 {filteredClients.map((client) => {
                   const isManual = manualClientIds.has(client.id);
+
                   return (
                     <TableRow key={client.id}>
                       <TableCell>
                         <div className="font-medium">{client.full_name || "Unnamed"}</div>
-                        <div className="text-sm text-muted-foreground">{client.email || "No email"}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {client.email || "No email"}
+                        </div>
                       </TableCell>
 
                       <TableCell className="whitespace-nowrap">
@@ -487,7 +536,11 @@ export default function MyStudents() {
                             size="sm"
                             className="rounded-xl"
                             disabled={!isManual}
-                            title={isManual ? "Remove from your client list" : "Referred clients can't be removed here"}
+                            title={
+                              isManual
+                                ? "Remove from your client list"
+                                : "Referred clients can't be removed here"
+                            }
                             onClick={() => handleRemoveClient(client)}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
@@ -502,10 +555,10 @@ export default function MyStudents() {
             </Table>
           </div>
 
-          {/* Mobile Card View */}
           <div className="md:hidden grid grid-cols-1 gap-4">
             {filteredClients.map((client) => {
               const isManual = manualClientIds.has(client.id);
+
               return (
                 <Card key={client.id} className="p-4 rounded-2xl">
                   <div className="flex justify-between items-start gap-3">
@@ -544,7 +597,11 @@ export default function MyStudents() {
                         size="sm"
                         className="rounded-xl"
                         disabled={!isManual}
-                        title={isManual ? "Remove from your client list" : "Referred clients can't be removed here"}
+                        title={
+                          isManual
+                            ? "Remove from your client list"
+                            : "Referred clients can't be removed here"
+                        }
                         onClick={() => handleRemoveClient(client)}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
@@ -581,7 +638,6 @@ export default function MyStudents() {
         </CardContent>
       </Card>
 
-      {/* Documents Modal */}
       <Modal
         open={docsOpen}
         onClose={closeDocs}
@@ -595,7 +651,8 @@ export default function MyStudents() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm text-gray-600">
-                Create a required document list for this client, then tick off items as they submit them.
+                Create a required document list for this client, then tick off items as they submit
+                them.
               </div>
 
               <div className="flex items-center gap-2">
@@ -637,7 +694,8 @@ export default function MyStudents() {
             <div className="border rounded-2xl overflow-hidden">
               {activeDocs.length === 0 ? (
                 <div className="p-4 text-sm text-gray-600">
-                  No documents yet. Click <span className="font-medium">Use template</span> or add your own.
+                  No documents yet. Click <span className="font-medium">Use template</span> or add
+                  your own.
                 </div>
               ) : (
                 <div className="divide-y">
