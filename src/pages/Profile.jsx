@@ -14,6 +14,10 @@ import {
   ChevronsUpDown,
   Pencil,
   X,
+  QrCode,
+  Copy,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -77,6 +81,13 @@ const LANGUAGE_OPTIONS = [
   { value: "ar", label: "العربية" },
 ];
 
+const SEO_BASE =
+  "https://greenpassgroup.com";
+
+const FUNCTIONS_BASE =
+  import.meta.env.VITE_FUNCTIONS_BASE ||
+  "https://us-central1-greenpass-dc92d.cloudfunctions.net";
+
 const flagUrlFromCode = (code) => {
   const cc = (code || "").toString().trim().toLowerCase();
   if (!/^[a-z]{2}$/.test(cc)) return "";
@@ -118,6 +129,42 @@ async function getAllCountriesFallback() {
       flagUrl: flagUrlFromCode(x.cca2),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function buildSeoReferralLink(token) {
+  return `${SEO_BASE.replace(/\/+$/, "")}/?ref=${encodeURIComponent(token)}`;
+}
+
+function buildQrImageUrl(text) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(
+    text
+  )}`;
+}
+
+async function getMyAgentReferralToken() {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+
+  const idToken = await user.getIdToken();
+
+  const r = await fetch(
+    `${FUNCTIONS_BASE.replace(/\/+$/, "")}/getMyAgentReferralToken`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+    }
+  );
+
+  if (!r.ok) {
+    const msg = await r.text().catch(() => "");
+    throw new Error(msg || "Failed to load referral token");
+  }
+
+  const data = await r.json().catch(() => ({}));
+  if (!data?.token) throw new Error("No referral token returned");
+  return data.token;
 }
 
 function CountrySelect({ valueCode, valueName, onChange, disabled = false }) {
@@ -658,6 +705,11 @@ export default function Profile() {
   const [userDoc, setUserDoc] = useState(null);
   const [activeTab, setActiveTab] = useState("personal");
 
+  const [qrLoading, setQrLoading] = useState(false);
+  const [agentReferralToken, setAgentReferralToken] = useState("");
+  const [agentReferralLink, setAgentReferralLink] = useState("");
+  const [agentReferralQr, setAgentReferralQr] = useState("");
+
   const meta = useMemo(() => roleMeta(role, tr), [role, tr]);
   const verificationFields = useMemo(() => buildVerificationFieldsForRole(role, tr), [role, tr]);
 
@@ -963,6 +1015,47 @@ export default function Profile() {
 
     return () => unsub();
   }, [loadProfile]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadAgentQr() {
+      if (!uid || role !== "agent") {
+        if (mounted) {
+          setAgentReferralToken("");
+          setAgentReferralLink("");
+          setAgentReferralQr("");
+        }
+        return;
+      }
+
+      try {
+        setQrLoading(true);
+        const token = await getMyAgentReferralToken();
+        const link = buildSeoReferralLink(token);
+
+        if (!mounted) return;
+
+        setAgentReferralToken(token);
+        setAgentReferralLink(link);
+        setAgentReferralQr(buildQrImageUrl(link));
+      } catch (e) {
+        console.error("Failed to load agent referral QR:", e);
+        if (mounted) {
+          setAgentReferralToken("");
+          setAgentReferralLink("");
+          setAgentReferralQr("");
+        }
+      } finally {
+        if (mounted) setQrLoading(false);
+      }
+    }
+
+    loadAgentQr();
+    return () => {
+      mounted = false;
+    };
+  }, [uid, role]);
 
   const handleUploadProfilePicture = async (e) => {
     if (!isEditing) return;
@@ -1297,6 +1390,34 @@ export default function Profile() {
     }
   };
 
+  const handleCopyReferralLink = async () => {
+    if (!agentReferralLink) return;
+
+    try {
+      await navigator.clipboard.writeText(agentReferralLink);
+      setSaveNotice({
+        type: "success",
+        text: tr("qr.link_copied", "Referral link copied."),
+      });
+      setTimeout(() => setSaveNotice(null), 3000);
+    } catch (e) {
+      console.error("Copy referral link failed:", e);
+      setSaveNotice({
+        type: "error",
+        text: tr("qr.copy_failed", "Failed to copy referral link."),
+      });
+      setTimeout(() => setSaveNotice(null), 4000);
+    }
+  };
+
+  const handleDownloadQr = () => {
+    if (!agentReferralQr) return;
+    const a = document.createElement("a");
+    a.href = agentReferralQr;
+    a.download = "greenpass-agent-referral-qr.png";
+    a.click();
+  };
+
   const displayName = (form.full_name || tr("default_user", "User")).trim();
   const initial = displayName.charAt(0).toUpperCase() || "U";
   const avatarBg = "bg-gradient-to-br from-green-500 to-blue-500";
@@ -1443,12 +1564,15 @@ export default function Profile() {
 
             <div className="lg:col-span-2 space-y-6">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="w-full grid grid-cols-3 rounded-2xl h-auto p-1">
+                <TabsList className="w-full grid grid-cols-4 rounded-2xl h-auto p-1">
                   <TabsTrigger value="personal" className="rounded-xl">
                     {tr("personal_information", "Personal Information")}
                   </TabsTrigger>
                   <TabsTrigger value="details" className="rounded-xl">
                     {detailsTabLabel}
+                  </TabsTrigger>
+                  <TabsTrigger value="qr" className="rounded-xl">
+                    {tr("qr.title", "QR Code")}
                   </TabsTrigger>
                   <TabsTrigger value="validation" className="rounded-xl">
                     {tr("validation.title", "Validation")}
@@ -2079,6 +2203,122 @@ export default function Profile() {
                       </div>
                     </ProfileSection>
                   )}
+                </TabsContent>
+
+                <TabsContent value="qr" className="mt-6">
+                  <ProfileSection title={tr("qr.title", "QR Code")} icon={QrCode}>
+                    {showAgent ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 items-start">
+                        <Card className="rounded-3xl border shadow-none">
+                          <CardContent className="p-5 flex flex-col items-center gap-4">
+                            {qrLoading ? (
+                              <div className="w-[280px] h-[280px] rounded-2xl border bg-gray-50 flex items-center justify-center">
+                                <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+                              </div>
+                            ) : agentReferralQr ? (
+                              <img
+                                src={agentReferralQr}
+                                alt="Agent referral QR"
+                                className="w-[280px] h-[280px] object-contain rounded-2xl border bg-white"
+                              />
+                            ) : (
+                              <div className="w-[280px] h-[280px] rounded-2xl border bg-gray-50 flex items-center justify-center text-sm text-gray-500 text-center px-4">
+                                {tr("qr.unavailable", "QR code unavailable.")}
+                              </div>
+                            )}
+
+                            <div className="text-center">
+                              <p className="font-semibold text-gray-900">
+                                {tr("qr.agent_title", "My Referral QR")}
+                              </p>
+                              <p className="text-sm text-gray-600 mt-1">
+                                {tr(
+                                  "qr.agent_help",
+                                  "Students who register using this QR will be added to your client list after they sign up or accept the referral."
+                                )}
+                              </p>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <div className="space-y-5">
+                          <div className="space-y-2">
+                            <Label>{tr("qr.referral_link", "Referral Link")}</Label>
+                            <Input
+                              value={agentReferralLink}
+                              readOnly
+                              className="bg-gray-50"
+                              placeholder={tr("qr.loading_link", "Loading referral link...")}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>{tr("qr.referral_token", "Referral Token")}</Label>
+                            <Input
+                              value={agentReferralToken}
+                              readOnly
+                              className="bg-gray-50"
+                              placeholder={tr("qr.loading_token", "Loading token...")}
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap gap-3">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleCopyReferralLink}
+                              disabled={!agentReferralLink}
+                              className="rounded-xl"
+                            >
+                              <Copy className="w-4 h-4 mr-2" />
+                              {tr("qr.copy_link", "Copy Link")}
+                            </Button>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleDownloadQr}
+                              disabled={!agentReferralQr}
+                              className="rounded-xl"
+                            >
+                              <Download className="w-4 h-4 mr-2" />
+                              {tr("qr.download_qr", "Download QR")}
+                            </Button>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => window.open(agentReferralLink, "_blank", "noopener,noreferrer")}
+                              disabled={!agentReferralLink}
+                              className="rounded-xl"
+                            >
+                              <ExternalLink className="w-4 h-4 mr-2" />
+                              {tr("qr.open_link", "Open Link")}
+                            </Button>
+                          </div>
+
+                          <div className="rounded-2xl border bg-blue-50 text-blue-900 p-4 text-sm leading-6">
+                            <p className="font-semibold mb-1">
+                              {tr("qr.how_it_works", "How it works")}
+                            </p>
+                            <p>
+                              {tr(
+                                "qr.how_it_works_body",
+                                "Share this QR with students. New students can sign up through it on the SEO site, while existing students can accept the referral and be added to your client list."
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border bg-gray-50 p-5 text-sm text-gray-600">
+                        {tr(
+                          "qr.not_available_for_role",
+                          "QR code is currently available for agent referrals only in this phase."
+                        )}
+                      </div>
+                    )}
+                  </ProfileSection>
                 </TabsContent>
 
                 <TabsContent value="validation" className="mt-6">

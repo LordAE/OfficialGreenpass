@@ -591,6 +591,262 @@ async function requireBearerUid(req) {
   return { uid: decoded.uid, decoded };
 }
 
+// ============================
+// Agent Referral QR
+// ============================
+
+async function getUserDocByUid(uid) {
+  const snap = await admin.firestore().collection("users").doc(uid).get();
+  return snap.exists ? { id: snap.id, ...(snap.data() || {}) } : null;
+}
+
+function pickDisplayName(u) {
+  return (
+    u?.full_name ||
+    u?.display_name ||
+    u?.displayName ||
+    u?.name ||
+    [u?.first_name, u?.last_name].filter(Boolean).join(" ") ||
+    "Agent"
+  );
+}
+
+function pickCompanyName(u) {
+  return (
+    u?.company_name ||
+    u?.agency_name ||
+    u?.organization_name ||
+    u?.business_name ||
+    ""
+  );
+}
+
+exports.getMyAgentReferralToken = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "GET") {
+        return res.status(405).json({ error: "GET only" });
+      }
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const userRef = admin.firestore().collection("users").doc(uid);
+      const userSnap = await userRef.get();
+
+      if (!userSnap.exists) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const user = userSnap.data() || {};
+      const role =
+        normalizeRole(user.role || user.user_type || user.selected_role || user.userType) ||
+        normalizeRole(decoded?.role);
+
+      if (role !== "agent") {
+        return res.status(403).json({ error: "Only agent accounts can use referral QR" });
+      }
+
+      let token = user.referralQrToken;
+      if (!token) {
+        token = `agt_${randomToken(16)}`;
+        await userRef.set(
+          {
+            referralQrToken: token,
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      return res.json({ ok: true, token });
+    } catch (e) {
+      console.error("getMyAgentReferralToken error:", e);
+      return res.status(500).json({ error: e?.message || "Failed to get referral token" });
+    }
+  });
+});
+
+exports.getAgentReferralPublic = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "GET") {
+        return res.status(405).json({ ok: false, error: "GET only" });
+      }
+
+      const ref = String(req.query.ref || "").trim();
+      if (!ref) {
+        return res.status(400).json({ ok: false, error: "Missing ref token" });
+      }
+
+      const q = await admin
+        .firestore()
+        .collection("users")
+        .where("referralQrToken", "==", ref)
+        .limit(1)
+        .get();
+
+      if (q.empty) {
+        return res.status(404).json({ ok: false, error: "Referral not found" });
+      }
+
+      const d = q.docs[0];
+      const agent = d.data() || {};
+      const role = normalizeRole(
+        agent.role || agent.user_type || agent.selected_role || agent.userType
+      );
+
+      if (role !== "agent") {
+        return res.status(403).json({ ok: false, error: "Referral owner is not an agent" });
+      }
+
+      return res.json({
+        ok: true,
+        agentId: d.id,
+        agentName: pickDisplayName(agent),
+        agentCompany: pickCompanyName(agent),
+        role: "agent",
+      });
+    } catch (e) {
+      console.error("getAgentReferralPublic error:", e);
+      return res.status(500).json({ ok: false, error: e?.message || "Server error" });
+    }
+  });
+});
+
+exports.acceptAgentReferral = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") {
+        return res.status(405).json({ error: "POST only" });
+      }
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const { ref } = req.body || {};
+      const referralToken = String(ref || "").trim();
+
+      if (!referralToken) {
+        return res.status(400).json({ error: "Missing ref token" });
+      }
+
+      const db = admin.firestore();
+      const userRef = db.collection("users").doc(uid);
+      const userSnap = await userRef.get();
+
+      if (!userSnap.exists) {
+        return res.status(404).json({ error: "Student user not found" });
+      }
+
+      const student = userSnap.data() || {};
+      const studentRole = normalizeRole(
+        student.role || student.user_type || student.selected_role || student.userType || decoded?.role
+      );
+
+      if (studentRole !== "student" && studentRole !== "user") {
+        return res.status(403).json({ error: "Only student accounts can accept agent referrals" });
+      }
+
+      const q = await db
+        .collection("users")
+        .where("referralQrToken", "==", referralToken)
+        .limit(1)
+        .get();
+
+      if (q.empty) {
+        return res.status(404).json({ error: "Referral agent not found" });
+      }
+
+      const agentDoc = q.docs[0];
+      const agentId = agentDoc.id;
+      const agent = agentDoc.data() || {};
+
+      const agentRole = normalizeRole(
+        agent.role || agent.user_type || agent.selected_role || agent.userType
+      );
+
+      if (agentRole !== "agent") {
+        return res.status(403).json({ error: "Referral owner is not an agent" });
+      }
+
+      if (agentId === uid) {
+        return res.status(400).json({ error: "You cannot refer yourself" });
+      }
+
+      const relationId = `${agentId}_${uid}`;
+      const relationRef = db.collection("agent_clients").doc(relationId);
+
+      const notifId = `client_accept_${uid}`;
+      const notifRef = db
+        .collection("users")
+        .doc(agentId)
+        .collection("notifications")
+        .doc(notifId);
+
+      await db.runTransaction(async (tx) => {
+        const relSnap = await tx.get(relationRef);
+
+        tx.set(
+          relationRef,
+          {
+            agentId,
+            studentId: uid,
+            status: "active",
+            source: "qr",
+            acceptedByStudent: true,
+            createdAt: relSnap.exists
+              ? relSnap.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp()
+              : admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        tx.set(
+          userRef,
+          {
+            referredByAgentId: student.referredByAgentId || agentId,
+            assigned_agent_id: student.assigned_agent_id || agentId,
+            referralType: "qr",
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        tx.set(
+          notifRef,
+          {
+            type: "student_referral_accept",
+            title: "New client accepted your referral",
+            body: `${pickDisplayName(student)} joined your client list`,
+            studentId: uid,
+            studentName: pickDisplayName(student),
+            link: `/viewprofile/${uid}`,
+            seen: false,
+            readAt: null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      });
+
+      return res.json({
+        ok: true,
+        agentId,
+        agentName: pickDisplayName(agent),
+      });
+    } catch (e) {
+      console.error("acceptAgentReferral error:", e);
+      const msg = e?.message || "Failed to accept referral";
+      const low = String(msg).toLowerCase();
+      const code =
+        low.includes("missing authorization") ? 401 :
+        low.includes("not found") ? 404 :
+        low.includes("only student") || low.includes("not an agent") ? 403 :
+        400;
+
+      return res.status(code).json({ error: msg });
+    }
+  });
+});
+
 function randomCode(len = 48) {
   return crypto.randomBytes(len).toString("hex"); // 96 chars
 }
