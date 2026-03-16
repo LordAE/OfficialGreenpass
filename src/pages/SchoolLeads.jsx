@@ -1,14 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User } from '@/api/entities';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Users, Search, Mail, Phone, MessageSquare, Loader2, Info, Lock, CheckCircle } from 'lucide-react';
+import {
+  Users,
+  Search,
+  Mail,
+  Phone,
+  MessageSquare,
+  Loader2,
+  Info,
+  Lock,
+  CheckCircle,
+  QrCode,
+  XCircle,
+  Camera,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { Html5Qrcode } from 'html5-qrcode';
 
 import { db, auth } from '@/firebase';
 import {
@@ -23,6 +37,12 @@ import {
 } from 'firebase/firestore';
 
 import { useSubscriptionMode } from '@/hooks/useSubscriptionMode';
+
+const FUNCTIONS_BASE =
+  import.meta.env.VITE_FUNCTIONS_BASE ||
+  "https://us-central1-greenpass-dc92d.cloudfunctions.net";
+
+const QR_READER_ID = 'school-student-qr-reader';
 
 const StatusBadge = ({ status = '' }) => {
   const colors = {
@@ -41,11 +61,13 @@ const StatusBadge = ({ status = '' }) => {
 function resolveUserRole(userDoc) {
   return String(
     userDoc?.role ||
-    userDoc?.selected_role ||
-    userDoc?.user_type ||
-    userDoc?.userType ||
-    'user'
-  ).toLowerCase().trim();
+      userDoc?.selected_role ||
+      userDoc?.user_type ||
+      userDoc?.userType ||
+      'user'
+  )
+    .toLowerCase()
+    .trim();
 }
 
 function isSubInactiveForRole(userDoc) {
@@ -105,6 +127,87 @@ function maskPhone(phone) {
   return `${'*'.repeat(Math.max(6, digits.length - 2))}${visible}`;
 }
 
+function removeStudentRefFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('student_ref');
+    window.history.replaceState({}, '', url.toString());
+  } catch {}
+}
+
+function extractStudentTokenFromScan(rawValue) {
+  const text = String(rawValue || '').trim();
+  if (!text) return '';
+
+  try {
+    const url = new URL(text);
+    return (
+      url.searchParams.get('student_ref') ||
+      url.searchParams.get('ref') ||
+      text
+    );
+  } catch {
+    return text;
+  }
+}
+
+async function resolveStudentQrToken(token) {
+  const fbUser = auth.currentUser;
+  if (!fbUser) throw new Error('Not signed in');
+
+  const idToken = await fbUser.getIdToken();
+
+  const response = await fetch(
+    `${FUNCTIONS_BASE.replace(/\/+$/, '')}/resolveStudentReferralToken?student_ref=${encodeURIComponent(token)}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'Failed to resolve student QR token');
+  }
+
+  const student = data?.student;
+  if (!student?.studentId) {
+    throw new Error('Student token did not return a student');
+  }
+
+  return student;
+}
+
+async function acceptStudentQrLead(token) {
+  const fbUser = auth.currentUser;
+  if (!fbUser) throw new Error('Not signed in');
+
+  const idToken = await fbUser.getIdToken();
+
+  const response = await fetch(
+    `${FUNCTIONS_BASE.replace(/\/+$/, '')}/acceptStudentReferralToSchool`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ student_ref: token }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'Failed to accept student QR');
+  }
+
+  return data;
+}
+
 export default function SchoolLeads() {
   const navigate = useNavigate();
   const { subscriptionModeEnabled } = useSubscriptionMode();
@@ -114,6 +217,20 @@ export default function SchoolLeads() {
   const [searchTerm, setSearchTerm] = useState('');
   const [meDoc, setMeDoc] = useState(null);
   const [updatingLeadId, setUpdatingLeadId] = useState('');
+  const [errorText, setErrorText] = useState('');
+
+  const [pendingQrLead, setPendingQrLead] = useState(null);
+  const [pendingQrToken, setPendingQrToken] = useState('');
+  const [resolvingQrLead, setResolvingQrLead] = useState(false);
+  const [actingQrLead, setActingQrLead] = useState(false);
+  const [qrNotice, setQrNotice] = useState('');
+
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scannerLoading, setScannerLoading] = useState(false);
+
+  const scannerRef = useRef(null);
+  const scannerStartingRef = useRef(false);
 
   const shouldMaskLeadInfo =
     subscriptionModeEnabled && isSubInactiveForRole(meDoc);
@@ -155,14 +272,18 @@ export default function SchoolLeads() {
             ? new Date(a.created_date).getTime()
             : a.created_at?.toDate
               ? a.created_at.toDate().getTime()
-              : 0;
+              : a.createdAt?.toDate
+                ? a.createdAt.toDate().getTime()
+                : 0;
 
         const bd =
           b.created_date
             ? new Date(b.created_date).getTime()
             : b.created_at?.toDate
               ? b.created_at.toDate().getTime()
-              : 0;
+              : b.createdAt?.toDate
+                ? b.createdAt.toDate().getTime()
+                : 0;
 
         return bd - ad;
       });
@@ -192,14 +313,169 @@ export default function SchoolLeads() {
     } catch (error) {
       console.error('Error loading school leads:', error);
       setLeads([]);
+      setErrorText(error?.message || 'Failed to load school leads.');
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const stopScanner = useCallback(async () => {
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
+
+    if (!scanner) return;
+
+    try {
+      const state = scanner.getState?.();
+      if (state === 2 || state === 3) {
+        await scanner.stop();
+      }
+    } catch (e) {
+      console.warn('Scanner stop warning:', e);
+    }
+
+    try {
+      await scanner.clear();
+    } catch (e) {
+      console.warn('Scanner clear warning:', e);
+    }
+  }, []);
+
+  const resolveTokenIntoPendingLead = useCallback(async (token) => {
+    const fbUser = auth.currentUser;
+    if (!fbUser?.uid) return;
+
+    setResolvingQrLead(true);
+    setQrNotice('');
+    setErrorText('');
+    setPendingQrToken(token);
+
+    try {
+      const meSnap = await getDoc(doc(db, 'users', fbUser.uid));
+      const currentMeDoc = meSnap.exists() ? meSnap.data() : null;
+      setMeDoc(currentMeDoc);
+
+      const role = resolveUserRole(currentMeDoc);
+      if (role !== 'school') {
+        setQrNotice('Only school accounts can accept student QR codes.');
+        setPendingQrLead(null);
+        return;
+      }
+
+      const resolved = await resolveStudentQrToken(token);
+
+      const leadId = `${fbUser.uid}_${resolved.studentId}`;
+      const existingLeadSnap = await getDoc(doc(db, 'school_leads', leadId));
+
+      if (existingLeadSnap.exists()) {
+        const data = existingLeadSnap.data() || {};
+        setPendingQrLead({
+          ...resolved,
+          alreadyExists: true,
+          existingLeadId: leadId,
+          existingStatus: data.status || 'interested',
+        });
+        setQrNotice('This student is already in your leads.');
+        return;
+      }
+
+      setPendingQrLead({
+        ...resolved,
+        alreadyExists: false,
+      });
+    } catch (e) {
+      console.error('Failed to resolve student QR:', e);
+      setPendingQrLead(null);
+      setErrorText(e?.message || 'Failed to resolve student QR.');
+    } finally {
+      setResolvingQrLead(false);
+    }
+  }, []);
+
+  const resolvePendingQrLead = useCallback(async () => {
+    const fbUser = auth.currentUser;
+    if (!fbUser?.uid) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('student_ref');
+    if (!token) return;
+
+    await resolveTokenIntoPendingLead(token);
+  }, [resolveTokenIntoPendingLead]);
+
+  const startQrScanner = useCallback(async () => {
+    if (scannerStartingRef.current) return;
+
+    setScannerError('');
+    setScannerLoading(true);
+    scannerStartingRef.current = true;
+
+    try {
+      await stopScanner();
+
+      const qrScanner = new Html5Qrcode(QR_READER_ID);
+      scannerRef.current = qrScanner;
+
+      await qrScanner.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+        },
+        async (decodedText) => {
+          const token = extractStudentTokenFromScan(decodedText);
+          if (!token) return;
+
+          try {
+            await stopScanner();
+            setShowScanner(false);
+            await resolveTokenIntoPendingLead(token);
+          } catch (e) {
+            console.error('QR scan resolve failed:', e);
+            setErrorText(e?.message || 'Failed to resolve scanned QR.');
+          }
+        },
+        () => {}
+      );
+    } catch (e) {
+      console.error('QR scanner start failed:', e);
+      setScannerError(e?.message || 'Unable to start QR scanner.');
+    } finally {
+      setScannerLoading(false);
+      scannerStartingRef.current = false;
+    }
+  }, [resolveTokenIntoPendingLead, stopScanner]);
+
   useEffect(() => {
     loadLeads();
   }, [loadLeads]);
+
+  useEffect(() => {
+    resolvePendingQrLead();
+  }, [resolvePendingQrLead]);
+
+  useEffect(() => {
+    if (!showScanner) {
+      stopScanner();
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      startQrScanner();
+    }, 120);
+
+    return () => {
+      window.clearTimeout(timer);
+      stopScanner();
+    };
+  }, [showScanner, startQrScanner, stopScanner]);
+
+  useEffect(() => {
+    return () => {
+      stopScanner();
+    };
+  }, [stopScanner]);
 
   const filteredLeads = leads.filter((lead) => {
     const term = (searchTerm || '').toLowerCase();
@@ -239,6 +515,10 @@ export default function SchoolLeads() {
         return format(lead.created_at.toDate(), 'MMM dd, yyyy');
       }
 
+      if (lead.createdAt?.toDate) {
+        return format(lead.createdAt.toDate(), 'MMM dd, yyyy');
+      }
+
       return '—';
     } catch {
       return '—';
@@ -267,6 +547,7 @@ export default function SchoolLeads() {
     if ((lead.status || 'interested') === 'contacted') return;
 
     setUpdatingLeadId(lead.id);
+    setErrorText('');
 
     const previousLeads = leads;
 
@@ -296,6 +577,61 @@ export default function SchoolLeads() {
     }
   };
 
+  const handleDeclineQrLead = () => {
+    setPendingQrLead(null);
+    setPendingQrToken('');
+    setQrNotice('');
+    removeStudentRefFromUrl();
+  };
+
+  const handleAcceptQrLead = async () => {
+    if (!pendingQrLead?.studentId || !pendingQrToken) return;
+
+    setActingQrLead(true);
+    setErrorText('');
+    setQrNotice('');
+
+    try {
+      const result = await acceptStudentQrLead(pendingQrToken);
+
+      setPendingQrLead(null);
+      setPendingQrToken('');
+      removeStudentRefFromUrl();
+
+      if (result?.alreadyExists) {
+        setQrNotice('This student is already in your leads.');
+      } else {
+        setQrNotice('Student added to your leads.');
+      }
+
+      await loadLeads();
+    } catch (e) {
+      console.error('Failed to accept QR lead:', e);
+      setErrorText(e?.message || 'Failed to add student to school leads.');
+    } finally {
+      setActingQrLead(false);
+    }
+  };
+
+  const handleGoToExistingLead = () => {
+    setPendingQrLead(null);
+    setPendingQrToken('');
+    removeStudentRefFromUrl();
+    setQrNotice('This student is already in your leads.');
+  };
+
+  const handleOpenScanner = () => {
+    setScannerError('');
+    setErrorText('');
+    setShowScanner(true);
+  };
+
+  const handleCloseScanner = async () => {
+    setShowScanner(false);
+    setScannerError('');
+    await stopScanner();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -307,10 +643,28 @@ export default function SchoolLeads() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-gray-100 p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <Users className="w-8 h-8 text-pink-700" />
-          <h1 className="text-4xl font-bold text-gray-800">Student Leads</h1>
+        <div className="flex flex-col gap-4 mb-8 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
+            <Users className="w-8 h-8 text-pink-700" />
+            <h1 className="text-4xl font-bold text-gray-800">Student Leads</h1>
+          </div>
+
+          <Button
+            onClick={handleOpenScanner}
+            className="bg-pink-600 hover:bg-pink-700 w-full md:w-auto"
+          >
+            <QrCode className="w-4 h-4 mr-2" />
+            Scan Student QR
+          </Button>
         </div>
+
+        {errorText ? (
+          <Card className="mb-6 border-red-200 bg-red-50">
+            <CardContent className="p-4 text-red-800 text-sm">
+              {errorText}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {shouldMaskLeadInfo && (
           <Card className="mb-6 border-amber-200 bg-amber-50">
@@ -320,10 +674,161 @@ export default function SchoolLeads() {
                 <div>
                   <p className="font-semibold">Lead details are locked</p>
                   <p className="text-sm text-amber-800 mt-1">
-                    Subscription mode is enabled. Activate your subscription to view full student name, email, and phone number.
+                    Subscription mode is enabled. Activate your subscription to view full student
+                    name, email, and phone number.
                   </p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {showScanner && (
+          <Card className="mb-6 border-pink-200 shadow-md">
+            <CardContent className="p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Scan Student QR</h3>
+                  <p className="text-sm text-gray-600">
+                    Point your camera at the student QR code to load their details.
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={startQrScanner}
+                    disabled={scannerLoading}
+                  >
+                    {scannerLoading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Camera className="w-4 h-4 mr-2" />
+                    )}
+                    Restart Scanner
+                  </Button>
+
+                  <Button variant="outline" onClick={handleCloseScanner}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+
+              {scannerError ? (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {scannerError}
+                </div>
+              ) : null}
+
+              <div className="rounded-2xl border border-pink-100 bg-white p-4">
+                <div
+                  id={QR_READER_ID}
+                  className="w-full max-w-md mx-auto overflow-hidden rounded-xl"
+                />
+              </div>
+
+              <p className="text-xs text-gray-500 mt-3 text-center">
+                On mobile, allow camera access when prompted.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {(resolvingQrLead || pendingQrLead || qrNotice) && (
+          <Card className="mb-6 border-pink-200 bg-pink-50">
+            <CardContent className="p-5">
+              {resolvingQrLead ? (
+                <div className="flex items-center gap-3 text-pink-900">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <div>
+                    <p className="font-semibold">Resolving student QR</p>
+                    <p className="text-sm text-pink-800 mt-1">
+                      Please wait while we load the student details.
+                    </p>
+                  </div>
+                </div>
+              ) : pendingQrLead ? (
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-pink-100 flex items-center justify-center shrink-0">
+                      <QrCode className="w-5 h-5 text-pink-700" />
+                    </div>
+
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {pendingQrLead.alreadyExists
+                          ? `${pendingQrLead.full_name || 'This student'} is already in your leads`
+                          : `Add ${pendingQrLead.full_name || 'this student'} to your leads?`}
+                      </h3>
+
+                      <p className="text-sm text-gray-600 mt-1">
+                        {pendingQrLead.alreadyExists
+                          ? 'This student has already been linked to your school lead list.'
+                          : 'This student shared their QR code with your school.'}
+                      </p>
+
+                      <div className="mt-3 space-y-1 text-sm text-gray-700">
+                        <div>
+                          <span className="font-medium">Student:</span>{' '}
+                          {pendingQrLead.full_name || '—'}
+                        </div>
+                        {pendingQrLead.email ? (
+                          <div>
+                            <span className="font-medium">Email:</span> {pendingQrLead.email}
+                          </div>
+                        ) : null}
+                        {pendingQrLead.phone ? (
+                          <div>
+                            <span className="font-medium">Phone:</span> {pendingQrLead.phone}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={handleDeclineQrLead}
+                      disabled={actingQrLead}
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      {pendingQrLead.alreadyExists ? 'Close' : 'Decline'}
+                    </Button>
+
+                    {pendingQrLead.alreadyExists ? (
+                      <Button
+                        onClick={handleGoToExistingLead}
+                        className="bg-pink-600 hover:bg-pink-700"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Go to Leads
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleAcceptQrLead}
+                        disabled={actingQrLead}
+                        className="bg-pink-600 hover:bg-pink-700"
+                      >
+                        {actingQrLead ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                        )}
+                        Accept
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : qrNotice ? (
+                <div className="flex items-start gap-3 text-pink-900">
+                  <CheckCircle className="w-5 h-5 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">QR action completed</p>
+                    <p className="text-sm text-pink-800 mt-1">{qrNotice}</p>
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         )}

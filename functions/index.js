@@ -5,7 +5,11 @@ const OpenAI = require("openai");
 
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
-const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentDeleted,
+} = require("firebase-functions/v2/firestore");
 
 admin.initializeApp();
 
@@ -43,7 +47,6 @@ exports.api = onRequest(
           return res.json({ translatedText: cached.data().translatedText, cached: true });
         }
 
-        // ✅ Create OpenAI client INSIDE the handler using the secret
         const openai = new OpenAI({ apiKey: OPENAI_API_KEY.value() });
 
         const prompt = `Translate the following text to ${targetLang}. Keep URLs, emails, and names unchanged. Return only the translation.\n\n${text}`;
@@ -51,7 +54,10 @@ exports.api = onRequest(
         const completion = await openai.chat.completions.create({
           model: "gpt-4.1-mini",
           messages: [
-            { role: "system", content: "You are a professional translator. Output ONLY the translated text." },
+            {
+              role: "system",
+              content: "You are a professional translator. Output ONLY the translated text.",
+            },
             { role: "user", content: prompt },
           ],
           temperature: 0,
@@ -80,24 +86,6 @@ exports.api = onRequest(
  * =========================================================
  * 2) Notifications: Followers get notified on new published post
  * =========================================================
- *
- * Data expectations (we support multiple field names):
- * - posts/{postId} contains:
- *   - authorId OR user_id OR author_id
- *   - authorName OR author_name OR full_name (optional)
- *   - authorRole OR author_role OR role (optional)
- *   - status: "published" (recommended)
- *
- * Followers live at:
- * - users/{authorId}/followers/{followerId}
- *
- * Notifications written to:
- * - users/{followerId}/notifications/{notifId}
- *
- * IMPORTANT:
- * - We write: seen (boolean) + readAt (timestamp|null)
- *   (matches your rules that only allow updating seen/readAt)
- * - We use a deterministic notif doc id per follower per post to prevent duplicates.
  */
 
 function normalizeStatus(v) {
@@ -129,17 +117,18 @@ async function fanoutNewPostNotification({ postId, post }) {
 
   const now = admin.firestore.FieldValue.serverTimestamp();
 
-  // Firestore batch limit = 500 ops/commit
   const followerIds = followersSnap.docs.map((d) => d.id);
-  const chunkSize = 450; // leave headroom
+  const chunkSize = 450;
   for (let i = 0; i < followerIds.length; i += chunkSize) {
     const chunk = followerIds.slice(i, i + chunkSize);
     const batch = admin.firestore().batch();
 
     chunk.forEach((followerId) => {
-      // Deterministic ID: 1 notif per follower per post
       const notifId = `new_post_${postId}`;
-      const notifRef = admin.firestore().collection(`users/${followerId}/notifications`).doc(notifId);
+      const notifRef = admin
+        .firestore()
+        .collection(`users/${followerId}/notifications`)
+        .doc(notifId);
 
       batch.set(
         notifRef,
@@ -152,14 +141,11 @@ async function fanoutNewPostNotification({ postId, post }) {
           title: "New post",
           body: `${authorName} posted an update`,
           link: `/postdetail?id=${postId}`,
-
-          // ✅ matches your notification rules pattern
           seen: false,
           readAt: null,
-
           createdAt: now,
         },
-        { merge: true } // safe if doc already exists
+        { merge: true }
       );
     });
 
@@ -167,9 +153,6 @@ async function fanoutNewPostNotification({ postId, post }) {
   }
 }
 
-/**
- * 2A) If a post is created already "published", notify immediately.
- */
 exports.notifyFollowersOnNewPost = onDocumentCreated("posts/{postId}", async (event) => {
   const snap = event.data;
   if (!snap) return;
@@ -178,18 +161,11 @@ exports.notifyFollowersOnNewPost = onDocumentCreated("posts/{postId}", async (ev
   const postId = event.params.postId;
 
   const status = normalizeStatus(post.status);
-
-  // If you don't use status yet, remove this check.
-  // Keeping it prevents "draft" posts from notifying followers.
   if (status && status !== "published") return;
 
   await fanoutNewPostNotification({ postId, post });
 });
 
-/**
- * 2B) If you create posts as "draft" first and publish later,
- * this handles the transition draft -> published.
- */
 exports.notifyFollowersOnPostPublished = onDocumentUpdated("posts/{postId}", async (event) => {
   const before = event.data?.before?.data?.() || {};
   const after = event.data?.after?.data?.() || {};
@@ -208,16 +184,6 @@ exports.notifyFollowersOnPostPublished = onDocumentUpdated("posts/{postId}", asy
  * =========================================================
  * 2B) Notifications: User gets notified when someone follows them
  * =========================================================
- *
- * Trigger:
- * - users/{followeeId}/followers/{followerId} (onCreate)
- *
- * Writes:
- * - users/{followeeId}/notifications/{notifId}
- *
- * Notes:
- * - No route/link needed (NotificationsBell already supports link-less notifs)
- * - Deterministic notif id prevents duplicates
  */
 exports.notifyUserOnFollow = onDocumentCreated(
   "users/{followeeId}/followers/{followerId}",
@@ -227,14 +193,13 @@ exports.notifyUserOnFollow = onDocumentCreated(
       const followerId = event.params.followerId;
 
       if (!followeeId || !followerId) return;
-      if (followeeId === followerId) return; // ignore self-follow
+      if (followeeId === followerId) return;
 
       const notifId = `follow_${followeeId}_${followerId}`;
       const notifRef = admin
         .firestore()
         .doc(`users/${followeeId}/notifications/${notifId}`);
 
-      // Pull follower profile for display (best-effort)
       let followerName = "Someone";
       let followerRole = null;
       let followerPhoto = "";
@@ -256,8 +221,6 @@ exports.notifyUserOnFollow = onDocumentCreated(
           followerPhoto,
           title: "New follower",
           body: `${followerName} started following you`,
-
-          // matches your notification rules pattern
           seen: false,
           readAt: null,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -304,7 +267,6 @@ async function getUserProfile(uid) {
   }
 }
 
-// 3A) When a follow request is created, notify the followee + create outgoing mirror
 exports.notifyUserOnFollowRequest = onDocumentCreated(
   "users/{followeeId}/follow_requests/{followerId}",
   async (event) => {
@@ -320,7 +282,6 @@ exports.notifyUserOnFollowRequest = onDocumentCreated(
 
       const follower = await getUserProfile(followerId);
 
-      // Notification for followee (matches your NotificationsBell.jsx)
       const notifId = `follow_request_${followeeId}_${followerId}`;
       const notifRef = admin.firestore().doc(`users/${followeeId}/notifications/${notifId}`);
       await notifRef.set(
@@ -342,7 +303,6 @@ exports.notifyUserOnFollowRequest = onDocumentCreated(
         { merge: true }
       );
 
-      // Outgoing mirror doc for sender UI (optional)
       const mirrorRef = admin
         .firestore()
         .doc(`users/${followerId}/follow_requests_sent/${followeeId}`);
@@ -361,7 +321,6 @@ exports.notifyUserOnFollowRequest = onDocumentCreated(
   }
 );
 
-// 3B) When followee accepts/declines, create relationships + notify follower
 exports.handleFollowRequestDecision = onDocumentUpdated(
   "users/{followeeId}/follow_requests/{followerId}",
   async (event) => {
@@ -384,14 +343,12 @@ exports.handleFollowRequestDecision = onDocumentUpdated(
       const db = admin.firestore();
       const now = admin.firestore.FieldValue.serverTimestamp();
 
-      // Always remove outgoing mirror
       const mirrorRef = db.doc(`users/${followerId}/follow_requests_sent/${followeeId}`);
 
       if (afterStatus === "accepted") {
         const followerRef = db.doc(`users/${followeeId}/followers/${followerId}`);
         const followingRef = db.doc(`users/${followerId}/following/${followeeId}`);
 
-        // Create follower/following docs (server-only)
         await db.runTransaction(async (tx) => {
           tx.set(
             followerRef,
@@ -413,11 +370,10 @@ exports.handleFollowRequestDecision = onDocumentUpdated(
             { merge: true }
           );
 
-          tx.delete(event.data.after.ref); // delete request
+          tx.delete(event.data.after.ref);
           tx.delete(mirrorRef);
         });
 
-        // Notify follower: accepted
         const notifId = `follow_request_accepted_${followeeId}_${followerId}`;
         const notifRef = db.doc(`users/${followerId}/notifications/${notifId}`);
         await notifRef.set(
@@ -435,13 +391,11 @@ exports.handleFollowRequestDecision = onDocumentUpdated(
           { merge: true }
         );
       } else {
-        // declined: delete request + mirror
         await db.runTransaction(async (tx) => {
           tx.delete(event.data.after.ref);
           tx.delete(mirrorRef);
         });
 
-        // Notify follower: declined
         const notifId = `follow_request_declined_${followeeId}_${followerId}`;
         const notifRef = db.doc(`users/${followerId}/notifications/${notifId}`);
         await notifRef.set(
@@ -465,7 +419,6 @@ exports.handleFollowRequestDecision = onDocumentUpdated(
   }
 );
 
-// 3C) If a request is deleted (canceled), remove sender mirror and the followee notification
 exports.cleanupOnFollowRequestDeleted = onDocumentDeleted(
   "users/{followeeId}/follow_requests/{followerId}",
   async (event) => {
@@ -485,20 +438,15 @@ exports.cleanupOnFollowRequestDeleted = onDocumentDeleted(
   }
 );
 
-
 // ============================
 // Auth Bridge (SEO -> App)
 // ============================
 
-const AUTH_BRIDGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const AUTH_BRIDGE_TTL_MS = 5 * 60 * 1000;
 
 // ============================
 // Invite System (Admin/School/Agent)
 // ============================
-
-// NOTE: Set a strong pepper in Functions env: INVITE_PEPPER
-// Example (local): INVITE_PEPPER="<long-random>" firebase emulators:start
-// Example (deploy): set an env var in your functions runtime.
 
 const INVITE_ROLE_LABELS = {
   student: "Student",
@@ -526,7 +474,7 @@ async function getInviterDisplayName(uid, decodedToken) {
     return decodedToken?.name || decodedToken?.email || "A GreenPass user";
   }
 }
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const INVITE_PEPPER = process.env.INVITE_PEPPER || "CHANGE_ME_INVITE_PEPPER";
 
 function sha256(str) {
@@ -536,19 +484,17 @@ function sha256(str) {
 function normalizeRole(v) {
   const s = String(v || "").toLowerCase().trim();
   if (s === "advisor") return "admin";
+  if (s === "user") return "student";
   return s;
 }
 
 async function getUserRoleForInvite(uid, decodedToken) {
-  // Prefer custom claim
   if (decodedToken?.admin === true) return "admin";
 
   const snap = await admin.firestore().doc(`users/${uid}`).get();
   const u = snap.data() || {};
 
   if (u.is_admin === true || u.admin === true) return "admin";
-
-  // Support your multiple role fields
   return normalizeRole(u.role || u.user_type || u.selected_role || u.userType);
 }
 
@@ -557,19 +503,16 @@ function assertRoleCanInvite(inviterRole, invitedRole) {
   const rr = normalizeRole(invitedRole);
 
   if (ir === "admin") {
-    // ✅ Admin can invite: school, agent, student
     if (rr !== "agent" && rr !== "school" && rr !== "student") {
       throw new Error("Admin can only invite agent, school, or student");
     }
     return;
   }
   if (ir === "school") {
-    // ✅ School can invite: agent (unchanged)
     if (rr !== "agent") throw new Error("School can only invite agent");
     return;
   }
   if (ir === "agent") {
-    // ✅ Agent can invite: agent, school, student
     if (rr !== "agent" && rr !== "school" && rr !== "student") {
       throw new Error("Agent can only invite agent, school, or student");
     }
@@ -592,7 +535,7 @@ async function requireBearerUid(req) {
 }
 
 // ============================
-// Agent Referral QR
+// Agent / Student Referral QR
 // ============================
 
 async function getUserDocByUid(uid) {
@@ -607,18 +550,103 @@ function pickDisplayName(u) {
     u?.displayName ||
     u?.name ||
     [u?.first_name, u?.last_name].filter(Boolean).join(" ") ||
-    "Agent"
+    "User"
   );
 }
 
 function pickCompanyName(u) {
-  return (
-    u?.company_name ||
-    u?.agency_name ||
-    u?.organization_name ||
-    u?.business_name ||
-    ""
-  );
+  return u?.company_name || u?.agency_name || u?.organization_name || u?.business_name || "";
+}
+
+function pickEmail(u) {
+  return u?.email || u?.email_address || "";
+}
+
+function pickPhone(u) {
+  return u?.phone || u?.phone_number || u?.mobile || u?.contact_number || "";
+}
+
+function isStudentRole(role) {
+  const r = normalizeRole(role);
+  return r === "student";
+}
+
+function isSchoolRole(role) {
+  const r = normalizeRole(role);
+  return r === "school";
+}
+
+function sanitizeStudentPublic(studentDoc) {
+  if (!studentDoc) return null;
+
+  return {
+    studentId: studentDoc.id,
+    full_name: pickDisplayName(studentDoc),
+    email: pickEmail(studentDoc),
+    phone: pickPhone(studentDoc),
+    assigned_agent_id: studentDoc.assigned_agent_id || studentDoc.assignedAgentId || null,
+    referred_by_agent_id:
+      studentDoc.referred_by_agent_id || studentDoc.referredByAgentId || null,
+    profile_completed:
+      studentDoc.profile_completed ??
+      studentDoc.onboarding_completed ??
+      false,
+  };
+}
+
+async function getSchoolOwnedByUser(uid) {
+  const db = admin.firestore();
+
+  const directSchoolSnap = await db.collection("schools").doc(uid).get();
+  if (directSchoolSnap.exists) {
+    return { id: directSchoolSnap.id, ...(directSchoolSnap.data() || {}) };
+  }
+
+  const q = await db
+    .collection("schools")
+    .where("school_owner_user_id", "==", uid)
+    .limit(1)
+    .get();
+
+  if (!q.empty) {
+    const d = q.docs[0];
+    return { id: d.id, ...(d.data() || {}) };
+  }
+
+  return null;
+}
+
+function buildSchoolLeadDocId(schoolId, studentId) {
+  return `${schoolId}_${studentId}`;
+}
+
+async function writeQrScanLog({
+  token,
+  tokenType,
+  studentId,
+  schoolId,
+  scannedBy,
+  result,
+  duplicate = false,
+  leadId = null,
+  meta = {},
+}) {
+  try {
+    await admin.firestore().collection("qr_scan_logs").add({
+      token: token || null,
+      tokenType: tokenType || "student",
+      studentId: studentId || null,
+      schoolId: schoolId || null,
+      scannedBy: scannedBy || null,
+      result: result || "unknown",
+      duplicate: !!duplicate,
+      leadId: leadId || null,
+      meta: meta || {},
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("writeQrScanLog error:", e);
+  }
 }
 
 exports.getMyAgentReferralToken = onRequest(async (req, res) => {
@@ -740,7 +768,7 @@ exports.acceptAgentReferral = onRequest(async (req, res) => {
         student.role || student.user_type || student.selected_role || student.userType || decoded?.role
       );
 
-      if (studentRole !== "student" && studentRole !== "user") {
+      if (!isStudentRole(studentRole)) {
         return res.status(403).json({ error: "Only student accounts can accept agent referrals" });
       }
 
@@ -802,8 +830,21 @@ exports.acceptAgentReferral = onRequest(async (req, res) => {
         tx.set(
           userRef,
           {
-            referredByAgentId: student.referredByAgentId || agentId,
-            assigned_agent_id: student.assigned_agent_id || agentId,
+            referred_by_agent_id:
+              student.referred_by_agent_id ||
+              student.referredByAgentId ||
+              agentId,
+            assigned_agent_id:
+              student.assigned_agent_id ||
+              student.assignedAgentId ||
+              agentId,
+
+            // keep backward compatibility
+            referredByAgentId:
+              student.referredByAgentId ||
+              student.referred_by_agent_id ||
+              agentId,
+
             referralType: "qr",
             updated_at: admin.firestore.FieldValue.serverTimestamp(),
           },
@@ -837,10 +878,368 @@ exports.acceptAgentReferral = onRequest(async (req, res) => {
       const msg = e?.message || "Failed to accept referral";
       const low = String(msg).toLowerCase();
       const code =
-        low.includes("missing authorization") ? 401 :
-        low.includes("not found") ? 404 :
-        low.includes("only student") || low.includes("not an agent") ? 403 :
-        400;
+        low.includes("missing authorization")
+          ? 401
+          : low.includes("not found")
+          ? 404
+          : low.includes("only student") || low.includes("not an agent")
+          ? 403
+          : 400;
+
+      return res.status(code).json({ error: msg });
+    }
+  });
+});
+
+/**
+ * ============================
+ * Student QR
+ * ============================
+ */
+
+exports.getMyStudentReferralToken = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "GET") {
+        return res.status(405).json({ error: "GET only" });
+      }
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const userRef = admin.firestore().collection("users").doc(uid);
+      const userSnap = await userRef.get();
+
+      if (!userSnap.exists) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const user = userSnap.data() || {};
+      const role =
+        normalizeRole(user.role || user.user_type || user.selected_role || user.userType) ||
+        normalizeRole(decoded?.role);
+
+      if (!isStudentRole(role)) {
+        return res.status(403).json({ error: "Only student accounts can generate student QR" });
+      }
+
+      let token = user.studentReferralQrToken;
+      if (!token) {
+        token = `std_${randomToken(16)}`;
+        await userRef.set(
+          {
+            studentReferralQrToken: token,
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      return res.json({ ok: true, token });
+    } catch (e) {
+      console.error("getMyStudentReferralToken error:", e);
+      return res.status(500).json({ error: e?.message || "Failed to get student token" });
+    }
+  });
+});
+
+exports.resolveStudentReferralToken = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "GET") {
+        return res.status(405).json({ error: "GET only" });
+      }
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const schoolUser = await getUserDocByUid(uid);
+
+      if (!schoolUser) {
+        return res.status(404).json({ error: "School user not found" });
+      }
+
+      const schoolRole = normalizeRole(
+        schoolUser.role || schoolUser.user_type || schoolUser.selected_role || schoolUser.userType || decoded?.role
+      );
+
+      if (!isSchoolRole(schoolRole)) {
+        return res.status(403).json({ error: "Only school accounts can resolve student QR" });
+      }
+
+      const token = String(req.query.student_ref || req.query.ref || "").trim();
+      if (!token) {
+        return res.status(400).json({ error: "Missing student_ref token" });
+      }
+
+      const q = await admin
+        .firestore()
+        .collection("users")
+        .where("studentReferralQrToken", "==", token)
+        .limit(1)
+        .get();
+
+      if (q.empty) {
+        await writeQrScanLog({
+          token,
+          tokenType: "student",
+          studentId: null,
+          schoolId: uid,
+          scannedBy: uid,
+          result: "not_found",
+          duplicate: false,
+        });
+        return res.status(404).json({ error: "Student referral not found" });
+      }
+
+      const d = q.docs[0];
+      const student = d.data() || {};
+      const studentRole = normalizeRole(
+        student.role || student.user_type || student.selected_role || student.userType
+      );
+
+      if (!isStudentRole(studentRole)) {
+        await writeQrScanLog({
+          token,
+          tokenType: "student",
+          studentId: d.id,
+          schoolId: uid,
+          scannedBy: uid,
+          result: "invalid_owner_role",
+          duplicate: false,
+        });
+        return res.status(403).json({ error: "Referral owner is not a student" });
+      }
+
+      return res.json({
+        ok: true,
+        token,
+        student: sanitizeStudentPublic({ id: d.id, ...student }),
+      });
+    } catch (e) {
+      console.error("resolveStudentReferralToken error:", e);
+      return res.status(500).json({ error: e?.message || "Failed to resolve student token" });
+    }
+  });
+});
+
+exports.acceptStudentReferralToSchool = onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      if (req.method !== "POST") {
+        return res.status(405).json({ error: "POST only" });
+      }
+
+      const { uid, decoded } = await requireBearerUid(req);
+      const { student_ref, token } = req.body || {};
+      const referralToken = String(student_ref || token || "").trim();
+
+      if (!referralToken) {
+        return res.status(400).json({ error: "Missing student_ref token" });
+      }
+
+      const db = admin.firestore();
+      const schoolUser = await getUserDocByUid(uid);
+
+      if (!schoolUser) {
+        return res.status(404).json({ error: "School user not found" });
+      }
+
+      const schoolRole = normalizeRole(
+        schoolUser.role || schoolUser.user_type || schoolUser.selected_role || schoolUser.userType || decoded?.role
+      );
+
+      if (!isSchoolRole(schoolRole)) {
+        return res.status(403).json({ error: "Only school accounts can accept student QR" });
+      }
+
+      const school = await getSchoolOwnedByUser(uid);
+      const schoolId = school?.id || uid;
+      const schoolName =
+        school?.name ||
+        school?.school_name ||
+        school?.institution_name ||
+        pickDisplayName(schoolUser);
+
+      const q = await db
+        .collection("users")
+        .where("studentReferralQrToken", "==", referralToken)
+        .limit(1)
+        .get();
+
+      if (q.empty) {
+        await writeQrScanLog({
+          token: referralToken,
+          tokenType: "student",
+          studentId: null,
+          schoolId,
+          scannedBy: uid,
+          result: "not_found",
+          duplicate: false,
+        });
+        return res.status(404).json({ error: "Student referral not found" });
+      }
+
+      const studentDoc = q.docs[0];
+      const studentId = studentDoc.id;
+      const student = studentDoc.data() || {};
+
+      const studentRole = normalizeRole(
+        student.role || student.user_type || student.selected_role || student.userType
+      );
+
+      if (!isStudentRole(studentRole)) {
+        await writeQrScanLog({
+          token: referralToken,
+          tokenType: "student",
+          studentId,
+          schoolId,
+          scannedBy: uid,
+          result: "invalid_owner_role",
+          duplicate: false,
+        });
+        return res.status(403).json({ error: "Referral owner is not a student" });
+      }
+
+      if (studentId === uid) {
+        return res.status(400).json({ error: "School cannot accept its own account as student" });
+      }
+
+      const leadId = buildSchoolLeadDocId(schoolId, studentId);
+      const leadRef = db.collection("school_leads").doc(leadId);
+      const studentRef = db.collection("users").doc(studentId);
+
+      const linkedAgentId =
+        student.assigned_agent_id ||
+        student.assignedAgentId ||
+        student.referred_by_agent_id ||
+        student.referredByAgentId ||
+        null;
+
+      const leadPayloadBase = {
+        student_id: studentId,
+        student_name: pickDisplayName(student),
+        student_email: pickEmail(student),
+        student_phone: pickPhone(student),
+
+        school_id: schoolId,
+        school_owner_user_id: uid,
+        school_name: schoolName,
+
+        status: "interested",
+        source: "qr",
+        lead_type: "qr",
+        schoolLeadType: "qr",
+
+        linked_agent_id: linkedAgentId || null,
+        assigned_agent_id: student.assigned_agent_id || student.assignedAgentId || null,
+        referred_by_agent_id:
+          student.referred_by_agent_id || student.referredByAgentId || null,
+      };
+
+      let alreadyExists = false;
+
+      await db.runTransaction(async (tx) => {
+        const leadSnap = await tx.get(leadRef);
+
+        if (leadSnap.exists) {
+          alreadyExists = true;
+          return;
+        }
+
+        tx.set(
+          leadRef,
+          {
+            ...leadPayloadBase,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        tx.set(
+          studentRef,
+          {
+            assigned_school_id: schoolId,
+            referredToSchoolId: schoolId,
+            schoolLeadType: "qr",
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (linkedAgentId) {
+          const notifRef = db
+            .collection("users")
+            .doc(linkedAgentId)
+            .collection("notifications")
+            .doc(`school_qr_${schoolId}_${studentId}`);
+
+          tx.set(
+            notifRef,
+            {
+              type: "school_student_qr_interest",
+              title: "A school scanned your student QR",
+              body: `${schoolName} connected with ${pickDisplayName(student)}`,
+              schoolId,
+              schoolName,
+              studentId,
+              studentName: pickDisplayName(student),
+              seen: false,
+              readAt: null,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              link: `/schoolleads`,
+            },
+            { merge: true }
+          );
+        }
+      });
+
+      await writeQrScanLog({
+        token: referralToken,
+        tokenType: "student",
+        studentId,
+        schoolId,
+        scannedBy: uid,
+        result: alreadyExists ? "duplicate" : "accepted",
+        duplicate: alreadyExists,
+        leadId,
+        meta: {
+          linkedAgentId: linkedAgentId || null,
+        },
+      });
+
+      if (alreadyExists) {
+        return res.json({
+          ok: true,
+          alreadyExists: true,
+          leadId,
+          student: sanitizeStudentPublic({ id: studentId, ...student }),
+          school: {
+            schoolId,
+            schoolName,
+          },
+        });
+      }
+
+      return res.json({
+        ok: true,
+        alreadyExists: false,
+        leadId,
+        student: sanitizeStudentPublic({ id: studentId, ...student }),
+        school: {
+          schoolId,
+          schoolName,
+        },
+      });
+    } catch (e) {
+      console.error("acceptStudentReferralToSchool error:", e);
+      const msg = e?.message || "Failed to accept student referral";
+      const low = String(msg).toLowerCase();
+      const code =
+        low.includes("missing authorization")
+          ? 401
+          : low.includes("not found")
+          ? 404
+          : low.includes("only school")
+          ? 403
+          : 400;
 
       return res.status(code).json({ error: msg });
     }
@@ -848,11 +1247,10 @@ exports.acceptAgentReferral = onRequest(async (req, res) => {
 });
 
 function randomCode(len = 48) {
-  return crypto.randomBytes(len).toString("hex"); // 96 chars
+  return crypto.randomBytes(len).toString("hex");
 }
 
 // POST /createAuthBridgeCode
-// Header: Authorization: Bearer <Firebase ID token>
 exports.createAuthBridgeCode = onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -886,7 +1284,6 @@ exports.createAuthBridgeCode = onRequest(async (req, res) => {
 });
 
 // POST /exchangeAuthBridgeCode
-// Body: { code: string }
 exports.exchangeAuthBridgeCode = onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -904,9 +1301,10 @@ exports.exchangeAuthBridgeCode = onRequest(async (req, res) => {
       const now = Date.now();
 
       if (data.used) return res.status(400).json({ error: "Code already used" });
-      if (!data.expiresAt || now > data.expiresAt) return res.status(400).json({ error: "Code expired" });
+      if (!data.expiresAt || now > data.expiresAt) {
+        return res.status(400).json({ error: "Code expired" });
+      }
 
-      // Mark used first (prevents replays)
       await ref.set({ used: true, usedAt: now }, { merge: true });
 
       const customToken = await admin.auth().createCustomToken(data.uid);
@@ -918,14 +1316,10 @@ exports.exchangeAuthBridgeCode = onRequest(async (req, res) => {
   });
 });
 
-
 // ============================
 // Invites (Create / Accept / Revoke)
 // ============================
 
-// POST /createInvite
-// Header: Authorization: Bearer <Firebase ID token>
-// Body: { invitedRole: 'agent'|'school', invitedEmail?: string, mode: 'email'|'link' }
 exports.createInvite = onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -942,7 +1336,9 @@ exports.createInvite = onRequest(async (req, res) => {
         return res.status(400).json({ error: "Invalid invitedRole" });
       }
       if (m !== "email" && m !== "link") return res.status(400).json({ error: "Invalid mode" });
-      if (m === "email" && !email) return res.status(400).json({ error: "invitedEmail required for email mode" });
+      if (m === "email" && !email) {
+        return res.status(400).json({ error: "invitedEmail required for email mode" });
+      }
 
       const inviterRole = await getUserRoleForInvite(uid, decoded);
       assertRoleCanInvite(inviterRole, r);
@@ -973,10 +1369,10 @@ exports.createInvite = onRequest(async (req, res) => {
       });
 
       const base = "https://greenpassgroup.com";
-      const inviteLink = `${base}/join?invite=${encodeURIComponent(inviteRef.id)}&token=${encodeURIComponent(rawToken)}`;
+      const inviteLink = `${base}/join?invite=${encodeURIComponent(
+        inviteRef.id
+      )}&token=${encodeURIComponent(rawToken)}`;
 
-      // Optional: email sending via Firebase Trigger Email extension.
-      // If you already use it, writing to `mail` will send.
       if (m === "email") {
         await admin.firestore().collection("mail").add({
           to: email,
@@ -986,16 +1382,12 @@ exports.createInvite = onRequest(async (req, res) => {
             html: `
                 <div style="font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; padding:24px;">
                   <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
-                    
-                    <!-- Header -->
                     <div style="background:#0f766e; color:#ffffff; padding:20px 24px;">
                       <h1 style="margin:0; font-size:22px;">You’re invited to GreenPass</h1>
                       <p style="margin:6px 0 0; font-size:13px; opacity:0.9;">
                         Your gateway to students, agents, tutors, and schools
                       </p>
                     </div>
-
-                    <!-- Body -->
                     <div style="padding:24px; color:#1f2937;">
                       <p style="font-size:15px; line-height:1.6;">
                         Hi there 👋,
@@ -1007,16 +1399,8 @@ exports.createInvite = onRequest(async (req, res) => {
 
                       <p style="font-size:15px; line-height:1.6;">
                         GreenPass is a professional platform for the international education sector, connecting students, schools, agents, and tutors in a trusted and transparent environment.
-
-                        On GreenPass, you can:
-
-                        * Connect with schools, agents, tutors, and students worldwide
-                        * Share verified information and education opportunities
-                        * Manage applications and interactions efficiently
-                        * Build credibility within a global education community
                       </p>
 
-                      <!-- CTA Button -->
                       <div style="text-align:center; margin:28px 0;">
                         <a href="${inviteLink}"
                           style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; padding:14px 26px; border-radius:8px; font-weight:600;">
@@ -1024,7 +1408,6 @@ exports.createInvite = onRequest(async (req, res) => {
                         </a>
                       </div>
 
-                      <!-- Fallback link -->
                       <p style="font-size:13px; color:#6b7280; margin-bottom:6px;">
                         If the button doesn’t work, copy and paste this link into your browser:
                       </p>
@@ -1038,14 +1421,13 @@ exports.createInvite = onRequest(async (req, res) => {
                       </p>
                     </div>
 
-                    <!-- Footer -->
                     <div style="background:#f9fafb; padding:14px 24px; text-align:center; font-size:12px; color:#9ca3af;">
                       © ${new Date().getFullYear()} GreenPass Group · All rights reserved
                     </div>
                   </div>
                 </div>
               `,
-              text: `${inviterName} invited you to join GreenPass as a ${invitedRoleLabel}.
+            text: `${inviterName} invited you to join GreenPass as a ${invitedRoleLabel}.
 
 Open this link to accept your invitation:
 ${inviteLink}
@@ -1065,13 +1447,6 @@ If you didn’t expect this invitation, you can safely ignore this email.`,
   });
 });
 
-
-// POST /acceptInvite
-// Header: Authorization: Bearer <Firebase ID token>
-// Body: { inviteId: string, token: string }
-
-// Public: Get invited role (and invited email) for an invite link (no auth)
-// Query: ?inviteId=...&token=...
 exports.getInviteRolePublic = onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -1092,14 +1467,11 @@ exports.getInviteRolePublic = onRequest(async (req, res) => {
       }
 
       const invite = snap.data() || {};
-
-      // Validate token (matches how createInvite stores tokenHash)
       const expectedHash = sha256(token + INVITE_PEPPER);
       if (invite.tokenHash !== expectedHash) {
         return res.status(403).json({ ok: false, error: "Invalid token" });
       }
 
-      // Validate invite status / expiry / usage
       if (invite.status !== "active") {
         return res.status(403).json({ ok: false, error: "Invite not active" });
       }
@@ -1117,7 +1489,6 @@ exports.getInviteRolePublic = onRequest(async (req, res) => {
         return res.status(500).json({ ok: false, error: "Invite role missing" });
       }
 
-      // Return only what SEO needs (no inviter info)
       return res.json({
         ok: true,
         role,
@@ -1129,7 +1500,6 @@ exports.getInviteRolePublic = onRequest(async (req, res) => {
     }
   });
 });
-
 
 exports.acceptInvite = onRequest(async (req, res) => {
   cors(req, res, async () => {
@@ -1168,7 +1538,6 @@ exports.acceptInvite = onRequest(async (req, res) => {
           throw new Error("Invalid invited role");
         }
 
-        // ✅ Align with your users schema (multiple role keys)
         tx.set(
           userRef,
           {
@@ -1176,17 +1545,13 @@ exports.acceptInvite = onRequest(async (req, res) => {
             selected_role: invitedRole,
             user_type: invitedRole,
             userType: invitedRole,
-
             onboarding_completed: false,
             onboarding_step: "basic_info",
-
             invited_by: {
               uid: inv.inviterId || "",
               role: inv.inviterRole || "",
               inviteId: inviteId,
             },
-
-            // Keep timestamps consistent with your schema
             updated_at: admin.firestore.FieldValue.serverTimestamp(),
             email: authedEmail || admin.firestore.FieldValue.delete(),
           },
@@ -1211,10 +1576,6 @@ exports.acceptInvite = onRequest(async (req, res) => {
   });
 });
 
-
-// POST /revokeInvite
-// Header: Authorization: Bearer <Firebase ID token>
-// Body: { inviteId: string }
 exports.revokeInvite = onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -1235,7 +1596,10 @@ exports.revokeInvite = onRequest(async (req, res) => {
       if (!isAdmin && inv.inviterId !== uid) return res.status(403).json({ error: "Not allowed" });
       if (inv.status !== "active") return res.status(400).json({ error: "Invite is not active" });
 
-      await ref.update({ status: "revoked", revokedAt: admin.firestore.FieldValue.serverTimestamp() });
+      await ref.update({
+        status: "revoked",
+        revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
       return res.json({ ok: true });
     } catch (e) {
       console.error("revokeInvite error:", e);
@@ -1247,13 +1611,11 @@ exports.revokeInvite = onRequest(async (req, res) => {
 /**
  * =========================================================
  * ORG INVITES (Secure, Zoho-style)
- * - Owner creates invite => writes org_invites + sends email
- * - Invitee accepts => server verifies token + slots + email, then adds member
  * =========================================================
  */
 
-const ORG_INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
-const ORG_INVITE_PEPPER = "org_invite_pepper_v1"; // change anytime (invalidates old links)
+const ORG_INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const ORG_INVITE_PEPPER = "org_invite_pepper_v1";
 
 function normalizeOrgMemberRole(r) {
   const x = String(r || "member").toLowerCase().trim();
@@ -1266,9 +1628,8 @@ async function requireOrgOwnerOrAdmin(uid, orgId) {
   if (!orgSnap.exists) throw new Error("Organization not found");
   const org = orgSnap.data() || {};
   if (org.ownerId !== uid) {
-    // allow platform admin
     const uSnap = await admin.firestore().collection("users").doc(uid).get();
-    const ud = uSnap.exists ? (uSnap.data() || {}) : {};
+    const ud = uSnap.exists ? uSnap.data() || {} : {};
     const role = String(ud.role || ud.user_role || "").toLowerCase();
     if (role !== "admin" && role !== "advisor" && role !== "superadmin") {
       throw new Error("Not authorized");
@@ -1282,7 +1643,6 @@ function sha256hex(s) {
 }
 
 function safeOrigin() {
-  // Prefer app domain for accepting org invites
   return "https://app.greenpassgroup.com";
 }
 
@@ -1299,11 +1659,13 @@ exports.createOrgInvite = onRequest(async (req, res) => {
       const invitedRole = normalizeOrgMemberRole(role);
 
       if (!orgIdStr) return res.status(400).json({ error: "orgId required" });
-      if (!invitedEmail || !invitedEmail.includes("@")) return res.status(400).json({ error: "Valid email required" });
+      if (!invitedEmail || !invitedEmail.includes("@")) {
+        return res.status(400).json({ error: "Valid email required" });
+      }
 
       const orgSnap = await requireOrgOwnerOrAdmin(uid, orgIdStr);
       const org = orgSnap.data() || {};
-      // Block inviting an email that already belongs to an organization (existing registered user)
+
       try {
         const usersCol = admin.firestore().collection("users");
 
@@ -1317,14 +1679,12 @@ exports.createOrgInvite = onRequest(async (req, res) => {
           }
         }
       } catch (e) {
-        // Non-fatal: if query fails, we still allow invite creation (accept step will enforce safety)
         console.warn("[createOrgInvite] org check skipped:", e?.message || e);
       }
 
-      // Slot check (soft): prevent sending invites if full
       const baseSlots = Number(org.baseSlots ?? 5);
       const extraSlots = Number(org.extraSlots ?? 0);
-      const totalSlots = Number(org.totalSlots ?? (baseSlots + extraSlots));
+      const totalSlots = Number(org.totalSlots ?? baseSlots + extraSlots);
       const usedSlots = Number(org.usedSlots ?? 0);
       if (usedSlots >= totalSlots) {
         return res.status(400).json({ error: "Slot limit reached" });
@@ -1354,9 +1714,10 @@ exports.createOrgInvite = onRequest(async (req, res) => {
       });
 
       const base = safeOrigin();
-      const inviteLink = `${base}/accept-org-invite?invite=${encodeURIComponent(invRef.id)}&token=${encodeURIComponent(rawToken)}`;
+      const inviteLink = `${base}/accept-org-invite?invite=${encodeURIComponent(
+        invRef.id
+      )}&token=${encodeURIComponent(rawToken)}`;
 
-      // Send email using your existing "mail" collection
       await admin.firestore().collection("mail").add({
         to: invitedEmail,
         message: {
@@ -1364,19 +1725,16 @@ exports.createOrgInvite = onRequest(async (req, res) => {
           html: `
             <div style="font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; padding:24px;">
               <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,0.08);">
-                
-                <!-- Header -->
                 <div style="background:#0f766e; color:#fff; padding:20px 24px;">
                   <h2 style="margin:0; font-size:22px;">You’re Invited to Join ${org.name}</h2>
                   <p style="margin:6px 0 0; font-size:13px; opacity:.9;">GreenPass Organization Access</p>
                 </div>
 
-                <!-- Body -->
                 <div style="padding:24px; color:#111827;">
                   <p style="font-size:15px; margin:0 0 12px;">Hello 👋</p>
 
                   <p style="font-size:15px; line-height:1.6;">
-                    You’ve been invited to join <strong>${org.name}</strong> on GreenPass as a 
+                    You’ve been invited to join <strong>${org.name}</strong> on GreenPass as a
                     <strong>${invitedRole}</strong>.
                   </p>
 
@@ -1390,9 +1748,8 @@ exports.createOrgInvite = onRequest(async (req, res) => {
                     Once accepted, you will gain access to your organization dashboard where you can collaborate with your team, manage records, and operate securely within the GreenPass platform.
                   </p>
 
-                  <!-- CTA -->
                   <div style="text-align:center; margin:28px 0;">
-                    <a href="${inviteLink}" 
+                    <a href="${inviteLink}"
                       style="display:inline-block; background:#10b981; color:#fff; text-decoration:none; padding:14px 26px; border-radius:10px; font-weight:700; font-size:15px;">
                       Accept Invitation
                     </a>
@@ -1415,11 +1772,9 @@ exports.createOrgInvite = onRequest(async (req, res) => {
                   </p>
                 </div>
 
-                <!-- Footer -->
                 <div style="background:#f9fafb; padding:14px 18px; text-align:center; font-size:12px; color:#9ca3af;">
                   © ${new Date().getFullYear()} GreenPass Group · All rights reserved
                 </div>
-
               </div>
             </div>
             `,
@@ -1474,7 +1829,6 @@ exports.revokeOrgInvite = onRequest(async (req, res) => {
 exports.getOrgInvitePublic = onRequest(async (req, res) => {
   cors(req, res, async () => {
     try {
-      // Public: no auth required. Used to show preview + required email.
       const inviteId = String(req.query?.invite || req.body?.invite || "").trim();
       const token = String(req.query?.token || req.body?.token || "").trim();
       if (!inviteId || !token) return res.status(400).json({ error: "invite and token required" });
@@ -1488,7 +1842,13 @@ exports.getOrgInvitePublic = onRequest(async (req, res) => {
 
       const expiresAtMs = inv.expiresAt?.toMillis ? inv.expiresAt.toMillis() : null;
       if (expiresAtMs && now > expiresAtMs) {
-        return res.json({ ok: true, status: "expired", orgName: inv.orgName || "", email: inv.email || "", role: inv.role || "member" });
+        return res.json({
+          ok: true,
+          status: "expired",
+          orgName: inv.orgName || "",
+          email: inv.email || "",
+          role: inv.role || "member",
+        });
       }
 
       const expected = inv.tokenHash;
@@ -1554,19 +1914,20 @@ exports.acceptOrgInvite = onRequest(async (req, res) => {
         const org = orgSnap.data() || {};
         const baseSlots = Number(org.baseSlots ?? 5);
         const extraSlots = Number(org.extraSlots ?? 0);
-        const totalSlots = Number(org.totalSlots ?? (baseSlots + extraSlots));
+        const totalSlots = Number(org.totalSlots ?? baseSlots + extraSlots);
         const usedSlots = Number(org.usedSlots ?? 0);
 
         if (usedSlots >= totalSlots) throw new Error("Slot limit reached");
 
-        // Prevent duplicate membership for same user+org
-        // (best-effort: query not allowed in transaction, so use a deterministic doc id)
         const memberDocId = `${orgRef.id}_${uid}`;
         const memRef = members.doc(memberDocId);
         const memSnap = await tx.get(memRef);
         if (memSnap.exists) {
-          // Still mark invite accepted to prevent reuse
-          tx.update(invRef, { status: "accepted", acceptedAt: admin.firestore.FieldValue.serverTimestamp(), acceptedBy: uid });
+          tx.update(invRef, {
+            status: "accepted",
+            acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+            acceptedBy: uid,
+          });
           return;
         }
 
@@ -1597,4 +1958,3 @@ exports.acceptOrgInvite = onRequest(async (req, res) => {
     }
   });
 });
-
