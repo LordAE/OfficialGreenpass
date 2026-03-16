@@ -1106,38 +1106,62 @@ service cloud.firestore {
     }
 
     match /school_leads/{leadId} {
-      allow create: if signedIn()
-        && userHasType("user")
-        && request.resource.data.student_id is string
-        && request.resource.data.student_id == request.auth.uid
-        && request.resource.data.school_id is string
-        && request.resource.data.status == "interested";
+      allow create: if signedIn() && (
+        isAdmin() ||
+
+        // school-owned lead
+        (
+          request.resource.data.school_owner_user_id is string &&
+          request.resource.data.school_owner_user_id == request.auth.uid
+        ) ||
+
+        // student-created lead
+        (
+          request.resource.data.student_id is string &&
+          request.resource.data.student_id == request.auth.uid
+        ) ||
+
+        // fallback legacy owner field
+        (
+          request.resource.data.user_id is string &&
+          request.resource.data.user_id == request.auth.uid
+        )
+      );
 
       allow read: if signedIn() && (
         isAdmin() ||
-        (
-          resource.data.student_id is string &&
-          resource.data.student_id == request.auth.uid
-        ) ||
+
         (
           resource.data.school_owner_user_id is string &&
           resource.data.school_owner_user_id == request.auth.uid
         ) ||
+
         (
-          resource.data.school_id is string &&
-          ownsInstitutionId(resource.data.school_id)
+          resource.data.student_id is string &&
+          resource.data.student_id == request.auth.uid
         ) ||
+
         (
-          resource.data.institution_id is string &&
-          ownsInstitutionId(resource.data.institution_id)
-        ) ||
-        (
-          resource.data.institutionId is string &&
-          ownsInstitutionId(resource.data.institutionId)
+          resource.data.user_id is string &&
+          resource.data.user_id == request.auth.uid
         )
       );
 
-      allow update, delete: if isAdmin();
+      allow update: if signedIn() && (
+        isAdmin() ||
+
+        (
+          resource.data.school_owner_user_id is string &&
+          resource.data.school_owner_user_id == request.auth.uid
+        ) ||
+
+        (
+          resource.data.user_id is string &&
+          resource.data.user_id == request.auth.uid
+        )
+      );
+
+      allow delete: if isAdmin();
     }
 
     match /services/{docId} {

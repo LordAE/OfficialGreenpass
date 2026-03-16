@@ -364,21 +364,6 @@ export default function SchoolLeads() {
 
       const resolved = await resolveStudentQrToken(token);
 
-      const leadId = `${fbUser.uid}_${resolved.studentId}`;
-      const existingLeadSnap = await getDoc(doc(db, 'school_leads', leadId));
-
-      if (existingLeadSnap.exists()) {
-        const data = existingLeadSnap.data() || {};
-        setPendingQrLead({
-          ...resolved,
-          alreadyExists: true,
-          existingLeadId: leadId,
-          existingStatus: data.status || 'interested',
-        });
-        setQrNotice('This student is already in your leads.');
-        return;
-      }
-
       setPendingQrLead({
         ...resolved,
         alreadyExists: false,
