@@ -81,7 +81,11 @@ const LANGUAGE_OPTIONS = [
   { value: "ar", label: "العربية" },
 ];
 
-const SEO_BASE = "https://greenpassgroup.com";
+const APP_BASE =
+  import.meta.env.VITE_APP_BASE_URL ||
+  import.meta.env.VITE_PUBLIC_APP_URL ||
+  import.meta.env.VITE_SITE_URL ||
+  window.location.origin;
 
 const FUNCTIONS_BASE =
   import.meta.env.VITE_FUNCTIONS_BASE ||
@@ -131,11 +135,11 @@ async function getAllCountriesFallback() {
 }
 
 function buildAgentReferralLink(token) {
-  return `${SEO_BASE.replace(/\/+$/, "")}/?ref=${encodeURIComponent(token)}`;
+  return `${APP_BASE.replace(/\/+$/, "")}/?ref=${encodeURIComponent(token)}`;
 }
 
 function buildStudentReferralLink(token) {
-  return `${SEO_BASE.replace(/\/+$/, "")}/${createSchoolLeadsPath()}?student_ref=${encodeURIComponent(token)}`;
+  return `${APP_BASE.replace(/\/+$/, "")}/${createSchoolLeadsPath()}?student_ref=${encodeURIComponent(token)}`;
 }
 
 function createSchoolLeadsPath() {
@@ -706,6 +710,108 @@ function ProfileSection({ title, icon: Icon, action, children }) {
   );
 }
 
+function StudentQrGuideCard({
+  tr,
+  progressText,
+  completedCount,
+  totalCount,
+  missingItems,
+  onboardingDone,
+  onGoPersonal,
+  onGoDetails,
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">
+            {tr(
+              "qr.student_complete_profile_first",
+              "Complete your student profile first before sharing your QR."
+            )}
+          </p>
+
+          <p className="text-sm mt-1 text-amber-800">
+            {tr(
+              "qr.student_complete_profile_help",
+              "Schools should only scan students with a complete profile. Fill in the missing required fields below, save your profile, and your Student QR will unlock automatically."
+            )}
+          </p>
+
+          <div className="mt-4 rounded-xl border border-amber-200 bg-white px-4 py-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-amber-900">
+                  {tr("qr.profile_progress", "Profile progress")}
+                </p>
+                <p className="text-sm text-amber-800">{progressText}</p>
+              </div>
+
+              {!onboardingDone ? (
+                <Badge variant="outline" className="border-amber-300 text-amber-800 bg-white">
+                  {tr("onboarding_incomplete", "Onboarding incomplete")}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-emerald-300 text-emerald-700 bg-white">
+                  {tr("onboarding_complete", "Onboarding complete")}
+                </Badge>
+              )}
+            </div>
+
+            <div className="mt-3 h-2 w-full rounded-full bg-amber-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-amber-500 transition-all"
+                style={{ width: `${Math.max(0, Math.min(100, (completedCount / totalCount) * 100))}%` }}
+              />
+            </div>
+          </div>
+
+          {missingItems.length > 0 ? (
+            <div className="mt-4">
+              <p className="text-sm font-medium text-amber-900 mb-2">
+                {tr("qr.missing_items", "Missing items")}
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                {missingItems.map((item) => (
+                  <Badge
+                    key={item}
+                    variant="outline"
+                    className="border-amber-300 bg-white text-amber-900"
+                  >
+                    {item}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl bg-white"
+              onClick={onGoPersonal}
+            >
+              {tr("qr.go_to_personal_information", "Go to Personal Information")}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl bg-white"
+              onClick={onGoDetails}
+            >
+              {tr("qr.go_to_student_profile", "Go to Student Profile")}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Profile() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState("");
@@ -1051,63 +1157,77 @@ export default function Profile() {
     return () => unsub();
   }, [loadProfile]);
 
-  const studentQrReady = useMemo(() => {
-    if (role !== "user") return false;
-
-    const required = [
-      form.full_name,
-      form.phone,
-      form.country,
-      form.bio,
-      form.current_level,
-      form.target_country,
-      form.target_program,
-      form.academic_background,
-    ];
-
-    const hasCoreFields = required.every((v) => String(v || "").trim().length > 0);
-    const hasProgramList = Array.isArray(form.preferred_programs) && form.preferred_programs.length > 0;
-    const hasStudyAreas = Array.isArray(form.study_areas) && form.study_areas.length > 0;
-    const onboardingDone = Boolean(userDoc?.onboarding_completed);
-
-    return hasCoreFields && hasProgramList && hasStudyAreas && onboardingDone;
-  }, [
-    role,
-    form.full_name,
-    form.phone,
-    form.country,
-    form.bio,
-    form.current_level,
-    form.target_country,
-    form.target_program,
-    form.academic_background,
-    form.preferred_programs,
-    form.study_areas,
-    userDoc?.onboarding_completed,
-  ]);
-
-  const studentQrMissingItems = useMemo(() => {
+  const studentQrChecklist = useMemo(() => {
     if (role !== "user") return [];
 
-    const missing = [];
-    if (!String(form.full_name || "").trim()) missing.push(tr("full_name", "Full Name"));
-    if (!String(form.phone || "").trim()) missing.push(tr("phone", "Phone"));
-    if (!String(form.country || "").trim()) missing.push(tr("country", "Country"));
-    if (!String(form.bio || "").trim()) missing.push(tr("bio_label", "Biography / Description"));
-    if (!String(form.current_level || "").trim()) missing.push(tr("current_level", "Current Level"));
-    if (!String(form.target_country || "").trim()) missing.push(tr("target_country", "Target Country"));
-    if (!String(form.target_program || "").trim()) missing.push(tr("target_program", "Target Program"));
-    if (!String(form.academic_background || "").trim()) missing.push(tr("academic_background", "Academic Background"));
-    if (!Array.isArray(form.preferred_programs) || form.preferred_programs.length === 0) {
-      missing.push(tr("preferred_programs", "Preferred Programs"));
-    }
-    if (!Array.isArray(form.study_areas) || form.study_areas.length === 0) {
-      missing.push(tr("areas", "Areas"));
-    }
-    if (!userDoc?.onboarding_completed) {
-      missing.push(tr("onboarding_complete", "Complete onboarding"));
-    }
-    return missing;
+    return [
+      {
+        key: "full_name",
+        label: tr("full_name", "Full Name"),
+        done: String(form.full_name || "").trim().length > 0,
+        tab: "personal",
+      },
+      {
+        key: "phone",
+        label: tr("phone", "Phone"),
+        done: String(form.phone || "").trim().length > 0,
+        tab: "personal",
+      },
+      {
+        key: "country",
+        label: tr("country", "Country"),
+        done: String(form.country || "").trim().length > 0,
+        tab: "personal",
+      },
+      {
+        key: "bio",
+        label: tr("bio_label", "Biography / Description"),
+        done: String(form.bio || "").trim().length > 0,
+        tab: "personal",
+      },
+      {
+        key: "current_level",
+        label: tr("current_level", "Current Level"),
+        done: String(form.current_level || "").trim().length > 0,
+        tab: "personal",
+      },
+      {
+        key: "target_country",
+        label: tr("target_country", "Target Country"),
+        done: String(form.target_country || "").trim().length > 0,
+        tab: "details",
+      },
+      {
+        key: "target_program",
+        label: tr("target_program", "Target Program"),
+        done: String(form.target_program || "").trim().length > 0,
+        tab: "details",
+      },
+      {
+        key: "academic_background",
+        label: tr("academic_background", "Academic Background"),
+        done: String(form.academic_background || "").trim().length > 0,
+        tab: "details",
+      },
+      {
+        key: "preferred_programs",
+        label: tr("preferred_programs", "Preferred Programs"),
+        done: Array.isArray(form.preferred_programs) && form.preferred_programs.length > 0,
+        tab: "details",
+      },
+      {
+        key: "study_areas",
+        label: tr("areas", "Areas"),
+        done: Array.isArray(form.study_areas) && form.study_areas.length > 0,
+        tab: "details",
+      },
+      {
+        key: "onboarding_completed",
+        label: tr("onboarding_complete", "Complete onboarding"),
+        done: Boolean(userDoc?.onboarding_completed),
+        tab: "details",
+      },
+    ];
   }, [
     role,
     form.full_name,
@@ -1123,6 +1243,31 @@ export default function Profile() {
     userDoc?.onboarding_completed,
     tr,
   ]);
+
+  const studentQrReady = useMemo(() => {
+    if (role !== "user") return false;
+    return studentQrChecklist.every((item) => item.done);
+  }, [role, studentQrChecklist]);
+
+  const studentQrMissingItems = useMemo(() => {
+    if (role !== "user") return [];
+    return studentQrChecklist.filter((item) => !item.done).map((item) => item.label);
+  }, [role, studentQrChecklist]);
+
+  const studentQrCompletedCount = useMemo(() => {
+    if (role !== "user") return 0;
+    return studentQrChecklist.filter((item) => item.done).length;
+  }, [role, studentQrChecklist]);
+
+  const studentQrTotalCount = useMemo(() => {
+    if (role !== "user") return 0;
+    return studentQrChecklist.length;
+  }, [role, studentQrChecklist]);
+
+  const studentQrProgressText = useMemo(() => {
+    if (role !== "user") return "";
+    return `${studentQrCompletedCount}/${studentQrTotalCount} ${tr("qr.fields_completed", "required items completed")}`;
+  }, [role, studentQrCompletedCount, studentQrTotalCount, tr]);
 
   useEffect(() => {
     let mounted = true;
@@ -2463,153 +2608,170 @@ export default function Profile() {
                         </div>
                       </div>
                     ) : showStudent ? (
-                      studentQrReady ? (
-                        <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 items-start">
-                          <Card className="rounded-3xl border shadow-none">
-                            <CardContent className="p-5 flex flex-col items-center gap-4">
-                              {qrLoading ? (
-                                <div className="w-[280px] h-[280px] rounded-2xl border bg-gray-50 flex items-center justify-center">
-                                  <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
-                                </div>
-                              ) : studentReferralQr ? (
-                                <img
-                                  src={studentReferralQr}
-                                  alt="Student school lead QR"
-                                  className="w-[280px] h-[280px] object-contain rounded-2xl border bg-white"
-                                />
-                              ) : (
-                                <div className="w-[280px] h-[280px] rounded-2xl border bg-gray-50 flex items-center justify-center text-sm text-gray-500 text-center px-4">
-                                  {tr("qr.unavailable", "QR code unavailable.")}
-                                </div>
-                              )}
-
-                              <div className="text-center">
-                                <p className="font-semibold text-gray-900">
-                                  {tr("qr.student_title", "My Student QR")}
-                                </p>
-                                <p className="text-sm text-gray-600 mt-1">
-                                  {tr(
-                                    "qr.student_help",
-                                    "Share this QR with schools. They will be taken to School Leads and can choose whether to add you to their lead list."
-                                  )}
-                                </p>
-                              </div>
-                            </CardContent>
-                          </Card>
-
-                          <div className="space-y-5">
-                            <div className="space-y-2">
-                              <Label>{tr("qr.referral_link", "Referral Link")}</Label>
-                              <Input
-                                value={studentReferralLink}
-                                readOnly
-                                className="bg-gray-50"
-                                placeholder={tr("qr.loading_link", "Loading referral link...")}
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label>{tr("qr.referral_token", "Referral Token")}</Label>
-                              <Input
-                                value={studentReferralToken}
-                                readOnly
-                                className="bg-gray-50"
-                                placeholder={tr("qr.loading_token", "Loading token...")}
-                              />
-                            </div>
-
-                            <div className="flex flex-wrap gap-3">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={handleCopyReferralLink}
-                                disabled={!studentReferralLink}
-                                className="rounded-xl"
-                              >
-                                <Copy className="w-4 h-4 mr-2" />
-                                {tr("qr.copy_link", "Copy Link")}
-                              </Button>
-
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={handleDownloadQr}
-                                disabled={!studentReferralQr}
-                                className="rounded-xl"
-                              >
-                                <Download className="w-4 h-4 mr-2" />
-                                {tr("qr.download_qr", "Download QR")}
-                              </Button>
-
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => window.open(studentReferralLink, "_blank", "noopener,noreferrer")}
-                                disabled={!studentReferralLink}
-                                className="rounded-xl"
-                              >
-                                <ExternalLink className="w-4 h-4 mr-2" />
-                                {tr("qr.open_link", "Open Link")}
-                              </Button>
-                            </div>
-
-                            <div className="rounded-2xl border bg-blue-50 text-blue-900 p-4 text-sm leading-6">
-                              <p className="font-semibold mb-1">
-                                {tr("qr.how_it_works", "How it works")}
-                              </p>
-                              <p>
-                                {tr(
-                                  "qr.student_how_it_works_body",
-                                  "A school with an existing school account can scan this QR. They will see your name first, then choose Accept or Decline before you are added to School Leads."
-                                )}
-                              </p>
-                            </div>
+                      <>
+                        {!studentQrReady && (
+                          <div className="mb-6">
+                            <StudentQrGuideCard
+                              tr={tr}
+                              progressText={studentQrProgressText}
+                              completedCount={studentQrCompletedCount}
+                              totalCount={studentQrTotalCount}
+                              missingItems={studentQrMissingItems}
+                              onboardingDone={Boolean(userDoc?.onboarding_completed)}
+                              onGoPersonal={() => setActiveTab("personal")}
+                              onGoDetails={() => setActiveTab("details")}
+                            />
                           </div>
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
-                          <div className="flex items-start gap-3">
-                            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
-                            <div className="min-w-0">
-                              <p className="font-semibold">
-                                {tr(
-                                  "qr.student_complete_profile_first",
-                                  "Complete your student profile first before sharing your QR."
+                        )}
+
+                        {studentQrReady ? (
+                          <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 items-start">
+                            <Card className="rounded-3xl border shadow-none">
+                              <CardContent className="p-5 flex flex-col items-center gap-4">
+                                {qrLoading ? (
+                                  <div className="w-[280px] h-[280px] rounded-2xl border bg-gray-50 flex items-center justify-center">
+                                    <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+                                  </div>
+                                ) : studentReferralQr ? (
+                                  <img
+                                    src={studentReferralQr}
+                                    alt="Student school lead QR"
+                                    className="w-[280px] h-[280px] object-contain rounded-2xl border bg-white"
+                                  />
+                                ) : (
+                                  <div className="w-[280px] h-[280px] rounded-2xl border bg-gray-50 flex items-center justify-center text-sm text-gray-500 text-center px-4">
+                                    {tr("qr.unavailable", "QR code unavailable.")}
+                                  </div>
                                 )}
-                              </p>
-                              <p className="text-sm mt-1 text-amber-800">
-                                {tr(
-                                  "qr.student_complete_profile_help",
-                                  "Schools should only see students with a finished profile. Save the missing details below, then come back to the QR tab."
-                                )}
-                              </p>
-                              {studentQrMissingItems.length > 0 ? (
-                                <div className="mt-3 text-sm text-amber-800">
-                                  <span className="font-medium">
-                                    {tr("qr.missing_items", "Missing items")}: 
-                                  </span>
-                                  {studentQrMissingItems.join(", ")}
+
+                                <div className="text-center">
+                                  <p className="font-semibold text-gray-900">
+                                    {tr("qr.student_title", "My Student QR")}
+                                  </p>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    {tr(
+                                      "qr.student_help",
+                                      "Share this QR with schools. They will be taken to School Leads and can choose whether to add you to their lead list."
+                                    )}
+                                  </p>
                                 </div>
-                              ) : null}
-                              <div className="mt-4 flex flex-wrap gap-2">
+                              </CardContent>
+                            </Card>
+
+                            <div className="space-y-5">
+                              <div className="space-y-2">
+                                <Label>{tr("qr.referral_link", "Referral Link")}</Label>
+                                <Input
+                                  value={studentReferralLink}
+                                  readOnly
+                                  className="bg-gray-50"
+                                  placeholder={tr("qr.loading_link", "Loading referral link...")}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label>{tr("qr.referral_token", "Referral Token")}</Label>
+                                <Input
+                                  value={studentReferralToken}
+                                  readOnly
+                                  className="bg-gray-50"
+                                  placeholder={tr("qr.loading_token", "Loading token...")}
+                                />
+                              </div>
+
+                              <div className="flex flex-wrap gap-3">
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  className="rounded-xl bg-white"
-                                  onClick={() => setActiveTab("details")}
+                                  onClick={handleCopyReferralLink}
+                                  disabled={!studentReferralLink}
+                                  className="rounded-xl"
                                 >
-                                  {tr("qr.go_to_student_profile", "Go to Student Profile")}
+                                  <Copy className="w-4 h-4 mr-2" />
+                                  {tr("qr.copy_link", "Copy Link")}
                                 </Button>
-                                {!userDoc?.onboarding_completed ? (
-                                  <Badge variant="outline" className="border-amber-300 text-amber-800 bg-white">
-                                    {tr("onboarding_incomplete", "Onboarding incomplete")}
-                                  </Badge>
-                                ) : null}
+
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={handleDownloadQr}
+                                  disabled={!studentReferralQr}
+                                  className="rounded-xl"
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  {tr("qr.download_qr", "Download QR")}
+                                </Button>
+
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => window.open(studentReferralLink, "_blank", "noopener,noreferrer")}
+                                  disabled={!studentReferralLink}
+                                  className="rounded-xl"
+                                >
+                                  <ExternalLink className="w-4 h-4 mr-2" />
+                                  {tr("qr.open_link", "Open Link")}
+                                </Button>
+                              </div>
+
+                              <div className="rounded-2xl border bg-blue-50 text-blue-900 p-4 text-sm leading-6">
+                                <p className="font-semibold mb-1">
+                                  {tr("qr.how_it_works", "How it works")}
+                                </p>
+                                <p>
+                                  {tr(
+                                    "qr.student_how_it_works_body",
+                                    "A school with an existing school account can scan this QR. They will see your name first, then choose Accept or Decline before you are added to School Leads."
+                                  )}
+                                </p>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      )
+                        ) : (
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
+                            <div className="flex items-start gap-3">
+                              <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-semibold">
+                                  {tr(
+                                    "qr.student_complete_profile_first",
+                                    "Complete your student profile first before sharing your QR."
+                                  )}
+                                </p>
+                                <p className="text-sm mt-1 text-amber-800">
+                                  {tr(
+                                    "qr.student_complete_profile_help",
+                                    "Schools should only see students with a finished profile. Save the missing details below, then come back to the QR tab."
+                                  )}
+                                </p>
+                                {studentQrMissingItems.length > 0 ? (
+                                  <div className="mt-3 text-sm text-amber-800">
+                                    <span className="font-medium">
+                                      {tr("qr.missing_items", "Missing items")}:
+                                    </span>{" "}
+                                    {studentQrMissingItems.join(", ")}
+                                  </div>
+                                ) : null}
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="rounded-xl bg-white"
+                                    onClick={() => setActiveTab("details")}
+                                  >
+                                    {tr("qr.go_to_student_profile", "Go to Student Profile")}
+                                  </Button>
+                                  {!userDoc?.onboarding_completed ? (
+                                    <Badge variant="outline" className="border-amber-300 text-amber-800 bg-white">
+                                      {tr("onboarding_incomplete", "Onboarding incomplete")}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="rounded-2xl border bg-gray-50 p-5 text-sm text-gray-600">
                         {tr(
