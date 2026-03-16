@@ -151,6 +151,24 @@ function extractStudentTokenFromScan(rawValue) {
   }
 }
 
+function getAssignedAgentId(lead) {
+  const student = lead?.student || {};
+  return (
+    student?.assigned_agent_id ||
+    student?.referredByAgentId ||
+    ''
+  );
+}
+
+function getAssignedAgentName(lead) {
+  return (
+    lead?.assignedAgent?.full_name ||
+    lead?.assignedAgent?.name ||
+    lead?.assignedAgentName ||
+    '—'
+  );
+}
+
 async function resolveStudentQrToken(token) {
   const fbUser = auth.currentUser;
   if (!fbUser) throw new Error('Not signed in');
@@ -293,21 +311,85 @@ export default function SchoolLeads() {
         return;
       }
 
-      const studentIds = [...new Set(schoolLeads.map((l) => l.student_id).filter(Boolean))];
+      const studentIds = [
+        ...new Set(schoolLeads.map((l) => l.student_id).filter(Boolean)),
+      ];
 
-      const studentsData = studentIds.length
-        ? await User.filter({ id: { $in: studentIds } })
-        : [];
+      const studentResults = await Promise.all(
+        studentIds.map(async (studentUid) => {
+          try {
+            const q = query(collection(db, 'users'), where('uid', '==', studentUid));
+            const snap = await getDocs(q);
+            if (snap.empty) return null;
 
-      const studentsMap = (studentsData || []).reduce((acc, s) => {
-        acc[s.id] = s;
-        return acc;
-      }, {});
+            const userDoc = snap.docs[0];
+            return {
+              id: userDoc.id,
+              ...userDoc.data(),
+            };
+          } catch (e) {
+            console.error(`Error loading student by uid ${studentUid}:`, e);
+            return null;
+          }
+        })
+      );
 
-      const combinedLeads = schoolLeads.map((lead) => ({
-        ...lead,
-        student: lead.student_id ? studentsMap[lead.student_id] : undefined,
-      }));
+      const studentsMap = studentResults
+        .filter(Boolean)
+        .reduce((acc, student) => {
+          acc[student.uid] = student;
+          return acc;
+        }, {});
+
+      const agentIds = [
+        ...new Set(
+          studentResults
+            .filter(Boolean)
+            .map((student) => student?.assigned_agent_id || student?.referredByAgentId)
+            .filter(Boolean)
+        ),
+      ];
+
+      const agentResults = await Promise.all(
+        agentIds.map(async (agentUid) => {
+          try {
+            const q = query(collection(db, 'users'), where('uid', '==', agentUid));
+            const snap = await getDocs(q);
+            if (snap.empty) return null;
+
+            const userDoc = snap.docs[0];
+            return {
+              id: userDoc.id,
+              ...userDoc.data(),
+            };
+          } catch (e) {
+            console.error(`Error loading agent by uid ${agentUid}:`, e);
+            return null;
+          }
+        })
+      );
+
+      const agentsMap = agentResults
+        .filter(Boolean)
+        .reduce((acc, agent) => {
+          acc[agent.uid] = agent;
+          return acc;
+        }, {});
+
+      const combinedLeads = schoolLeads.map((lead) => {
+        const student = lead.student_id ? studentsMap[lead.student_id] : null;
+        const assignedAgentId =
+          student?.assigned_agent_id ||
+          student?.referredByAgentId ||
+          '';
+
+        return {
+          ...lead,
+          student,
+          assignedAgentId,
+          assignedAgent: assignedAgentId ? agentsMap[assignedAgentId] : null,
+        };
+      });
 
       setLeads(combinedLeads);
     } catch (error) {
@@ -477,10 +559,13 @@ export default function SchoolLeads() {
       ? maskPhone(lead.student?.phone || lead.student_phone || '')
       : (lead.student?.phone || lead.student_phone || '');
 
+    const agentName = String(getAssignedAgentName(lead) || '').toLowerCase();
+
     return (
       visibleName.toLowerCase().includes(term) ||
       visibleEmail.toLowerCase().includes(term) ||
-      visiblePhone.toLowerCase().includes(term)
+      visiblePhone.toLowerCase().includes(term) ||
+      agentName.includes(term)
     );
   });
 
@@ -511,18 +596,19 @@ export default function SchoolLeads() {
   };
 
   const handleMessageLead = (lead) => {
-    const studentId = lead?.student_id || lead?.student?.id;
-    if (!studentId) return;
+    const agentId = getAssignedAgentId(lead);
+    if (!agentId) return;
 
     const qs = new URLSearchParams();
-    qs.set('to', studentId);
-    qs.set('toRole', 'user');
+    qs.set('to', agentId);
+    qs.set('toRole', 'agent');
 
     navigate(`${createPageUrl("Messages")}?${qs.toString()}`, {
       state: {
         source: 'school_leads',
         leadId: lead.id,
-        studentId,
+        studentId: lead?.student_id || lead?.student?.id || lead?.student?.uid || '',
+        agentId,
       },
     });
   };
@@ -855,7 +941,7 @@ export default function SchoolLeads() {
                 placeholder={
                   shouldMaskLeadInfo
                     ? "Search visible masked lead info..."
-                    : "Search by student name, email, or phone..."
+                    : "Search by student name, email, phone, or assigned agent..."
                 }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -875,6 +961,7 @@ export default function SchoolLeads() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
+                    <TableHead>Assigned Agent</TableHead>
                     <TableHead>Date Interested</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Action</TableHead>
@@ -885,6 +972,8 @@ export default function SchoolLeads() {
                     const rawName = lead.student?.full_name || lead.student_name || 'Unnamed Student';
                     const rawEmail = lead.student?.email || lead.student_email || '—';
                     const rawPhone = lead.student?.phone || lead.student_phone || '';
+                    const displayAgentName = getAssignedAgentName(lead);
+                    const assignedAgentId = getAssignedAgentId(lead);
 
                     const displayName = shouldMaskLeadInfo ? maskName(rawName) : rawName;
                     const displayEmail = shouldMaskLeadInfo ? maskEmail(rawEmail) : rawEmail;
@@ -912,6 +1001,12 @@ export default function SchoolLeads() {
                           </div>
                         </TableCell>
 
+                        <TableCell>
+                          <div className="font-medium text-gray-800">
+                            {displayAgentName}
+                          </div>
+                        </TableCell>
+
                         <TableCell>{formatLeadDate(lead)}</TableCell>
 
                         <TableCell>
@@ -925,10 +1020,11 @@ export default function SchoolLeads() {
                               size="sm"
                               className="gap-2"
                               onClick={() => handleMessageLead(lead)}
-                              disabled={!lead?.student_id && !lead?.student?.id}
+                              disabled={!assignedAgentId}
+                              title={!assignedAgentId ? 'No assigned agent found for this student.' : 'Message assigned agent'}
                             >
                               <MessageSquare className="w-4 h-4" />
-                              Message
+                              Message Agent
                             </Button>
 
                             <Button
