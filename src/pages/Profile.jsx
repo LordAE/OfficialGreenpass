@@ -715,11 +715,19 @@ function StudentQrGuideCard({
   progressText,
   completedCount,
   totalCount,
-  missingItems,
+  missingItemsDetailed,
   onboardingDone,
-  onGoPersonal,
-  onGoDetails,
+  onOpenTab,
 }) {
+  const grouped = missingItemsDetailed.reduce(
+    (acc, item) => {
+      const key = item.tab === "personal" ? "personal" : "details";
+      acc[key].push(item);
+      return acc;
+    },
+    { personal: [], details: [] }
+  );
+
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
       <div className="flex items-start gap-3">
@@ -767,45 +775,69 @@ function StudentQrGuideCard({
             </div>
           </div>
 
-          {missingItems.length > 0 ? (
-            <div className="mt-4">
-              <p className="text-sm font-medium text-amber-900 mb-2">
-                {tr("qr.missing_items", "Missing items")}
-              </p>
+          {missingItemsDetailed.length > 0 ? (
+            <div className="mt-4 space-y-4">
+              {grouped.personal.length > 0 ? (
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-sm font-semibold text-amber-900">
+                      {tr("personal_information", "Personal Information")}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-xl bg-white"
+                      onClick={() => onOpenTab("personal")}
+                    >
+                      {tr("qr.go_to_personal_information", "Go to Personal Information")}
+                    </Button>
+                  </div>
 
-              <div className="flex flex-wrap gap-2">
-                {missingItems.map((item) => (
-                  <Badge
-                    key={item}
-                    variant="outline"
-                    className="border-amber-300 bg-white text-amber-900"
-                  >
-                    {item}
-                  </Badge>
-                ))}
-              </div>
+                  <div className="flex flex-wrap gap-2">
+                    {grouped.personal.map((item) => (
+                      <Badge
+                        key={item.key}
+                        variant="outline"
+                        className="border-amber-300 bg-white text-amber-900"
+                      >
+                        {item.label}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {grouped.details.length > 0 ? (
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-sm font-semibold text-amber-900">
+                      {tr("student_profile", "Student Profile")}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-xl bg-white"
+                      onClick={() => onOpenTab("details")}
+                    >
+                      {tr("qr.go_to_student_profile", "Go to Student Profile")}
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {grouped.details.map((item) => (
+                      <Badge
+                        key={item.key}
+                        variant="outline"
+                        className="border-amber-300 bg-white text-amber-900"
+                      >
+                        {item.label}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-xl bg-white"
-              onClick={onGoPersonal}
-            >
-              {tr("qr.go_to_personal_information", "Go to Personal Information")}
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-xl bg-white"
-              onClick={onGoDetails}
-            >
-              {tr("qr.go_to_student_profile", "Go to Student Profile")}
-            </Button>
-          </div>
         </div>
       </div>
     </div>
@@ -1105,7 +1137,8 @@ export default function Profile() {
           schoolProfileDoc?.school_name ||
           schoolProfileDoc?.name ||
           "",
-        type: u.school_profile?.type || schoolProfileDoc?.type || schoolProfileDoc?.school_level || "",
+        type:
+          u.school_profile?.type || schoolProfileDoc?.type || schoolProfileDoc?.school_level || "",
         location: u.school_profile?.location || schoolProfileDoc?.location || "",
         website: u.school_profile?.website || schoolProfileDoc?.website || "",
         about: u.school_profile?.about || schoolProfileDoc?.about || "",
@@ -1249,10 +1282,15 @@ export default function Profile() {
     return studentQrChecklist.every((item) => item.done);
   }, [role, studentQrChecklist]);
 
+  const studentQrMissingItemsDetailed = useMemo(() => {
+    if (role !== "user") return [];
+    return studentQrChecklist.filter((item) => !item.done);
+  }, [role, studentQrChecklist]);
+
   const studentQrMissingItems = useMemo(() => {
     if (role !== "user") return [];
-    return studentQrChecklist.filter((item) => !item.done).map((item) => item.label);
-  }, [role, studentQrChecklist]);
+    return studentQrMissingItemsDetailed.map((item) => item.label);
+  }, [role, studentQrMissingItemsDetailed]);
 
   const studentQrCompletedCount = useMemo(() => {
     if (role !== "user") return 0;
@@ -1266,7 +1304,10 @@ export default function Profile() {
 
   const studentQrProgressText = useMemo(() => {
     if (role !== "user") return "";
-    return `${studentQrCompletedCount}/${studentQrTotalCount} ${tr("qr.fields_completed", "required items completed")}`;
+    return `${studentQrCompletedCount}/${studentQrTotalCount} ${tr(
+      "qr.fields_completed",
+      "required items completed"
+    )}`;
   }, [role, studentQrCompletedCount, studentQrTotalCount, tr]);
 
   useEffect(() => {
@@ -1492,74 +1533,123 @@ export default function Profile() {
     if (!uid) return;
 
     if (!form.full_name?.trim()) {
+      setActiveTab("personal");
       return alert(tr("alerts.required_full_name", "Full name is required."));
     }
     if (!form.phone?.trim()) {
+      setActiveTab("personal");
       return alert(tr("alerts.required_phone", "Phone is required."));
     }
     if (!form.country?.trim()) {
+      setActiveTab("personal");
       return alert(tr("alerts.required_country", "Country is required."));
     }
 
     if (role === "user") {
+      if (!form.bio?.trim()) {
+        setActiveTab("personal");
+        return alert(tr("alerts.required_bio", "Biography / Description is required."));
+      }
+      if (!form.current_level?.trim()) {
+        setActiveTab("personal");
+        return alert(tr("alerts.required_current_level", "Current level is required."));
+      }
       if (!form.target_country?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_target_country", "Target country is required."));
       }
       if (!form.target_program?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_target_program", "Target program is required."));
+      }
+      if (!form.academic_background?.trim()) {
+        setActiveTab("details");
+        return alert(
+          tr("alerts.required_academic_background", "Academic background is required.")
+        );
+      }
+      if (!Array.isArray(form.preferred_programs) || form.preferred_programs.length === 0) {
+        setActiveTab("details");
+        return alert(
+          tr("alerts.required_preferred_programs", "Add at least 1 preferred program.")
+        );
+      }
+      if (!Array.isArray(form.study_areas) || form.study_areas.length === 0) {
+        setActiveTab("details");
+        return alert(tr("alerts.required_study_areas", "Add at least 1 study area."));
+      }
+      if (!userDoc?.onboarding_completed) {
+        setActiveTab("details");
+        return alert(tr("alerts.required_onboarding", "Please complete onboarding first."));
       }
     }
 
     if (role === "agent") {
       if (!form.company_name?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_company_name", "Company name is required."));
       }
       if (!form.business_license_mst?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_business_license", "Business license (MST) is required."));
       }
       if (!form.paypal_email?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_paypal_email", "PayPal email is required."));
       }
     }
 
     if (role === "tutor") {
       if (csvToArray(form.specializations).length === 0) {
+        setActiveTab("details");
         return alert(tr("alerts.required_specializations", "Specializations are required."));
       }
       if (!String(form.experience_years).trim()) {
-        return alert(tr("alerts.required_experience_years", "Years of experience is required."));
+        setActiveTab("details");
+        return alert(
+          tr("alerts.required_experience_years", "Years of experience is required.")
+        );
       }
       if (!String(form.hourly_rate).trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_hourly_rate", "Hourly rate is required."));
       }
       if (!form.paypal_email?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_paypal_email", "PayPal email is required."));
       }
     }
 
     if (role === "school") {
       if (!form.school_name?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_institution_name", "Institution name is required."));
       }
       if (!form.type?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_school_type", "School type is required."));
       }
       if (!form.location?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_city_location", "City/Location is required."));
       }
       if (!form.website?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_website", "Website is required."));
       }
     }
 
     if (role === "vendor") {
       if (!form.business_name?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_business_name", "Business name is required."));
       }
       if (!Array.isArray(form.service_categories) || form.service_categories.length === 0) {
+        setActiveTab("details");
         return alert(tr("alerts.required_service_category", "Select at least 1 service category."));
       }
       if (!form.paypal_email?.trim()) {
+        setActiveTab("details");
         return alert(tr("alerts.required_paypal_email", "PayPal email is required."));
       }
     }
@@ -1957,7 +2047,10 @@ export default function Profile() {
 
                       {showStudent ? (
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="current_level">{tr("current_level", "Current Level")}</Label>
+                          <Label htmlFor="current_level">
+                            {tr("current_level", "Current Level")}{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
                           <Input
                             id="current_level"
                             value={form.current_level}
@@ -2030,7 +2123,10 @@ export default function Profile() {
                     </div>
 
                     <div className="flex flex-col gap-2 mt-6">
-                      <Label htmlFor="bio">{tr("bio_label", "Biography / Description")}</Label>
+                      <Label htmlFor="bio">
+                        {tr("bio_label", "Biography / Description")}{" "}
+                        {showStudent ? <span className="text-red-500">*</span> : null}
+                      </Label>
                       <Textarea
                         id="bio"
                         value={form.bio}
@@ -2102,7 +2198,10 @@ export default function Profile() {
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="target_country">{tr("target_country", "Target Country")}</Label>
+                          <Label htmlFor="target_country">
+                            {tr("target_country", "Target Country")}{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
                           <Input
                             id="target_country"
                             value={form.target_country}
@@ -2113,7 +2212,10 @@ export default function Profile() {
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          <Label htmlFor="target_program">{tr("target_program", "Target Program")}</Label>
+                          <Label htmlFor="target_program">
+                            {tr("target_program", "Target Program")}{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
                           <Input
                             id="target_program"
                             value={form.target_program}
@@ -2128,7 +2230,8 @@ export default function Profile() {
 
                         <div className="flex flex-col gap-2 md:col-span-2">
                           <Label htmlFor="academic_background">
-                            {tr("academic_background", "Academic Background")}
+                            {tr("academic_background", "Academic Background")}{" "}
+                            <span className="text-red-500">*</span>
                           </Label>
                           <Textarea
                             id="academic_background"
@@ -2211,7 +2314,12 @@ export default function Profile() {
 
                         <SimpleArrayInput
                           id="preferred_programs"
-                          label={tr("preferred_programs", "Preferred Programs")}
+                          label={
+                            <>
+                              {tr("preferred_programs", "Preferred Programs")}{" "}
+                              <span className="text-red-500">*</span>
+                            </>
+                          }
                           value={form.preferred_programs}
                           disabled={!isEditing}
                           onChange={(v) => setField("preferred_programs", v)}
@@ -2250,7 +2358,11 @@ export default function Profile() {
 
                         <SimpleArrayInput
                           id="study_areas"
-                          label={tr("areas", "Areas")}
+                          label={
+                            <>
+                              {tr("areas", "Areas")} <span className="text-red-500">*</span>
+                            </>
+                          }
                           value={form.study_areas}
                           disabled={!isEditing}
                           onChange={(v) => setField("study_areas", v)}
@@ -2274,6 +2386,25 @@ export default function Profile() {
                           helpText={tr("comma_help", "Separate multiple values with commas.")}
                         />
                       </div>
+
+                      {!userDoc?.onboarding_completed ? (
+                        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                          <div className="flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+                            <div>
+                              <p className="font-semibold">
+                                {tr("onboarding_incomplete", "Onboarding incomplete")}
+                              </p>
+                              <p className="mt-1 text-amber-800">
+                                {tr(
+                                  "qr.onboarding_required_help",
+                                  "You must complete onboarding before your Student QR can unlock."
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </ProfileSection>
                   )}
 
@@ -2616,10 +2747,9 @@ export default function Profile() {
                               progressText={studentQrProgressText}
                               completedCount={studentQrCompletedCount}
                               totalCount={studentQrTotalCount}
-                              missingItems={studentQrMissingItems}
+                              missingItemsDetailed={studentQrMissingItemsDetailed}
                               onboardingDone={Boolean(userDoc?.onboarding_completed)}
-                              onGoPersonal={() => setActiveTab("personal")}
-                              onGoDetails={() => setActiveTab("details")}
+                              onOpenTab={setActiveTab}
                             />
                           </div>
                         )}
@@ -2762,7 +2892,10 @@ export default function Profile() {
                                     {tr("qr.go_to_student_profile", "Go to Student Profile")}
                                   </Button>
                                   {!userDoc?.onboarding_completed ? (
-                                    <Badge variant="outline" className="border-amber-300 text-amber-800 bg-white">
+                                    <Badge
+                                      variant="outline"
+                                      className="border-amber-300 text-amber-800 bg-white"
+                                    >
                                       {tr("onboarding_incomplete", "Onboarding incomplete")}
                                     </Badge>
                                   ) : null}
@@ -2885,7 +3018,7 @@ export default function Profile() {
                         </div>
                       )}
 
-                      {verificationFields.length && isEditing ? (
+                      {verificationFields.length > 0 && isEditing ? (
                         <div className="flex justify-end">
                           <Button
                             type="button"
