@@ -2152,259 +2152,397 @@ export default function Profile() {
                 <TabsContent value="details" className="mt-6">
                   {showStudent && (
                     <ProfileSection title={tr("student_profile", "Student Profile")} icon={BookOpen}>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="gpa">{tr("gpa", "GPA")}</Label>
-                          <Input
-                            id="gpa"
-                            value={form.gpa}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("gpa", e.target.value)}
-                            placeholder={tr("gpa_placeholder", "e.g. 3.5 / 4.0")}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="ielts">{tr("ielts", "IELTS")}</Label>
-                          <Input
-                            id="ielts"
-                            value={form.ielts}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("ielts", e.target.value)}
-                            placeholder={tr("ielts_placeholder", "e.g. 6.5")}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="budget">{tr("budget", "Budget")}</Label>
-                          <Input
-                            id="budget"
-                            value={form.budget}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("budget", e.target.value)}
-                            placeholder={tr("budget_placeholder", "e.g. 20000 USD")}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="intake_year">{tr("intake_year", "Intake Year")}</Label>
-                          <Input
-                            id="intake_year"
-                            value={form.intake_year}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("intake_year", e.target.value)}
-                            placeholder={tr("intake_year_placeholder", "e.g. 2026")}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="target_country">
-                            {tr("target_country", "Target Country")}{" "}
-                            <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            id="target_country"
-                            value={form.target_country}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("target_country", e.target.value)}
-                            placeholder={tr("target_country_placeholder", "e.g. Canada")}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="target_program">
-                            {tr("target_program", "Target Program")}{" "}
-                            <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            id="target_program"
-                            value={form.target_program}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("target_program", e.target.value)}
-                            placeholder={tr(
-                              "target_program_placeholder",
-                              "e.g. Computer Science"
-                            )}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2 md:col-span-2">
-                          <Label htmlFor="academic_background">
-                            {tr("academic_background", "Academic Background")}{" "}
-                            <span className="text-red-500">*</span>
-                          </Label>
-                          <Textarea
-                            id="academic_background"
-                            rows={4}
-                            value={form.academic_background}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("academic_background", e.target.value)}
-                            placeholder={tr(
-                              "academic_background_placeholder",
-                              "Summarize your academic background"
-                            )}
-                            className="resize-none"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="high_school">{tr("high_school", "High School")}</Label>
-                          <Input
-                            id="high_school"
-                            value={form.high_school}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("high_school", e.target.value)}
-                            placeholder={tr("high_school_placeholder", "Enter your high school")}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="university">{tr("university", "University")}</Label>
-                          <Input
-                            id="university"
-                            value={form.university}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("university", e.target.value)}
-                            placeholder={tr("university_placeholder", "Enter your university")}
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2 md:col-span-2">
-                          <Label htmlFor="achievements">{tr("achievements", "Achievements")}</Label>
-                          <Textarea
-                            id="achievements"
-                            rows={4}
-                            value={form.achievements}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("achievements", e.target.value)}
-                            placeholder={tr(
-                              "achievements_placeholder",
-                              "Awards, honors, recognitions, leadership, etc."
-                            )}
-                            className="resize-none"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="scholarship_interest">
-                            {tr("scholarship_interest", "Scholarship Interest")}
-                          </Label>
-                          <Select
-                            value={form.scholarship_interest || ""}
-                            onValueChange={(value) =>
-                              isEditing && setField("scholarship_interest", value)
-                            }
-                            disabled={!isEditing}
-                          >
-                            <SelectTrigger id="scholarship_interest">
-                              <SelectValue
-                                placeholder={tr(
-                                  "scholarship_interest_placeholder",
-                                  "Select scholarship interest"
-                                )}
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="yes">{tr("yes", "Yes")}</SelectItem>
-                              <SelectItem value="no">{tr("no", "No")}</SelectItem>
-                              <SelectItem value="maybe">{tr("maybe", "Maybe")}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <SimpleArrayInput
-                          id="preferred_programs"
-                          label={
-                            <>
-                              {tr("preferred_programs", "Preferred Programs")}{" "}
-                              <span className="text-red-500">*</span>
-                            </>
-                          }
-                          value={form.preferred_programs}
-                          disabled={!isEditing}
-                          onChange={(v) => setField("preferred_programs", v)}
-                          placeholder={tr(
-                            "preferred_programs_placeholder",
-                            "Example: MBA, BS Nursing, Computer Engineering"
-                          )}
-                          helpText={tr("comma_help", "Separate multiple values with commas.")}
-                        />
-
-                        <SimpleArrayInput
-                          id="selected_courses"
-                          label={tr("courses", "Courses")}
-                          value={form.selected_courses}
-                          disabled={!isEditing}
-                          onChange={(v) => setField("selected_courses", v)}
-                          placeholder={tr(
-                            "courses_placeholder",
-                            "Example: Language Programs, Business, Engineering"
-                          )}
-                          helpText={tr("comma_help", "Separate multiple values with commas.")}
-                        />
-
-                        <SimpleArrayInput
-                          id="preferred_countries"
-                          label={tr("countries", "Countries")}
-                          value={form.preferred_countries}
-                          disabled={!isEditing}
-                          onChange={(v) => setField("preferred_countries", v)}
-                          placeholder={tr(
-                            "countries_placeholder",
-                            "Example: South Korea, Canada, Australia"
-                          )}
-                          helpText={tr("comma_help", "Separate multiple values with commas.")}
-                        />
-
-                        <SimpleArrayInput
-                          id="study_areas"
-                          label={
-                            <>
-                              {tr("areas", "Areas")} <span className="text-red-500">*</span>
-                            </>
-                          }
-                          value={form.study_areas}
-                          disabled={!isEditing}
-                          onChange={(v) => setField("study_areas", v)}
-                          placeholder={tr(
-                            "areas_placeholder",
-                            "Example: Business and Management, Film Media and Communication"
-                          )}
-                          helpText={tr("comma_help", "Separate multiple values with commas.")}
-                        />
-
-                        <SimpleArrayInput
-                          id="spoken_languages"
-                          label={tr("languages", "Languages")}
-                          value={form.spoken_languages}
-                          disabled={!isEditing}
-                          onChange={(v) => setField("spoken_languages", v)}
-                          placeholder={tr(
-                            "languages_placeholder",
-                            "Example: English, French, Korean"
-                          )}
-                          helpText={tr("comma_help", "Separate multiple values with commas.")}
-                        />
-                      </div>
-
-                      {!userDoc?.onboarding_completed ? (
-                        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                          <div className="flex items-start gap-3">
-                            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+                      <div className="space-y-6">
+                        {/* Student Snapshot */}
+                        <div className="rounded-2xl border bg-gradient-to-br from-slate-50 to-white p-5">
+                          <div className="flex items-center justify-between gap-3 mb-4">
                             <div>
-                              <p className="font-semibold">
-                                {tr("onboarding_incomplete", "Onboarding incomplete")}
-                              </p>
-                              <p className="mt-1 text-amber-800">
+                              <h3 className="text-base font-semibold text-gray-900">
+                                {tr("student_snapshot", "Student Snapshot")}
+                              </h3>
+                              <p className="text-sm text-gray-500">
                                 {tr(
-                                  "qr.onboarding_required_help",
-                                  "You must complete onboarding before your Student QR can unlock."
+                                  "student_snapshot_help",
+                                  "A quick overview of the student's goals and academic profile."
                                 )}
+                              </p>
+                            </div>
+                            <Badge variant="outline" className="rounded-full">
+                              {tr("profile_summary", "Profile Summary")}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                            <div className="rounded-xl border bg-white p-4">
+                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                {tr("target", "Target")}
+                              </p>
+                              <p className="mt-2 text-sm font-semibold text-gray-900">
+                                {form.target_country || tr("not_set", "Not set")}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                {form.target_program || tr("not_set", "Not set")}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl border bg-white p-4">
+                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                {tr("intake_budget", "Intake & Budget")}
+                              </p>
+                              <p className="mt-2 text-sm font-semibold text-gray-900">
+                                {form.intake_year || tr("not_set", "Not set")}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                {form.budget || tr("not_set", "Not set")}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl border bg-white p-4">
+                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                {tr("academic", "Academic")}
+                              </p>
+                              <p className="mt-2 text-sm font-semibold text-gray-900">
+                                GPA: {form.gpa || tr("not_set", "Not set")}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                IELTS: {form.ielts || tr("not_set", "Not set")}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl border bg-white p-4">
+                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                {tr("scholarship", "Scholarship")}
+                              </p>
+                              <p className="mt-2 text-sm font-semibold text-gray-900 capitalize">
+                                {form.scholarship_interest || tr("not_set", "Not set")}
+                              </p>
+                              <p className="text-sm text-gray-600 line-clamp-2">
+                                {form.academic_background || tr("no_summary_yet", "No academic summary yet")}
                               </p>
                             </div>
                           </div>
                         </div>
-                      ) : null}
+
+                        {/* Study Goal */}
+                        <div className="rounded-2xl border bg-white p-5">
+                          <div className="mb-4">
+                            <h3 className="text-base font-semibold text-gray-900">
+                              {tr("study_goal", "Study Goal")}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              {tr(
+                                "study_goal_help",
+                                "Define where the student wants to study, what they want to take, and their intake plan."
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="target_country">
+                                {tr("target_country", "Target Country")}{" "}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <Input
+                                id="target_country"
+                                value={form.target_country}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("target_country", e.target.value)}
+                                placeholder={tr("target_country_placeholder", "e.g. Canada")}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="target_program">
+                                {tr("target_program", "Target Program")}{" "}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <Input
+                                id="target_program"
+                                value={form.target_program}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("target_program", e.target.value)}
+                                placeholder={tr("target_program_placeholder", "e.g. Computer Engineering")}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="intake_year">{tr("intake_year", "Intake Year")}</Label>
+                              <Input
+                                id="intake_year"
+                                value={form.intake_year}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("intake_year", e.target.value)}
+                                placeholder={tr("intake_year_placeholder", "e.g. 2026")}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="budget">{tr("budget", "Budget")}</Label>
+                              <Input
+                                id="budget"
+                                value={form.budget}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("budget", e.target.value)}
+                                placeholder={tr("budget_placeholder", "e.g. 25000")}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2 md:col-span-2">
+                              <Label htmlFor="scholarship_interest">
+                                {tr("scholarship_interest", "Scholarship Interest")}
+                              </Label>
+                              <Select
+                                value={form.scholarship_interest || ""}
+                                onValueChange={(value) => isEditing && setField("scholarship_interest", value)}
+                                disabled={!isEditing}
+                              >
+                                <SelectTrigger id="scholarship_interest">
+                                  <SelectValue
+                                    placeholder={tr(
+                                      "scholarship_interest_placeholder",
+                                      "Select scholarship interest"
+                                    )}
+                                  />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="yes">{tr("yes", "Yes")}</SelectItem>
+                                  <SelectItem value="no">{tr("no", "No")}</SelectItem>
+                                  <SelectItem value="maybe">{tr("maybe", "Maybe")}</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Academic Snapshot */}
+                        <div className="rounded-2xl border bg-white p-5">
+                          <div className="mb-4">
+                            <h3 className="text-base font-semibold text-gray-900">
+                              {tr("academic_snapshot", "Academic Snapshot")}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              {tr(
+                                "academic_snapshot_help",
+                                "Highlight academic history, qualifications, and language test results."
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="gpa">{tr("gpa", "GPA")}</Label>
+                              <Input
+                                id="gpa"
+                                value={form.gpa}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("gpa", e.target.value)}
+                                placeholder={tr("gpa_placeholder", "e.g. 3.5 / 4.0")}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="ielts">{tr("ielts", "IELTS")}</Label>
+                              <Input
+                                id="ielts"
+                                value={form.ielts}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("ielts", e.target.value)}
+                                placeholder={tr("ielts_placeholder", "e.g. 6.5")}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2 md:col-span-2">
+                              <Label htmlFor="academic_background">
+                                {tr("academic_summary", "Academic Summary")}{" "}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <Textarea
+                                id="academic_background"
+                                rows={4}
+                                value={form.academic_background}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("academic_background", e.target.value)}
+                                placeholder={tr(
+                                  "academic_background_placeholder",
+                                  "Summarize your education, honors, strand, major, and current academic standing"
+                                )}
+                                className="resize-none"
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="high_school">{tr("high_school", "High School")}</Label>
+                              <Input
+                                id="high_school"
+                                value={form.high_school}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("high_school", e.target.value)}
+                                placeholder={tr("high_school_placeholder", "Enter your high school")}
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="university">{tr("university", "University / College")}</Label>
+                              <Input
+                                id="university"
+                                value={form.university}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("university", e.target.value)}
+                                placeholder={tr("university_placeholder", "Enter your university or college")}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Preferences */}
+                        <div className="rounded-2xl border bg-white p-5">
+                          <div className="mb-4">
+                            <h3 className="text-base font-semibold text-gray-900">
+                              {tr("preferences", "Preferences")}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              {tr(
+                                "preferences_help",
+                                "List the student's preferred programs, countries, study areas, and languages."
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <SimpleArrayInput
+                              id="preferred_programs"
+                              label={
+                                <>
+                                  {tr("preferred_programs", "Preferred Programs")}{" "}
+                                  <span className="text-red-500">*</span>
+                                </>
+                              }
+                              value={form.preferred_programs}
+                              disabled={!isEditing}
+                              onChange={(v) => setField("preferred_programs", v)}
+                              placeholder={tr(
+                                "preferred_programs_placeholder",
+                                "Example: Computer Engineering, Information Technology, Data Analytics"
+                              )}
+                              helpText={tr("comma_help", "Separate multiple values with commas.")}
+                            />
+
+                            <SimpleArrayInput
+                              id="selected_courses"
+                              label={tr("programs_of_interest", "Programs of Interest")}
+                              value={form.selected_courses}
+                              disabled={!isEditing}
+                              onChange={(v) => setField("selected_courses", v)}
+                              placeholder={tr(
+                                "courses_placeholder",
+                                "Example: Diploma, Bachelor's Degree, Postgraduate Certificate"
+                              )}
+                              helpText={tr("comma_help", "Separate multiple values with commas.")}
+                            />
+
+                            <SimpleArrayInput
+                              id="preferred_countries"
+                              label={tr("preferred_study_countries", "Preferred Study Countries")}
+                              value={form.preferred_countries}
+                              disabled={!isEditing}
+                              onChange={(v) => setField("preferred_countries", v)}
+                              placeholder={tr(
+                                "countries_placeholder",
+                                "Example: Canada, Australia, New Zealand"
+                              )}
+                              helpText={tr("comma_help", "Separate multiple values with commas.")}
+                            />
+
+                            <SimpleArrayInput
+                              id="study_areas"
+                              label={
+                                <>
+                                  {tr("study_areas", "Study Areas / Fields of Interest")}{" "}
+                                  <span className="text-red-500">*</span>
+                                </>
+                              }
+                              value={form.study_areas}
+                              disabled={!isEditing}
+                              onChange={(v) => setField("study_areas", v)}
+                              placeholder={tr(
+                                "areas_placeholder",
+                                "Example: Engineering, Business, Healthcare, Media"
+                              )}
+                              helpText={tr("comma_help", "Separate multiple values with commas.")}
+                            />
+
+                            <div className="md:col-span-2">
+                              <SimpleArrayInput
+                                id="spoken_languages"
+                                label={tr("languages_spoken", "Languages Spoken")}
+                                value={form.spoken_languages}
+                                disabled={!isEditing}
+                                onChange={(v) => setField("spoken_languages", v)}
+                                placeholder={tr(
+                                  "languages_placeholder",
+                                  "Example: English, Tagalog, Cebuano"
+                                )}
+                                helpText={tr("comma_help", "Separate multiple values with commas.")}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Strengths */}
+                        <div className="rounded-2xl border bg-white p-5">
+                          <div className="mb-4">
+                            <h3 className="text-base font-semibold text-gray-900">
+                              {tr("strengths", "Strengths")}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              {tr(
+                                "strengths_help",
+                                "Show achievements, awards, leadership experience, and recognitions."
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-6">
+                            <div className="flex flex-col gap-2">
+                              <Label htmlFor="achievements">
+                                {tr("awards_leadership_recognitions", "Awards, Leadership, and Recognitions")}
+                              </Label>
+                              <Textarea
+                                id="achievements"
+                                rows={4}
+                                value={form.achievements}
+                                disabled={!isEditing}
+                                onChange={(e) => setField("achievements", e.target.value)}
+                                placeholder={tr(
+                                  "achievements_placeholder",
+                                  "Include awards, honors, leadership roles, recognitions, competitions, or certifications"
+                                )}
+                                className="resize-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {!userDoc?.onboarding_completed ? (
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                            <div className="flex items-start gap-3">
+                              <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+                              <div>
+                                <p className="font-semibold">
+                                  {tr("onboarding_incomplete", "Onboarding incomplete")}
+                                </p>
+                                <p className="mt-1 text-amber-800">
+                                  {tr(
+                                    "qr.onboarding_required_help",
+                                    "You must complete onboarding before your Student QR can unlock."
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                     </ProfileSection>
                   )}
 

@@ -18,6 +18,7 @@ import {
   QrCode,
   XCircle,
   Camera,
+  Eye,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -595,6 +596,34 @@ export default function SchoolLeads() {
     }
   };
 
+  const handleViewStudentProfile = (lead) => {
+    const studentUid =
+      lead?.student?.uid ||
+      lead?.student_id ||
+      lead?.student?.id ||
+      '';
+
+    if (!studentUid) return;
+
+    navigate(`/view-profile/${studentUid}`, {
+      state: {
+        source: 'school_leads',
+        leadId: lead?.id || '',
+      },
+    });
+  };
+
+  const handleViewPendingQrStudentProfile = () => {
+    const studentUid = pendingQrLead?.studentId || '';
+    if (!studentUid) return;
+
+    navigate(`/view-profile/${studentUid}`, {
+      state: {
+        source: 'school_qr_preview',
+      },
+    });
+  };
+
   const handleMessageLead = (lead) => {
     const agentId = getAssignedAgentId(lead);
     if (!agentId) return;
@@ -860,6 +889,15 @@ export default function SchoolLeads() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outline"
+                      onClick={handleViewPendingQrStudentProfile}
+                      disabled={!pendingQrLead?.studentId || actingQrLead}
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      View Profile
+                    </Button>
+
+                    <Button
+                      variant="outline"
                       onClick={handleDeclineQrLead}
                       disabled={actingQrLead}
                     >
@@ -1014,7 +1052,19 @@ export default function SchoolLeads() {
                         </TableCell>
 
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-2 flex-wrap">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => handleViewStudentProfile(lead)}
+                              disabled={!(lead?.student?.uid || lead?.student_id || lead?.student?.id)}
+                              title="View student profile"
+                            >
+                              <Eye className="w-4 h-4" />
+                              View Profile
+                            </Button>
+
                             <Button
                               variant="outline"
                               size="sm"
