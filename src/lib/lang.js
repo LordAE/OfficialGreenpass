@@ -20,7 +20,7 @@ function normalizeLang(raw) {
   if (lower.startsWith("de")) return "de";
   if (lower.startsWith("es")) return "es";
   if (lower.startsWith("en")) return "en";
-
+  if (lower.startsWith("tr")) return "tr";
   return DEFAULT_LANG;
 }
 

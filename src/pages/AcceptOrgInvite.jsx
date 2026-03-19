@@ -6,7 +6,16 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Mail, LogIn } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Mail,
+  LogIn,
+  AlertCircle,
+  Building2,
+  UserCheck,
+} from "lucide-react";
 
 function getEnv(key) {
   try {
@@ -49,18 +58,17 @@ function safeInternalPath(p) {
 
 export default function AcceptOrgInvite() {
   const { t } = useTranslation();
-
   const qs = useQuery();
-  // Support BOTH param names: invite (new) and inviteId (legacy)
+  const nav = useNavigate();
+
   const invite = qs.get("invite") || qs.get("inviteId") || "";
   const token = qs.get("token") || "";
-
-  const nav = useNavigate();
 
   const [authReady, setAuthReady] = useState(false);
   const [fbUser, setFbUser] = useState(null);
 
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [preview, setPreview] = useState(null);
   const [state, setState] = useState("loading"); // loading|invalid|expired|pending|accepted|mismatch|error|needs_auth
   const [msg, setMsg] = useState("");
@@ -85,31 +93,37 @@ export default function AcceptOrgInvite() {
   }
 
   const acceptPath = useMemo(() => {
-    // Reconstruct current path with params to round-trip via SEO auth
-    const p = `/accept-org-invite?invite=${encodeURIComponent(invite)}&token=${encodeURIComponent(token)}`;
-    return p;
+    return `/accept-org-invite?invite=${encodeURIComponent(invite)}&token=${encodeURIComponent(token)}`;
   }, [invite, token]);
 
   const goToSeoLogin = () => {
     const seo = inferSeoBaseFromEnv();
     const next = safeInternalPath(acceptPath) || "/dashboard";
-    // HomeClient.tsx reads `next` from query and passes to app auth-bridge
     window.location.href = `${seo}/?mode=login&next=${encodeURIComponent(next)}`;
   };
+
+  const invitedEmail = String(preview?.email || "").trim().toLowerCase();
+  const myEmail = String(fbUser?.email || "").trim().toLowerCase();
+  const emailMismatch = invitedEmail && myEmail && invitedEmail !== myEmail;
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setMsg("");
+
       try {
         if (!invite || !token) {
           setState("invalid");
           return;
         }
-        const base = await functionsBase();
-        if (!base) throw new Error(t("acceptOrgInvite.missingFunctionsBase", "Missing Functions base URL."));
 
-        // getOrgInvitePublic expects `invite` + `token`
+        const base = await functionsBase();
+        if (!base) {
+          throw new Error(
+            t("acceptOrgInvite.missingFunctionsBase", "Missing Functions base URL.")
+          );
+        }
+
         const res = await fetch(
           `${base}/getOrgInvitePublic?invite=${encodeURIComponent(invite)}&token=${encodeURIComponent(token)}`
         );
@@ -125,10 +139,18 @@ export default function AcceptOrgInvite() {
 
         setPreview(json);
 
-        // If not signed in, prompt to authenticate via SEO (so signup/login works there)
         const user = getAuth().currentUser;
         if (!user?.uid) {
           setState("needs_auth");
+          return;
+        }
+
+        if (
+          json?.email &&
+          user?.email &&
+          String(json.email).trim().toLowerCase() !== String(user.email).trim().toLowerCase()
+        ) {
+          setState("mismatch");
           return;
         }
 
@@ -141,27 +163,40 @@ export default function AcceptOrgInvite() {
         setLoading(false);
       }
     };
+
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invite, token]);
 
-  // If user signs in later (e.g., returns from SEO auth bridge), move from needs_auth -> pending
   useEffect(() => {
     if (!authReady) return;
-    if (state !== "needs_auth") return;
-    if (fbUser?.uid) setState("pending");
-  }, [authReady, fbUser, state]);
+    if (!fbUser?.uid) return;
+
+    if (state === "needs_auth") {
+      if (emailMismatch) setState("mismatch");
+      else setState("pending");
+    }
+
+    if (state === "mismatch" && !emailMismatch) {
+      setState("pending");
+    }
+  }, [authReady, fbUser, state, emailMismatch]);
 
   const acceptInvite = async () => {
     const auth = getAuth();
     const user = auth.currentUser;
     if (!user) return;
 
-    setLoading(true);
+    setSubmitting(true);
     setMsg("");
+
     try {
       const base = await functionsBase();
-      if (!base) throw new Error(t("acceptOrgInvite.missingFunctionsBase", "Missing Functions base URL."));
+      if (!base) {
+        throw new Error(
+          t("acceptOrgInvite.missingFunctionsBase", "Missing Functions base URL.")
+        );
+      }
 
       const idToken = await user.getIdToken(true);
       const res = await fetch(`${base}/acceptOrgInvite`, {
@@ -170,7 +205,6 @@ export default function AcceptOrgInvite() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        // acceptOrgInvite expects { invite, token }
         body: JSON.stringify({ invite, token }),
       });
 
@@ -182,8 +216,11 @@ export default function AcceptOrgInvite() {
 
       if (!res.ok || !json?.ok) {
         const err = json?.error || text || "Failed to accept invite";
-        if (String(err).toLowerCase().includes("mismatch")) setState("mismatch");
-        else setState("error");
+        if (String(err).toLowerCase().includes("mismatch")) {
+          setState("mismatch");
+        } else {
+          setState("error");
+        }
         setMsg(err);
         return;
       }
@@ -194,7 +231,7 @@ export default function AcceptOrgInvite() {
       setState("error");
       setMsg(e?.message || t("acceptOrgInvite.failedToAccept", "Failed to accept invite."));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -209,7 +246,8 @@ export default function AcceptOrgInvite() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-gray-600 flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" /> {t("acceptOrgInvite.loading", "Loading…")}
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t("acceptOrgInvite.loading", "Loading…")}
           </CardContent>
         </Card>
       </div>
@@ -228,9 +266,15 @@ export default function AcceptOrgInvite() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-sm text-gray-600">
-              {msg || t("acceptOrgInvite.invalidOrUnavailable", "This invitation link is invalid or no longer available.")}
+              {msg ||
+                t(
+                  "acceptOrgInvite.invalidOrUnavailable",
+                  "This invitation link is invalid or no longer available."
+                )}
             </div>
-            <Button onClick={() => nav("/")} className="rounded-2xl">{t("acceptOrgInvite.goHome", "Go home")}</Button>
+            <Button onClick={() => nav("/")} className="rounded-2xl">
+              {t("acceptOrgInvite.goHome", "Go home")}
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -249,9 +293,15 @@ export default function AcceptOrgInvite() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-sm text-gray-600">
-              {msg || t("acceptOrgInvite.askResend", "Ask the organization owner to resend a new invite.")}
+              {msg ||
+                t(
+                  "acceptOrgInvite.askResend",
+                  "Ask the organization owner to resend a new invite."
+                )}
             </div>
-            <Button onClick={() => nav("/")} className="rounded-2xl">{t("acceptOrgInvite.goHome", "Go home")}</Button>
+            <Button onClick={() => nav("/")} className="rounded-2xl">
+              {t("acceptOrgInvite.goHome", "Go home")}
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -270,11 +320,19 @@ export default function AcceptOrgInvite() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-sm text-gray-600">
-              {t("acceptOrgInvite.pleaseSignInSameEmail", "Please sign in (or sign up) using the same email address that received the invitation.")}
+              {t(
+                "acceptOrgInvite.pleaseSignInSameEmail",
+                "Please sign in (or sign up) using the same email address that received the invitation."
+              )}
             </div>
-            <Button onClick={goToSeoLogin} className="rounded-2xl w-full">{t("acceptOrgInvite.continueToSignInUp", "Continue to Sign in / Sign up")}</Button>
+            <Button onClick={goToSeoLogin} className="rounded-2xl w-full">
+              {t("acceptOrgInvite.continueToSignInUp", "Continue to Sign in / Sign up")}
+            </Button>
             <div className="text-xs text-gray-500">
-              {t("acceptOrgInvite.backAfterLogin", "You’ll be brought back here automatically after login.")}
+              {t(
+                "acceptOrgInvite.backAfterLogin",
+                "You’ll be brought back here automatically after login."
+              )}
             </div>
           </CardContent>
         </Card>
@@ -294,18 +352,54 @@ export default function AcceptOrgInvite() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="text-sm text-gray-600">
-              {t("acceptOrgInvite.youVeJoined", "You’ve joined")} {preview?.orgName || t("acceptOrgInvite.theOrganization", "the organization")}.
+              {t("acceptOrgInvite.youVeJoined", "You’ve joined")}{" "}
+              <b>{preview?.orgName || t("acceptOrgInvite.theOrganization", "the organization")}</b>.
             </div>
-            <Button onClick={() => nav("/organization")} className="rounded-2xl">{t("acceptOrgInvite.goToOrganization", "Go to Organization")}</Button>
+            <Button onClick={() => nav("/organization")} className="rounded-2xl">
+              {t("acceptOrgInvite.goToOrganization", "Go to Organization")}
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  const invitedEmail = String(preview?.email || "").toLowerCase();
-  const myEmail = String(fbUser?.email || "").toLowerCase();
-  const emailMismatch = invitedEmail && myEmail && invitedEmail !== myEmail;
+  if (state === "mismatch") {
+    return (
+      <div className="p-6">
+        <Card className="rounded-3xl max-w-xl mx-auto">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+              {t("acceptOrgInvite.emailMismatchTitle", "Wrong signed-in email")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="text-sm text-gray-600">
+              {t("acceptOrgInvite.invitedToJoin", "You were invited to join")}{" "}
+              <b>{preview?.orgName || t("acceptOrgInvite.anOrganization", "an organization")}</b>.
+            </div>
+
+            <div className="rounded-2xl border bg-amber-50 border-amber-200 p-3 text-sm text-amber-800">
+              {t("acceptOrgInvite.signedInAs", "You are signed in as")} <b>{myEmail || "—"}</b>,{" "}
+              {t("acceptOrgInvite.butThisInviteWasSentTo", "but this invite was sent to")}{" "}
+              <b>{invitedEmail || "—"}</b>.
+            </div>
+
+            {msg ? <div className="text-sm text-red-600">{msg}</div> : null}
+
+            <Button onClick={goToSeoLogin} variant="outline" className="rounded-2xl w-full">
+              {t("acceptOrgInvite.signInWithInvitedEmail", "Sign in with the invited email")}
+            </Button>
+
+            <Button onClick={() => nav("/")} className="rounded-2xl w-full">
+              {t("acceptOrgInvite.goHome", "Go home")}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -313,9 +407,31 @@ export default function AcceptOrgInvite() {
         <CardHeader>
           <CardTitle>{t("acceptOrgInvite.title", "Accept invitation")}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+
+        <CardContent className="space-y-4">
           <div className="text-sm text-gray-600">
-            {t("acceptOrgInvite.invitedToJoin", "You were invited to join")} <b>{preview?.orgName || t("acceptOrgInvite.anOrganization", "an organization")}</b>.
+            {t("acceptOrgInvite.invitedToJoin", "You were invited to join")}{" "}
+            <b>{preview?.orgName || t("acceptOrgInvite.anOrganization", "an organization")}</b>.
+          </div>
+
+          <div className="grid gap-3 rounded-2xl border p-4">
+            <div className="flex items-center gap-2 text-sm">
+              <Building2 className="h-4 w-4 text-gray-500" />
+              <span className="text-gray-500">{t("acceptOrgInvite.organizationLabel", "Organization")}:</span>
+              <b>{preview?.orgName || "—"}</b>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm">
+              <UserCheck className="h-4 w-4 text-gray-500" />
+              <span className="text-gray-500">{t("acceptOrgInvite.roleLabel", "Role")}:</span>
+              <b>{preview?.role || t("acceptOrgInvite.roleMember", "member")}</b>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm">
+              <Mail className="h-4 w-4 text-gray-500" />
+              <span className="text-gray-500">{t("acceptOrgInvite.invitedEmailLabel", "Invited email")}:</span>
+              <b>{invitedEmail || "—"}</b>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -327,21 +443,27 @@ export default function AcceptOrgInvite() {
             </Badge>
           </div>
 
-          {emailMismatch ? (
-            <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl p-3">
-              {t("acceptOrgInvite.signedInAs", "You are signed in as")} <b>{myEmail}</b>, {t("acceptOrgInvite.butThisInviteWasSentTo", "but this invite was sent to")} <b>{invitedEmail}</b>.
-              <div className="mt-2">
-                <Button onClick={goToSeoLogin} variant="outline" className="rounded-2xl">{t("acceptOrgInvite.signInWithInvitedEmail", "Sign in with the invited email")}</Button>
-              </div>
-            </div>
-          ) : null}
-
           {msg ? <div className="text-sm text-red-600">{msg}</div> : null}
 
-          <Button onClick={acceptInvite} className="rounded-2xl w-full" disabled={emailMismatch}>{t("acceptOrgInvite.acceptAndJoin", "Accept & Join")}</Button>
+          <Button
+            onClick={acceptInvite}
+            className="rounded-2xl w-full"
+            disabled={submitting || emailMismatch}
+          >
+            {submitting ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("acceptOrgInvite.accepting", "Accepting…")}
+              </span>
+            ) : (
+              t("acceptOrgInvite.acceptAndJoin", "Accept & Join")
+            )}
+          </Button>
 
           <div className="text-xs text-gray-500">
-            {t("acceptOrgInvite.youMustBeSignedInWith", "You must be signed in with")} <b>{invitedEmail || t("acceptOrgInvite.theInvitedEmail", "the invited email")}</b> {t("acceptOrgInvite.toAccept", "to accept.")}
+            {t("acceptOrgInvite.youMustBeSignedInWith", "You must be signed in with")}{" "}
+            <b>{invitedEmail || t("acceptOrgInvite.theInvitedEmail", "the invited email")}</b>{" "}
+            {t("acceptOrgInvite.toAccept", "to accept.")}
           </div>
         </CardContent>
       </Card>

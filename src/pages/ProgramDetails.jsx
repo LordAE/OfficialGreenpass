@@ -21,6 +21,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { getProvinceLabel } from '../components/utils/CanadianProvinces';
 import { getLevelLabel } from '../components/utils/EducationLevels';
+import { useTranslation } from 'react-i18next';
 
 /* ---------------- UI helpers ---------------- */
 const RequirementSection = ({ title, requirements, icon: Icon }) => {
@@ -65,20 +66,36 @@ const safeGet = (obj, path, fallback = 'Not specified') => {
   return (value ?? '') !== '' ? value : fallback;
 };
 
-const formatTuition = (fee) =>
-  !fee || fee === 0 ? 'Contact School' : `$${Number(fee).toLocaleString()}`;
-
-const formatLocation = (city, province, country) => {
-  const parts = [];
-  if (city?.trim()) parts.push(city);
-  if (province?.trim()) parts.push(getProvinceLabel(province));
-  if (country?.trim()) parts.push(country);
-  return parts.length ? parts.join(', ') : 'Location not specified';
-};
-
 export default function ProgramDetail() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
+
+  const tr = useCallback(
+    (key, def, vars = undefined) => t(key, { defaultValue: def, ...(vars || {}) }),
+    [t]
+  );
+
+  const formatTuition = useCallback(
+    (fee) =>
+      !fee || fee === 0
+        ? tr('program_detail.contact_school', 'Contact School')
+        : `$${Number(fee).toLocaleString()}`,
+    [tr]
+  );
+
+  const formatLocation = useCallback(
+    (city, province, country) => {
+      const parts = [];
+      if (city?.trim()) parts.push(city);
+      if (province?.trim()) parts.push(getProvinceLabel(province));
+      if (country?.trim()) parts.push(country);
+      return parts.length
+        ? parts.join(', ')
+        : tr('program_detail.location_not_specified', 'Location not specified');
+    },
+    [tr]
+  );
 
   const [program, setProgram] = useState(null);
   const [schoolInfo, setSchoolInfo] = useState(null);
@@ -97,7 +114,7 @@ export default function ProgramDetail() {
         url.get('programId') || url.get('programid') || url.get('id');
 
       if (!programId) {
-        setError('No program ID provided in URL.');
+        setError(tr('program_detail.no_program_id', 'No program ID provided in URL.'));
         return;
       }
 
@@ -118,7 +135,7 @@ export default function ProgramDetail() {
         const allPrograms = await School.list('', 1000);
 
         if (!allPrograms || allPrograms.length === 0) {
-          setError('No programs are currently available.');
+          setError(tr('program_detail.no_programs_available', 'No programs are currently available.'));
           return;
         }
 
@@ -138,14 +155,19 @@ export default function ProgramDetail() {
           intake_dates: Array.isArray(foundProgram.intake_dates)
             ? foundProgram.intake_dates
             : foundProgram.intake_dates
-            ? [foundProgram.intake_dates]
-            : [],
+              ? [foundProgram.intake_dates]
+              : [],
         };
 
         setProgram(normalized);
         setError(null);
       } else {
-        setError('Program not found. The program may have been removed or the link is invalid.');
+        setError(
+          tr(
+            'program_detail.program_not_found',
+            'Program not found. The program may have been removed or the link is invalid.'
+          )
+        );
       }
     } catch (e) {
       const msg = String(e?.message || e);
@@ -153,15 +175,20 @@ export default function ProgramDetail() {
         msg.toLowerCase().includes('insufficient') ||
         msg.toLowerCase().includes('permission')
       ) {
-        setError('Missing or insufficient permissions.');
+        setError(tr('program_detail.missing_permissions', 'Missing or insufficient permissions.'));
       } else {
-        setError('Failed to load program details. Please try again.');
+        setError(
+          tr(
+            'program_detail.load_failed',
+            'Failed to load program details. Please try again.'
+          )
+        );
       }
       console.error('Error loading program:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tr]);
 
   useEffect(() => {
     loadProgramDetails();
@@ -239,14 +266,16 @@ export default function ProgramDetail() {
     navigate(schoolDetailsUrl);
   }, [location?.state?.from, navigate, schoolDetailsUrl]);
 
-  const backLabel = 'Back';
+  const backLabel = tr('program_detail.back', 'Back');
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-green-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading program details...</p>
+          <p className="text-gray-600">
+            {tr('program_detail.loading', 'Loading program details...')}
+          </p>
         </div>
       </div>
     );
@@ -257,10 +286,12 @@ export default function ProgramDetail() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-6">
           <Info className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Program Not Available</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            {tr('program_detail.not_available_title', 'Program Not Available')}
+          </h2>
           <p className="text-gray-600 mb-4">{error}</p>
           <Link to={createPageUrl('Programs')}>
-            <Button>Browse All Programs</Button>
+            <Button>{tr('program_detail.browse_all_programs', 'Browse All Programs')}</Button>
           </Link>
         </div>
       </div>
@@ -271,24 +302,52 @@ export default function ProgramDetail() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600">Program data not available.</p>
+          <p className="text-gray-600">
+            {tr('program_detail.data_not_available', 'Program data not available.')}
+          </p>
         </div>
       </div>
     );
   }
 
-  const programTitle = safeGet(program, 'program_title', 'Program Title Not Available');
-  const schoolName = safeGet(program, 'school_name', 'School Name Not Available');
+  const notSpecified = tr('program_detail.not_specified', 'Not specified');
+
+  const programTitle = safeGet(
+    program,
+    'program_title',
+    tr('program_detail.program_title_not_available', 'Program Title Not Available')
+  );
+  const schoolName = safeGet(
+    program,
+    'school_name',
+    tr('program_detail.school_name_not_available', 'School Name Not Available')
+  );
   const institutionName = safeGet(program, 'institution_name', schoolName);
   const programLevel = safeGet(program, 'program_level', '');
   const tuitionFee = program.tuition_fee_cad || program.tuition_fee || 0;
   const applicationFee = program.application_fee || 0;
-  const duration = safeGet(program, 'duration_display', safeGet(program, 'duration', 'Contact School'));
-  const locationText = formatLocation(program.school_city, program.school_province, program.school_country);
+  const duration = safeGet(
+    program,
+    'duration_display',
+    safeGet(program, 'duration', tr('program_detail.contact_school', 'Contact School'))
+  );
+  const locationText = formatLocation(
+    program.school_city,
+    program.school_province,
+    program.school_country
+  );
   const fieldOfStudy = safeGet(program, 'field_of_study', '');
   const programOverview = safeGet(program, 'program_overview', '');
-  const institutionType = safeGet(program, 'institution_type', 'University');
-  const schoolType = safeGet(program, 'school_type', 'Public');
+  const institutionType = safeGet(
+    program,
+    'institution_type',
+    tr('program_detail.default_institution_type', 'University')
+  );
+  const schoolType = safeGet(
+    program,
+    'school_type',
+    tr('program_detail.default_school_type', 'Public')
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 p-4 sm:p-8">
@@ -331,15 +390,23 @@ export default function ProgramDetail() {
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <InfoCard
                 icon={DollarSign}
-                title="Annual Tuition"
+                title={tr('program_detail.annual_tuition', 'Annual Tuition')}
                 value={formatTuition(tuitionFee)}
-                subtitle={tuitionFee > 0 ? "CAD per year" : ""}
+                subtitle={tuitionFee > 0 ? tr('program_detail.cad_per_year', 'CAD per year') : ''}
               />
-              <InfoCard icon={Clock} title="Duration" value={duration} />
+              <InfoCard
+                icon={Clock}
+                title={tr('program_detail.duration', 'Duration')}
+                value={duration}
+              />
               <InfoCard
                 icon={FileText}
-                title="Application Fee"
-                value={applicationFee > 0 ? `$${applicationFee}` : 'Contact School'}
+                title={tr('program_detail.application_fee', 'Application Fee')}
+                value={
+                  applicationFee > 0
+                    ? `$${applicationFee}`
+                    : tr('program_detail.contact_school', 'Contact School')
+                }
                 subtitle={applicationFee > 0 ? 'CAD' : ''}
               />
             </div>
@@ -347,30 +414,46 @@ export default function ProgramDetail() {
             <Card>
               <Tabs defaultValue="overview" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="details">Details</TabsTrigger>
+                  <TabsTrigger value="overview">
+                    {tr('program_detail.overview', 'Overview')}
+                  </TabsTrigger>
+                  <TabsTrigger value="details">
+                    {tr('program_detail.details', 'Details')}
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="p-6">
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-xl font-semibold mb-4">Program Description</h3>
-                      {programOverview && programOverview !== 'Not specified' ? (
+                      <h3 className="text-xl font-semibold mb-4">
+                        {tr('program_detail.program_description', 'Program Description')}
+                      </h3>
+                      {programOverview && programOverview !== notSpecified ? (
                         <p className="text-gray-700 leading-relaxed">{programOverview}</p>
                       ) : (
                         <div className="text-center py-8 bg-gray-50 rounded-lg">
                           <Info className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                          <p className="text-gray-600">Detailed program description not available.</p>
+                          <p className="text-gray-600">
+                            {tr(
+                              'program_detail.description_not_available',
+                              'Detailed program description not available.'
+                            )}
+                          </p>
                           <p className="text-gray-500 text-sm mt-2">
-                            Contact the school for more information about this program.
+                            {tr(
+                              'program_detail.contact_school_more_info',
+                              'Contact the school for more information about this program.'
+                            )}
                           </p>
                         </div>
                       )}
                     </div>
 
-                    {fieldOfStudy && fieldOfStudy !== 'Not specified' && (
+                    {fieldOfStudy && fieldOfStudy !== notSpecified && (
                       <div>
-                        <h4 className="font-semibold text-lg mb-2">Field of Study</h4>
+                        <h4 className="font-semibold text-lg mb-2">
+                          {tr('program_detail.field_of_study', 'Field of Study')}
+                        </h4>
                         <Badge variant="outline" className="text-sm px-3 py-1">
                           {fieldOfStudy}
                         </Badge>
@@ -379,54 +462,75 @@ export default function ProgramDetail() {
 
                     <div className="grid sm:grid-cols-2 gap-6">
                       <div>
-                        <h4 className="font-semibold mb-3">Program Features</h4>
+                        <h4 className="font-semibold mb-3">
+                          {tr('program_detail.program_features', 'Program Features')}
+                        </h4>
                         <ul className="space-y-2">
                           <li className="flex items-center gap-2">
                             <CheckCircle className="w-4 h-4 text-green-500" />
                             <span className="text-sm">
-                              {safeGet(program, 'language_of_instruction', 'English')} instruction
+                              {safeGet(
+                                program,
+                                'language_of_instruction',
+                                tr('program_detail.default_language', 'English')
+                              )}{' '}
+                              {tr('program_detail.instruction', 'instruction')}
                             </span>
                           </li>
                           <li className="flex items-center gap-2">
                             <CheckCircle className="w-4 h-4 text-green-500" />
-                            <span className="text-sm">{schoolType} institution</span>
+                            <span className="text-sm">
+                              {schoolType} {tr('program_detail.institution', 'institution')}
+                            </span>
                           </li>
                           {program.housing_available && (
                             <li className="flex items-center gap-2">
                               <CheckCircle className="w-4 h-4 text-green-500" />
-                              <span className="text-sm">Housing available</span>
+                              <span className="text-sm">
+                                {tr('program_detail.housing_available', 'Housing available')}
+                              </span>
                             </li>
                           )}
                           {program.is_dli && (
                             <li className="flex items-center gap-2">
                               <CheckCircle className="w-4 h-4 text-green-500" />
-                              <span className="text-sm">DLI certified</span>
+                              <span className="text-sm">
+                                {tr('program_detail.dli_certified', 'DLI certified')}
+                              </span>
                             </li>
                           )}
                         </ul>
                       </div>
 
                       <div>
-                        <h4 className="font-semibold mb-3">Important Dates</h4>
+                        <h4 className="font-semibold mb-3">
+                          {tr('program_detail.important_dates', 'Important Dates')}
+                        </h4>
                         <div className="space-y-2">
                           {program.application_deadline && (
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-red-500" />
                               <span className="text-sm">
-                                Application deadline: {program.application_deadline}
+                                {tr('program_detail.application_deadline', 'Application deadline:')}{' '}
+                                {program.application_deadline}
                               </span>
                             </div>
                           )}
                           {(program.intake_dates || []).map((intake) => (
                             <div key={intake} className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-green-500" />
-                              <span className="text-sm">Intake: {intake}</span>
+                              <span className="text-sm">
+                                {tr('program_detail.intake', 'Intake:')} {intake}
+                              </span>
                             </div>
                           ))}
                           {!program.application_deadline &&
                             (!program.intake_dates || program.intake_dates.length === 0) && (
                               <p className="text-gray-500 text-sm italic">
-                                Contact school for admission dates and deadlines.
+                                {tr(
+                                  'program_detail.contact_school_dates',
+                                  'Contact school for admission dates and deadlines.'
+                                )}
                               </p>
                             )}
                         </div>
@@ -438,21 +542,29 @@ export default function ProgramDetail() {
                 <TabsContent value="details" className="p-6">
                   <div className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-4">
-                      <h4 className="font-semibold text-lg">Program Information</h4>
+                      <h4 className="font-semibold text-lg">
+                        {tr('program_detail.program_information', 'Program Information')}
+                      </h4>
                       <div className="space-y-3">
                         {programLevel && (
                           <div className="flex justify-between">
-                            <span className="text-gray-600">Level:</span>
+                            <span className="text-gray-600">
+                              {tr('program_detail.level', 'Level:')}
+                            </span>
                             <span className="font-medium">{getLevelLabel(programLevel)}</span>
                           </div>
                         )}
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Duration:</span>
+                          <span className="text-gray-600">
+                            {tr('program_detail.duration_label', 'Duration:')}
+                          </span>
                           <span className="font-medium">{duration}</span>
                         </div>
                         {program.curriculum && (
                           <div className="flex justify-between">
-                            <span className="text-gray-600">Curriculum:</span>
+                            <span className="text-gray-600">
+                              {tr('program_detail.curriculum', 'Curriculum:')}
+                            </span>
                             <span className="font-medium">{program.curriculum}</span>
                           </div>
                         )}
@@ -460,34 +572,48 @@ export default function ProgramDetail() {
                     </div>
 
                     <div className="space-y-4">
-                      <h4 className="font-semibold text-lg">Institution Information</h4>
+                      <h4 className="font-semibold text-lg">
+                        {tr('program_detail.institution_information', 'Institution Information')}
+                      </h4>
                       <div className="space-y-3">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Type:</span>
+                          <span className="text-gray-600">
+                            {tr('program_detail.type', 'Type:')}
+                          </span>
                           <span className="font-medium">{institutionType}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">School Type:</span>
+                          <span className="text-gray-600">
+                            {tr('program_detail.school_type', 'School Type:')}
+                          </span>
                           <span className="font-medium">{schoolType}</span>
                         </div>
                         {program.is_dli && (
                           <div className="flex justify-between">
-                            <span className="text-gray-600">DLI Number:</span>
+                            <span className="text-gray-600">
+                              {tr('program_detail.dli_number', 'DLI Number:')}
+                            </span>
                             <span className="font-medium">
-                              {safeGet(program, 'dli_number', 'Certified')}
+                              {safeGet(
+                                program,
+                                'dli_number',
+                                tr('program_detail.certified', 'Certified')
+                              )}
                             </span>
                           </div>
                         )}
                         {program.institution_website && (
                           <div className="flex justify-between">
-                            <span className="text-gray-600">Website:</span>
+                            <span className="text-gray-600">
+                              {tr('program_detail.website', 'Website:')}
+                            </span>
                             <a
                               href={program.institution_website}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="font-medium text-green-600 hover:underline"
                             >
-                              Visit Website
+                              {tr('program_detail.visit_website', 'Visit Website')}
                             </a>
                           </div>
                         )}
@@ -532,17 +658,25 @@ export default function ProgramDetail() {
 
                 <div className="space-y-2 text-sm border-t border-gray-100 pt-3">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Institution Type:</span>
+                    <span className="text-gray-500">
+                      {tr('program_detail.institution_type', 'Institution Type:')}
+                    </span>
                     <span className="font-medium">{institutionType}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">School Type:</span>
+                    <span className="text-gray-500">
+                      {tr('program_detail.school_type_label', 'School Type:')}
+                    </span>
                     <span className="font-medium">{schoolType}</span>
                   </div>
                   {program.housing_available && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Housing:</span>
-                      <span className="font-medium text-green-600">Available</span>
+                      <span className="text-gray-500">
+                        {tr('program_detail.housing', 'Housing:')}
+                      </span>
+                      <span className="font-medium text-green-600">
+                        {tr('program_detail.available', 'Available')}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -554,7 +688,7 @@ export default function ProgramDetail() {
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Calendar className="w-5 h-5 text-green-600" />
-                    Upcoming Intakes
+                    {tr('program_detail.upcoming_intakes', 'Upcoming Intakes')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>

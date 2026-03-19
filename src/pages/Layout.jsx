@@ -1722,6 +1722,7 @@ export default function Layout() {
                 <option value="zh">中文</option>
                 <option value="ja">日本語</option>
                 <option value="ko">한국어</option>
+                <option value="tr">Türkçe</option>
               </select>
             </div>
 

@@ -73,12 +73,13 @@ const arrayToCSV = (v) =>
 const LANGUAGE_OPTIONS = [
   { value: "en", label: "English" },
   { value: "vi", label: "Tiếng Việt" },
-  { value: "tl", label: "Tagalog" },
+  { value: "fil", label: "Tagalog" },
   { value: "ceb", label: "Cebuano" },
   { value: "zh", label: "中文" },
   { value: "es", label: "Español" },
   { value: "fr", label: "Français" },
   { value: "ar", label: "العربية" },
+  { value: "tr", label: "Türkçe" },
 ];
 
 const APP_BASE =
@@ -97,41 +98,70 @@ const flagUrlFromCode = (code) => {
   return `https://flagcdn.com/w20/${cc}.png`;
 };
 
-const getAllCountriesIntl = () => {
+const getAllCountriesIntl = (locale = "en") => {
   try {
     if (typeof Intl === "undefined") return [];
-    if (!Intl.supportedValuesOf) return [];
+    if (!Intl.DisplayNames) return [];
 
-    const codes = Intl.supportedValuesOf("region") || [];
-    const dn = Intl.DisplayNames
-      ? new Intl.DisplayNames(["en"], { type: "region" })
-      : null;
+    const codes =
+      typeof Intl.supportedValuesOf === "function"
+        ? Intl.supportedValuesOf("region") || []
+        : [];
 
-    return codes
-      .filter((code) => /^[A-Z]{2}$/.test(code))
+    const fallbackCodes = [
+      "TR", "VN", "PH", "CA", "US", "GB", "AU", "NZ", "FR", "DE", "ES", "IT",
+      "JP", "KR", "CN", "TW", "HK", "SG", "MY", "TH", "ID", "IN", "AE", "SA",
+      "QA", "KW", "OM", "BH", "EG", "ZA", "BR", "MX", "AR", "CL"
+    ];
+
+    const regionCodes = (codes.length ? codes : fallbackCodes).filter((code) =>
+      /^[A-Z]{2}$/.test(code)
+    );
+
+    const dn = new Intl.DisplayNames([locale], { type: "region" });
+
+    return regionCodes
       .map((code) => ({
         code,
-        name: dn?.of(code) || code,
+        name: dn.of(code) || code,
         flagUrl: flagUrlFromCode(code),
       }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name, locale));
   } catch {
     return [];
   }
 };
 
-async function getAllCountriesFallback() {
-  const res = await fetch("https://restcountries.com/v3.1/all?fields=name,cca2");
+async function getAllCountriesFallback(locale = "en") {
+  const res = await fetch("https://restcountries.com/v3.1/all?fields=name,cca2,translations");
   const json = await res.json();
+
+  const translationMap = {
+    vi: "vie",
+    tr: "tur",
+    es: "spa",
+    fr: "fra",
+    ar: "ara",
+    zh: "zho",
+  };
+
+  const apiLang = translationMap[locale];
 
   return (json || [])
     .filter((x) => x?.cca2 && /^[A-Z]{2}$/.test(x.cca2))
-    .map((x) => ({
-      code: x.cca2,
-      name: x?.name?.common || x.cca2,
-      flagUrl: flagUrlFromCode(x.cca2),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .map((x) => {
+      const translatedName =
+        (apiLang && x?.translations?.[apiLang]?.common) ||
+        x?.name?.common ||
+        x.cca2;
+
+      return {
+        code: x.cca2,
+        name: translatedName,
+        flagUrl: flagUrlFromCode(x.cca2),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, locale));
 }
 
 function buildAgentReferralLink(token) {
@@ -204,7 +234,7 @@ async function getMyStudentReferralToken() {
   return data.token;
 }
 
-function CountrySelect({ valueCode, valueName, onChange, disabled = false }) {
+function CountrySelect({ valueCode, valueName, onChange, disabled = false, locale = "en"}) {
   const tr0 = useTr();
   const tr = React.useCallback(
     (key, fallback) => {
@@ -226,13 +256,13 @@ function CountrySelect({ valueCode, valueName, onChange, disabled = false }) {
     const load = async () => {
       setLoading(true);
       try {
-        const intlList = getAllCountriesIntl();
+        const intlList = getAllCountriesIntl(locale);
         if (alive && intlList.length) {
           setCountries(intlList);
           return;
         }
 
-        const apiList = await getAllCountriesFallback();
+        const apiList = await getAllCountriesFallback(locale);
         if (alive) setCountries(apiList);
       } catch (e) {
         console.error("Country list load failed:", e);
@@ -246,7 +276,7 @@ function CountrySelect({ valueCode, valueName, onChange, disabled = false }) {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [locale]);
 
   const selected = React.useMemo(() => {
     const byCode =
@@ -278,7 +308,7 @@ function CountrySelect({ valueCode, valueName, onChange, disabled = false }) {
                 {selected.flagUrl ? (
                   <img
                     src={selected.flagUrl}
-                    alt={`${selected.name} flag`}
+                    alt={tr("country_flag_alt", `${selected.name} flag`)}
                     width={20}
                     height={15}
                     className="rounded-[2px] border"
@@ -328,7 +358,7 @@ function CountrySelect({ valueCode, valueName, onChange, disabled = false }) {
                   {c.flagUrl ? (
                     <img
                       src={c.flagUrl}
-                      alt={`${c.name} flag`}
+                      alt={tr("country_flag_alt", `${c.name} flag`)}
                       width={20}
                       height={15}
                       className="rounded-[2px] border"
@@ -575,6 +605,8 @@ function ProfileHeader({
   onCancelEdit,
   onSave,
   saving,
+  languageValue = "en",
+  onLanguageChange,
 }) {
   return (
     <div className="rounded-3xl bg-white border shadow-sm p-5 md:p-6">
@@ -584,7 +616,7 @@ function ProfileHeader({
             {profilePhoto ? (
               <img
                 src={profilePhoto}
-                alt="Profile"
+                alt={tr("profile_picture", "Profile Picture")}
                 className="w-24 h-24 rounded-3xl object-cover border bg-white shadow-sm"
               />
             ) : (
@@ -652,39 +684,56 @@ function ProfileHeader({
           </div>
         </div>
 
-        <div className="md:ml-auto flex items-center gap-2">
-          {!isEditing ? (
-            <Button type="button" variant="outline" onClick={onStartEdit} className="rounded-xl">
-              <Pencil className="w-4 h-4 mr-2" />
-              {tr("edit_profile", "Edit Profile")}
-            </Button>
-          ) : (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onCancelEdit}
-                className="rounded-xl"
-              >
-                <X className="w-4 h-4 mr-2" />
-                {tr("cancel", "Cancel")}
-              </Button>
+        <div className="md:ml-auto flex flex-col items-stretch md:items-end gap-3 w-full md:w-auto">
+          <div className="w-full md:w-44">
+            <Select value={languageValue || "en"} onValueChange={onLanguageChange}>
+              <SelectTrigger className="w-full rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-              <Button
-                type="button"
-                className="rounded-xl bg-green-600 hover:bg-green-700"
-                onClick={onSave}
-                disabled={saving}
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
-                {saving ? tr("saving", "Saving…") : tr("save_changes", "Save Changes")}
+          <div className="flex items-center gap-2 md:justify-end">
+            {!isEditing ? (
+              <Button type="button" variant="outline" onClick={onStartEdit} className="rounded-xl">
+                <Pencil className="w-4 h-4 mr-2" />
+                {tr("edit_profile", "Edit Profile")}
               </Button>
-            </>
-          )}
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onCancelEdit}
+                  className="rounded-xl"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  {tr("cancel", "Cancel")}
+                </Button>
+
+                <Button
+                  type="button"
+                  className="rounded-xl bg-green-600 hover:bg-green-700"
+                  onClick={onSave}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  {saving ? tr("saving", "Saving…") : tr("save_changes", "Save Changes")}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -980,7 +1029,7 @@ export default function Profile() {
 
   const handleLanguageChange = useCallback(
     async (v) => {
-      if (!v || !isEditing) return;
+      if (!v) return;
 
       setField("lang", v);
 
@@ -996,13 +1045,19 @@ export default function Profile() {
 
       try {
         if (uid) {
-          await updateDoc(doc(db, "users", uid), { lang: v, language: v });
+          await updateDoc(doc(db, "users", uid), {
+            lang: v,
+            language: v,
+            updated_at: serverTimestamp(),
+          });
         }
-      } catch {}
+      } catch (e) {
+        console.error("Language update failed:", e);
+      }
 
       window.location.reload();
     },
-    [uid, isEditing]
+    [uid]
   );
 
   const vendorCategoryOptions = useMemo(
@@ -1909,8 +1964,9 @@ export default function Profile() {
             onCancelEdit={handleCancelEdit}
             onSave={handleSaveAll}
             saving={saving}
+            languageValue={form.lang || "en"}
+            onLanguageChange={handleLanguageChange}
           />
-
           {saveNotice && (
             <div
               className={[
@@ -1985,24 +2041,6 @@ export default function Profile() {
                   <ProfileSection
                     title={tr("personal_information", "Personal Information")}
                     icon={Globe}
-                    action={
-                      <Select
-                        value={form.lang || "en"}
-                        onValueChange={handleLanguageChange}
-                        disabled={!isEditing}
-                      >
-                        <SelectTrigger className="w-40">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {LANGUAGE_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    }
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col gap-2">
@@ -2097,10 +2135,12 @@ export default function Profile() {
                               <SelectValue placeholder={tr("select_gender", "Select gender")} />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="male">Male</SelectItem>
-                              <SelectItem value="female">Female</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
-                              <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                              <SelectItem value="male">{tr("gender_male", "Male")}</SelectItem>
+                              <SelectItem value="female">{tr("gender_female", "Female")}</SelectItem>
+                              <SelectItem value="other">{tr("gender_other", "Other")}</SelectItem>
+                              <SelectItem value="prefer-not-to-say">
+                                {tr("gender_prefer_not_to_say", "Prefer not to say")}
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -2112,6 +2152,7 @@ export default function Profile() {
                         </Label>
                         <CountrySelect
                           disabled={!isEditing}
+                          locale={form.lang || "en"}
                           valueCode={form.country_code}
                           valueName={form.country}
                           onChange={({ code, name }) => {

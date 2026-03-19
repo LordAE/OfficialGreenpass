@@ -206,7 +206,7 @@ function StarSummary({
   );
 }
 
-function normalizeReviewItem(item, idx) {
+function normalizeReviewItem(item, idx, tr) {
   if (!item || typeof item !== "object") return null;
 
   const author =
@@ -215,9 +215,15 @@ function normalizeReviewItem(item, idx) {
     item.name ||
     item.full_name ||
     item.displayName ||
-    `User ${idx + 1}`;
+    `${tr("user_label", "User")} ${idx + 1}`;
 
-  const comment = item.comment || item.text || item.message || item.review || "";
+  const comment =
+    item.comment ||
+    item.text ||
+    item.message ||
+    item.review ||
+    tr("great_profile", "Great profile.");
+
   const ratingNum = Number(item.rating || item.stars || item.score || 0);
   const rating = Number.isFinite(ratingNum)
     ? Math.max(1, Math.min(5, Math.round(ratingNum)))
@@ -226,7 +232,7 @@ function normalizeReviewItem(item, idx) {
   return {
     id: item.id || `review-${idx}`,
     author,
-    comment: comment || "Great profile.",
+    comment,
     rating,
     avatar: item.avatar || item.photoURL || item.profile_picture || "",
   };
@@ -294,9 +300,9 @@ function getStudentInterests(item) {
   };
 }
 
-function maskEmail(email) {
+function maskEmail(email, tr) {
   const value = String(email || "").trim();
-  if (!value || !value.includes("@")) return "No email available";
+  if (!value || !value.includes("@")) return tr("no_email_available", "No email available");
 
   const [local, domain] = value.split("@");
   const safeLocal =
@@ -334,9 +340,9 @@ function getPhone(item) {
   );
 }
 
-function maskPhone(phone) {
+function maskPhone(phone, tr) {
   const raw = String(phone || "").trim();
-  if (!raw) return "No number available";
+  if (!raw) return tr("no_number_available", "No number available");
 
   const digits = raw.replace(/\D/g, "");
   if (digits.length < 4) return raw;
@@ -369,7 +375,7 @@ function ReviewCard({ item }) {
   );
 }
 
-function ReviewBreakdownDropdown({ reviews = [] }) {
+function ReviewBreakdownDropdown({ reviews = [], tr }) {
   const distribution = useMemo(() => {
     const total = reviews.length || 0;
     return [5, 4, 3, 2, 1].map((star) => {
@@ -387,7 +393,9 @@ function ReviewBreakdownDropdown({ reviews = [] }) {
             key={row.star}
             className="grid grid-cols-[72px_minmax(0,1fr)_52px] items-center gap-3 sm:grid-cols-[88px_minmax(0,1fr)_56px] sm:gap-4"
           >
-            <div className="text-sm font-medium text-[#2C5E93] sm:text-[15px]">{row.star} star</div>
+            <div className="text-sm font-medium text-[#2C5E93] sm:text-[15px]">
+              {tr("star_label", "{{count}} star", { count: row.star })}
+            </div>
             <div className="h-4 overflow-hidden rounded-full border border-slate-300 bg-white">
               <div className="h-full bg-[#ff6a00]" style={{ width: `${row.percentage}%` }} />
             </div>
@@ -401,7 +409,7 @@ function ReviewBreakdownDropdown({ reviews = [] }) {
   );
 }
 
-function InfoPillList({ title, values = [] }) {
+function InfoPillList({ title, values = [], tr }) {
   return (
     <div>
       <div className="mb-2 text-sm font-semibold text-slate-900">{title}</div>
@@ -418,7 +426,7 @@ function InfoPillList({ title, values = [] }) {
         </div>
       ) : (
         <div className="rounded-[14px] border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-400">
-          No information added yet.
+          {tr("no_information_yet", "No information added yet.")}
         </div>
       )}
     </div>
@@ -606,11 +614,14 @@ function RightSideDirectoryTabs({
               disabled={safePage === 1}
               className="rounded-full"
             >
-              Previous
+              {tr("previous", "Previous")}
             </Button>
 
             <div className="text-sm font-medium text-slate-600">
-              Page {safePage} of {totalPages}
+              {tr("page_of", "Page {{page}} of {{total}}", {
+                page: safePage,
+                total: totalPages,
+              })}
             </div>
 
             <Button
@@ -620,7 +631,7 @@ function RightSideDirectoryTabs({
               disabled={safePage === totalPages}
               className="rounded-full"
             >
-              Next
+              {tr("next", "Next")}
             </Button>
           </div>
         ) : null}
@@ -709,7 +720,7 @@ function ProfileDetailsPanel({
                   <div className="rounded-[22px] bg-[#fff7ee] p-3 ring-1 ring-slate-100">
                     <div className="flex items-start justify-between gap-3">
                       <div className="text-[20px] font-extrabold leading-none text-slate-700 sm:text-[22px]">
-                        Success Rate
+                        {tr("success_rate", "Success Rate")}
                       </div>
 
                       <div className="text-[20px] font-extrabold leading-none text-[#2C5E93] sm:text-[22px]">
@@ -737,7 +748,7 @@ function ProfileDetailsPanel({
                         transition={{ duration: 0.2, ease: "easeOut" }}
                         className="absolute left-0 right-0 top-[calc(100%+10px)] z-20"
                       >
-                        <ReviewBreakdownDropdown reviews={reviews} />
+                        <ReviewBreakdownDropdown reviews={reviews} tr={tr} />
                       </motion.div>
                     ) : null}
                   </AnimatePresence>
@@ -808,24 +819,42 @@ function ProfileDetailsPanel({
             <div className="mt-4 rounded-[20px] border border-slate-200 bg-[#fbfdff] p-3 shadow-sm sm:rounded-[24px] sm:p-4">
               <div>
                 <div className="mb-2 text-sm font-semibold text-slate-900">
-                  Biography / Description
+                  {tr("biography_description", "Biography / Description")}
                 </div>
                 <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
-                  {biography || "No biography/description added yet."}
+                  {biography || tr("no_biography_yet", "No biography/description added yet.")}
                 </div>
               </div>
 
               <div className="mt-4">
                 <div className="mb-3 flex items-center gap-2">
                   <BookOpen className="h-5 w-5 text-[#0f2f63]" />
-                  <div className="text-base font-extrabold text-slate-900">Interests</div>
+                  <div className="text-base font-extrabold text-slate-900">
+                    {tr("interests", "Interests")}
+                  </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <InfoPillList title="Courses" values={studentInterests.courses} />
-                  <InfoPillList title="Countries" values={studentInterests.countries} />
-                  <InfoPillList title="Areas" values={studentInterests.areas} />
-                  <InfoPillList title="Languages" values={studentInterests.languages} />
+                  <InfoPillList
+                    title={tr("courses", "Courses")}
+                    values={studentInterests.courses}
+                    tr={tr}
+                  />
+                  <InfoPillList
+                    title={tr("countries", "Countries")}
+                    values={studentInterests.countries}
+                    tr={tr}
+                  />
+                  <InfoPillList
+                    title={tr("areas", "Areas")}
+                    values={studentInterests.areas}
+                    tr={tr}
+                  />
+                  <InfoPillList
+                    title={tr("languages", "Languages")}
+                    values={studentInterests.languages}
+                    tr={tr}
+                  />
                 </div>
               </div>
             </div>
@@ -1020,7 +1049,7 @@ export default function Connect() {
         if (users.length) setSelectedUserId((prev) => prev || users[0].id);
       } catch (e) {
         console.error(e);
-        setError("Failed to load directory. Please try again later.");
+        setError(tr("directory_load_failed", "Failed to load directory. Please try again later."));
       } finally {
         setLoading(false);
       }
@@ -1029,7 +1058,7 @@ export default function Connect() {
     return () => {
       if (typeof unsub === "function") unsub();
     };
-  }, [fetchUsersForRole, getUserDoc]);
+  }, [fetchUsersForRole, getUserDoc, tr]);
 
   useEffect(() => {
     const filterByCountry = (u) =>
@@ -1185,9 +1214,12 @@ export default function Connect() {
       ? displayedEntity.comments
       : [];
 
-    const embeddedReviews = source.map(normalizeReviewItem).filter(Boolean);
+    const embeddedReviews = source
+      .map((item, idx) => normalizeReviewItem(item, idx, tr))
+      .filter(Boolean);
+
     return [...localReviews, ...remoteReviews, ...embeddedReviews];
-  }, [displayedEntity, localReviews, remoteReviews]);
+  }, [displayedEntity, localReviews, remoteReviews, tr]);
 
   const averageRating = useMemo(() => {
     if (!reviews.length) return 5;
@@ -1252,7 +1284,7 @@ export default function Connect() {
               item.userName ||
               item.name ||
               item.full_name ||
-              "User",
+              tr("user_label", "User"),
             comment: item.comment || item.text || item.message || item.review || "",
             rating: Math.max(1, Math.min(5, Math.round(Number(item.rating || item.stars || 5)))),
             avatar: item.author_avatar || item.avatar || item.photoURL || item.profile_picture || "",
@@ -1274,7 +1306,7 @@ export default function Connect() {
     return () => {
       cancelled = true;
     };
-  }, [displayedEntity?.id, displayedRole, activeTab, showReviewsSection]);
+  }, [displayedEntity?.id, displayedRole, activeTab, showReviewsSection, tr]);
 
   const handleFollowClick = async () => {
     if (!auth?.currentUser?.uid) {
@@ -1502,8 +1534,8 @@ export default function Connect() {
   const avatar = getAvatar(displayedEntity);
   const countryText = getCountryText(displayedEntity || {});
   const countryCode = getCountryCode(displayedEntity || {});
-  const maskedEmail = maskEmail(getEmail(displayedEntity || {}));
-  const maskedPhone = maskPhone(getPhone(displayedEntity || {}));
+  const maskedEmail = maskEmail(getEmail(displayedEntity || {}), tr);
+  const maskedPhone = maskPhone(getPhone(displayedEntity || {}), tr);
 
   const headline =
     displayedRole === "agent"
@@ -1547,7 +1579,9 @@ export default function Connect() {
         <div className="mx-auto flex min-h-[calc(100dvh-88px)] max-w-4xl items-center justify-center rounded-[28px] border border-slate-200 bg-white p-10 text-center shadow-[0_18px_60px_rgba(15,23,42,0.08)] lg:h-full lg:min-h-0">
           <div>
             <AlertCircle className="mx-auto mb-4 h-14 w-14 text-red-500" />
-            <div className="text-2xl font-extrabold text-slate-900">Unable to Load Directory</div>
+            <div className="text-2xl font-extrabold text-slate-900">
+              {tr("unable_to_load_directory", "Unable to Load Directory")}
+            </div>
             <div className="mt-2 text-slate-500">{error}</div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 // src/pages/AgentLeads.jsx
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { db, auth } from "@/firebase";
 import {
   collection,
@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Users, Search, Phone, Mail, MessageCircle, TrendingUp, Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import { useTranslation } from "react-i18next";
 
 const toJsDate = (v) => {
   if (!v) return null;
@@ -26,7 +27,9 @@ const toJsDate = (v) => {
   }
 };
 
-const StatusBadge = ({ status }) => {
+const StatusBadge = ({ status, tr }) => {
+  const normalized = String(status || "").toLowerCase().trim();
+
   const colors = {
     new: "bg-blue-100 text-blue-800",
     contacted: "bg-yellow-100 text-yellow-800",
@@ -34,10 +37,29 @@ const StatusBadge = ({ status }) => {
     converted: "bg-emerald-100 text-emerald-800",
     lost: "bg-red-100 text-red-800",
   };
-  return <Badge className={colors[status] || "bg-gray-100 text-gray-800"}>{status}</Badge>;
+
+  const labels = {
+    new: tr("agent_leads.status.new", "New"),
+    contacted: tr("agent_leads.status.contacted", "Contacted"),
+    qualified: tr("agent_leads.status.qualified", "Qualified"),
+    converted: tr("agent_leads.status.converted", "Converted"),
+    lost: tr("agent_leads.status.lost", "Lost"),
+  };
+
+  return (
+    <Badge className={colors[normalized] || "bg-gray-100 text-gray-800"}>
+      {labels[normalized] || status || tr("agent_leads.status.unknown", "Unknown")}
+    </Badge>
+  );
 };
 
 export default function AgentLeads() {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key, def, vars = undefined) => t(key, { defaultValue: def, ...(vars || {}) }),
+    [t]
+  );
+
   const [leads, setLeads] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -45,12 +67,10 @@ export default function AgentLeads() {
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) {
-      // If you do route-guarding elsewhere, you can redirect instead.
       setLoading(false);
       return;
     }
 
-    // Real-time stream of leads assigned to this agent
     const q = query(
       collection(db, "leads"),
       where("assigned_agent_id", "==", uid),
@@ -77,16 +97,18 @@ export default function AgentLeads() {
   const filteredLeads = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return leads;
+
     return leads.filter((lead) =>
-      [lead.name, lead.email, lead.interest]
+      [lead.name, lead.email, lead.interest, lead.phone, lead.source, lead.status]
         .filter(Boolean)
-        .some((v) => v.toLowerCase().includes(term))
+        .some((v) => String(v).toLowerCase().includes(term))
     );
   }, [leads, searchTerm]);
 
   const stats = useMemo(() => {
     const totalLeads = leads.length;
-    const by = (s) => leads.filter((l) => l.status === s).length;
+    const by = (s) => leads.filter((l) => String(l.status || "").toLowerCase().trim() === s).length;
+
     return {
       totalLeads,
       newLeads: by("new"),
@@ -109,18 +131,19 @@ export default function AgentLeads() {
         <div className="flex items-center gap-4 mb-8">
           <TrendingUp className="w-8 h-8 text-blue-600" />
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-emerald-600 bg-clip-text text-transparent">
-            Leads & Pipeline
+            {tr("agent_leads.title", "Leads & Pipeline")}
           </h1>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-blue-600">{stats.totalLeads}</div>
-                  <p className="text-gray-600">Total Leads</p>
+                  <p className="text-gray-600">
+                    {tr("agent_leads.stats.total_leads", "Total Leads")}
+                  </p>
                 </div>
                 <Users className="w-8 h-8 text-blue-200" />
               </div>
@@ -132,7 +155,9 @@ export default function AgentLeads() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-yellow-600">{stats.newLeads}</div>
-                  <p className="text-gray-600">New Leads</p>
+                  <p className="text-gray-600">
+                    {tr("agent_leads.stats.new_leads", "New Leads")}
+                  </p>
                 </div>
                 <Users className="w-8 h-8 text-yellow-200" />
               </div>
@@ -144,7 +169,9 @@ export default function AgentLeads() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-green-600">{stats.qualifiedLeads}</div>
-                  <p className="text-gray-600">Qualified</p>
+                  <p className="text-gray-600">
+                    {tr("agent_leads.stats.qualified", "Qualified")}
+                  </p>
                 </div>
                 <Users className="w-8 h-8 text-green-200" />
               </div>
@@ -156,7 +183,9 @@ export default function AgentLeads() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-emerald-600">{stats.convertedLeads}</div>
-                  <p className="text-gray-600">Converted</p>
+                  <p className="text-gray-600">
+                    {tr("agent_leads.stats.converted", "Converted")}
+                  </p>
                 </div>
                 <Users className="w-8 h-8 text-emerald-200" />
               </div>
@@ -164,13 +193,12 @@ export default function AgentLeads() {
           </Card>
         </div>
 
-        {/* Search */}
         <Card className="mb-6">
           <CardContent className="p-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <Input
-                placeholder="Search leads..."
+                placeholder={tr("agent_leads.search_placeholder", "Search leads...")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -179,30 +207,35 @@ export default function AgentLeads() {
           </CardContent>
         </Card>
 
-        {/* Leads Table */}
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Lead Pipeline</CardTitle>
+            <CardTitle>{tr("agent_leads.table.title", "Lead Pipeline")}</CardTitle>
           </CardHeader>
+
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Interest</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>{tr("agent_leads.table.name", "Name")}</TableHead>
+                  <TableHead>{tr("agent_leads.table.contact", "Contact")}</TableHead>
+                  <TableHead>{tr("agent_leads.table.interest", "Interest")}</TableHead>
+                  <TableHead>{tr("agent_leads.table.status", "Status")}</TableHead>
+                  <TableHead>{tr("agent_leads.table.source", "Source")}</TableHead>
+                  <TableHead>{tr("agent_leads.table.date", "Date")}</TableHead>
+                  <TableHead>{tr("agent_leads.table.actions", "Actions")}</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {filteredLeads.map((lead) => {
                   const created = toJsDate(lead.created_at);
+
                   return (
                     <TableRow key={lead.id}>
-                      <TableCell className="font-medium">{lead.name}</TableCell>
+                      <TableCell className="font-medium">
+                        {lead.name || tr("agent_leads.common.not_available", "-")}
+                      </TableCell>
+
                       <TableCell>
                         <div className="space-y-1">
                           {lead.email && (
@@ -211,30 +244,47 @@ export default function AgentLeads() {
                               <span className="text-sm">{lead.email}</span>
                             </div>
                           )}
+
                           {lead.phone && (
                             <div className="flex items-center gap-2">
                               <Phone className="w-4 h-4 text-gray-400" />
                               <span className="text-sm">{lead.phone}</span>
                             </div>
                           )}
+
+                          {!lead.email && !lead.phone && (
+                            <span className="text-sm text-gray-500">
+                              {tr("agent_leads.common.not_available", "-")}
+                            </span>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell>{lead.interest || "-"}</TableCell>
-                      <TableCell><StatusBadge status={lead.status} /></TableCell>
-                      <TableCell>{lead.source || "-"}</TableCell>
-                      <TableCell>{created ? format(created, "yyyy-MM-dd") : "-"}</TableCell>
+
+                      <TableCell>{lead.interest || tr("agent_leads.common.not_available", "-")}</TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm" title="Message">
+                        <StatusBadge status={lead.status} tr={tr} />
+                      </TableCell>
+                      <TableCell>{lead.source || tr("agent_leads.common.not_available", "-")}</TableCell>
+                      <TableCell>{created ? format(created, "yyyy-MM-dd") : "-"}</TableCell>
+
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title={tr("agent_leads.actions.message", "Message")}
+                          aria-label={tr("agent_leads.actions.message", "Message")}
+                        >
                           <MessageCircle className="w-4 h-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
                   );
                 })}
+
                 {filteredLeads.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                      No leads found.
+                      {tr("agent_leads.empty.no_leads", "No leads found.")}
                     </TableCell>
                   </TableRow>
                 )}

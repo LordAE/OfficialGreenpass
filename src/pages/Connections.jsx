@@ -16,14 +16,22 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 import { Paperclip } from "lucide-react";
 
 import { useTr } from "@/i18n/useTr";
-import { ensureConversation, getUserDoc, sendMessage, uploadMessageAttachments } from "@/api/messaging";
-import { cancelFollowRequest, respondToFollowRequest, unfollowUser } from "@/api/follow";
+import {
+  ensureConversation,
+  getUserDoc,
+  sendMessage,
+  uploadMessageAttachments,
+} from "@/api/messaging";
+import {
+  cancelFollowRequest,
+  respondToFollowRequest,
+  unfollowUser,
+} from "@/api/follow";
 
 function useQueryParams() {
   const { search } = useLocation();
@@ -32,7 +40,6 @@ function useQueryParams() {
 
 function normalizeRole(r) {
   const v = String(r || "").toLowerCase().trim();
-  // In GreenPass, many "Student" accounts are stored as role "user" or "users"
   if (v === "student" || v === "students" || v === "user" || v === "users") return "student";
   if (v === "tutors") return "tutor";
   if (v === "agents") return "agent";
@@ -56,7 +63,6 @@ async function fetchUsersByIds(ids) {
   if (!unique.length) return {};
 
   const map = {};
-  // Firestore "in" limit is 10
   for (let i = 0; i < unique.length; i += 10) {
     const chunk = unique.slice(i, i + 10);
     const qUsers = query(collection(db, "users"), where("__name__", "in", chunk));
@@ -86,24 +92,22 @@ export default function Connections() {
       : "requests"
   );
 
-  const [roleFilter, setRoleFilter] = useState("all"); // all | agent | tutor | school | student
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [myRole, setMyRole] = useState("user");
 
-  const [myRole, setMyRole] = useState("user"); // resolved role of logged-in user
-
-  const [requests, setRequests] = useState([]); // { id: followerId, ...data }
-  const [followers, setFollowers] = useState([]); // { id, ...data }
+  const [requests, setRequests] = useState([]);
+  const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
 
   const [usersById, setUsersById] = useState({});
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [massText, setMassText] = useState("");
-  const [massFiles, setMassFiles] = useState([]); // File[]
+  const [massFiles, setMassFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const followersFileInputRef = useRef(null);
   const followingFileInputRef = useRef(null);
 
-  // Listen: follow requests (incoming)
   useEffect(() => {
     if (!myUid) return;
 
@@ -124,7 +128,6 @@ export default function Connections() {
     return () => unsub();
   }, [myUid]);
 
-  // Listen: followers
   useEffect(() => {
     if (!myUid) return;
     const ref = collection(db, "users", myUid, "followers");
@@ -137,7 +140,6 @@ export default function Connections() {
     return () => unsub();
   }, [myUid]);
 
-  // Listen: following
   useEffect(() => {
     if (!myUid) return;
     const ref = collection(db, "users", myUid, "following");
@@ -150,7 +152,6 @@ export default function Connections() {
     return () => unsub();
   }, [myUid]);
 
-  // Fetch user docs for all ids we need
   useEffect(() => {
     let cancelled = false;
 
@@ -174,14 +175,12 @@ export default function Connections() {
     };
   }, [requests, followers, following]);
 
-  // Clear selection when switching tabs
   useEffect(() => {
     setSelectedIds(new Set());
     setMassText("");
     setMassFiles([]);
   }, [tab, roleFilter]);
 
-  // Load my role once we know uid
   useEffect(() => {
     if (!myUid) return;
 
@@ -201,18 +200,15 @@ export default function Connections() {
     };
   }, [myUid]);
 
-  // Students should not be able to view/select "student" role filter
   useEffect(() => {
     if (myRole === "student" && roleFilter === "student") {
       setRoleFilter("all");
     }
   }, [myRole, roleFilter]);
 
-
   const filteredList = useMemo(() => {
     const base = tab === "followers" ? followers : tab === "following" ? following : requests;
 
-    // If I'm a student/user, don't show other students in connections lists
     const roleSafeBase =
       myRole === "student"
         ? base.filter((item) => {
@@ -227,7 +223,6 @@ export default function Connections() {
       return resolveRole(u) === roleFilter;
     });
   }, [tab, followers, following, requests, roleFilter, usersById, myRole]);
-
 
   const toggleSelect = (uid) => {
     setSelectedIds((prev) => {
@@ -249,10 +244,7 @@ export default function Connections() {
   };
 
   const removeFollower = async (followerId) => {
-    // Optional: removing followers isn't in spec; keep it simple by declining future requests.
-    // If you want "remove follower" later, we can add a callable function.
     if (!myUid || !followerId) return;
-    // best-effort: delete their follower doc under you (rules may block; backend can handle if you want)
     await deleteDoc(doc(db, "users", myUid, "followers", followerId)).catch(() => {});
   };
 
@@ -266,7 +258,7 @@ export default function Connections() {
     await cancelFollowRequest({ followerId: myUid, followeeId });
   };
 
-  const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB per file
+  const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 
   const canMassMessage = tab === "followers" || tab === "following";
 
@@ -281,10 +273,7 @@ export default function Connections() {
       const names = tooBig.slice(0, 3).map((f) => f.name).join(", ");
       const more = tooBig.length > 3 ? ` (+${tooBig.length - 3} more)` : "";
       alert(
-        tr(
-          "file_too_large_4mb",
-          `Một số tệp lớn hơn 4MB nên không được thêm: ${names}${more}`
-        )
+        `${tr("file_too_large_4mb", "Một số tệp lớn hơn 4MB nên không được thêm.")} ${names}${more}`
       );
     }
 
@@ -297,7 +286,6 @@ export default function Connections() {
 
     setMassFiles((prev) => {
       const next = [...(prev || []), ...ok];
-      // de-dupe by name+size+lastModified
       const seen = new Set();
       return next.filter((f) => {
         const k = `${f.name}__${f.size}__${f.lastModified}`;
@@ -307,7 +295,6 @@ export default function Connections() {
       });
     });
 
-    // allow selecting same file again later
     try {
       e.target.value = "";
     } catch {}
@@ -372,25 +359,68 @@ export default function Connections() {
 
     return (
       <div className="flex items-center justify-between gap-3 py-3">
-        <div className="min-w-0 flex items-center gap-3 cursor-pointer" role="button" tabIndex={0} onClick={() => navigate(`/view-profile/${uid}`)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate(`/view-profile/${uid}`); }}>
+        <div
+          className="min-w-0 flex items-center gap-3 cursor-pointer"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate(`/view-profile/${uid}`)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") navigate(`/view-profile/${uid}`);
+          }}
+        >
           <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-700">
             {String(name).trim().slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-gray-900 truncate">{name}</div>
             <div className="text-xs text-gray-600 flex items-center gap-2">
-              <span className="capitalize">{role === "agent" ? tr("agent", "Agent") : role === "tutor" ? tr("tutor", "Tutor") : role === "school" ? tr("school", "School") : role === "student" ? tr("student", "Student") : role}</span>
-              {role === "agent" ? <Badge>{tr("agent", "Agent")}</Badge> : role === "tutor" ? <Badge>{tr("tutor", "Tutor")}</Badge> : null}
+              <span className="capitalize">
+                {role === "agent"
+                  ? tr("agent", "Agent")
+                  : role === "tutor"
+                  ? tr("tutor", "Tutor")
+                  : role === "school"
+                  ? tr("school", "School")
+                  : role === "student"
+                  ? tr("student", "Student")
+                  : role}
+              </span>
+              {role === "agent" ? <Badge>{tr("agent", "Agent")}</Badge> : null}
+              {role === "tutor" ? <Badge>{tr("tutor", "Tutor")}</Badge> : null}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {extraRight}
-        </div>
+        <div className="flex items-center gap-2">{extraRight}</div>
       </div>
     );
   };
+
+  if (!myUid) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="w-full px-3 sm:px-6 lg:px-8 py-6">
+          <div className="mx-auto max-w-4xl">
+            <Card className="rounded-2xl">
+              <CardContent className="p-8 text-center">
+                <div className="text-xl font-semibold text-gray-900">
+                  {tr("connections", "Connections")}
+                </div>
+                <div className="mt-2 text-sm text-gray-600">
+                  {tr("sign_in_required", "Please sign in to view your connections.")}
+                </div>
+                <div className="mt-4">
+                  <Button onClick={() => navigate("/welcome")}>
+                    {tr("go_to_sign_in", "Go to Sign In")}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -398,8 +428,12 @@ export default function Connections() {
         <div className="mx-auto max-w-4xl">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="text-xl font-semibold text-gray-900">{tr("connections", "Connections")}</div>
-              <div className="text-sm text-gray-600">{tr("connections_sub", "Manage follow requests and your network")}</div>
+              <div className="text-xl font-semibold text-gray-900">
+                {tr("connections", "Connections")}
+              </div>
+              <div className="text-sm text-gray-600">
+                {tr("connections_sub", "Manage follow requests and your network")}
+              </div>
             </div>
             <Button variant="outline" onClick={() => navigate("/dashboard")}>
               {tr("back_to_dashboard", "Back to Dashboard")}
@@ -416,9 +450,9 @@ export default function Connections() {
                 </TabsList>
 
                 <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-gray-600">{tr("filter", "Filter")}</span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Button
                         type="button"
                         variant={roleFilter === "all" ? "default" : "outline"}
@@ -452,23 +486,14 @@ export default function Connections() {
                         {tr("schools", "Schools")}
                       </Button>
                       {myRole !== "student" && (
-
                         <Button
-
                           type="button"
-
                           variant={roleFilter === "student" ? "default" : "outline"}
-
                           size="sm"
-
                           onClick={() => setRoleFilter("student")}
-
                         >
-
                           {tr("students", "Students")}
-
                         </Button>
-
                       )}
                     </div>
                   </div>
@@ -482,7 +507,6 @@ export default function Connections() {
                   ) : null}
                 </div>
 
-                {/* Requests */}
                 <TabsContent value="requests" className="mt-4">
                   {filteredList.length === 0 ? (
                     <div className="py-10 text-center text-sm text-gray-600">
@@ -492,7 +516,8 @@ export default function Connections() {
                     <div className="divide-y">
                       {filteredList.map((r) => (
                         <div key={r.id}>
-                          {renderUserRow(r.id, (
+                          {renderUserRow(
+                            r.id,
                             <>
                               <Button size="sm" onClick={() => acceptRequest(r.id)}>
                                 {tr("accept", "Accept")}
@@ -501,14 +526,13 @@ export default function Connections() {
                                 {tr("decline", "Decline")}
                               </Button>
                             </>
-                          ))}
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
                 </TabsContent>
 
-                {/* Followers */}
                 <TabsContent value="followers" className="mt-4">
                   {filteredList.length === 0 ? (
                     <div className="py-10 text-center text-sm text-gray-600">
@@ -518,7 +542,8 @@ export default function Connections() {
                     <div className="divide-y">
                       {filteredList.map((r) => (
                         <div key={r.id}>
-                          {renderUserRow(r.id, (
+                          {renderUserRow(
+                            r.id,
                             <>
                               <label className="flex items-center gap-2 text-xs text-gray-600">
                                 <input
@@ -529,7 +554,7 @@ export default function Connections() {
                                 {tr("select", "Select")}
                               </label>
                             </>
-                          ))}
+                          )}
                         </div>
                       ))}
                     </div>
@@ -602,7 +627,6 @@ export default function Connections() {
                   ) : null}
                 </TabsContent>
 
-                {/* Following */}
                 <TabsContent value="following" className="mt-4">
                   {filteredList.length === 0 ? (
                     <div className="py-10 text-center text-sm text-gray-600">
@@ -612,7 +636,8 @@ export default function Connections() {
                     <div className="divide-y">
                       {filteredList.map((r) => (
                         <div key={r.id}>
-                          {renderUserRow(r.id, (
+                          {renderUserRow(
+                            r.id,
                             <>
                               <label className="flex items-center gap-2 text-xs text-gray-600">
                                 <input
@@ -626,7 +651,7 @@ export default function Connections() {
                                 {tr("unfollow", "Unfollow")}
                               </Button>
                             </>
-                          ))}
+                          )}
                         </div>
                       ))}
                     </div>

@@ -14,6 +14,7 @@ import ar from "@/i18n/locales/ar.json";
 import zh from "@/i18n/locales/zh.json";
 import ja from "@/i18n/locales/ja.json";
 import ko from "@/i18n/locales/ko.json";
+import tr from "@/i18n/locales/tr.json";
 
 const resources = {
   en: { translation: en },
@@ -28,6 +29,7 @@ const resources = {
   zh: { translation: zh },
   ja: { translation: ja },
   ko: { translation: ko },
+  tr: { translation: tr },
 };
 
 i18n.use(initReactI18next).init({
