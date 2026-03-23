@@ -547,7 +547,12 @@ export default function Onboarding() {
           sessionStorage.removeItem("onboarding_role_locked");
           sessionStorage.removeItem("onboarding_role");
         } catch {}
-        navigate(next || createPageUrl("Dashboard"), { replace: true });
+        navigate(
+          data?.policy_acceptance?.completed === true
+            ? next || createPageUrl("Dashboard")
+            : `/${createPageUrl("PolicyCenter")}`,
+          { replace: true }
+        );
         return;
       }
 
@@ -613,7 +618,7 @@ export default function Onboarding() {
         sessionStorage.removeItem("onboarding_role");
       } catch {}
 
-      setTimeout(() => navigate(next || createPageUrl("Dashboard"), { replace: true }), 600);
+      setTimeout(() => navigate(`/${createPageUrl("PolicyCenter")}`, { replace: true }), 600);
     } catch (e) {
       console.error("Error finalizing onboarding:", e);
       alert("An error occurred. Please try again.");

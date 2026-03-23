@@ -1,7 +1,7 @@
 // src/pages/Layout.jsx
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
+import { Link, useLocation, useNavigate, Outlet, Navigate } from "react-router-dom";
 import NotificationsBell from "@/components/NotificationsBell";
 
 /* --- Safe import of createPageUrl (with fallback if not exported) --- */
@@ -25,6 +25,21 @@ const createPageUrl =
       .replace(/\s+/g, "")
       .replace(/[^\w/]/g, "")
       .toLowerCase());
+
+
+const REQUIRED_POLICY_KEYS = ["terms", "privacy", "community", "refund", "verification", "referral"];
+const CURRENT_POLICY_VERSION = "2026-03-21";
+
+function hasCompletedPolicies(user) {
+  const acceptance = user?.policy_acceptance || {};
+  const accepted = acceptance?.accepted && typeof acceptance.accepted === "object" ? acceptance.accepted : {};
+
+  const allRequiredAccepted = REQUIRED_POLICY_KEYS.every(
+    (key) => accepted?.[key]?.accepted === true
+  );
+
+  return allRequiredAccepted && acceptance?.version === CURRENT_POLICY_VERSION;
+}
 
 import {
   Home,
@@ -171,6 +186,16 @@ const FALLBACK_TEXT = {
   apps: "Apps",
   admin: "Admin",
   tutors: "Tutors",
+  planner: "Planner",
+  policyCenter: "Policy Center",
+  termsOfService: "Terms of Service",
+  privacyPolicy: "Privacy Policy",
+  communityGuidelines: "Community Guidelines",
+  messagingPolicy: "Messaging and Investigation Policy",
+  verificationPolicy: "Verification Policy",
+  referralPolicy: "Referral and Invitation Policy",
+  refundPolicy: "Refund and Payment Review Policy",
+  immigrationDisclaimer: "Immigration and Outcome Disclaimer",
 };
 
 const fb = (key) => FALLBACK_TEXT[key] || key;
@@ -339,19 +364,24 @@ const AccountDropdown = ({
 
   const MenuItem = ({ to, onClick, Icon, label, danger = false, chevron = false }) => {
     const base =
-      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors";
+      "w-full flex items-center gap-3 rounded-xl px-3 py-3 text-sm sm:text-[15px] transition-colors";
     const cls = danger
       ? `${base} text-red-600 hover:bg-red-50`
       : `${base} text-gray-800 hover:bg-gray-50`;
 
     const Right = () =>
-      chevron ? <ChevronRight className="ml-auto h-4 w-4 text-gray-400" /> : null;
+      chevron ? <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-gray-400" /> : null;
+
+    const iconCls = cn(
+      "h-5 w-5 shrink-0",
+      danger ? "text-red-600" : "text-gray-600"
+    );
 
     if (to) {
       return (
         <Link to={to} className={cls} onClick={() => setOpen(false)}>
-          <Icon className={cn("h-4.5 w-4.5", danger ? "text-red-600" : "text-gray-600")} />
-          <span className="truncate">{label}</span>
+          <Icon className={iconCls} />
+          <span className="min-w-0 flex-1 break-words leading-5">{label}</span>
           <Right />
         </Link>
       );
@@ -366,8 +396,8 @@ const AccountDropdown = ({
           onClick?.();
         }}
       >
-        <Icon className={cn("h-4.5 w-4.5", danger ? "text-red-600" : "text-gray-600")} />
-        <span className="truncate">{label}</span>
+        <Icon className={iconCls} />
+        <span className="min-w-0 flex-1 break-words leading-5">{label}</span>
         <Right />
       </button>
     );
@@ -389,11 +419,24 @@ const AccountDropdown = ({
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.12 }}
             role="menu"
-            className="absolute right-0 mt-2 w-[320px] max-w-[90vw] rounded-2xl bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5 p-2 z-[210]"
+            className="
+              absolute right-0 top-full mt-2 z-[210]
+              w-[320px] max-w-[92vw]
+              max-h-[calc(100vh-88px)]
+              overflow-hidden rounded-2xl bg-white
+              shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)]
+              ring-1 ring-black/5
+              max-sm:w-[92vw]
+              max-sm:max-h-[calc(100vh-72px)]
+            "
           >
-            <div className="px-2 pt-2 pb-3">
+            <div className="bg-white px-2 pt-2 pb-3">
               <div className="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-gray-50 transition">
-                <UserAvatar user={currentUser} sizeClass="w-12 h-12" textClass="text-lg" />
+                <UserAvatar
+                  user={currentUser}
+                  sizeClass="w-11 h-11 sm:w-12 sm:h-12"
+                  textClass="text-base sm:text-lg"
+                />
                 <div className="min-w-0">
                   <div className="font-semibold text-gray-900 truncate">
                     {currentUser?.full_name || safeText(t("nav.account", { defaultValue: "Account" }), "Account")}
@@ -406,7 +449,13 @@ const AccountDropdown = ({
               <div className="mt-2 h-px bg-gray-100" />
             </div>
 
-            <div className="px-1 pb-1">
+            <div
+              className="
+                overflow-y-auto px-1 pb-2
+                max-h-[calc(100vh-180px)]
+                max-sm:max-h-[calc(100vh-150px)]
+              "
+            >
               <div className="px-3 pb-2 text-xs text-gray-500">{resolvedTitle}</div>
 
               {items.map((it) => (
@@ -449,7 +498,6 @@ function dedupeMenuItems(items = []) {
 
 function buildAccountMenuItems(currentUser, tr) {
   const role = String(currentUser?.user_type || currentUser?.role || "student").toLowerCase();
-
   const items = [];
 
   if (role === "agent") {
@@ -462,7 +510,8 @@ function buildAccountMenuItems(currentUser, tr) {
   if (role === "tutor") {
     items.push(
       { label: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Briefcase },
-      { label: tr("myStudents", "My Students"), url: createPageUrl("TutorStudents"), icon: GraduationCap }
+      { label: tr("myStudents", "My Students"), url: createPageUrl("TutorStudents"), icon: GraduationCap },
+      { label: tr("planner", "Planner"), url: createPageUrl("Planner"), icon: Calendar }
     );
   }
 
@@ -496,6 +545,15 @@ function buildAccountMenuItems(currentUser, tr) {
           url: withLang("/messages?to=support&role=support"),
           icon: Headphones,
         },
+    { label: tr("policyCenter", "Policy Center"), url: createPageUrl("PolicyCenter"), icon: ShieldCheck },
+    { label: tr("termsOfService", "Terms of Service"), url: createPageUrl("TermsOfService"), icon: FileText },
+    { label: tr("privacyPolicy", "Privacy Policy"), url: createPageUrl("PrivacyPolicy"), icon: ShieldCheck },
+    { label: tr("communityGuidelines", "Community Guidelines"), url: createPageUrl("CommunityGuidelines"), icon: BadgeCheck },
+    { label: tr("messagingPolicy", "Messaging and Investigation Policy"), url: createPageUrl("MessagingPolicy"), icon: Mailbox },
+    { label: tr("verificationPolicy", "Verification Policy"), url: createPageUrl("VerificationPolicy"), icon: UserCheck },
+    { label: tr("referralPolicy", "Referral and Invitation Policy"), url: createPageUrl("ReferralPolicy"), icon: Handshake },
+    { label: tr("refundPolicy", "Refund and Payment Review Policy"), url: createPageUrl("RefundPolicy"), icon: CreditCard },
+    { label: tr("immigrationDisclaimer", "Immigration and Outcome Disclaimer"), url: createPageUrl("ImmigrationDisclaimer"), icon: FileText },
     { label: tr("profileSettings", "Profile Settings"), url: createPageUrl("Profile"), icon: UserCog }
   );
 
@@ -1160,13 +1218,21 @@ const Footer = ({ getCompanyName }) => {
       column_title: tt("footer.account", "Account"),
       links: [
         { text: tt("nav.login", "Login"), url: createPageUrl("Welcome") },
-        { text: tt("nav.login", "Login"), url: createPageUrl("Login") },
         { text: tt("nav.profile", "Profile"), url: createPageUrl("Profile") },
       ],
     },
     {
       column_title: tt("footer.legal", "Legal"),
       links: [
+        { text: tt("footer.policyCenter", "Policy Center"), url: createPageUrl("PolicyCenter") },
+        { text: tt("footer.termsOfService", "Terms of Service"), url: createPageUrl("TermsOfService") },
+        { text: tt("footer.privacyPolicy", "Privacy Policy"), url: createPageUrl("PrivacyPolicy") },
+        { text: tt("footer.communityGuidelines", "Community Guidelines"), url: createPageUrl("CommunityGuidelines") },
+        { text: tt("footer.messagingPolicy", "Messaging and Investigation Policy"), url: createPageUrl("MessagingPolicy") },
+        { text: tt("footer.verificationPolicy", "Verification Policy"), url: createPageUrl("VerificationPolicy") },
+        { text: tt("footer.referralPolicy", "Referral and Invitation Policy"), url: createPageUrl("ReferralPolicy") },
+        { text: tt("footer.refundPolicy", "Refund and Payment Review Policy"), url: createPageUrl("RefundPolicy") },
+        { text: tt("footer.immigrationDisclaimer", "Immigration and Outcome Disclaimer"), url: createPageUrl("ImmigrationDisclaimer") },
         { text: tt("footer.agentAgreement", "Agent Agreement"), url: createPageUrl("AgentAgreement") },
       ],
     },
@@ -1295,6 +1361,11 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
         { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
         { title: tr("organization", "Organization"), url: createPageUrl("Organization"), icon: Briefcase },
         { title: tr("myStudents", "My Students"), url: createPageUrl("TutorStudents"), icon: GraduationCap },
+        { title: tr("planner", "Planner"), url: createPageUrl("Planner"), icon: Calendar },
+        { title: tr("policyCenter", "Policy Center"), url: createPageUrl("PolicyCenter"), icon: ShieldCheck },
+        { title: tr("termsOfService", "Terms of Service"), url: createPageUrl("TermsOfService"), icon: FileText },
+        { title: tr("privacyPolicy", "Privacy Policy"), url: createPageUrl("PrivacyPolicy"), icon: ShieldCheck },
+        { title: tr("communityGuidelines", "Community Guidelines"), url: createPageUrl("CommunityGuidelines"), icon: BadgeCheck },
         { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: UserCog },
       ]),
     };
@@ -1597,10 +1668,47 @@ export default function Layout() {
     return <PublicLayout getLogoUrl={getLogoUrl} getCompanyName={getCompanyName} />;
   }
 
-  const isOnboardingRoute = location.pathname.toLowerCase().startsWith("/onboarding");
-  const notDoneOnboarding = currentUser?.onboarding_completed === false;
+  const pathname = location.pathname.toLowerCase();
+  const isOnboardingRoute = pathname.startsWith("/onboarding");
+  const isPolicyRoute = [
+    createPageUrl("PolicyCenter"),
+    createPageUrl("TermsOfService"),
+    createPageUrl("PrivacyPolicy"),
+    createPageUrl("CommunityGuidelines"),
+    createPageUrl("RefundPolicy"),
+    createPageUrl("VerificationPolicy"),
+    createPageUrl("ReferralPolicy"),
+    createPageUrl("MessagingPolicy"),
+    createPageUrl("ImmigrationDisclaimer"),
+  ].some((route) => pathname === route.toLowerCase());
 
-  if (isOnboardingRoute || notDoneOnboarding) {
+  const onboardingCompleted =
+    currentUser?.onboarding_completed ?? currentUser?.onboardingComplete ?? false;
+  const policyCompleted = hasCompletedPolicies(currentUser);
+
+  if (!onboardingCompleted && !isOnboardingRoute) {
+    return <Navigate to={createPageUrl("Onboarding")} replace />;
+  }
+
+  if (isOnboardingRoute) {
+    return (
+      <div className="min-h-[100svh] w-full bg-gray-50">
+        <main className="max-w-7xl mx-auto p-4 md:p-8">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
+
+  if (!policyCompleted && !isPolicyRoute) {
+    return <Navigate to={createPageUrl("PolicyCenter")} replace />;
+  }
+
+  if (policyCompleted && pathname === createPageUrl("PolicyCenter").toLowerCase()) {
+    return <Navigate to={createPageUrl("Dashboard")} replace />;
+  }
+
+  if (isPolicyRoute) {
     return (
       <div className="min-h-[100svh] w-full bg-gray-50">
         <main className="max-w-7xl mx-auto p-4 md:p-8">

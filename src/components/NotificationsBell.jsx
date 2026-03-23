@@ -1,4 +1,3 @@
-// src/components/NotificationsBell.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -135,21 +134,13 @@ function useClickOutside(ref, handler, when = true) {
 
 export default function NotificationsBell({
   currentUser,
-  /**
-   * Optional: if a notification has no link, we will NOT navigate to a "notifications page".
-   * Instead, we simply mark it read and keep the panel behavior (Facebook-style).
-   *
-   * You can still pass createPageUrl if you want the "See all" button to route,
-   * but by default we keep everything inside this component.
-   */
-  // Kept for backward compatibility (not used by default)
   createPageUrl,
   viewAllLabel = "Notifications",
   className = "",
 }) {
   const navigate = useNavigate();
   const [open, setOpen] = React.useState(false);
-  const [tab, setTab] = React.useState("all"); // all | unread
+  const [tab, setTab] = React.useState("all");
   const [expanded, setExpanded] = React.useState(false);
   const [items, setItems] = React.useState([]);
   const wrapRef = React.useRef(null);
@@ -164,12 +155,14 @@ export default function NotificationsBell({
   );
 
   React.useEffect(() => {
-    if (!currentUser?.id) {
+    const userId = currentUser?.id || currentUser?.uid;
+
+    if (!userId) {
       setItems([]);
       return;
     }
 
-    const ref = collection(db, "users", currentUser.id, "notifications");
+    const ref = collection(db, "users", userId, "notifications");
     const qx = query(ref, orderBy("createdAt", "desc"), limit(20));
 
     const unsub = onSnapshot(
@@ -179,7 +172,7 @@ export default function NotificationsBell({
     );
 
     return () => unsub();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.uid]);
 
   const unreadCount = React.useMemo(
     () => items.filter((n) => n?.seen === false).length,
@@ -188,9 +181,11 @@ export default function NotificationsBell({
 
   const markSeen = React.useCallback(
     async (notifId) => {
-      if (!currentUser?.id || !notifId) return;
+      const userId = currentUser?.id || currentUser?.uid;
+      if (!userId || !notifId) return;
+
       try {
-        await updateDoc(doc(db, "users", currentUser.id, "notifications", notifId), {
+        await updateDoc(doc(db, "users", userId, "notifications", notifId), {
           seen: true,
           readAt: serverTimestamp(),
         });
@@ -198,7 +193,7 @@ export default function NotificationsBell({
         console.error("[NotificationsBell] markSeen failed:", e);
       }
     },
-    [currentUser?.id]
+    [currentUser?.id, currentUser?.uid]
   );
 
   const openItem = React.useCallback(
@@ -212,7 +207,6 @@ export default function NotificationsBell({
         setExpanded(false);
         return navigate(link);
       }
-      // ✅ No fallback route page. Keep it Facebook-style.
     },
     [markSeen, navigate]
   );
@@ -223,7 +217,6 @@ export default function NotificationsBell({
   }, [items, markSeen]);
 
   const seeAllInPanel = React.useCallback(() => {
-    // Facebook-style: open a larger panel instead of routing.
     setExpanded(true);
   }, []);
 
@@ -265,141 +258,134 @@ export default function NotificationsBell({
             transition={{ duration: 0.12 }}
             role="menu"
             className={cn(
-              // ✅ Mobile: fixed, centered panel; Desktop: dropdown (or fixed when expanded)
               "fixed inset-x-0 top-14 z-[9999] px-3",
               expanded
                 ? "sm:fixed sm:top-14 sm:right-4 sm:left-auto sm:px-0"
                 : "sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:px-0"
             )}
           >
-            <div
-              className={cn(
-                "mx-auto w-full max-w-[420px] sm:mx-0 sm:w-[380px] rounded-2xl bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5 overflow-hidden"
-              )}
-            >
-            <div className="p-3 flex items-center justify-between">
-              <div className="text-base font-bold text-gray-900">Notifications</div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={markAllSeen}
-                  className="text-xs font-semibold text-green-700 hover:text-green-800 px-2 py-1 rounded-lg hover:bg-green-50"
-                >
-                  Mark all as read
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    setExpanded(false);
-                  }}
-                  className="text-xs font-semibold text-gray-600 hover:text-gray-800 px-2 py-1 rounded-lg hover:bg-gray-50"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-
-            {/* Tabs (All / Unread) */}
-            <div className="px-3 pb-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setTab("all")}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-sm font-semibold",
-                  tab === "all"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                )}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("unread")}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-sm font-semibold",
-                  tab === "unread"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                )}
-              >
-                Unread
-              </button>
-
-              <div className="ml-auto">
-                <button
-                  type="button"
-                  onClick={seeAllInPanel}
-                  className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-                >
-                  See all
-                </button>
-              </div>
-            </div>
-
-            <div className="h-px bg-gray-100" />
-
-            <div
-              className={cn(
-                "overflow-y-auto",
-                expanded ? "max-h-[72vh]" : "max-h-[420px]"
-              )}
-            >
-              {filtered.length === 0 ? (
-                <div className="p-6 text-sm text-gray-500">No notifications yet.</div>
-              ) : (
-                <div className="p-2 space-y-1">
-                  {filtered.map((n) => {
-                    const title = String(n.title || "").trim() || "Notification";
-                    const body = String(n.body || "").trim();
-                    const isUnread = n.seen === false;
-                    const name = getNotifName(n);
-                    const photo = getNotifPhoto(n);
-
-                    return (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => openItem(n)}
-                        className={cn(
-                          "w-full text-left rounded-2xl px-3 py-3 transition",
-                          isUnread ? "bg-green-50 hover:bg-green-100" : "hover:bg-gray-50"
-                        )}
-                      >
-                        <div className="flex items-start gap-3">
-                          <NotificationAvatar name={name} src={photo} />
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-gray-900 truncate">
-                              {title}
-                            </div>
-                            {body ? (
-                              <div className="text-sm text-gray-600 line-clamp-2 mt-0.5">{body}</div>
-                            ) : null}
-                          </div>
-                          <div className="ml-auto flex items-center gap-2">
-                            {isUnread ? <div className="h-2.5 w-2.5 rounded-full bg-blue-600" /> : null}
-                            <ChevronRight className="h-4 w-4 text-gray-400" />
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+            <div className="mx-auto w-full max-w-[420px] sm:mx-0 sm:w-[380px] rounded-2xl bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5 overflow-hidden">
+              <div className="p-3 flex items-center justify-between">
+                <div className="text-base font-bold text-gray-900">Notifications</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={markAllSeen}
+                    className="text-xs font-semibold text-green-700 hover:text-green-800 px-2 py-1 rounded-lg hover:bg-green-50"
+                  >
+                    Mark all as read
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      setExpanded(false);
+                    }}
+                    className="text-xs font-semibold text-gray-600 hover:text-gray-800 px-2 py-1 rounded-lg hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
                 </div>
-              )}
-            </div>
+              </div>
 
-            {/* Bottom "See previous" like FB (UI only) */}
-            <div className="p-3 border-t bg-white">
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className="w-full rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-semibold text-gray-800 py-2"
+              <div className="px-3 pb-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTab("all")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-sm font-semibold",
+                    tab === "all"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("unread")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-sm font-semibold",
+                    tab === "unread"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  )}
+                >
+                  Unread
+                </button>
+
+                <div className="ml-auto">
+                  <button
+                    type="button"
+                    onClick={seeAllInPanel}
+                    className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+                  >
+                    See all
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-px bg-gray-100" />
+
+              <div
+                className={cn(
+                  "overflow-y-auto",
+                  expanded ? "max-h-[72vh]" : "max-h-[420px]"
+                )}
               >
-                See previous notifications
-              </button>
+                {filtered.length === 0 ? (
+                  <div className="p-6 text-sm text-gray-500">No notifications yet.</div>
+                ) : (
+                  <div className="p-2 space-y-1">
+                    {filtered.map((n) => {
+                      const title = String(n.title || "").trim() || "Notification";
+                      const body = String(n.body || "").trim();
+                      const isUnread = n.seen === false;
+                      const name = getNotifName(n);
+                      const photo = getNotifPhoto(n);
+
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => openItem(n)}
+                          className={cn(
+                            "w-full text-left rounded-2xl px-3 py-3 transition",
+                            isUnread ? "bg-green-50 hover:bg-green-100" : "hover:bg-gray-50"
+                          )}
+                        >
+                          <div className="flex items-start gap-3">
+                            <NotificationAvatar name={name} src={photo} />
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-gray-900 truncate">
+                                {title}
+                              </div>
+                              {body ? (
+                                <div className="text-sm text-gray-600 line-clamp-2 mt-0.5">{body}</div>
+                              ) : null}
+                            </div>
+                            <div className="ml-auto flex items-center gap-2">
+                              {isUnread ? <div className="h-2.5 w-2.5 rounded-full bg-blue-600" /> : null}
+                              <ChevronRight className="h-4 w-4 text-gray-400" />
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 border-t bg-white">
+                <button
+                  type="button"
+                  onClick={() => setExpanded(true)}
+                  className="w-full rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-semibold text-gray-800 py-2"
+                >
+                  See previous notifications
+                </button>
+              </div>
             </div>
-                      </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -245,13 +245,17 @@ service cloud.firestore {
         resDoc.data.tutor_auth_uid == request.auth.uid ||
         resDoc.data.tutor_uid == request.auth.uid ||
         resDoc.data.tutor_id == request.auth.uid ||
+        resDoc.data.tutorId == request.auth.uid ||
         sameEmail(authEmail(), resDoc.data.tutor_email) ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           (
             resDoc.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
             resDoc.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
-            resDoc.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
+            resDoc.data.tutor_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id ||
+            resDoc.data.tutorId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
+            resDoc.data.tutorId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
+            resDoc.data.tutorId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
           )
         )
       );
@@ -263,13 +267,17 @@ service cloud.firestore {
         resDoc.data.student_auth_uid == request.auth.uid ||
         resDoc.data.student_uid == request.auth.uid ||
         resDoc.data.student_id == request.auth.uid ||
+        resDoc.data.studentId == request.auth.uid ||
         sameEmail(authEmail(), resDoc.data.student_email) ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           (
             resDoc.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
             resDoc.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
-            resDoc.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
+            resDoc.data.student_id == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id ||
+            resDoc.data.studentId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_id ||
+            resDoc.data.studentId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid ||
+            resDoc.data.studentId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.id
           )
         )
       );
@@ -1232,6 +1240,56 @@ service cloud.firestore {
       allow update, delete: if signedIn() && canWriteSession(resource);
     }
 
+        // ============================
+    // Tutor Planner
+    // ============================
+
+    match /tutor_availability/{tutorUid} {
+      allow read: if signedIn() && (
+        request.auth.uid == tutorUid ||
+        isAdmin()
+      );
+
+      allow create, update, delete: if signedIn() && (
+        request.auth.uid == tutorUid ||
+        isAdmin()
+      );
+    }
+
+    match /tutor_blocked_times/{docId} {
+      allow create: if signedIn() && (
+        request.resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow read: if signedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow update, delete: if signedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    match /tutor_planner_notes/{docId} {
+      allow create: if signedIn() && (
+        request.resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow read: if signedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow update, delete: if signedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
     match /wallets/{docId} {
       allow create: if ownerCreating();
       allow read, update, delete: if isOwner(resource);
@@ -1368,6 +1426,35 @@ service cloud.firestore {
 
       // Delete: agent owner (no request.resource.data)
       allow delete: if isAgentOwner() || isAdmin();
+    }
+
+    match /tutor_availability/{docId} {
+      allow read: if signedIn() && (docId == request.auth.uid || isAdmin());
+      allow create, update, delete: if signedIn() &&
+        docId == request.auth.uid &&
+        request.resource.data.tutorId == request.auth.uid;
+    }
+
+    match /tutor_blocked_times/{docId} {
+      allow read: if signedIn() && (
+        resource.data.tutorId == request.auth.uid || isAdmin()
+      );
+      allow create: if signedIn() &&
+        request.resource.data.tutorId == request.auth.uid;
+      allow update, delete: if signedIn() && (
+        resource.data.tutorId == request.auth.uid || isAdmin()
+      );
+    }
+
+    match /tutor_planner_notes/{docId} {
+      allow read: if signedIn() && (
+        resource.data.tutorId == request.auth.uid || isAdmin()
+      );
+      allow create: if signedIn() &&
+        request.resource.data.tutorId == request.auth.uid;
+      allow update, delete: if signedIn() && (
+        resource.data.tutorId == request.auth.uid || isAdmin()
+      );
     }
 
     // final catch-all
@@ -1514,6 +1601,52 @@ match /org_invites/{inviteId} {
       resource.data.author_id == request.auth.uid || isAdmin()
     );
   }
+
+
+    // ===============================
+    // TUTOR PLANNER
+    // ===============================
+    match /tutor_availability/{docId} {
+      allow read: if signedIn() && (
+        docId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create, update, delete: if signedIn() &&
+        docId == request.auth.uid &&
+        request.resource.data.tutorId == request.auth.uid;
+    }
+
+    match /tutor_blocked_times/{docId} {
+      allow read: if signedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if signedIn() &&
+        request.resource.data.tutorId == request.auth.uid;
+
+      allow update, delete: if signedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    match /tutor_planner_notes/{docId} {
+      allow read: if signedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if signedIn() &&
+        request.resource.data.tutorId == request.auth.uid;
+
+      allow update, delete: if signedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
 
 
     match /{document=**} { allow read, write: if false; }

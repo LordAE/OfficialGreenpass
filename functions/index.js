@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const OpenAI = require("openai");
 
 const { onRequest } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const {
   onDocumentCreated,
@@ -839,7 +840,6 @@ exports.acceptAgentReferral = onRequest(async (req, res) => {
               student.assignedAgentId ||
               agentId,
 
-            // keep backward compatibility
             referredByAgentId:
               student.referredByAgentId ||
               student.referred_by_agent_id ||
@@ -1778,7 +1778,12 @@ exports.createOrgInvite = onRequest(async (req, res) => {
               </div>
             </div>
             `,
-          text: `You’ve been invited to join ${org.name || "an organization"}.\n\nOpen this link to accept:\n${inviteLink}\n\nThis invite expires in 7 days.`,
+          text: `You’ve been invited to join ${org.name || "an organization"}.
+
+Open this link to accept:
+${inviteLink}
+
+This invite expires in 7 days.`,
         },
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -1958,3 +1963,173 @@ exports.acceptOrgInvite = onRequest(async (req, res) => {
     }
   });
 });
+
+/**
+ * =========================================================
+ * Tutor Planner: 1-hour reminder notifications
+ * =========================================================
+ */
+
+function getSessionTutorUid(session) {
+  return (
+    session?.tutor_auth_uid ||
+    session?.tutor_uid ||
+    session?.tutor_id ||
+    session?.tutorId ||
+    null
+  );
+}
+
+function getSessionTutorEmail(session) {
+  const email = session?.tutor_email || session?.tutorEmail || "";
+  return String(email || "").trim().toLowerCase();
+}
+
+function getSessionStudentName(session) {
+  return (
+    session?.studentName ||
+    session?.student_name ||
+    session?.studentFullName ||
+    session?.student_full_name ||
+    session?.student ||
+    "Student"
+  );
+}
+
+function getSessionTitle(session) {
+  return (
+    session?.title ||
+    session?.subject ||
+    session?.sessionTitle ||
+    session?.session_title ||
+    "Tutoring Session"
+  );
+}
+
+async function resolveTutorUidFromSession(session) {
+  const directUid = getSessionTutorUid(session);
+  if (directUid) return directUid;
+
+  const tutorEmail = getSessionTutorEmail(session);
+  if (!tutorEmail) return null;
+
+  const db = admin.firestore();
+
+  let snap = await db
+    .collection("users")
+    .where("email", "==", tutorEmail)
+    .limit(1)
+    .get();
+
+  if (!snap.empty) return snap.docs[0].id;
+
+  snap = await db
+    .collection("users")
+    .where("emailLower", "==", tutorEmail)
+    .limit(1)
+    .get();
+
+  if (!snap.empty) return snap.docs[0].id;
+
+  return null;
+}
+
+exports.sendTutorSessionReminders = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    timeZone: "America/Toronto",
+    retryCount: 0,
+    memory: "256MiB",
+  },
+  async () => {
+    const db = admin.firestore();
+    const now = new Date();
+
+    const windowStart = admin.firestore.Timestamp.fromDate(
+      new Date(now.getTime() + 55 * 60 * 1000)
+    );
+    const windowEnd = admin.firestore.Timestamp.fromDate(
+      new Date(now.getTime() + 65 * 60 * 1000)
+    );
+
+    const snap = await db
+      .collection("tutoring_sessions")
+      .where("start", ">=", windowStart)
+      .where("start", "<=", windowEnd)
+      .orderBy("start", "asc")
+      .get();
+
+    if (snap.empty) return;
+
+    for (const docSnap of snap.docs) {
+      const sessionId = docSnap.id;
+      const session = docSnap.data() || {};
+
+      const status = String(session?.status || "booked").toLowerCase().trim();
+      if (["cancelled", "completed"].includes(status)) continue;
+
+      const tutorUid = await resolveTutorUidFromSession(session);
+      if (!tutorUid) {
+        console.warn("[sendTutorSessionReminders] tutor UID not resolved for session", sessionId);
+        continue;
+      }
+
+      const startTs = session?.start;
+      const endTs = session?.end;
+      const startDate = startTs?.toDate ? startTs.toDate() : null;
+      const endDate = endTs?.toDate ? endTs.toDate() : null;
+
+      if (!startDate) continue;
+
+      const title = getSessionTitle(session);
+      const studentName = getSessionStudentName(session);
+
+      const notifId = `session_1h_${sessionId}`;
+      const notifRef = db.doc(`users/${tutorUid}/notifications/${notifId}`);
+      const notifSnap = await notifRef.get();
+      if (notifSnap.exists) continue;
+
+      const body = `${title} with ${studentName} starts at ${startDate.toLocaleTimeString("en-CA", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "America/Toronto",
+      })} in about 1 hour.`;
+
+      await notifRef.set(
+        {
+          type: "tutoring_session_reminder",
+          sessionId,
+          tutorId: tutorUid,
+          studentName,
+          subject: session?.subject || "",
+          sessionStatus: status,
+          title: "Upcoming tutoring session",
+          body,
+          link: "/tutorplanner",
+          seen: false,
+          readAt: null,
+          start: startTs || null,
+          end: endTs || null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          reminderType: "1_hour_before",
+        },
+        { merge: true }
+      );
+
+      await db.collection("tutoring_sessions").doc(sessionId).set(
+        {
+          reminderOneHourSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      console.log("[sendTutorSessionReminders] reminder sent", {
+        sessionId,
+        tutorUid,
+        start: startDate.toISOString(),
+        end: endDate?.toISOString?.() || null,
+      });
+    }
+  }
+);

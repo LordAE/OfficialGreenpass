@@ -42,7 +42,6 @@ import ReservationStatus from "@/pages/ReservationStatus";
 import UserDetails from "@/pages/UserDetails";
 import MyStudents from "./pages/MyStudents";
 import Profile from "./pages/Profile";
-import AuthForm from "./pages/AuthForm";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import PostDetail from "./pages/PostDetail";
 import StudyCanada from "@/pages/countries/StudyCanada";
@@ -58,6 +57,18 @@ import EventDetailsPage from "./pages/EventDetails";
 import Connections from "./pages/Connections";
 import ViewProfile from "./pages/ViewProfile";
 import AuthBridge from "./pages/AuthBridge";
+import TutorPlanner from "@/pages/TutorPlanner";
+
+// Policy pages
+import PolicyCenter from "@/pages/PolicyCenter";
+import TermsOfService from "@/pages/TermsOfService";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import CommunityGuidelines from "@/pages/CommunityGuidelines";
+import VerificationPolicy from "@/pages/VerificationPolicy";
+import ReferralPolicy from "@/pages/ReferralPolicy";
+import RefundPolicy from "@/pages/RefundPolicy";
+import ImmigrationDisclaimer from "@/pages/ImmigrationDisclaimer";
+import MessagingPolicy from "@/pages/MessagingPolicy";
 
 /* ---------- Firebase auth/profile (lightweight for route-guards) ---------- */
 import { auth, db } from "@/firebase";
@@ -165,8 +176,18 @@ export default function App() {
         <Route path={createPageUrl("StudyUnitedKingdom")} element={<StudyUnitedKingdom />} />
         <Route path={createPageUrl("StudyUnitedStates")} element={<StudyUnitedStates />} />
 
+        {/* Public policy pages */}
+        <Route path={createPageUrl("PolicyCenter")} element={<PolicyCenter />} />
+        <Route path={createPageUrl("TermsOfService")} element={<TermsOfService />} />
+        <Route path={createPageUrl("PrivacyPolicy")} element={<PrivacyPolicy />} />
+        <Route path={createPageUrl("CommunityGuidelines")} element={<CommunityGuidelines />} />
+        <Route path={createPageUrl("VerificationPolicy")} element={<VerificationPolicy />} />
+        <Route path={createPageUrl("ReferralPolicy")} element={<ReferralPolicy />} />
+        <Route path={createPageUrl("RefundPolicy")} element={<RefundPolicy />} />
+        <Route path={createPageUrl("MessagingPolicy")} element={<MessagingPolicy />} />
+        <Route path={createPageUrl("ImmigrationDisclaimer")} element={<ImmigrationDisclaimer />} />
+
         {/* Auth pages */}
-        <Route path="login" element={<AuthForm />} />
         <Route path="resetpassword" element={<ResetPassword />} />
 
         {/* Public content */}
@@ -241,7 +262,7 @@ export default function App() {
           }
         />
 
-        {/* ✅ Changed from school-only to any authenticated user */}
+        {/* Changed from school-only to any authenticated user */}
         <Route
           path="schooldetails"
           element={
@@ -251,7 +272,7 @@ export default function App() {
           }
         />
 
-        {/* ✅ Changed from school-only to any authenticated user */}
+        {/* Changed from school-only to any authenticated user */}
         <Route
           path="programdetails"
           element={
@@ -349,6 +370,14 @@ export default function App() {
           element={
             <RequireRole currentUser={currentUser} loading={loading} allow={["tutor"]}>
               <TutorAvailability />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="planner"
+          element={
+            <RequireRole currentUser={currentUser} loading={loading} allow={["tutor"]}>
+              <TutorPlanner />
             </RequireRole>
           }
         />
