@@ -1,14 +1,17 @@
 // src/pages/Welcome.jsx
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Mail, Lock, User as UserIcon, Eye, EyeOff, Check, X, Loader2 } from "lucide-react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Input } from "@/components/ui/input";
 import { useTranslation } from "react-i18next";
 
-// 🔥 Firebase
+import roleAgent from "@/assets/welcome/role_agent.png";
+import roleSchool from "@/assets/welcome/role_school.png";
+import roleStudent from "@/assets/welcome/role_student.png";
+import roleTutor from "@/assets/welcome/role_tutor.jpg";
+
 import { auth, db } from "@/firebase";
 import {
   GoogleAuthProvider,
@@ -24,16 +27,15 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
-// ───────────────────────────── simple info dialog ─────────────────────────────
 function InfoDialog({ open, title, message, onClose, okLabel = "OK" }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="w-full max-w-sm rounded-xl bg-white shadow-xl p-6">
+        <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
           <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{message}</p>
+          <p className="mt-2 whitespace-pre-line text-sm text-gray-600">{message}</p>
           <div className="mt-4 flex justify-end">
             <Button onClick={onClose}>{okLabel}</Button>
           </div>
@@ -43,7 +45,7 @@ function InfoDialog({ open, title, message, onClose, okLabel = "OK" }) {
   );
 }
 
-const GoogleIcon = ({ className = "w-5 h-5 mr-3" }) => (
+const GoogleIcon = ({ className = "mr-3 h-5 w-5" }) => (
   <svg className={className} role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
     <title>Google</title>
     <path
@@ -53,17 +55,18 @@ const GoogleIcon = ({ className = "w-5 h-5 mr-3" }) => (
   </svg>
 );
 
-// ───────────────────────────────── helpers ─────────────────────────────────
 const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor"];
 const DEFAULT_ROLE = "user";
 
-// UI role choices for sign-up (what the user sees)
 const SIGNUP_ROLE_OPTIONS = [
   { value: "user", labelKey: "roles.student", labelFallback: "Student" },
   { value: "agent", labelKey: "roles.agent", labelFallback: "Agent" },
   { value: "tutor", labelKey: "roles.tutor", labelFallback: "Tutor" },
   { value: "school", labelKey: "roles.school", labelFallback: "School" },
 ];
+
+const APP_LOGO_URL =
+  "https://firebasestorage.googleapis.com/v0/b/greenpass-dc92d.firebasestorage.app/o/rawdatas%2FGreenPass%20Official.png?alt=media&token=809da08b-22f6-4049-bbbf-9b82342630e8";
 
 function normalizeRole(r) {
   const v = (r || "").toString().trim().toLowerCase();
@@ -72,9 +75,9 @@ function normalizeRole(r) {
 
 function buildUserDoc({ email, full_name = "", userType = DEFAULT_ROLE, signupEntryRole = DEFAULT_ROLE }) {
   return {
-    role: userType, // legacy
-    userType, // legacy
-    user_type: userType, // canonical
+    role: userType,
+    userType,
+    user_type: userType,
     signup_entry_role: signupEntryRole,
     email,
     full_name,
@@ -121,6 +124,7 @@ function validatePassword(pw) {
   const hasSpecial = /[^A-Za-z0-9]/.test(pw);
   return { lengthOK, hasUpper, hasNumber, hasSpecial, ok: lengthOK && hasUpper && hasNumber && hasSpecial };
 }
+
 const isValidEmail = (em) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em);
 
 function RuleRow({ ok, label }) {
@@ -160,7 +164,6 @@ async function routeAfterSignIn(navigate, fbUser, roleHint = DEFAULT_ROLE) {
   return navigate(createPageUrl("Dashboard"));
 }
 
-// ───────────────────────────── component ─────────────────────────────
 export default function Welcome() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -168,32 +171,31 @@ export default function Welcome() {
 
   const tr = React.useCallback((key, fallback) => t(key, { defaultValue: fallback }), [t]);
 
-  // role from URL (optional; used mainly for deep links). Only applied automatically if present.
+  useEffect(() => {
+    const langFromUrl = params.get("lang");
+    const saved = localStorage.getItem("gp_lang");
+    const nextLang = langFromUrl || saved || i18n?.language || "en";
+    if (i18n?.language !== nextLang) i18n.changeLanguage(nextLang);
+    localStorage.setItem("gp_lang", nextLang);
+  }, [params, i18n]);
+
   const entryRole = useMemo(() => {
     const raw = params.get("role") ?? params.get("userType") ?? params.get("as");
     return normalizeRole(raw);
   }, [params]);
 
   const [mode, setMode] = useState("signin");
-
-  // SIGN UP: require role selection. If URL contains role and it's not "user", preselect it.
   const [signupRole, setSignupRole] = useState(() => (entryRole && entryRole !== DEFAULT_ROLE ? entryRole : ""));
   const activeRole = mode === "signup" ? signupRole : entryRole;
 
-  // persist role hint for OAuth popups and onboarding
   useEffect(() => {
     if (activeRole) sessionStorage.setItem("onboarding_role", activeRole);
   }, [activeRole]);
 
-  // shared fields
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  // signup-only
-  const [fullName, setFullName] = useState("");
   const [confirm, setConfirm] = useState("");
 
-  // visibility toggles
   const [showSigninPw, setShowSigninPw] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -202,8 +204,6 @@ export default function Welcome() {
   const [checking, setChecking] = useState(true);
 
   const [dialog, setDialog] = useState({ open: false, title: "", message: "" });
-
-  // email availability (signup)
   const [emailCheck, setEmailCheck] = useState({ checking: false, available: null, methods: [], error: "" });
   const [emailCheckVersion, setEmailCheckVersion] = useState(0);
   const emailCheckVersionRef = useRef(0);
@@ -214,7 +214,6 @@ export default function Welcome() {
 
   const pwStatus = validatePassword(password);
 
-  // If already authenticated, route.
   useEffect(() => {
     let unsub = () => {};
     (async () => {
@@ -237,7 +236,7 @@ export default function Welcome() {
       const methods = await fetchSignInMethodsForEmail(auth, em);
       if (versionAtCall !== emailCheckVersionRef.current) return;
       setEmailCheck({ checking: false, available: methods.length === 0, methods, error: "" });
-    } catch (e) {
+    } catch {
       if (versionAtCall !== emailCheckVersionRef.current) return;
       setEmailCheck({
         checking: false,
@@ -248,7 +247,6 @@ export default function Welcome() {
     }
   }
 
-  // Debounced email check for SIGN UP
   useEffect(() => {
     if (mode !== "signup") return;
     const em = email.trim().toLowerCase();
@@ -262,10 +260,8 @@ export default function Welcome() {
 
     const handle = setTimeout(() => runEmailCheck(em, nextVersion), 400);
     return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email, mode]);
 
-  // ───────── Provider sign-ins ─────────
   const requireRoleIfSignup = () => {
     if (mode === "signup" && !signupRole) {
       setDialog({
@@ -344,18 +340,20 @@ export default function Welcome() {
     }
   };
 
-  // 👉 Forgot password
   const handleForgotPassword = () => {
     const em = (email || "").trim();
-    const currentLang = params.get("lang") || localStorage.getItem("gp_lang") || (i18n && i18n.language) || "en";
-    navigate(`${createPageUrl("ResetPassword")} ?lang=${encodeURIComponent(currentLang)}`.replace(" ", ""), { state: { email: em } });
+    const currentLang = params.get("lang") || localStorage.getItem("gp_lang") || i18n?.language || "en";
+    navigate(`${createPageUrl("ResetPassword")}?lang=${encodeURIComponent(currentLang)}`, { state: { email: em } });
   };
 
-  // ───────── Email/Password Sign In ─────────
   const handleSignInEmail = async () => {
     const em = email.trim().toLowerCase();
     if (!em || !isValidEmail(em)) {
-      setDialog({ open: true, title: tr("auth.invalid_email_title", "Invalid email"), message: tr("auth.invalid_email_message", "Please enter a valid email address.") });
+      setDialog({
+        open: true,
+        title: tr("auth.invalid_email_title", "Invalid email"),
+        message: tr("auth.invalid_email_message", "Please enter a valid email address."),
+      });
       return;
     }
     try {
@@ -365,30 +363,41 @@ export default function Welcome() {
       await routeAfterSignIn(navigate, cred.user, activeRole || DEFAULT_ROLE);
     } catch (err) {
       if (err?.code === "auth/wrong-password" || err?.code === "auth/invalid-credential") {
-        setDialog({ open: true, title: tr("auth.incorrect_password_title", "Incorrect password"), message: tr("auth.incorrect_password_message", "The password you entered is incorrect. Please try again.") });
+        setDialog({
+          open: true,
+          title: tr("auth.incorrect_password_title", "Incorrect password"),
+          message: tr("auth.incorrect_password_message", "The password you entered is incorrect. Please try again."),
+        });
       } else if (err?.code === "auth/user-not-found") {
         setMode("signup");
-        setDialog({ open: true, title: tr("auth.no_account_title", "No account found"), message: tr("auth.no_account_message", "We couldn’t find an account for that email. Please create one.") });
+        setDialog({
+          open: true,
+          title: tr("auth.no_account_title", "No account found"),
+          message: tr("auth.no_account_message", "We couldn’t find an account for that email. Please create one."),
+        });
       } else {
-        setDialog({ open: true, title: tr("auth.signin_failed_title", "Sign-in failed"), message: err?.code ? `Firebase: ${err.code}` : err?.message || tr("auth.email_signin_failed", "Email sign-in failed.") });
+        setDialog({
+          open: true,
+          title: tr("auth.signin_failed_title", "Sign-in failed"),
+          message: err?.code ? `Firebase: ${err.code}` : err?.message || tr("auth.email_signin_failed", "Email sign-in failed."),
+        });
       }
     } finally {
       setBusy(false);
     }
   };
 
-  // ───────── Sign Up ─────────
   const handleSignUpEmail = async () => {
     try {
       setBusy(true);
       const em = email.trim().toLowerCase();
 
       if (!signupRole) {
-        setDialog({ open: true, title: tr("auth.choose_role_title", "Choose a role"), message: tr("auth.choose_role_message", "Please select a role to continue.") });
-        return;
-      }
-      if (!fullName.trim()) {
-        setDialog({ open: true, title: tr("auth.missing_name_title", "Missing name"), message: tr("auth.missing_name_message", "Please enter your full name.") });
+        setDialog({
+          open: true,
+          title: tr("auth.choose_role_title", "Choose a role"),
+          message: tr("auth.choose_role_message", "Please select a role to continue."),
+        });
         return;
       }
 
@@ -399,7 +408,9 @@ export default function Welcome() {
           !hasUpper && tr("auth.pw_upper", "• At least 1 capital letter"),
           !hasNumber && tr("auth.pw_number", "• At least 1 number"),
           !hasSpecial && tr("auth.pw_special", "• At least 1 special character"),
-        ].filter(Boolean).join("\n");
+        ]
+          .filter(Boolean)
+          .join("\n");
 
         setDialog({
           open: true,
@@ -410,13 +421,21 @@ export default function Welcome() {
       }
 
       if (password !== confirm) {
-        setDialog({ open: true, title: tr("auth.passwords_no_match_title", "Passwords do not match"), message: tr("auth.passwords_no_match_message", "Please make sure the passwords are identical.") });
+        setDialog({
+          open: true,
+          title: tr("auth.passwords_no_match_title", "Passwords do not match"),
+          message: tr("auth.passwords_no_match_message", "Please make sure the passwords are identical."),
+        });
         return;
       }
 
       const methods = await fetchSignInMethodsForEmail(auth, em);
       if (methods.length > 0) {
-        setDialog({ open: true, title: tr("auth.email_already_registered_title", "Email already registered"), message: tr("auth.email_already_registered_simple", "This email is already registered. Try signing in (Email & password, Google, or Apple).") });
+        setDialog({
+          open: true,
+          title: tr("auth.email_already_registered_title", "Email already registered"),
+          message: tr("auth.email_already_registered_simple", "This email is already registered. Try signing in."),
+        });
         setMode("signin");
         return;
       }
@@ -424,8 +443,7 @@ export default function Welcome() {
       sessionStorage.setItem("onboarding_role", signupRole);
 
       const cred = await createUserWithEmailAndPassword(auth, em, password);
-      await updateProfile(cred.user, { displayName: fullName.trim() });
-
+      await updateProfile(cred.user, { displayName });
       await routeAfterSignIn(navigate, cred.user, signupRole);
     } catch (err) {
       let message = err?.message || tr("auth.signup_failed_message", "Sign-up failed.");
@@ -440,288 +458,476 @@ export default function Welcome() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600" />
+      <div className="flex min-h-screen items-center justify-center bg-white text-gray-700">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-blue-600" />
+          <div className="text-sm font-medium">Loading…</div>
+        </div>
       </div>
     );
   }
 
-  const emailIsGoogleOnly = emailCheck.methods.includes?.("google.com") && !emailCheck.methods.includes?.("password") && !emailCheck.methods.includes?.("apple.com");
-  const emailIsAppleOnly = emailCheck.methods.includes?.("apple.com") && !emailCheck.methods.includes?.("password") && !emailCheck.methods.includes?.("google.com");
+  const emailIsGoogleOnly =
+    emailCheck.methods.includes?.("google.com") &&
+    !emailCheck.methods.includes?.("password") &&
+    !emailCheck.methods.includes?.("apple.com");
+
+  const emailIsAppleOnly =
+    emailCheck.methods.includes?.("apple.com") &&
+    !emailCheck.methods.includes?.("password") &&
+    !emailCheck.methods.includes?.("google.com");
+
   const emailTaken = emailCheck.available === false;
 
   const canSubmitSignup =
     mode !== "signup" ||
-    (!emailCheck.checking && emailCheck.available === true && pwStatus.ok && fullName.trim() && confirm === password && !!signupRole);
+    (!emailCheck.checking && emailCheck.available === true && pwStatus.ok && confirm === password && !!signupRole);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
-      <div className="relative isolate px-6 pt-14 lg:px-8">
-        <div className="mx-auto max-w-4xl py-16 sm:py-24">
-          <Card className="p-8 sm:p-12 shadow-2xl rounded-2xl bg-white/80 backdrop-blur-lg">
-            <div className="text-center">
-              <img
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/52125f446_GP2withnameTransparent.png"
-                alt={tr("brand.alt", "GreenPass Super App")}
-                className="h-12 sm:h-16 w-auto mx-auto mb-6"
-              />
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">
-                {tr("welcome.title", "Your Journey Starts Here")}
-              </h1>
-              <p className="mt-6 text-lg leading-8 text-gray-600">
-                {mode === "signin" ? tr("welcome.subtitle_signin", "Welcome back! Sign in to your dashboard.") : tr("welcome.subtitle_signup", "Create your account to get a personalized experience.")}
-              </p>
-            </div>
+    <div className="min-h-screen overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-800 text-gray-900">
+      <main className="flex min-h-screen w-full items-center overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
+        <div className="mx-auto grid w-full max-w-[1720px] grid-cols-1 items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,520px)] lg:gap-10 xl:grid-cols-[minmax(0,1fr)_minmax(360px,560px)]">
+          <section className="lg:pr-6 xl:pr-10">
+            <div className="relative mx-auto w-full max-w-[1100px] overflow-hidden rounded-[36px] border border-white/15 bg-white/10 p-3 shadow-[0_22px_90px_rgba(0,0,0,0.35)] backdrop-blur sm:p-4 lg:p-5">
+              <div className="pointer-events-none absolute inset-0 opacity-70 [background:radial-gradient(900px_circle_at_15%_20%,rgba(255,255,255,0.22),transparent_55%),radial-gradient(900px_circle_at_85%_30%,rgba(16,185,129,0.18),transparent_55%),radial-gradient(900px_circle_at_60%_90%,rgba(255,255,255,0.10),transparent_55%)]" />
+              <div className="relative">
+                <h1 className="mt-2 text-center text-xl font-extrabold leading-[1.06] tracking-tight text-white sm:text-3xl lg:text-4xl xl:text-[3rem]">
+                  <span className="block">{tr("hero_h1_1", "The Global Marketplace Connecting")}</span>
+                  <span className="block">{tr("hero_h1_2", "Schools, Agents, Tutors & Students")}</span>
+                </h1>
 
-            <div className="max-w-md mx-auto mt-8">
-              {/* Tabs */}
-              <div className="grid grid-cols-2 p-1 rounded-xl bg-gray-100 text-sm mb-6">
-                <button
-                  type="button"
-                  className={`py-2 rounded-lg transition ${mode === "signin" ? "bg-white shadow font-semibold" : "text-gray-600"}`}
-                  onClick={() => setMode("signin")}
-                >
-                  {tr("auth.signin", "Sign in")}
-                </button>
-                <button
-                  type="button"
-                  className={`py-2 rounded-lg transition ${mode === "signup" ? "bg-white shadow font-semibold" : "text-gray-600"}`}
-                  onClick={() => setMode("signup")}
-                >
-                  {tr("auth.signup", "Sign up")}
-                </button>
-              </div>
+                <p className="mx-auto mt-2 max-w-2xl text-center text-sm leading-6 text-white/85 sm:text-base">
+                  {tr(
+                    "hero_tagline",
+                    "Study, work, and immigration pathways. Connected transparently in one trusted platform."
+                  )}
+                </p>
 
-              {/* Social */}
-              <div className="space-y-3 mb-6">
-                <Button size="lg" variant="outline" className="w-full h-12 text-base" onClick={handleLoginGoogle} disabled={busy}>
-                  <GoogleIcon />
-                  {tr("auth.continue_google", "Continue with Google")}
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="w-full h-12 text-base bg-black text-white hover:bg-gray-800 hover:text-white"
-                  onClick={handleLoginApple}
-                  disabled={busy}
-                >
-                  <span className="mr-3"></span>
-                  {tr("auth.continue_apple", "Continue with Apple")}
-                </Button>
-              </div>
+                <div className="relative my-10 hidden h-[62vh] min-h-[460px] max-h-[600px] md:block lg:max-h-[640px]">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="relative h-[600px] w-[920px] origin-center scale-[0.72] lg:scale-[0.78] xl:scale-[0.9]">
+                      <svg
+                        className="absolute inset-0 z-0 h-full w-full opacity-70"
+                        viewBox="0 0 1000 640"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <defs>
+                          <linearGradient id="gpGreen" x1="0" y1="0" x2="1" y2="1">
+                            <stop stopColor="rgba(52,211,153,0.95)" />
+                            <stop offset="1" stopColor="rgba(16,185,129,0.25)" />
+                          </linearGradient>
+                          <linearGradient id="gpBlue" x1="0" y1="0" x2="1" y2="1">
+                            <stop stopColor="rgba(96,165,250,0.95)" />
+                            <stop offset="1" stopColor="rgba(59,130,246,0.25)" />
+                          </linearGradient>
+                          <linearGradient id="gpPurple" x1="0" y1="0" x2="1" y2="1">
+                            <stop stopColor="rgba(167,139,250,0.95)" />
+                            <stop offset="1" stopColor="rgba(124,58,237,0.25)" />
+                          </linearGradient>
+                          <linearGradient id="gpAmber" x1="0" y1="0" x2="1" y2="1">
+                            <stop stopColor="rgba(251,191,36,0.95)" />
+                            <stop offset="1" stopColor="rgba(245,158,11,0.25)" />
+                          </linearGradient>
+                          <marker id="arrowGreen" viewBox="0 0 12 12" markerWidth="10" markerHeight="10" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+                            <path d="M0 0 L12 6 L0 12 Z" fill="rgba(16,185,129,0.95)" />
+                          </marker>
+                          <marker id="arrowBlue" viewBox="0 0 12 12" markerWidth="10" markerHeight="10" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+                            <path d="M0 0 L12 6 L0 12 Z" fill="rgba(59,130,246,0.95)" />
+                          </marker>
+                          <marker id="arrowPurple" viewBox="0 0 12 12" markerWidth="10" markerHeight="10" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+                            <path d="M0 0 L12 6 L0 12 Z" fill="rgba(124,58,237,0.95)" />
+                          </marker>
+                          <marker id="arrowAmber" viewBox="0 0 12 12" markerWidth="10" markerHeight="10" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+                            <path d="M0 0 L12 6 L0 12 Z" fill="rgba(245,158,11,0.95)" />
+                          </marker>
+                        </defs>
 
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="bg-white/80 px-2 text-gray-500">{tr("auth.or_continue_email", "or continue with email")}</span>
-                </div>
-              </div>
+                        <circle cx="500" cy="320" r="120" stroke="rgba(255,255,255,0.28)" strokeWidth="3" strokeDasharray="2 10" />
+                        <circle cx="500" cy="320" r="170" stroke="rgba(255,255,255,0.16)" strokeWidth="2" strokeDasharray="3 14" />
 
-              {/* Forms */}
-              {mode === "signin" ? (
-                <div className="space-y-4">
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      type="email"
-                      placeholder={tr("auth.email_placeholder", "Email address")}
-                      className="pl-10 h-12"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
+                        <path d="M372.7 192.7 A180 180 0 0 1 627.3 192.7" stroke="url(#gpAmber)" strokeWidth="12" strokeLinecap="round" opacity="0.9" markerEnd="url(#arrowAmber)" />
+                        <path d="M627.3 192.7 A180 180 0 0 1 627.3 447.3" stroke="url(#gpBlue)" strokeWidth="12" strokeLinecap="round" opacity="0.9" markerEnd="url(#arrowBlue)" />
+                        <path d="M627.3 447.3 A180 180 0 0 1 372.7 447.3" stroke="url(#gpPurple)" strokeWidth="12" strokeLinecap="round" opacity="0.9" markerEnd="url(#arrowPurple)" />
+                        <path d="M372.7 447.3 A180 180 0 0 1 372.7 192.7" stroke="url(#gpGreen)" strokeWidth="12" strokeLinecap="round" opacity="0.9" markerEnd="url(#arrowGreen)" />
+                      </svg>
 
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      type={showSigninPw ? "text" : "password"}
-                      placeholder={tr("auth.password_placeholder", "Password")}
-                      className="pl-10 pr-10 h-12"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      aria-label={showSigninPw ? tr("auth.hide_password", "Hide password") : tr("auth.show_password", "Show password")}
-                      aria-pressed={showSigninPw}
-                      onClick={() => setShowSigninPw((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
-                    >
-                      {showSigninPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
-                  </div>
+                      <div className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
+                        <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-white/95 shadow-[0_14px_50px_rgba(0,0,0,0.25)]">
+                          <div className="absolute inset-[-10px] rounded-full border-2 border-white/30" />
+                          <span className="text-2xl font-extrabold text-emerald-700">GP</span>
+                        </div>
+                      </div>
 
-                  <div className="flex justify-end -mt-2">
-                    <button
-                      type="button"
-                      onClick={handleForgotPassword}
-                      className="text-sm text-green-700 hover:text-green-600 underline underline-offset-2"
-                      disabled={busy}
-                    >
-                      {tr("auth.forgot_password", "Forgot password?")}
-                    </button>
-                  </div>
-
-                  <Button size="lg" className="w-full h-12 text-base" onClick={handleSignInEmail} disabled={busy}>
-                    {tr("auth.signin", "Sign in")}
-                  </Button>
-
-                  <p className="text-center text-sm text-gray-500">
-                    {tr("auth.no_account", "Don’t have an account?")}{" "}
-                    <button type="button" onClick={() => setMode("signup")} className="font-semibold text-green-600 hover:text-green-500">
-                      {tr("auth.signup", "Sign up")}
-                    </button>
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Role selection (SIGN UP only) */}
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-gray-700">{tr("auth.select_role_label", "Select your role")}</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {SIGNUP_ROLE_OPTIONS.map((opt) => {
-                        const selected = signupRole === opt.value;
-                        return (
+                      {[
+                        {
+                          key: "school",
+                          img: roleSchool,
+                          title: tr("role_school", "School"),
+                          desc: tr("school_desc", "Connect with trusted global agents and students"),
+                          bullets: [
+                            tr("school_b1", "Reach verified agents worldwide"),
+                            tr("school_b2", "Manage recruitment transparently"),
+                            tr("school_b3", "Reduce marketing and admission costs"),
+                          ],
+                          badge: "bg-emerald-100 text-emerald-700",
+                          pos: "absolute left-6 top-4 z-10 w-[44%] px-2",
+                        },
+                        {
+                          key: "agent",
+                          img: roleAgent,
+                          title: tr("role_agent", "Agent"),
+                          desc: tr("agent_desc", "Work directly with real schools. No middle layers"),
+                          bullets: [
+                            tr("agent_b1", "Access verified schools and programs"),
+                            tr("agent_b2", "Track student leads and cases clearly"),
+                            tr("agent_b3", "Build long-term, trusted partnerships"),
+                          ],
+                          badge: "bg-blue-100 text-blue-700",
+                          pos: "absolute right-6 top-4 z-10 w-[44%] px-2",
+                        },
+                        {
+                          key: "user",
+                          img: roleStudent,
+                          title: tr("role_student", "Student"),
+                          desc: tr("student_desc", "Find schools, agents, and tutors you can trust"),
+                          bullets: [
+                            tr("student_b1", "Discover verified schools and programs"),
+                            tr("student_b2", "Connect with reliable agents and tutors"),
+                            tr("student_b3", "Get guided step by step transparently"),
+                          ],
+                          badge: "bg-violet-100 text-violet-700",
+                          pos: "absolute left-6 bottom-4 z-10 w-[44%] px-2",
+                        },
+                        {
+                          key: "tutor",
+                          img: roleTutor,
+                          title: tr("role_tutor", "Tutor"),
+                          desc: tr("tutor_desc", "Support students globally and grow your practice"),
+                          bullets: [
+                            tr("tutor_b1", "Find students internationally"),
+                            tr("tutor_b2", "Offer academic and pathway support"),
+                            tr("tutor_b3", "Build your professional profile"),
+                          ],
+                          badge: "bg-amber-100 text-amber-700",
+                          pos: "absolute right-6 bottom-4 z-10 w-[44%] px-2",
+                        },
+                      ].map((item) => (
+                        <div key={item.key} className={item.pos}>
                           <button
-                            key={opt.value}
                             type="button"
-                            onClick={() => setSignupRole(opt.value)}
-                            className={[
-                              "h-12 rounded-xl border text-sm font-semibold transition",
-                              selected ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
-                            ].join(" ")}
+                            onClick={() => {
+                              setMode("signup");
+                              setSignupRole(item.key);
+                            }}
+                            className={`w-full rounded-3xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,0.20)] backdrop-blur transition hover:-translate-y-1 hover:bg-white/15 ${
+                              mode === "signup" && signupRole === item.key ? "ring-2 ring-emerald-400" : ""
+                            }`}
                           >
-                            {tr(opt.labelKey, opt.labelFallback)}
+                            <div className="mb-3 flex items-center justify-center">
+                              <img src={item.img} alt={item.title} className="h-20 w-full max-w-[92%] object-contain" loading="lazy" />
+                            </div>
+                            <div className="text-lg font-extrabold text-white">{item.title}</div>
+                            <div className="mt-1 text-xs text-white/85">{item.desc}</div>
+                            <ul className="mt-2 space-y-1 text-xs text-white/90">
+                              {item.bullets.map((bullet) => (
+                                <li key={bullet} className="flex items-start gap-2">
+                                  <span className={`mt-1 inline-flex h-4 w-4 items-center justify-center rounded-full ${item.badge}`}>✓</span>
+                                  {bullet}
+                                </li>
+                              ))}
+                            </ul>
                           </button>
-                        );
-                      })}
+                        </div>
+                      ))}
                     </div>
                   </div>
+                </div>
 
-                  <div className="relative">
-                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      type="text"
-                      placeholder={tr("auth.fullname_placeholder", "Full name")}
-                      className="pl-10 h-12"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                    />
+                <div className="mt-8 w-full text-white/95">
+                  <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-3 gap-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25">
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z" />
+                          <path d="M9 12l2 2 4-4" />
+                        </svg>
+                      </span>
+                      <span className="text-lg font-semibold leading-tight">{tr("trust_verified", "Verified profiles").replace("✔", "").trim()}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25">
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 6a3 3 0 103 3" />
+                          <path d="M12 21a9 9 0 110-18 9 9 0 010 18z" />
+                          <path d="M7.5 12h9" />
+                          <path d="M12 7.5v9" />
+                        </svg>
+                      </span>
+                      <span className="text-lg font-semibold leading-tight">{tr("trust_transparent", "Transparent partnerships").replace("✔", "").trim()}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25">
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 3v18" />
+                          <path d="M7 8l5-5 5 5" />
+                          <path d="M7 16l5 5 5-5" />
+                        </svg>
+                      </span>
+                      <span className="text-lg font-semibold leading-tight">{tr("trust_no_hidden", "No hidden agendas").replace("✔", "").trim()}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="mt-8 text-center text-sm font-semibold text-white/85">
+                  {tr("one_platform", "One platform. One journey. Real connections that matter.")}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section id="auth-card" className="w-full">
+            <div className="mx-auto w-full max-w-[440px]">
+              <div className="rounded-[28px] border border-white/45 bg-white/95 p-5 shadow-[0_22px_80px_rgba(0,0,0,0.24)] backdrop-blur sm:p-6">
+                <div className="mb-5 flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-[1.7rem] font-bold tracking-tight text-gray-900">
+                      {mode === "signin" ? tr("auth.log_in_title", "Log in") : tr("auth.create_account", "Create account")}
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {mode === "signin"
+                        ? tr("auth.log_in_subtitle", "Welcome back.")
+                        : tr("auth.create_account_subtitle", "Sign up to start your journey")}
+                    </p>
                   </div>
 
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      type="email"
-                      placeholder={tr("auth.email_placeholder", "Email address")}
-                      className={`pl-10 pr-10 h-12 ${isValidEmail(email) && emailTaken ? "border-red-300" : ""}`}
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      {isValidEmail(email) && emailCheck.checking && <Loader2 className="h-5 w-5 animate-spin text-gray-400" />}
-                      {isValidEmail(email) && emailCheck.available === true && <Check className="h-5 w-5 text-green-600" />}
-                      {isValidEmail(email) && emailTaken && <X className="h-5 w-5 text-red-500" />}
+                  <img
+                    src={APP_LOGO_URL}
+                    alt={tr("brand.alt", "GreenPass Super App")}
+                    className="h-10 w-auto shrink-0 sm:h-11"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 rounded-2xl bg-gray-100 p-1">
+                  <button
+                    type="button"
+                    className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
+                      mode === "signin" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600"
+                    }`}
+                    onClick={() => setMode("signin")}
+                  >
+                    {tr("auth.signin", "Sign in")}
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
+                      mode === "signup" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600"
+                    }`}
+                    onClick={() => setMode("signup")}
+                  >
+                    {tr("auth.signup", "Sign up")}
+                  </button>
+                </div>
+
+                {mode === "signup" && (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      {tr("auth.choose_role", "Choose role")}
+                    </label>
+                    <select
+                      value={signupRole}
+                      onChange={(e) => setSignupRole(e.target.value)}
+                      className="h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-sm text-gray-800 outline-none transition focus:border-blue-400"
+                    >
+                      <option value="">{tr("auth.select_role_placeholder", "Select a role...")}</option>
+                      {SIGNUP_ROLE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {tr(opt.labelKey, opt.labelFallback)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-3">
+                  <Button size="lg" variant="outline" className="h-12 w-full rounded-2xl text-base font-semibold" onClick={handleLoginGoogle} disabled={busy}>
+                    <GoogleIcon />
+                    {tr("auth.continue_google", "Continue with Google")}
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="h-12 w-full rounded-2xl bg-slate-950 text-base font-semibold text-white hover:bg-slate-900 hover:text-white"
+                    onClick={handleLoginApple}
+                    disabled={busy}
+                  >
+                    <span className="mr-3"></span>
+                    {tr("auth.continue_apple", "Continue with Apple")}
+                  </Button>
+                </div>
+
+                <div className="relative my-5">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-200" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-white px-3 text-xs font-medium uppercase tracking-wide text-gray-400">
+                      {tr("auth.or", "or")}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      {tr("auth.email", "Email")}
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                      <Input
+                        type="email"
+                        placeholder={tr("auth.email_placeholder", "Email address")}
+                        className={`h-12 rounded-2xl pl-10 pr-10 ${isValidEmail(email) && emailTaken ? "border-red-300" : ""}`}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {isValidEmail(email) && emailCheck.checking && <Loader2 className="h-5 w-5 animate-spin text-gray-400" />}
+                        {isValidEmail(email) && emailCheck.available === true && <Check className="h-5 w-5 text-green-600" />}
+                        {isValidEmail(email) && emailTaken && <X className="h-5 w-5 text-red-500" />}
+                      </div>
                     </div>
                   </div>
 
                   {isValidEmail(email) && emailTaken && (
                     emailIsGoogleOnly ? (
-                      <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
-                        <GoogleIcon className="w-4 h-4 mr-0" />
-                        {tr("auth.email_google_only", "This email is already registered with Google. Please use “Continue with Google”.")}
+                      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
+                        <GoogleIcon className="mr-0 h-4 w-4" />
+                        {tr("auth.email_google_only", "This email is already registered with Google. Please use Continue with Google.")}
                       </div>
                     ) : emailIsAppleOnly ? (
-                      <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
+                      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
                         <span className="inline-block text-base leading-none"></span>
-                        {tr("auth.email_apple_only", "This email is already registered with Apple. Please use “Continue with Apple”.")}
+                        {tr("auth.email_apple_only", "This email is already registered with Apple. Please use Continue with Apple.")}
                       </div>
                     ) : (
-                      <p className="text-xs text-red-600">{tr("auth.email_already_registered_simple", "This email is already registered. Try signing in (Email & password, Google, or Apple).")}</p>
+                      <p className="text-xs text-red-600">
+                        {tr("auth.email_already_registered_simple", "This email is already registered. Try signing in with your existing method.")}
+                      </p>
                     )
                   )}
+
                   {emailCheck.error && <p className="text-xs text-amber-600">{emailCheck.error}</p>}
 
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      type={showPw ? "text" : "password"}
-                      placeholder={tr("auth.create_password_placeholder", "Create a password")}
-                      className={`pl-10 pr-10 h-12 ${password && !pwStatus.ok ? "border-red-300" : ""}`}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      aria-label={showPw ? tr("auth.hide_password", "Hide password") : tr("auth.show_password", "Show password")}
-                      aria-pressed={showPw}
-                      onClick={() => setShowPw((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
-                    >
-                      {showPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      {tr("auth.password", "Password")}
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                      <Input
+                        type={mode === "signin" ? (showSigninPw ? "text" : "password") : (showPw ? "text" : "password")}
+                        placeholder={tr("auth.password_placeholder", "Password")}
+                        className={`h-12 rounded-2xl pl-10 pr-10 ${mode === "signup" && password && !pwStatus.ok ? "border-red-300" : ""}`}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => (mode === "signin" ? setShowSigninPw((v) => !v) : setShowPw((v) => !v))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
+                      >
+                        {mode === "signin"
+                          ? (showSigninPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />)
+                          : (showPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />)}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="text-xs rounded-md bg-gray-50 border border-gray-200 p-3 leading-5">
-                    <div className="font-medium text-gray-700 mb-1">{tr("auth.password_requirements_label", "Password requirements:")}</div>
-                    <ul className="ml-1 space-y-1">
-                      <RuleRow ok={pwStatus.lengthOK} label={tr("auth.pw_rule_len", "Minimum length: 8 characters")} />
-                      <RuleRow ok={pwStatus.hasUpper} label={tr("auth.pw_rule_upper", "At least 1 capital letter")} />
-                      <RuleRow ok={pwStatus.hasNumber} label={tr("auth.pw_rule_number", "At least 1 number")} />
-                      <RuleRow ok={pwStatus.hasSpecial} label={tr("auth.pw_rule_special", "At least 1 special character")} />
-                    </ul>
-                  </div>
+                  {mode === "signup" && (
+                    <>
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-xs leading-5">
+                        <div className="mb-1 font-medium text-gray-700">
+                          {tr("auth.password_requirements_label", "Password requirements:")}
+                        </div>
+                        <ul className="ml-1 space-y-1">
+                          <RuleRow ok={pwStatus.lengthOK} label={tr("auth.pw_rule_len", "Minimum length: 8 characters")} />
+                          <RuleRow ok={pwStatus.hasUpper} label={tr("auth.pw_rule_upper", "At least 1 capital letter")} />
+                          <RuleRow ok={pwStatus.hasNumber} label={tr("auth.pw_rule_number", "At least 1 number")} />
+                          <RuleRow ok={pwStatus.hasSpecial} label={tr("auth.pw_rule_special", "At least 1 special character")} />
+                        </ul>
+                      </div>
 
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <Input
-                      type={showConfirm ? "text" : "password"}
-                      placeholder={tr("auth.confirm_password_placeholder", "Confirm password")}
-                      className="pl-10 pr-10 h-12"
-                      value={confirm}
-                      onChange={(e) => setConfirm(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      aria-label={showConfirm ? tr("auth.hide_confirm_password", "Hide confirm password") : tr("auth.show_confirm_password", "Show confirm password")}
-                      aria-pressed={showConfirm}
-                      onClick={() => setShowConfirm((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
-                    >
-                      {showConfirm ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
-                  </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          {tr("auth.confirm_password", "Confirm password")}
+                        </label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                          <Input
+                            type={showConfirm ? "text" : "password"}
+                            placeholder={tr("auth.confirm_password_placeholder", "Confirm password")}
+                            className="h-12 rounded-2xl pl-10 pr-10"
+                            value={confirm}
+                            onChange={(e) => setConfirm(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirm((v) => !v)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
+                          >
+                            {showConfirm ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
-                  <Button size="lg" className="w-full h-12 text-base" onClick={handleSignUpEmail} disabled={busy || !canSubmitSignup}>
-                    {tr("auth.create_account", "Create account")}
+                  {mode === "signin" && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleForgotPassword}
+                        className="text-sm font-medium text-blue-700 hover:text-blue-600"
+                        disabled={busy}
+                      >
+                        {tr("auth.forgot_password", "Forgot password?")}
+                      </button>
+                    </div>
+                  )}
+
+                  <Button
+                    size="lg"
+                    className="h-12 w-full rounded-2xl bg-blue-500 text-base font-semibold text-white hover:bg-blue-600"
+                    onClick={mode === "signin" ? handleSignInEmail : handleSignUpEmail}
+                    disabled={busy || (mode === "signup" ? !canSubmitSignup : false)}
+                  >
+                    {mode === "signin" ? tr("auth.log_in_title", "Log in") : tr("auth.create_account", "Create account")}
                   </Button>
 
                   <p className="text-center text-sm text-gray-500">
-                    {tr("auth.have_account", "Already have an account?")}{" "}
-                    <button type="button" onClick={() => setMode("signin")} className="font-semibold text-green-600 hover:text-green-500">
-                      {tr("auth.signin", "Sign in")}
-                    </button>
+                    {tr("auth.after_login_note", "After login, you will continue inside the GreenPass app.")}
                   </p>
                 </div>
-              )}
-            </div>
+              </div>
 
-            <div className="mt-8 text-center text-sm text-gray-500">
-              {tr("legal.by_continuing", "By continuing, you agree to our")}{" "}
-              <Link to={createPageUrl("TermsOfService")} className="font-semibold text-green-600 hover:text-green-500">
-                {tr("legal.terms", "Terms of Service")}
-              </Link>{" "}
-              {tr("legal.and", "and")}{" "}
-              <Link to={createPageUrl("PrivacyPolicy")} className="font-semibold text-green-600 hover:text-green-500">
-                {tr("legal.privacy", "Privacy Policy")}
-              </Link>
-              .
+              <div className="mt-4 rounded-[22px] border border-white/45 bg-white/95 px-5 py-4 text-center text-sm text-gray-700 shadow-[0_10px_30px_rgba(0,0,0,0.15)]">
+                {mode === "signin" ? tr("auth.no_account", "Don’t have an account?") : tr("auth.have_account", "Have an account?")}{" "}
+                <button
+                  type="button"
+                  onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+                  className="font-semibold text-blue-700 hover:text-blue-600"
+                >
+                  {mode === "signin" ? tr("auth.signup", "Sign up") : tr("auth.signin", "Sign in")}
+                </button>
+              </div>
             </div>
-          </Card>
+          </section>
         </div>
-      </div>
+      </main>
 
       <InfoDialog
         open={dialog.open}
@@ -732,4 +938,8 @@ export default function Welcome() {
       />
     </div>
   );
+}
+
+function User({ as: Icon }) {
+  return <Icon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />;
 }
