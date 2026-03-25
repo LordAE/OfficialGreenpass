@@ -295,17 +295,26 @@ const UserAvatar = ({
   className = "",
 }) => {
   const { t } = useTranslation();
-  const name = user?.full_name || safeText(t("nav.account", { defaultValue: "Account" }), "Account");
+  const name =
+    user?.full_name ||
+    safeText(t("nav.account", { defaultValue: "Account" }), "Account");
   const initial = name.charAt(0).toUpperCase();
   const photo = user?.photo_url || user?.profile_picture || user?.photoURL;
 
   if (photo) {
     return (
-      <img
-        src={photo}
-        alt={name}
-        className={`rounded-full object-cover border border-white shadow-sm ${sizeClass} ${className}`}
-      />
+      <div
+        className={`rounded-full overflow-hidden border border-white shadow-sm bg-white flex items-center justify-center ${sizeClass} ${className}`}
+      >
+        <img
+          src={photo}
+          alt={name}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+        />
+      </div>
     );
   }
 
