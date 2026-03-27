@@ -168,7 +168,8 @@ const FALLBACK_TEXT = {
   verifications: "Verifications",
   paymentVerification: "Payment Verification",
   paymentMonitoring: "Payment Monitoring",
-  walletManagement: "Wallet Management",
+  walletManagement: "Collaborator Progress",
+  referrals: "Referrals",
   eventsAdmin: "Event Management",
   schoolManagement: "School Management",
   reports: "Reports",
@@ -531,6 +532,14 @@ function buildAccountMenuItems(currentUser, tr) {
       { label: tr("schoolDetails", "School Details"), url: createPageUrl("SchoolDetails"), icon: ClipboardList },
       { label: tr("schoolLeads", "School Leads"), url: createPageUrl("SchoolLeads"), icon: Users }
     );
+  }
+
+  if (role === "collaborator") {
+    items.push({
+      label: tr("referrals", "Referrals"),
+      url: createPageUrl("Referrals"),
+      icon: Handshake,
+    });
   }
 
   if ((role === "user" || role === "student") && currentUser?.assigned_agent_id) {
@@ -1072,7 +1081,7 @@ const AdminAuthedTopNavWithLeftPanelLayout = ({
         { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: BadgeCheck },
         { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: CreditCard },
         { title: tr("paymentMonitoring", "Payment Monitoring"), url: createPageUrl("AdminPayments"), icon: Receipt },
-        { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
+        { title: tr("walletManagement", "Collaborator Progress"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
         { title: tr("eventsAdmin", "Event Management"), url: createPageUrl("AdminEvents"), icon: Calendar },
         { title: tr("schoolManagement", "School Management"), url: createPageUrl("AdminSchools"), icon: Building2 },
         { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: FolderKanban },
@@ -1306,7 +1315,7 @@ function buildDesktopNav(currentUser, tr) {
       { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: BadgeCheck },
       { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: CreditCard },
       { title: tr("paymentMonitoring", "Payment Monitoring"), url: createPageUrl("AdminPayments"), icon: Receipt },
-      { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
+      { title: tr("walletManagement", "Collaborator Progress"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
       { title: tr("eventsAdmin", "Event Management"), url: createPageUrl("AdminEvents"), icon: Calendar },
       { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: FolderKanban },
       { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: Banknote },
@@ -1399,6 +1408,22 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
     };
   }
 
+  if (role === "collaborator") {
+    return {
+      main: [
+        { title: tr("dashboard", "Dashboard"), url: createPageUrl("Dashboard"), icon: Home },
+        { title: tr("directory", "Directory"), url: createPageUrl("Directory"), icon: School },
+        { title: tr("connect", "Connect"), url: createPageUrl("Connect"), icon: UserPlus },
+      ],
+      more: dedupeMenuItems([
+        { title: tr("connections", "Connections"), url: createPageUrl("Connections"), icon: UsersIcon },
+        { title: tr("events", "Events"), url: createPageUrl("Events"), icon: Calendar },
+        { title: tr("referrals", "Referrals"), url: createPageUrl("Referrals"), icon: Handshake },
+        { title: tr("profile", "Profile"), url: createPageUrl("Profile"), icon: UserCog },
+      ]),
+    };
+  }
+
   if (role === "admin") {
     return {
       main: [
@@ -1415,7 +1440,7 @@ function buildMobileNav(currentUser, hasReservation, latestReservationId, trFn) 
         { title: tr("verifications", "Verifications"), url: createPageUrl("Verification"), icon: BadgeCheck },
         { title: tr("paymentVerification", "Payment Verification"), url: createPageUrl("AdminPaymentVerification"), icon: CreditCard },
         { title: tr("paymentMonitoring", "Payment Monitoring"), url: createPageUrl("AdminPayments"), icon: Receipt },
-        { title: tr("walletManagement", "Wallet Management"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
+        { title: tr("walletManagement", "Collaborator Progress"), url: createPageUrl("AdminWalletManagement"), icon: Wallet },
         { title: tr("reports", "Reports"), url: createPageUrl("AdminReports"), icon: FolderKanban },
         { title: tr("subscriptionMode", "Subscription Mode"), url: createPageUrl("Subscriptions"), icon: Banknote },
         { title: tr("brandSettings", "Brand Settings"), url: createPageUrl("AdminBrandSettings"), icon: Palette },
@@ -1740,7 +1765,7 @@ export default function Layout() {
     );
   }
 
-  if (["school", "agent", "tutor", "user", "student", "vendor"].includes(role)) {
+  if (["school", "agent", "tutor", "user", "student", "vendor", "collaborator"].includes(role)) {
     return (
       <AuthenticatedTopNavLayout
         currentUser={currentUser}

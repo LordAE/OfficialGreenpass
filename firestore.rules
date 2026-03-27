@@ -1273,6 +1273,37 @@ service cloud.firestore {
       );
     }
 
+        // ===============================
+    // COLLABORATOR REFERRALS
+    // ===============================
+    match /collaborator_referrals/{referralId} {
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.collaborator_uid == request.auth.uid
+      );
+
+      // Created/updated by Cloud Functions / Admin SDK
+      allow create, update, delete: if false;
+    }
+
+    // ===============================
+    // COLLABORATOR PAYOUTS
+    // ===============================
+    match /collaborator_payouts/{payoutId} {
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.collaborator_uid == request.auth.uid
+      );
+
+      allow create: if signedIn() &&
+        request.resource.data.collaborator_uid == request.auth.uid &&
+        request.resource.data.status == "pending";
+
+      allow update: if signedIn() && isAdmin();
+
+      allow delete: if signedIn() && isAdmin();
+    }
+
     match /tutor_planner_notes/{docId} {
       allow create: if signedIn() && (
         request.resource.data.tutorId == request.auth.uid ||

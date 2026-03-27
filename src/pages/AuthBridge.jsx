@@ -2,26 +2,60 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { signInWithCustomToken } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  setDoc,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
 import { auth, db } from "@/firebase";
 
-/**
- * Rules:
- * - If user doc does NOT exist => create it => go /onboarding (preserve next)
- * - If user doc exists and onboarding_completed === true => go to `next` if provided else /dashboard
- * - Else => go /onboarding (preserve next)
- *
- * Query:
- * - code=... (required)
- * - next=/accept-org-invite?invite=...&token=... (optional)
- * - role=student|agent|tutor|school|institution|provider (optional; for NEW users)
- * - lang=en (optional)
- *
- * ✅ Language handling:
- * - Reads `lang` from query
- * - Applies it to i18next immediately (so UI/status strings match SEO selection)
- * - Persists to localStorage for app-wide reload consistency
- */
+function normalizeRole(value) {
+  const role = String(value || "").trim().toLowerCase();
+  if (role === "user") return "student";
+  if (["student", "agent", "tutor", "school", "institution", "provider", "vendor"].includes(role)) {
+    if (role === "institution") return "school";
+    if (role === "provider") return "vendor";
+    return role;
+  }
+  return "student";
+}
+
+async function resolveCollaboratorRef(refCode) {
+  const code = String(refCode || "").trim();
+  if (!code) return "";
+
+  try {
+    const q = query(
+      collection(db, "users"),
+      where("collaborator_referral_code", "==", code),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return "";
+    return snap.docs[0]?.id || "";
+  } catch (error) {
+    console.error("resolveCollaboratorRef error:", error);
+    return "";
+  }
+}
+
+function buildCollaboratorReferralFields(refCode = "", referredByUid = "") {
+  const code = String(refCode || "").trim();
+  if (!code) return {};
+
+  return {
+    referred_by_collaborator_code: code,
+    referred_by_collaborator_uid: referredByUid || "",
+    referred_by_collaborator_at: serverTimestamp(),
+  };
+}
+
 export default function AuthBridge() {
   const { t, i18n } = useTranslation();
   const [params] = useSearchParams();
@@ -31,6 +65,7 @@ export default function AuthBridge() {
   const code = params.get("code");
   const lang = params.get("lang") || "en";
   const nextHint = params.get("next") || "";
+  const collaboratorRef = String(params.get("ref") || "").trim();
 
   const [status, setStatus] = React.useState("…");
 
@@ -60,18 +95,16 @@ export default function AuthBridge() {
     import.meta.env?.VITE_EXCHANGE_AUTH_BRIDGE_URL ||
     "https://us-central1-greenpass-dc92d.cloudfunctions.net/exchangeAuthBridgeCode";
 
-  // ✅ Apply language ASAP (before showing any status)
   React.useEffect(() => {
     try {
-      // Persist for i18next default detector + your own helpers
       localStorage.setItem("i18nextLng", lang);
       localStorage.setItem("gp_lang", lang);
+      if (collaboratorRef) localStorage.setItem("gp_collaborator_ref", collaboratorRef);
     } catch {}
     if (i18n?.language !== lang) {
       i18n.changeLanguage(lang).catch(() => {});
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang]);
+  }, [lang, i18n, collaboratorRef]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -114,12 +147,24 @@ export default function AuthBridge() {
         const userRef = doc(db, "users", fbUser.uid);
         const snap = await getDoc(userRef);
 
+        const storedRef = (() => {
+          try {
+            return collaboratorRef || localStorage.getItem("gp_collaborator_ref") || "";
+          } catch {
+            return collaboratorRef || "";
+          }
+        })();
+
+        const referredByCollaboratorUid = await resolveCollaboratorRef(storedRef);
+
         const hint = safeInternalPath(nextHint);
         const isHintMeaningful = !!(hint && hint !== "/onboarding" && hint !== "/dashboard");
 
         let goTo = "/dashboard";
 
         if (!snap.exists()) {
+          const normalizedRole = normalizeRole(role);
+
           await setDoc(
             userRef,
             {
@@ -127,12 +172,13 @@ export default function AuthBridge() {
               email: fbUser.email || "",
               emailLower: (fbUser.email || "").toLowerCase(),
               full_name: fbUser.displayName || "",
-              selected_role: role || "student",
-              user_type: role || "student",
-              userType: role || "student",
-              role: role || "student",
+              selected_role: normalizedRole,
+              user_type: normalizedRole,
+              userType: normalizedRole,
+              role: normalizedRole,
               onboarding_completed: false,
               onboarding_step: "basic_info",
+              ...buildCollaboratorReferralFields(storedRef, referredByCollaboratorUid),
               created_at: serverTimestamp(),
               updated_at: serverTimestamp(),
             },
@@ -140,18 +186,34 @@ export default function AuthBridge() {
           );
 
           goTo = isHintMeaningful
-            ? appendQuery("/onboarding", { next: hint, lang })
-            : appendQuery("/onboarding", { lang });
+            ? appendQuery("/onboarding", { next: hint, lang, ref: storedRef || undefined })
+            : appendQuery("/onboarding", { lang, ref: storedRef || undefined });
         } else {
           const u = snap.data() || {};
           const completed = u.onboarding_completed === true;
 
+          if (storedRef && !u.referred_by_collaborator_code) {
+            await setDoc(
+              userRef,
+              {
+                ...buildCollaboratorReferralFields(
+                  storedRef,
+                  u.referred_by_collaborator_uid || referredByCollaboratorUid
+                ),
+                updated_at: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+
           if (!completed) {
             goTo = isHintMeaningful
-              ? appendQuery("/onboarding", { next: hint, lang })
-              : appendQuery("/onboarding", { lang });
+              ? appendQuery("/onboarding", { next: hint, lang, ref: storedRef || undefined })
+              : appendQuery("/onboarding", { lang, ref: storedRef || undefined });
           } else {
-            goTo = hint ? appendQuery(hint, { lang }) : appendQuery("/dashboard", { lang });
+            goTo = hint
+              ? appendQuery(hint, { lang, ref: storedRef || undefined })
+              : appendQuery("/dashboard", { lang, ref: storedRef || undefined });
           }
         }
 
@@ -173,10 +235,11 @@ export default function AuthBridge() {
     };
 
     run();
+
     return () => {
       cancelled = true;
     };
-  }, [code, exchangeUrl, lang, nextHint, navigate, role, t]);
+  }, [code, exchangeUrl, lang, nextHint, navigate, role, t, collaboratorRef]);
 
   return (
     <div

@@ -58,8 +58,7 @@ import Connections from "./pages/Connections";
 import ViewProfile from "./pages/ViewProfile";
 import AuthBridge from "./pages/AuthBridge";
 import TutorPlanner from "@/pages/TutorPlanner";
-
-// Policy pages
+import CollaboratorReferrals from "@/pages/CollaboratorReferrals";
 import PolicyCenter from "@/pages/PolicyCenter";
 import TermsOfService from "@/pages/TermsOfService";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
@@ -251,6 +250,14 @@ export default function App() {
             <RequireAuth currentUser={currentUser} loading={loading}>
               <Profile />
             </RequireAuth>
+          }
+        />
+        <Route
+          path="referrals"
+          element={
+            <RequireRole currentUser={currentUser} loading={loading} allow={["collaborator", "admin"]}>
+              <CollaboratorReferrals />
+            </RequireRole>
           }
         />
         <Route

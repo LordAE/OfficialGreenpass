@@ -31,6 +31,7 @@ import {
   CreditCard,
   ShieldCheck,
   ChevronsUpDown,
+  Users,
 } from "lucide-react";
 
 import { useNavigate, useLocation } from "react-router-dom";
@@ -284,16 +285,30 @@ function CountrySelect({ valueCode, valueName, onChange }) {
   );
 }
 
-const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor"];
+const PUBLIC_ROLES = ["user", "agent", "tutor", "school", "vendor"];
+const ALL_SUPPORTED_ROLES = [...PUBLIC_ROLES, "collaborator"];
 const DEFAULT_ROLE = "user";
 
 const normalizeRole = (r) => {
   const v = (r || "").toString().trim().toLowerCase();
-  return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
+  return ALL_SUPPORTED_ROLES.includes(v) ? v : DEFAULT_ROLE;
 };
 
-function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
+function buildUserDefaults({
+  email,
+  full_name = "",
+  role = DEFAULT_ROLE,
+  collaboratorRef = "",
+}) {
   const finalRole = normalizeRole(role);
+
+  const collaboratorFields =
+    finalRole === "collaborator" && collaboratorRef
+      ? {
+          referred_by_collaborator_code: collaboratorRef,
+          referred_by_collaborator_at: serverTimestamp(),
+        }
+      : {};
 
   return {
     role: finalRole,
@@ -309,7 +324,7 @@ function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
     profile_picture: "",
     is_verified: false,
     onboarding_completed: false,
-    onboarding_step: STEPS.CHOOSE_ROLE,
+    onboarding_step: finalRole === "collaborator" ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE,
     selected_role: finalRole,
 
     subscription_active: false,
@@ -318,6 +333,8 @@ function buildUserDefaults({ email, full_name = "", role = DEFAULT_ROLE }) {
     subscription_plan: "",
     subscription_amount: 0,
     subscription_currency: "USD",
+
+    ...collaboratorFields,
 
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
@@ -330,6 +347,7 @@ const SUBSCRIPTION_PRICING = {
   agent: { label: "Agent", amount: 29, currency: "USD" },
   school: { label: "School", amount: 299, currency: "USD" },
   vendor: { label: "Vendor", amount: 29, currency: "USD" },
+  collaborator: { label: "Collaborator", amount: 0, currency: "USD" },
 };
 
 function loadPayPalScript({ clientId, currency = "USD" }) {
@@ -361,9 +379,30 @@ function loadPayPalScript({ clientId, currency = "USD" }) {
 }
 
 export default function Onboarding() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const tr = React.useCallback((key, def, opts = {}) => t(key, { defaultValue: def, ...opts }), [t]);
-  const roleOptions = React.useMemo(() => buildRoleOptions(tr), [tr]);
+  const publicRoleOptions = React.useMemo(() => buildRoleOptions(tr), [tr]);
+
+  const collaboratorRoleOption = useMemo(
+    () => ({
+      type: "collaborator",
+      title: tr("onboarding.roles.collaborator.title", "Collaborator"),
+      subtitle: tr("onboarding.roles.collaborator.subtitle", "I was invited to help grow GreenPass"),
+      description: tr(
+        "onboarding.roles.collaborator.description",
+        "Invite users, support onboarding, and help build the GreenPass community through your referral link."
+      ),
+      icon: <Users className="w-8 h-8" />,
+      color: "bg-emerald-600",
+      benefits: [
+        tr("onboarding.roles.collaborator.benefit_1", "Referral tracking"),
+        tr("onboarding.roles.collaborator.benefit_2", "Tier progression"),
+        tr("onboarding.roles.collaborator.benefit_3", "Verified user rewards"),
+        tr("onboarding.roles.collaborator.benefit_4", "Community growth tools"),
+      ],
+    }),
+    [tr]
+  );
 
   const navigate = useNavigate();
   const { subscriptionModeEnabled, loading: subscriptionModeLoading } = useSubscriptionMode();
@@ -374,17 +413,31 @@ export default function Onboarding() {
   const nextRaw = useMemo(() => params.get("next") || "", [params]);
   const next = useMemo(() => safeInternalPath(nextRaw), [nextRaw]);
 
+  const collaboratorRef = useMemo(() => {
+    const v = (params.get("ref") || "").toString().trim();
+    return v;
+  }, [params]);
+
   const urlRoleRaw = useMemo(() => {
-    const raw = params.get("role") ?? params.get("userType") ?? params.get("as");
+    const raw = params.get("role") ?? params.get("userType");
     return raw && String(raw).trim() ? String(raw).trim() : null;
   }, [params]);
 
-  const urlRole = useMemo(() => (urlRoleRaw ? normalizeRole(urlRoleRaw) : null), [urlRoleRaw]);
+  const collaboratorInviteFlow = useMemo(() => {
+    const role = (urlRoleRaw || "").toString().trim().toLowerCase();
+    return role === "collaborator" && !!collaboratorRef;
+  }, [urlRoleRaw, collaboratorRef]);
+
+  const urlRole = useMemo(() => {
+    if (collaboratorInviteFlow) return "collaborator";
+    return urlRoleRaw ? normalizeRole(urlRoleRaw) : null;
+  }, [urlRoleRaw, collaboratorInviteFlow]);
 
   const urlLock = useMemo(() => {
     const v = (params.get("lock") || params.get("locked") || "").toString();
+    if (collaboratorInviteFlow) return true;
     return v === "1" || v.toLowerCase() === "true";
-  }, [params]);
+  }, [params, collaboratorInviteFlow]);
 
   const sessionRoleRaw = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -392,24 +445,30 @@ export default function Onboarding() {
     return v && String(v).trim() ? String(v).trim() : null;
   }, []);
 
-  const sessionRole = useMemo(() => (sessionRoleRaw ? normalizeRole(sessionRoleRaw) : null), [sessionRoleRaw]);
+  const sessionRole = useMemo(() => {
+    if (collaboratorInviteFlow) return "collaborator";
+    return sessionRoleRaw ? normalizeRole(sessionRoleRaw) : null;
+  }, [sessionRoleRaw, collaboratorInviteFlow]);
 
   const sessionLock = useMemo(() => {
     if (typeof window === "undefined") return false;
+    if (collaboratorInviteFlow) return true;
     return sessionStorage.getItem("onboarding_role_locked") === "1";
-  }, []);
+  }, [collaboratorInviteFlow]);
 
   const rolePreselected = useMemo(() => Boolean(urlRole || sessionRole), [urlRole, sessionRole]);
 
   const roleHintFromEntry = useMemo(() => {
+    if (collaboratorInviteFlow) return "collaborator";
     if (urlRole) return urlRole;
     if (sessionRole) return sessionRole;
     return DEFAULT_ROLE;
-  }, [urlRole, sessionRole]);
+  }, [urlRole, sessionRole, collaboratorInviteFlow]);
 
   const roleLockedFromEntry = useMemo(() => {
+    if (collaboratorInviteFlow) return true;
     return Boolean(urlLock || sessionLock || rolePreselected);
-  }, [urlLock, sessionLock, rolePreselected]);
+  }, [urlLock, sessionLock, rolePreselected, collaboratorInviteFlow]);
 
   const roleHintRef = useRef(roleHintFromEntry);
   const roleLockedRef = useRef(roleLockedFromEntry);
@@ -422,7 +481,7 @@ export default function Onboarding() {
 
   const [skipChooseRole, setSkipChooseRole] = useState(roleLockedFromEntry);
   const [currentStep, setCurrentStep] = useState(roleLockedFromEntry ? STEPS.BASIC_INFO : STEPS.CHOOSE_ROLE);
-  const [selectedRole, setSelectedRole] = useState(null);
+  const [selectedRole, setSelectedRole] = useState(roleHintFromEntry || null);
   const [formData, setFormData] = useState({});
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -437,22 +496,39 @@ export default function Onboarding() {
 
   const PAYPAL_CLIENT_ID = (import.meta?.env?.VITE_PAYPAL_CLIENT_ID || "").trim();
 
+  const subscriptionRequired = useMemo(() => {
+    if (!selectedRole) return false;
+    if (selectedRole === "user") return false;
+    if (selectedRole === "collaborator") return false;
+    return subscriptionModeEnabled;
+  }, [selectedRole, subscriptionModeEnabled]);
+
   const STEP_ORDER = useMemo(() => {
     const core =
-      selectedRole === "user"
+      selectedRole === "user" || selectedRole === "collaborator"
         ? [STEPS.BASIC_INFO, STEPS.COMPLETE]
-        : subscriptionModeEnabled
+        : subscriptionRequired
           ? [STEPS.BASIC_INFO, STEPS.SUBSCRIPTION, STEPS.COMPLETE]
           : [STEPS.BASIC_INFO, STEPS.COMPLETE];
 
     return skipChooseRole ? core : [STEPS.CHOOSE_ROLE, ...core];
-  }, [selectedRole, skipChooseRole, subscriptionModeEnabled]);
+  }, [selectedRole, skipChooseRole, subscriptionRequired]);
 
   const getStepProgress = () => {
     const idx = Math.max(0, STEP_ORDER.indexOf(currentStep));
     const total = Math.max(1, STEP_ORDER.length - 1);
     return Math.round((idx / total) * 100);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (collaboratorInviteFlow) {
+        sessionStorage.setItem("onboarding_role", "collaborator");
+        sessionStorage.setItem("onboarding_role_locked", "1");
+      }
+    } catch {}
+  }, [collaboratorInviteFlow]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
@@ -474,6 +550,7 @@ export default function Onboarding() {
             email: fbUser.email || "",
             full_name: fbUser.displayName || "",
             role: entryRoleHint,
+            collaboratorRef,
           })
         );
       }
@@ -482,16 +559,21 @@ export default function Onboarding() {
       const data = finalSnap.data() || {};
       setProfile(data);
 
-      const roleFromProfile = normalizeRole(
-        data.selected_role || data.user_type || data.userType || data.role || DEFAULT_ROLE
-      );
+      const profileRoleRaw =
+        data.selected_role || data.user_type || data.userType || data.role || DEFAULT_ROLE;
+
+      const roleFromProfile = collaboratorInviteFlow
+        ? "collaborator"
+        : normalizeRole(profileRoleRaw);
 
       const hasRoleInProfile = Boolean(
         data.selected_role || data.user_type || data.userType || data.role
       );
 
       setSkipChooseRole(entryRoleLocked || hasRoleInProfile);
-      const effectiveRole = entryRoleLocked ? normalizeRole(entryRoleHint) : roleFromProfile;
+      const effectiveRole = entryRoleLocked
+        ? normalizeRole(entryRoleHint)
+        : roleFromProfile;
 
       let nextStep = data.onboarding_completed ? STEPS.COMPLETE : data.onboarding_step || STEPS.CHOOSE_ROLE;
 
@@ -503,6 +585,14 @@ export default function Onboarding() {
           userType: effectiveRole,
           role: effectiveRole,
           onboarding_step: STEPS.BASIC_INFO,
+          ...(collaboratorInviteFlow && collaboratorRef
+            ? {
+                referred_by_collaborator_code:
+                  data.referred_by_collaborator_code || collaboratorRef,
+                referred_by_collaborator_at:
+                  data.referred_by_collaborator_at || serverTimestamp(),
+              }
+            : {}),
           updated_at: serverTimestamp(),
         });
       } else if (!entryRoleLocked && hasRoleInProfile && nextStep === STEPS.CHOOSE_ROLE) {
@@ -516,12 +606,20 @@ export default function Onboarding() {
             data.userType !== effectiveRole ||
             data.role !== effectiveRole);
 
-        if (needsRoleSync) {
+        if (needsRoleSync || (collaboratorInviteFlow && collaboratorRef && !data.referred_by_collaborator_code)) {
           await updateDoc(ref, {
             selected_role: effectiveRole,
             user_type: effectiveRole,
             userType: effectiveRole,
             role: effectiveRole,
+            ...(collaboratorInviteFlow && collaboratorRef
+              ? {
+                  referred_by_collaborator_code:
+                    data.referred_by_collaborator_code || collaboratorRef,
+                  referred_by_collaborator_at:
+                    data.referred_by_collaborator_at || serverTimestamp(),
+                }
+              : {}),
             updated_at: serverTimestamp(),
           });
         }
@@ -561,7 +659,7 @@ export default function Onboarding() {
     });
 
     return () => unsub();
-  }, [navigate, next]);
+  }, [navigate, next, collaboratorInviteFlow, collaboratorRef]);
 
   const handleRoleSelect = async (roleType) => {
     if (roleLockedFromEntry) return;
@@ -609,6 +707,13 @@ export default function Onboarding() {
         subscribed_at: subscriptionActive ? serverTimestamp() : null,
       };
 
+      if (selectedRole === "collaborator") {
+        updates.subscription_active = false;
+        updates.subscription_status = "none";
+        updates.subscription_plan = "";
+        updates.subscription_amount = 0;
+      }
+
       await updateDoc(ref, updates);
 
       setCurrentStep(STEPS.COMPLETE);
@@ -631,9 +736,9 @@ export default function Onboarding() {
     if (!selectedRole || !validateBasicInfo()) return;
 
     const nextStep =
-      selectedRole === "user"
+      selectedRole === "user" || selectedRole === "collaborator"
         ? STEPS.COMPLETE
-        : subscriptionModeEnabled
+        : subscriptionRequired
           ? STEPS.SUBSCRIPTION
           : STEPS.COMPLETE;
 
@@ -649,11 +754,17 @@ export default function Onboarding() {
         user_type: selectedRole,
         userType: selectedRole,
         role: selectedRole,
+        ...(selectedRole === "collaborator" && collaboratorRef
+          ? {
+              referred_by_collaborator_code: collaboratorRef,
+              referred_by_collaborator_at: serverTimestamp(),
+            }
+          : {}),
         updated_at: serverTimestamp(),
       });
     }
 
-    if (selectedRole === "user" || !subscriptionModeEnabled) {
+    if (selectedRole === "user" || selectedRole === "collaborator" || !subscriptionRequired) {
       await finalizeOnboarding({ subscriptionActive: false, skipped: true });
       return;
     }
@@ -666,7 +777,7 @@ export default function Onboarding() {
 
     if (currentStep === STEPS.COMPLETE) {
       nextStep =
-        selectedRole === "user" || !subscriptionModeEnabled
+        selectedRole === "user" || selectedRole === "collaborator" || !subscriptionRequired
           ? STEPS.BASIC_INFO
           : STEPS.SUBSCRIPTION;
     } else if (currentStep === STEPS.SUBSCRIPTION) {
@@ -687,8 +798,8 @@ export default function Onboarding() {
   useEffect(() => {
     const run = async () => {
       if (currentStep !== STEPS.SUBSCRIPTION) return;
-      if (selectedRole === "user") return;
-      if (!subscriptionModeEnabled) return;
+      if (selectedRole === "user" || selectedRole === "collaborator") return;
+      if (!subscriptionRequired) return;
 
       setPaypalError("");
       setPaypalReady(false);
@@ -751,7 +862,7 @@ export default function Onboarding() {
     };
 
     run();
-  }, [currentStep, selectedRole, PAYPAL_CLIENT_ID, subscriptionModeEnabled]);
+  }, [currentStep, selectedRole, PAYPAL_CLIENT_ID, subscriptionRequired]);
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -768,7 +879,16 @@ export default function Onboarding() {
 
   const RoleLockedPill = ({ role }) => {
     if (!roleLockedFromEntry) return null;
-    const label = role?.charAt(0).toUpperCase() + role?.slice(1);
+    const labelMap = {
+      user: tr("onboarding.roles.student.title", "Student"),
+      agent: tr("onboarding.roles.agent.title", "Education Agent"),
+      tutor: tr("onboarding.roles.tutor.title", "Tutor"),
+      school: tr("onboarding.roles.school.title", "Educational Institution"),
+      vendor: tr("onboarding.roles.vendor.title", "Service Provider"),
+      collaborator: tr("onboarding.roles.collaborator.title", "Collaborator"),
+    };
+    const label = labelMap[role] || role?.charAt(0).toUpperCase() + role?.slice(1);
+
     return (
       <div className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm bg-white/70">
         <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -788,7 +908,7 @@ export default function Onboarding() {
         </div>
       </div>
       <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {roleOptions.map((role) => (
+        {publicRoleOptions.map((role) => (
           <Card
             key={role.type}
             className={`cursor-pointer transition-all duration-300 border-2 hover:shadow-xl hover:scale-105 group
@@ -822,7 +942,11 @@ export default function Onboarding() {
   );
 
   const renderBasicInfo = () => {
-    const selectedRoleData = roleOptions.find((r) => r.type === selectedRole) || roleOptions[0];
+    const selectedRoleData =
+      selectedRole === "collaborator"
+        ? collaboratorRoleOption
+        : publicRoleOptions.find((r) => r.type === selectedRole) || publicRoleOptions[0];
+
     return (
       <div className="max-w-md mx-auto">
         <div className="text-center mb-8">
@@ -830,11 +954,37 @@ export default function Onboarding() {
             {selectedRoleData?.icon}
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">{tr("onboarding.ui.basic_info_title","Basic Information")}</h2>
-          <p className="text-gray-600">{tr("onboarding.ui.setting_up_prefix","Setting up your")} {selectedRoleData?.title}{tr("onboarding.ui.profile_suffix"," profile")}</p>
+          <p className="text-gray-600">
+            {tr("onboarding.ui.setting_up_prefix","Setting up your")} {selectedRoleData?.title}{tr("onboarding.ui.profile_suffix"," profile")}
+          </p>
           <div className="mt-3">
             <RoleLockedPill role={selectedRole} />
           </div>
         </div>
+
+        {selectedRole === "collaborator" && (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left">
+            <div className="flex items-start gap-3">
+              <Users className="w-5 h-5 text-emerald-700 mt-0.5" />
+              <div>
+                <div className="text-sm font-semibold text-emerald-900">
+                  {tr("onboarding.collaborator.invite_title", "Collaborator invite confirmed")}
+                </div>
+                <div className="text-sm text-emerald-800 mt-1">
+                  {tr(
+                    "onboarding.collaborator.invite_text",
+                    "Your collaborator role was assigned through an invitation link and cannot be changed here."
+                  )}
+                </div>
+                {!!collaboratorRef && (
+                  <div className="mt-2 text-xs text-emerald-700 break-all">
+                    {tr("onboarding.collaborator.ref_code", "Referral code:")} <span className="font-semibold">{collaboratorRef}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-6">
           <div>
@@ -1044,7 +1194,8 @@ export default function Onboarding() {
             {currentStep === STEPS.BASIC_INFO && renderBasicInfo()}
             {currentStep === STEPS.SUBSCRIPTION &&
               selectedRole !== "user" &&
-              subscriptionModeEnabled &&
+              selectedRole !== "collaborator" &&
+              subscriptionRequired &&
               renderSubscription()}
             {currentStep === STEPS.COMPLETE && renderComplete()}
           </CardContent>

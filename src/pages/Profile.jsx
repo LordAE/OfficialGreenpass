@@ -54,7 +54,7 @@ import { useTr } from "@/i18n/useTr";
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
 
 /* ---------------- helpers ---------------- */
-const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor"];
+const VALID_ROLES = ["user", "agent", "tutor", "school", "vendor", "collaborator"];
 
 const normalizeRole = (r) => {
   const v = String(r || "").trim().toLowerCase();
@@ -170,6 +170,10 @@ function buildAgentReferralLink(token) {
 
 function buildStudentReferralLink(token) {
   return `${APP_BASE.replace(/\/+$/, "")}/${createSchoolLeadsPath()}?student_ref=${encodeURIComponent(token)}`;
+}
+
+function buildCollaboratorReferralLink(token) {
+  return `${APP_BASE.replace(/\/+$/, "")}/?ref=${encodeURIComponent(token)}`;
 }
 
 function createSchoolLeadsPath() {
@@ -931,6 +935,9 @@ export default function Profile() {
   const [studentReferralToken, setStudentReferralToken] = useState("");
   const [studentReferralLink, setStudentReferralLink] = useState("");
   const [studentReferralQr, setStudentReferralQr] = useState("");
+  const [collaboratorReferralToken, setCollaboratorReferralToken] = useState("");
+  const [collaboratorReferralLink, setCollaboratorReferralLink] = useState("");
+  const [collaboratorReferralQr, setCollaboratorReferralQr] = useState("");
 
   const meta = useMemo(() => roleMeta(role, tr), [role, tr]);
   const verificationFields = useMemo(() => buildVerificationFieldsForRole(role, tr), [role, tr]);
@@ -1377,6 +1384,9 @@ export default function Profile() {
           setStudentReferralToken("");
           setStudentReferralLink("");
           setStudentReferralQr("");
+          setCollaboratorReferralToken("");
+          setCollaboratorReferralLink("");
+          setCollaboratorReferralQr("");
         }
         return;
       }
@@ -1406,6 +1416,45 @@ export default function Profile() {
         return;
       }
 
+      if (role === "collaborator") {
+        try {
+          setQrLoading(true);
+
+          const token =
+            userDoc?.collaborator_referral_code ||
+            form?.collaborator_referral_code ||
+            "";
+
+          const link =
+            userDoc?.collaborator_referral_link ||
+            form?.collaborator_referral_link ||
+            buildCollaboratorReferralLink(token);
+
+          if (!mounted) return;
+
+          setCollaboratorReferralToken(token);
+          setCollaboratorReferralLink(link);
+          setCollaboratorReferralQr(token ? buildQrImageUrl(link) : "");
+
+          setAgentReferralToken("");
+          setAgentReferralLink("");
+          setAgentReferralQr("");
+          setStudentReferralToken("");
+          setStudentReferralLink("");
+          setStudentReferralQr("");
+        } catch (e) {
+          console.error("Failed to load collaborator referral QR:", e);
+          if (mounted) {
+            setCollaboratorReferralToken("");
+            setCollaboratorReferralLink("");
+            setCollaboratorReferralQr("");
+          }
+        } finally {
+          if (mounted) setQrLoading(false);
+        }
+        return;
+      }
+
       if (role === "user") {
         if (!studentQrReady) {
           if (mounted) {
@@ -1415,6 +1464,9 @@ export default function Profile() {
             setAgentReferralToken("");
             setAgentReferralLink("");
             setAgentReferralQr("");
+            setCollaboratorReferralToken("");
+            setCollaboratorReferralLink("");
+            setCollaboratorReferralQr("");
             setQrLoading(false);
           }
           return;
@@ -1451,6 +1503,9 @@ export default function Profile() {
         setStudentReferralToken("");
         setStudentReferralLink("");
         setStudentReferralQr("");
+        setCollaboratorReferralToken("");
+        setCollaboratorReferralLink("");
+        setCollaboratorReferralQr("");
         setQrLoading(false);
       }
     }
@@ -1459,7 +1514,15 @@ export default function Profile() {
     return () => {
       mounted = false;
     };
-  }, [uid, role, studentQrReady]);
+  }, [
+    uid,
+    role,
+    studentQrReady,
+    userDoc?.collaborator_referral_code,
+    userDoc?.collaborator_referral_link,
+    form?.collaborator_referral_code,
+    form?.collaborator_referral_link,
+  ]);
 
   const handleUploadProfilePicture = async (e) => {
     if (!isEditing) return;
@@ -1843,9 +1906,24 @@ export default function Profile() {
     }
   };
 
-  const activeQrToken = showAgentOrStudentToken(role, agentReferralToken, studentReferralToken);
-  const activeQrLink = showAgentOrStudentToken(role, agentReferralLink, studentReferralLink);
-  const activeQrImage = showAgentOrStudentToken(role, agentReferralQr, studentReferralQr);
+  const activeQrToken = showReferralByRole(
+    role,
+    agentReferralToken,
+    studentReferralToken,
+    collaboratorReferralToken
+  );
+  const activeQrLink = showReferralByRole(
+    role,
+    agentReferralLink,
+    studentReferralLink,
+    collaboratorReferralLink
+  );
+  const activeQrImage = showReferralByRole(
+    role,
+    agentReferralQr,
+    studentReferralQr,
+    collaboratorReferralQr
+  );
 
   const handleCopyReferralLink = async () => {
     if (!activeQrLink) return;
@@ -1871,7 +1949,12 @@ export default function Profile() {
     if (!activeQrImage) return;
     const a = document.createElement("a");
     a.href = activeQrImage;
-    a.download = role === "agent" ? "greenpass-agent-referral-qr.png" : "greenpass-student-qr.png";
+    a.download =
+      role === "agent"
+        ? "greenpass-agent-referral-qr.png"
+        : role === "collaborator"
+          ? "greenpass-collaborator-referral-qr.png"
+          : "greenpass-student-qr.png";
     a.click();
   };
 
@@ -1931,6 +2014,7 @@ export default function Profile() {
   const showTutor = role === "tutor";
   const showSchool = role === "school";
   const showVendor = role === "vendor";
+  const showCollaborator = role === "collaborator";
 
   const detailsTabLabel = showStudent
     ? tr("student_profile", "Student Profile")
@@ -1940,6 +2024,8 @@ export default function Profile() {
         ? tr("tutor_details", "Tutor Details")
         : showSchool
           ? tr("school_details", "School Details")
+          : showCollaborator
+          ? tr("collaborator_details", "Collaborator Details")
           : tr("vendor_details", "Vendor Details");
 
   return (
@@ -3084,11 +3170,114 @@ export default function Profile() {
                           </div>
                         )}
                       </>
+                    ) : showCollaborator ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 items-start">
+                        <Card className="rounded-3xl border shadow-none">
+                          <CardContent className="p-5 flex flex-col items-center gap-4">
+                            {qrLoading ? (
+                              <div className="w-[280px] h-[280px] rounded-2xl border bg-gray-50 flex items-center justify-center">
+                                <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+                              </div>
+                            ) : collaboratorReferralQr ? (
+                              <img
+                                src={collaboratorReferralQr}
+                                alt="Collaborator referral QR"
+                                className="w-[280px] h-[280px] object-contain rounded-2xl border bg-white"
+                              />
+                            ) : (
+                              <div className="w-[280px] h-[280px] rounded-2xl border bg-gray-50 flex items-center justify-center text-sm text-gray-500 text-center px-4">
+                                {tr("qr.unavailable", "QR code unavailable.")}
+                              </div>
+                            )}
+
+                            <div className="text-center">
+                              <p className="font-semibold text-gray-900">
+                                {tr("qr.collaborator_title", "My Collaborator Referral QR")}
+                              </p>
+                              <p className="text-sm text-gray-600 mt-1">
+                                {tr(
+                                  "qr.collaborator_help",
+                                  "Share this QR or link with users. They will open signup through your collaborator referral flow."
+                                )}
+                              </p>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <div className="space-y-5">
+                          <div className="space-y-2">
+                            <Label>{tr("qr.referral_link", "Referral Link")}</Label>
+                            <Input
+                              value={activeQrLink || ""}
+                              readOnly
+                              className="bg-gray-50"
+                              placeholder={tr("qr.loading_link", "Loading referral link...")}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>{tr("qr.referral_token", "Referral Token")}</Label>
+                            <Input
+                              value={activeQrToken || ""}
+                              readOnly
+                              className="bg-gray-50"
+                              placeholder={tr("qr.loading_token", "Loading token...")}
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap gap-3">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleCopyReferralLink}
+                              disabled={!activeQrLink}
+                              className="rounded-xl"
+                            >
+                              <Copy className="w-4 h-4 mr-2" />
+                              {tr("qr.copy_link", "Copy Link")}
+                            </Button>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleDownloadQr}
+                              disabled={!activeQrImage}
+                              className="rounded-xl"
+                            >
+                              <Download className="w-4 h-4 mr-2" />
+                              {tr("qr.download_qr", "Download QR")}
+                            </Button>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => window.open(activeQrLink, "_blank", "noopener,noreferrer")}
+                              disabled={!activeQrLink}
+                              className="rounded-xl"
+                            >
+                              <ExternalLink className="w-4 h-4 mr-2" />
+                              {tr("qr.open_link", "Open Link")}
+                            </Button>
+                          </div>
+
+                          <div className="rounded-2xl border bg-emerald-50 text-emerald-900 p-4 text-sm leading-6">
+                            <p className="font-semibold mb-1">
+                              {tr("qr.how_it_works", "How it works")}
+                            </p>
+                            <p>
+                              {tr(
+                                "qr.collaborator_how_it_works_body",
+                                "When a user signs up using this link or QR, then completes profile and gets verified, your collaborator stats update in your dashboard and in admin progress."
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
                       <div className="rounded-2xl border bg-gray-50 p-5 text-sm text-gray-600">
                         {tr(
                           "qr.not_available_for_role",
-                          "QR code is currently available for agent and student referral flows only in this phase."
+                          "QR code is currently available for agent, student, and collaborator referral flows in this phase."
                         )}
                       </div>
                     )}
@@ -3263,6 +3452,9 @@ export default function Profile() {
   );
 }
 
-function showAgentOrStudentToken(role, agentValue, studentValue) {
-  return role === "agent" ? agentValue : role === "user" ? studentValue : "";
+function showReferralByRole(role, agentValue, studentValue, collaboratorValue) {
+  if (role === "agent") return agentValue;
+  if (role === "user") return studentValue;
+  if (role === "collaborator") return collaboratorValue;
+  return "";
 }

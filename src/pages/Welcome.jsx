@@ -25,7 +25,7 @@ import {
   setPersistence,
   browserLocalPersistence,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, query, setDoc, serverTimestamp, where } from "firebase/firestore";
 
 function InfoDialog({ open, title, message, onClose, okLabel = "OK" }) {
   if (!open) return null;
@@ -73,7 +73,25 @@ function normalizeRole(r) {
   return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
 }
 
-function buildUserDoc({ email, full_name = "", userType = DEFAULT_ROLE, signupEntryRole = DEFAULT_ROLE }) {
+function buildCollaboratorReferralFields(refCode = "", referredByUid = "") {
+  const code = String(refCode || "").trim();
+  if (!code) return {};
+
+  return {
+    referred_by_collaborator_code: code,
+    referred_by_collaborator_uid: referredByUid || "",
+    referred_by_collaborator_at: serverTimestamp(),
+  };
+}
+
+function buildUserDoc({
+  email,
+  full_name = "",
+  userType = DEFAULT_ROLE,
+  signupEntryRole = DEFAULT_ROLE,
+  collaboratorRef = "",
+  referredByCollaboratorUid = "",
+}) {
   return {
     role: userType,
     userType,
@@ -113,6 +131,7 @@ function buildUserDoc({ email, full_name = "", userType = DEFAULT_ROLE, signupEn
     package_assignment: { package_id: "", assigned_at: null, expires_at: null },
     is_guest_created: false,
     created_at: serverTimestamp(),
+    ...buildCollaboratorReferralFields(collaboratorRef, referredByCollaboratorUid),
     updated_at: serverTimestamp(),
   };
 }
@@ -136,12 +155,34 @@ function RuleRow({ ok, label }) {
   );
 }
 
-async function routeAfterSignIn(navigate, fbUser, roleHint = DEFAULT_ROLE) {
+async function resolveCollaboratorRef(refCode) {
+  const code = String(refCode || "").trim();
+  if (!code) return "";
+
+  try {
+    const q = query(
+      collection(db, "users"),
+      where("collaborator_referral_code", "==", code),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return "";
+    return snap.docs[0]?.id || "";
+  } catch (error) {
+    console.error("resolveCollaboratorRef error:", error);
+    return "";
+  }
+}
+
+async function routeAfterSignIn(navigate, fbUser, roleHint = DEFAULT_ROLE, collaboratorRef = "") {
   const ref = doc(db, "users", fbUser.uid);
   const snap = await getDoc(ref);
+  const isCollaboratorInvite =
+    String(roleHint || "").trim().toLowerCase() === "collaborator" && !!collaboratorRef;
+  const referredByCollaboratorUid = await resolveCollaboratorRef(collaboratorRef);
 
   if (!snap.exists()) {
-    const createRole = normalizeRole(roleHint);
+    const createRole = isCollaboratorInvite ? "collaborator" : normalizeRole(roleHint);
     await setDoc(
       ref,
       buildUserDoc({
@@ -149,16 +190,43 @@ async function routeAfterSignIn(navigate, fbUser, roleHint = DEFAULT_ROLE) {
         full_name: fbUser.displayName || "",
         userType: createRole,
         signupEntryRole: createRole,
+        collaboratorRef,
+        referredByCollaboratorUid,
       }),
       { merge: true }
     );
-    return navigate(`${createPageUrl("Onboarding")}?role=${createRole}`);
+    return navigate(
+      `${createPageUrl("Onboarding")}?role=${createRole}${
+        collaboratorRef ? `&ref=${encodeURIComponent(collaboratorRef)}` : ""
+      }`
+    );
   }
 
   const profile = snap.data();
+
+  if (collaboratorRef && !profile?.referred_by_collaborator_code) {
+    await setDoc(
+      ref,
+      {
+        ...buildCollaboratorReferralFields(
+          collaboratorRef,
+          profile?.referred_by_collaborator_uid || referredByCollaboratorUid
+        ),
+        updated_at: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
+
   if (!profile?.onboarding_completed) {
-    const roleToUse = normalizeRole(profile?.user_type || roleHint || DEFAULT_ROLE);
-    return navigate(`${createPageUrl("Onboarding")}?role=${roleToUse}`);
+    const roleToUse = isCollaboratorInvite
+      ? "collaborator"
+      : normalizeRole(profile?.user_type || roleHint || DEFAULT_ROLE);
+    return navigate(
+      `${createPageUrl("Onboarding")}?role=${roleToUse}${
+        collaboratorRef ? `&ref=${encodeURIComponent(collaboratorRef)}` : ""
+      }`
+    );
   }
 
   return navigate(createPageUrl("Dashboard"));
@@ -177,16 +245,34 @@ export default function Welcome() {
     const nextLang = langFromUrl || saved || i18n?.language || "en";
     if (i18n?.language !== nextLang) i18n.changeLanguage(nextLang);
     localStorage.setItem("gp_lang", nextLang);
+
+    const refCode = params.get("ref");
+    if (refCode) localStorage.setItem("gp_collaborator_ref", refCode);
   }, [params, i18n]);
 
-  const entryRole = useMemo(() => {
-    const raw = params.get("role") ?? params.get("userType") ?? params.get("as");
-    return normalizeRole(raw);
+  const collaboratorInviteFlow = useMemo(() => {
+    const rawRole = (params.get("role") || params.get("userType") || "").toString().trim().toLowerCase();
+    const refCode = (params.get("ref") || "").toString().trim();
+    return rawRole === "collaborator" && !!refCode;
   }, [params]);
 
-  const [mode, setMode] = useState("signin");
+  const entryRole = useMemo(() => {
+    if (collaboratorInviteFlow) return "collaborator";
+    const raw = params.get("role") ?? params.get("userType");
+    return normalizeRole(raw);
+  }, [params, collaboratorInviteFlow]);
+
+  const [mode, setMode] = useState(collaboratorInviteFlow ? "signup" : "signin");
   const [signupRole, setSignupRole] = useState(() => (entryRole && entryRole !== DEFAULT_ROLE ? entryRole : ""));
   const activeRole = mode === "signup" ? signupRole : entryRole;
+  const isRoleLocked = collaboratorInviteFlow;
+
+  useEffect(() => {
+    if (collaboratorInviteFlow) {
+      setMode("signup");
+      setSignupRole("collaborator");
+    }
+  }, [collaboratorInviteFlow]);
 
   useEffect(() => {
     if (activeRole) sessionStorage.setItem("onboarding_role", activeRole);
@@ -224,7 +310,12 @@ export default function Welcome() {
         setChecking(false);
         if (user) {
           const roleHint = sessionStorage.getItem("onboarding_role") || entryRole || DEFAULT_ROLE;
-          await routeAfterSignIn(navigate, user, roleHint);
+          await routeAfterSignIn(
+            navigate,
+            user,
+            roleHint,
+            params.get("ref") || localStorage.getItem("gp_collaborator_ref") || ""
+          );
         }
       });
     })();
@@ -281,7 +372,12 @@ export default function Welcome() {
       sessionStorage.setItem("onboarding_role", activeRole || DEFAULT_ROLE);
       const provider = new GoogleAuthProvider();
       const cred = await signInWithPopup(auth, provider);
-      await routeAfterSignIn(navigate, cred.user, activeRole || DEFAULT_ROLE);
+      await routeAfterSignIn(
+        navigate,
+        cred.user,
+        activeRole || DEFAULT_ROLE,
+        params.get("ref") || localStorage.getItem("gp_collaborator_ref") || ""
+      );
     } catch (err) {
       if (err?.code === "auth/account-exists-with-different-credential") {
         setDialog({
@@ -311,7 +407,12 @@ export default function Welcome() {
       sessionStorage.setItem("onboarding_role", activeRole || DEFAULT_ROLE);
       const appleProvider = new OAuthProvider("apple.com");
       const cred = await signInWithPopup(auth, appleProvider);
-      await routeAfterSignIn(navigate, cred.user, activeRole || DEFAULT_ROLE);
+      await routeAfterSignIn(
+        navigate,
+        cred.user,
+        activeRole || DEFAULT_ROLE,
+        params.get("ref") || localStorage.getItem("gp_collaborator_ref") || ""
+      );
     } catch (err) {
       if (err?.code === "auth/operation-not-supported-in-this-environment") {
         setDialog({
@@ -360,7 +461,12 @@ export default function Welcome() {
       setBusy(true);
       sessionStorage.setItem("onboarding_role", activeRole || DEFAULT_ROLE);
       const cred = await signInWithEmailAndPassword(auth, em, password);
-      await routeAfterSignIn(navigate, cred.user, activeRole || DEFAULT_ROLE);
+      await routeAfterSignIn(
+        navigate,
+        cred.user,
+        activeRole || DEFAULT_ROLE,
+        params.get("ref") || localStorage.getItem("gp_collaborator_ref") || ""
+      );
     } catch (err) {
       if (err?.code === "auth/wrong-password" || err?.code === "auth/invalid-credential") {
         setDialog({
@@ -443,8 +549,15 @@ export default function Welcome() {
       sessionStorage.setItem("onboarding_role", signupRole);
 
       const cred = await createUserWithEmailAndPassword(auth, em, password);
-      await updateProfile(cred.user, { displayName });
-      await routeAfterSignIn(navigate, cred.user, signupRole);
+      await updateProfile(cred.user, {
+        displayName: em.split("@")[0] || "GreenPass User",
+      });
+      await routeAfterSignIn(
+        navigate,
+        cred.user,
+        signupRole,
+        params.get("ref") || localStorage.getItem("gp_collaborator_ref") || ""
+      );
     } catch (err) {
       let message = err?.message || tr("auth.signup_failed_message", "Sign-up failed.");
       if (err?.code === "auth/invalid-email") message = tr("auth.invalid_email_message", "Please enter a valid email address.");
@@ -617,10 +730,13 @@ export default function Welcome() {
                           <button
                             type="button"
                             onClick={() => {
+                              if (isRoleLocked) return;
                               setMode("signup");
                               setSignupRole(item.key);
                             }}
-                            className={`w-full rounded-3xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,0.20)] backdrop-blur transition hover:-translate-y-1 hover:bg-white/15 ${
+                            className={`w-full rounded-3xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,0.20)] backdrop-blur transition ${
+                              isRoleLocked ? "cursor-not-allowed opacity-50" : "hover:-translate-y-1 hover:bg-white/15"
+                            } ${
                               mode === "signup" && signupRole === item.key ? "ring-2 ring-emerald-400" : ""
                             }`}
                           >
@@ -715,8 +831,11 @@ export default function Welcome() {
                     type="button"
                     className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
                       mode === "signin" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600"
-                    }`}
-                    onClick={() => setMode("signin")}
+                    } ${isRoleLocked ? "cursor-not-allowed opacity-60" : ""}`}
+                    onClick={() => {
+                      if (isRoleLocked) return;
+                      setMode("signin");
+                    }}
                   >
                     {tr("auth.signin", "Sign in")}
                   </button>
@@ -725,7 +844,10 @@ export default function Welcome() {
                     className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
                       mode === "signup" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600"
                     }`}
-                    onClick={() => setMode("signup")}
+                    onClick={() => {
+                      setMode("signup");
+                      if (isRoleLocked) setSignupRole("collaborator");
+                    }}
                   >
                     {tr("auth.signup", "Sign up")}
                   </button>
@@ -736,18 +858,35 @@ export default function Welcome() {
                     <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                       {tr("auth.choose_role", "Choose role")}
                     </label>
-                    <select
-                      value={signupRole}
-                      onChange={(e) => setSignupRole(e.target.value)}
-                      className="h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-sm text-gray-800 outline-none transition focus:border-blue-400"
-                    >
-                      <option value="">{tr("auth.select_role_placeholder", "Select a role...")}</option>
-                      {SIGNUP_ROLE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {tr(opt.labelKey, opt.labelFallback)}
-                        </option>
-                      ))}
-                    </select>
+
+                    {isRoleLocked ? (
+                      <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <div>
+                          <div className="text-sm font-semibold text-emerald-800">
+                            {tr("role_collaborator", "Collaborator")}
+                          </div>
+                          <div className="text-xs text-emerald-700">
+                            {tr("auth.role_locked_invite", "This role was assigned through your invitation link.")}
+                          </div>
+                        </div>
+                        <div className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white">
+                          {tr("auth.locked", "Locked")}
+                        </div>
+                      </div>
+                    ) : (
+                      <select
+                        value={signupRole}
+                        onChange={(e) => setSignupRole(e.target.value)}
+                        className="h-12 w-full rounded-2xl border border-gray-200 bg-white px-4 text-sm text-gray-800 outline-none transition focus:border-blue-400"
+                      >
+                        <option value="">{tr("auth.select_role_placeholder", "Select a role...")}</option>
+                        {SIGNUP_ROLE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {tr(opt.labelKey, opt.labelFallback)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )}
 

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
 // Firebase
-import { auth, db } from '@/firebase'; // <- your firebase.js exports
+import { auth, db } from '@/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -16,6 +16,7 @@ import SchoolDashboard from '../components/dashboards/SchoolDashboard';
 import StudentDashboard from '../components/dashboards/StudentDashboard';
 import TutorDashboard from '../components/dashboards/TutorDashboard';
 import VendorDashboard from '../components/dashboards/VendorDashboard';
+import CollaboratorDashboard from '../components/dashboards/CollaboratorDashboard';
 import { useTr } from "@/i18n/useTr";
 
 export default function Dashboard() {
@@ -29,14 +30,12 @@ export default function Dashboard() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
-        // No Firebase user logged in → redirect to Home
         navigate(createPageUrl('Welcome'));
         setLoading(false);
         return;
       }
 
       try {
-        // Try to load extended profile from Firestore
         const userRef = doc(db, 'users', firebaseUser.uid);
         const userSnap = await getDoc(userRef);
 
@@ -44,14 +43,13 @@ export default function Dashboard() {
           setCurrentUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            ...userSnap.data(), // should include user_type, onboarding_completed, etc.
+            ...userSnap.data(),
           });
         } else {
-          // No profile doc exists → fallback to basic Firebase user
           setCurrentUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            user_type: 'student', // default role if none set
+            user_type: 'student',
           });
         }
       } catch (e) {
@@ -84,7 +82,6 @@ export default function Dashboard() {
   }
 
   if (!currentUser) {
-    // This state can be hit briefly during redirection or Firestore fetch
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-gray-400" />
@@ -92,7 +89,12 @@ export default function Dashboard() {
     );
   }
 
-  switch (currentUser.user_type) {
+  const effectiveRole =
+    currentUser.is_collaborator
+      ? 'collaborator'
+      : currentUser.user_type || currentUser.role || currentUser.selected_role || currentUser.userType;
+
+  switch (effectiveRole) {
     case 'admin':
       return <AdminDashboard user={currentUser} />;
     case 'agent':
@@ -103,6 +105,8 @@ export default function Dashboard() {
       return <TutorDashboard user={currentUser} />;
     case 'vendor':
       return <VendorDashboard user={currentUser} />;
+    case 'collaborator':
+      return <CollaboratorDashboard user={currentUser} />;
     case 'student':
     case 'user':
     default:

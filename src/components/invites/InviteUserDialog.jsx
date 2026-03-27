@@ -12,19 +12,13 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Copy, Mail, Link2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { getAuth } from "firebase/auth";
 
-/**
- * Fixes:
- * 1) Dialog warning: Missing Description / aria-describedby
- *    - Adds DialogDescription + aria-describedby id.
- * 2) Functions base URL error even when env is flaky
- *    - Falls back to Firebase app options projectId: getAuth().app.options.projectId
- *
- * Still supports env:
- *  - VITE_FUNCTIONS_HTTP_BASE (preferred)
- *  - VITE_FIREBASE_PROJECT_ID (fallback)
- */
-
-const ROLE_LABELS = { student: "Student", agent: "Agent", school: "School", tutor: "Tutor"};
+const ROLE_LABELS = {
+  student: "Student",
+  agent: "Agent",
+  school: "School",
+  tutor: "Tutor",
+  collaborator: "Collaborator",
+};
 
 function getEnv(key) {
   try {
@@ -67,14 +61,13 @@ export default function InviteUserDialog({
   allowedRoles = [],
   defaultRole = "agent",
   title = "Invite User",
-  // Optional override to bypass env entirely:
   functionsHttpBase,
 }) {
   const roles = useMemo(() => Array.from(new Set(allowedRoles)).filter(Boolean), [allowedRoles]);
   const safeDefaultRole = roles.includes(defaultRole) ? defaultRole : roles[0] || "agent";
 
   const [role, setRole] = useState(safeDefaultRole);
-  const [method, setMethod] = useState("link"); // "link" | "email"
+  const [method, setMethod] = useState("link");
   const [email, setEmail] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [status, setStatus] = useState({ loading: false, ok: false, message: "" });
@@ -88,7 +81,6 @@ export default function InviteUserDialog({
       setStatus({ loading: false, ok: false, message: "" });
     }
   }, [open, safeDefaultRole]);
-
 
   const emailList = useMemo(() => {
     if (method !== "email") return [];
@@ -104,15 +96,14 @@ export default function InviteUserDialog({
     const reEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailList.filter((e) => !reEmail.test(e));
   }, [emailList, method]);
+
   async function createInvite({ invitedRole, mode, invitedEmail }) {
     const auth = getAuth();
     const user = auth.currentUser;
     if (!user) throw new Error("You must be logged in.");
 
-    // 1) env / prop base
     let base = (functionsHttpBase || inferFunctionsBaseFromEnv() || "").replace(/\/$/, "");
 
-    // 2) fallback to Firebase app options projectId (works even if Vite env is not loaded)
     if (!base) {
       const pid = auth?.app?.options?.projectId;
       if (pid) base = `https://us-central1-${pid}.cloudfunctions.net`;
@@ -145,6 +136,7 @@ export default function InviteUserDialog({
     } catch {
       // ignore
     }
+
     if (!res.ok) throw new Error(json?.error || json?.message || text || "Invite failed");
     return json;
   }
@@ -171,13 +163,16 @@ export default function InviteUserDialog({
         setStatus({
           loading: false,
           ok: false,
-          message: `Invalid email(s): ${invalidEmails.slice(0, 5).join(", ")}${invalidEmails.length > 5 ? "…" : ""}`,
+          message: `Invalid email(s): ${invalidEmails.slice(0, 5).join(", ")}${
+            invalidEmails.length > 5 ? "…" : ""
+          }`,
         });
         return;
       }
     }
 
     setStatus({ loading: true, ok: false, message: "" });
+
     try {
       if (method === "link") {
         const res = await createInvite({
@@ -190,9 +185,9 @@ export default function InviteUserDialog({
         await copyToClipboard(res.inviteLink);
         setStatus({ loading: false, ok: true, message: "Invite link copied to clipboard." });
       } else {
-        // Email mode: send up to 10 in one action
         let okCount = 0;
         const failed = [];
+
         for (const addr of emailList) {
           try {
             await createInvite({ invitedRole: role, mode: "email", invitedEmail: addr });
@@ -230,12 +225,16 @@ export default function InviteUserDialog({
     }
   }
 
-  const primaryLabel = method === "link" ? "Generate Invite Link" : `Send Invite Email${emailList.length ? ` (${Math.min(emailList.length, 10)})` : ""}`;
+  const primaryLabel =
+    method === "link"
+      ? "Generate Invite Link"
+      : `Send Invite Email${emailList.length ? ` (${Math.min(emailList.length, 10)})` : ""}`;
+
   const descId = "invite-user-dialog-desc";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg p-0 overflow-hidden" aria-describedby={descId}>
+      <DialogContent className="max-w-lg overflow-hidden p-0" aria-describedby={descId}>
         <div className="p-6">
           <DialogHeader>
             <DialogTitle className="text-lg">{title}</DialogTitle>
@@ -245,14 +244,13 @@ export default function InviteUserDialog({
           </DialogHeader>
 
           {roles.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex gap-2">
-              <AlertTriangle className="h-4 w-4 mt-0.5" />
+            <div className="mt-4 flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertTriangle className="mt-0.5 h-4 w-4" />
               <div>No allowed roles configured for this dialog.</div>
             </div>
           ) : (
             <div className="mt-4 space-y-5">
-              {/* Role */}
-              <div className="rounded-2xl border bg-background p-4 space-y-2">
+              <div className="space-y-2 rounded-2xl border bg-background p-4">
                 <Label>Invite as</Label>
                 <select
                   value={role}
@@ -267,129 +265,99 @@ export default function InviteUserDialog({
                 </select>
               </div>
 
-              {/* Method segmented */}
-              <div className="rounded-2xl border bg-background p-4 space-y-2">
+              <div className="space-y-2 rounded-2xl border bg-background p-4">
                 <Label>Invite method</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant={method === "link" ? "default" : "outline"}
+                    className="justify-start rounded-xl"
                     onClick={() => setMethod("link")}
-                    className={[
-                      "flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition",
-                      method === "link"
-                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                        : "bg-background hover:bg-muted/60",
-                    ].join(" ")}
                   >
-                    <Link2 className="h-4 w-4" />
-                    Link
-                  </button>
-
-                  <button
+                    <Link2 className="mr-2 h-4 w-4" />
+                    Generate link
+                  </Button>
+                  <Button
                     type="button"
+                    variant={method === "email" ? "default" : "outline"}
+                    className="justify-start rounded-xl"
                     onClick={() => setMethod("email")}
-                    className={[
-                      "flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition",
-                      method === "email"
-                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                        : "bg-background hover:bg-muted/60",
-                    ].join(" ")}
                   >
-                    <Mail className="h-4 w-4" />
-                    Email
-                  </button>
+                    <Mail className="mr-2 h-4 w-4" />
+                    Send email
+                  </Button>
                 </div>
-
-                {method === "link" ? (
-                  <div className="text-xs text-muted-foreground">
-                    Best for sharing in chat or social media. Link will be copied automatically.
-                  </div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">
-                    Best for formal invites. The recipient will receive a join button via email.
-                  </div>
-                )}
               </div>
 
-              {/* Email */}
               {method === "email" && (
-                <div className="rounded-2xl border bg-background p-4 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label>Email addresses</Label>
-                    <div className="text-xs text-muted-foreground">
-                      {emailList.length}/10
-                    </div>
-                  </div>
+                <div className="space-y-2 rounded-2xl border bg-background p-4">
+                  <Label>Email addresses</Label>
                   <Textarea
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={"name@example.com\nname2@example.com\n(You can also separate by commas)"}
-                    autoComplete="email"
-                    className="min-h-[92px] rounded-xl"
+                    placeholder="Enter one or more emails separated by commas, semicolons, or new lines"
+                    className="min-h-[110px] rounded-xl"
                   />
-                  <div className="text-xs text-muted-foreground">
-                    Tip: paste multiple emails (one per line). Max 10 invites per action.
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    You can send up to 10 invite emails at once.
+                  </p>
                 </div>
               )}
 
-              {/* Primary action */}
-              <Button onClick={onPrimaryAction} disabled={status.loading} className="w-full h-11 rounded-xl gap-2">
+              <Button
+                type="button"
+                onClick={onPrimaryAction}
+                disabled={status.loading || roles.length === 0}
+                className="w-full rounded-xl"
+              >
                 {status.loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : method === "link" ? (
-                  <Link2 className="h-4 w-4" />
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
                 ) : (
-                  <Mail className="h-4 w-4" />
+                  primaryLabel
                 )}
-                {primaryLabel}
               </Button>
 
-              {/* Status */}
-              {status.message && (
+              {status.message ? (
                 <div
-                  className={[
-                    "rounded-2xl border p-3 text-sm flex items-start gap-2",
+                  className={`rounded-xl border p-3 text-sm ${
                     status.ok
-                      ? "bg-green-50 border-green-200 text-green-800"
-                      : "bg-red-50 border-red-200 text-red-800",
-                  ].join(" ")}
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-red-200 bg-red-50 text-red-700"
+                  }`}
                 >
-                  {status.ok ? (
-                    <CheckCircle2 className="h-4 w-4 mt-0.5" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 mt-0.5" />
-                  )}
-                  <div className="flex-1">{status.message}</div>
-                </div>
-              )}
-
-              {/* Link */}
-              {inviteLink && (
-                <div className="rounded-2xl border bg-background p-4">
-                  <div className="text-xs font-semibold text-muted-foreground mb-2">Invite Link</div>
-                  <div className="text-sm break-all">{inviteLink}</div>
-                  <div className="mt-3 flex justify-end">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="rounded-xl gap-2"
-                      onClick={() => copyToClipboard(inviteLink)}
-                    >
-                      <Copy className="h-4 w-4" />
-                      Copy
-                    </Button>
+                  <div className="flex items-start gap-2">
+                    {status.ok ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 h-4 w-4" />
+                    )}
+                    <div>{status.message}</div>
                   </div>
                 </div>
-              )}
+              ) : null}
+
+              {inviteLink ? (
+                <div className="space-y-2 rounded-2xl border bg-muted/40 p-4">
+                  <Label>Invite link</Label>
+                  <div className="break-all rounded-xl border bg-background px-3 py-2 text-sm">
+                    {inviteLink}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => copyToClipboard(inviteLink)}
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy again
+                  </Button>
+                </div>
+              ) : null}
             </div>
           )}
-        </div>
-
-        <div className="border-t bg-muted/30 px-6 py-3 flex justify-end">
-          <Button type="button" variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

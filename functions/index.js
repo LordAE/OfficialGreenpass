@@ -454,6 +454,7 @@ const INVITE_ROLE_LABELS = {
   agent: "Agent",
   school: "School",
   admin: "Admin",
+  collaborator: "Collaborator",
 };
 
 async function getInviterDisplayName(uid, decodedToken) {
@@ -504,26 +505,172 @@ function assertRoleCanInvite(inviterRole, invitedRole) {
   const rr = normalizeRole(invitedRole);
 
   if (ir === "admin") {
-    if (rr !== "agent" && rr !== "school" && rr !== "student") {
-      throw new Error("Admin can only invite agent, school, or student");
+    if (rr !== "agent" && rr !== "school" && rr !== "student" && rr !== "collaborator") {
+      throw new Error("Admin can only invite agent, school, student, or collaborator");
     }
     return;
   }
+
   if (ir === "school") {
     if (rr !== "agent") throw new Error("School can only invite agent");
     return;
   }
+
   if (ir === "agent") {
     if (rr !== "agent" && rr !== "school" && rr !== "student") {
       throw new Error("Agent can only invite agent, school, or student");
     }
     return;
   }
+
   throw new Error("Role not allowed to invite");
 }
 
 function randomToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString("hex");
+}
+
+const COLLABORATOR_BASE_URL =
+  process.env.COLLABORATOR_REFERRAL_BASE_URL ||
+  process.env.PUBLIC_APP_URL ||
+  "https://greenpassgroup.com";
+
+const COLLABORATOR_REWARD_PER_VERIFIED = Number(
+  process.env.COLLABORATOR_REWARD_PER_VERIFIED || 0
+);
+
+function sanitizeReferralCodePart(v, fallback = "COLLAB") {
+  const clean = String(v || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 6);
+  return clean || fallback;
+}
+
+function buildCollaboratorReferralCode(userData = {}, uid = "") {
+  const existing = String(userData?.collaborator_referral_code || "").trim();
+  if (existing) return existing;
+
+  const namePart = sanitizeReferralCodePart(
+    userData?.full_name || userData?.displayName || userData?.name || userData?.email,
+    "GREENP"
+  );
+  const uidPart = sanitizeReferralCodePart(uid, "USER").slice(-6);
+
+  return `GP-${namePart}${uidPart}`;
+}
+
+function buildCollaboratorReferralLink(code) {
+  const base = String(COLLABORATOR_BASE_URL || "https://greenpassgroup.com").replace(/\/+$/, "");
+  return `${base}/?ref=${encodeURIComponent(code)}`;
+}
+
+function getCollaboratorTierFromVerifiedCount(verifiedUsers = 0) {
+  const count = Number(verifiedUsers || 0);
+  if (count >= 100) return "gold";
+  if (count >= 20) return "silver";
+  return "bronze";
+}
+
+async function recalculateCollaboratorStats(collaboratorUid) {
+  if (!collaboratorUid) return;
+
+  const db = admin.firestore();
+  const referralsSnap = await db
+    .collection("collaborator_referrals")
+    .where("collaborator_uid", "==", collaboratorUid)
+    .get();
+
+  let invited = 0;
+  let completed = 0;
+  let verified = 0;
+
+  referralsSnap.forEach((docSnap) => {
+    invited += 1;
+    const data = docSnap.data() || {};
+
+    if (
+      data.completed_profile === true ||
+      data.status === "completed_profile" ||
+      data.status === "verified"
+    ) {
+      completed += 1;
+    }
+
+    if (data.verified === true || data.status === "verified") {
+      verified += 1;
+    }
+  });
+
+  const tier = getCollaboratorTierFromVerifiedCount(verified);
+  const estimatedRewards = Math.max(0, verified * COLLABORATOR_REWARD_PER_VERIFIED);
+
+  await db.collection("users").doc(collaboratorUid).set(
+    {
+      collaborator_invited_total: invited,
+      collaborator_completed_profiles: completed,
+      collaborator_verified_users: verified,
+      collaborator_estimated_rewards: estimatedRewards,
+      collaborator_tier: tier,
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function syncCollaboratorReferralForUser(userId, beforeData = {}, afterData = {}) {
+  const collaboratorUid = String(
+    afterData?.referred_by_collaborator_uid || beforeData?.referred_by_collaborator_uid || ""
+  ).trim();
+
+  const collaboratorCode = String(
+    afterData?.referred_by_collaborator_code || beforeData?.referred_by_collaborator_code || ""
+  ).trim();
+
+  if (!collaboratorUid || !collaboratorCode || !userId) return;
+
+  const db = admin.firestore();
+  const referralRef = db.collection("collaborator_referrals").doc(userId);
+
+  const role = normalizeRole(
+    afterData?.role || afterData?.user_type || afterData?.selected_role || afterData?.userType
+  ) || "student";
+
+  const onboardingCompleted = afterData?.onboarding_completed === true;
+  const verified = afterData?.is_verified === true;
+  const status = verified ? "verified" : onboardingCompleted ? "completed_profile" : "joined";
+
+  const payload = {
+    collaborator_uid: collaboratorUid,
+    collaborator_code: collaboratorCode,
+    referred_user_uid: userId,
+    referred_user_email: afterData?.email || beforeData?.email || "",
+    referred_user_role: role,
+    status,
+    completed_profile: onboardingCompleted,
+    verified,
+    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (afterData?.created_at || beforeData?.created_at) {
+    payload.referred_user_created_at = afterData?.created_at || beforeData?.created_at;
+  }
+
+  if (afterData?.referred_by_collaborator_at || beforeData?.referred_by_collaborator_at) {
+    payload.referred_at =
+      afterData?.referred_by_collaborator_at || beforeData?.referred_by_collaborator_at;
+  }
+
+  if (onboardingCompleted) {
+    payload.completed_at = afterData?.updated_at || admin.firestore.FieldValue.serverTimestamp();
+  }
+
+  if (verified) {
+    payload.verified_at = afterData?.updated_at || admin.firestore.FieldValue.serverTimestamp();
+  }
+
+  await referralRef.set(payload, { merge: true });
+  await recalculateCollaboratorStats(collaboratorUid);
 }
 
 async function requireBearerUid(req) {
@@ -1332,10 +1479,14 @@ exports.createInvite = onRequest(async (req, res) => {
       const m = String(mode || "").toLowerCase().trim();
       const email = (invitedEmail || "").toString().trim().toLowerCase();
 
-      if (r !== "agent" && r !== "school" && r !== "student") {
+      if (r !== "agent" && r !== "school" && r !== "student" && r !== "collaborator") {
         return res.status(400).json({ error: "Invalid invitedRole" });
       }
-      if (m !== "email" && m !== "link") return res.status(400).json({ error: "Invalid mode" });
+
+      if (m !== "email" && m !== "link") {
+        return res.status(400).json({ error: "Invalid mode" });
+      }
+
       if (m === "email" && !email) {
         return res.status(400).json({ error: "invitedEmail required for email mode" });
       }
@@ -1380,53 +1531,53 @@ exports.createInvite = onRequest(async (req, res) => {
           message: {
             subject: `${inviterName} invited you to GreenPass (${invitedRoleLabel})`,
             html: `
-                <div style="font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; padding:24px;">
-                  <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
-                    <div style="background:#0f766e; color:#ffffff; padding:20px 24px;">
-                      <h1 style="margin:0; font-size:22px;">You’re invited to GreenPass</h1>
-                      <p style="margin:6px 0 0; font-size:13px; opacity:0.9;">
-                        Your gateway to students, agents, tutors, and schools
-                      </p>
-                    </div>
-                    <div style="padding:24px; color:#1f2937;">
-                      <p style="font-size:15px; line-height:1.6;">
-                        Hi there 👋,
-                      </p>
+              <div style="font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; padding:24px;">
+                <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+                  <div style="background:#0f766e; color:#ffffff; padding:20px 24px;">
+                    <h1 style="margin:0; font-size:22px;">You’re invited to GreenPass</h1>
+                    <p style="margin:6px 0 0; font-size:13px; opacity:0.9;">
+                      Your gateway to students, agents, tutors, and schools
+                    </p>
+                  </div>
+                  <div style="padding:24px; color:#1f2937;">
+                    <p style="font-size:15px; line-height:1.6;">Hi there 👋,</p>
 
-                      <p style="font-size:15px; line-height:1.6;">
-                        <strong>${inviterName}</strong> invited you to join GreenPass as a <strong>${invitedRoleLabel}</strong>.
-                      </p>
+                    <p style="font-size:15px; line-height:1.6;">
+                      <strong>${inviterName}</strong> invited you to join GreenPass as a
+                      <strong> ${invitedRoleLabel}</strong>.
+                    </p>
 
-                      <p style="font-size:15px; line-height:1.6;">
-                        GreenPass is a professional platform for the international education sector, connecting students, schools, agents, and tutors in a trusted and transparent environment.
-                      </p>
+                    <p style="font-size:15px; line-height:1.6;">
+                      GreenPass is a professional platform for the international education sector,
+                      connecting students, schools, agents, and tutors in a trusted and transparent environment.
+                    </p>
 
-                      <div style="text-align:center; margin:28px 0;">
-                        <a href="${inviteLink}"
-                          style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; padding:14px 26px; border-radius:8px; font-weight:600;">
-                          Accept Invitation
-                        </a>
-                      </div>
-
-                      <p style="font-size:13px; color:#6b7280; margin-bottom:6px;">
-                        If the button doesn’t work, copy and paste this link into your browser:
-                      </p>
-
-                      <p style="font-size:12px; background:#f3f4f6; padding:10px 12px; border-radius:6px; word-break:break-all;">
-                        ${inviteLink}
-                      </p>
-
-                      <p style="font-size:13px; color:#6b7280; margin-top:20px;">
-                        If you didn’t expect this invitation, you can safely ignore this email.
-                      </p>
+                    <div style="text-align:center; margin:28px 0;">
+                      <a href="${inviteLink}"
+                        style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; padding:14px 26px; border-radius:8px; font-weight:600;">
+                        Accept Invitation
+                      </a>
                     </div>
 
-                    <div style="background:#f9fafb; padding:14px 24px; text-align:center; font-size:12px; color:#9ca3af;">
-                      © ${new Date().getFullYear()} GreenPass Group · All rights reserved
-                    </div>
+                    <p style="font-size:13px; color:#6b7280; margin-bottom:6px;">
+                      If the button doesn’t work, copy and paste this link into your browser:
+                    </p>
+
+                    <p style="font-size:12px; background:#f3f4f6; padding:10px 12px; border-radius:6px; word-break:break-all;">
+                      ${inviteLink}
+                    </p>
+
+                    <p style="font-size:13px; color:#6b7280; margin-top:20px;">
+                      If you didn’t expect this invitation, you can safely ignore this email.
+                    </p>
+                  </div>
+
+                  <div style="background:#f9fafb; padding:14px 24px; text-align:center; font-size:12px; color:#9ca3af;">
+                    © ${new Date().getFullYear()} GreenPass Group · All rights reserved
                   </div>
                 </div>
-              `,
+              </div>
+            `,
             text: `${inviterName} invited you to join GreenPass as a ${invitedRoleLabel}.
 
 Open this link to accept your invitation:
@@ -1510,7 +1661,9 @@ exports.acceptInvite = onRequest(async (req, res) => {
       const authedEmail = (decoded?.email || "").toString().toLowerCase();
 
       const { inviteId, token } = req.body || {};
-      if (!inviteId || !token) return res.status(400).json({ error: "Missing inviteId/token" });
+      if (!inviteId || !token) {
+        return res.status(400).json({ error: "Missing inviteId/token" });
+      }
 
       const inviteRef = admin.firestore().doc(`invites/${inviteId}`);
       const userRef = admin.firestore().doc(`users/${uid}`);
@@ -1534,29 +1687,91 @@ exports.acceptInvite = onRequest(async (req, res) => {
         }
 
         const invitedRole = normalizeRole(inv.invitedRole);
-        if (invitedRole !== "agent" && invitedRole !== "school" && invitedRole !== "student") {
+        if (
+          invitedRole !== "agent" &&
+          invitedRole !== "school" &&
+          invitedRole !== "student" &&
+          invitedRole !== "collaborator"
+        ) {
           throw new Error("Invalid invited role");
         }
 
-        tx.set(
-          userRef,
-          {
-            role: invitedRole,
-            selected_role: invitedRole,
-            user_type: invitedRole,
-            userType: invitedRole,
-            onboarding_completed: false,
-            onboarding_step: "basic_info",
-            invited_by: {
-              uid: inv.inviterId || "",
-              role: inv.inviterRole || "",
-              inviteId: inviteId,
+        const userSnap = await tx.get(userRef);
+        const existingUser = userSnap.exists ? userSnap.data() || {} : {};
+
+        if (invitedRole === "collaborator") {
+          const existingBaseRole = normalizeRole(
+            existingUser.role ||
+              existingUser.user_type ||
+              existingUser.selected_role ||
+              existingUser.userType
+          );
+
+          const safeBaseRole =
+            existingBaseRole && existingBaseRole !== "collaborator"
+              ? existingBaseRole
+              : "student";
+
+          const collaboratorReferralCode = buildCollaboratorReferralCode(existingUser, uid);
+          const collaboratorReferralLink = buildCollaboratorReferralLink(collaboratorReferralCode);
+
+          tx.set(
+            userRef,
+            {
+              role: safeBaseRole,
+              selected_role: safeBaseRole,
+              user_type: safeBaseRole,
+              userType: safeBaseRole,
+
+              is_collaborator: true,
+              collaborator_status: "approved",
+              collaborator_tier: existingUser.collaborator_tier || "bronze",
+              collaborator_referral_code: collaboratorReferralCode,
+              collaborator_referral_link: collaboratorReferralLink,
+              collaborator_invited_total: Number(existingUser.collaborator_invited_total || 0),
+              collaborator_completed_profiles: Number(existingUser.collaborator_completed_profiles || 0),
+              collaborator_verified_users: Number(existingUser.collaborator_verified_users || 0),
+              collaborator_estimated_rewards: Number(existingUser.collaborator_estimated_rewards || 0),
+              invited_as_collaborator_by_admin: true,
+
+              onboarding_completed:
+                typeof existingUser.onboarding_completed === "boolean"
+                  ? existingUser.onboarding_completed
+                  : false,
+              onboarding_step: existingUser.onboarding_step || "basic_info",
+
+              invited_by: {
+                uid: inv.inviterId || "",
+                role: inv.inviterRole || "",
+                inviteId,
+              },
+
+              updated_at: admin.firestore.FieldValue.serverTimestamp(),
+              email: authedEmail || admin.firestore.FieldValue.delete(),
             },
-            updated_at: admin.firestore.FieldValue.serverTimestamp(),
-            email: authedEmail || admin.firestore.FieldValue.delete(),
-          },
-          { merge: true }
-        );
+            { merge: true }
+          );
+        } else {
+          tx.set(
+            userRef,
+            {
+              role: invitedRole,
+              selected_role: invitedRole,
+              user_type: invitedRole,
+              userType: invitedRole,
+              onboarding_completed: false,
+              onboarding_step: "basic_info",
+              invited_by: {
+                uid: inv.inviterId || "",
+                role: inv.inviterRole || "",
+                inviteId,
+              },
+              updated_at: admin.firestore.FieldValue.serverTimestamp(),
+              email: authedEmail || admin.firestore.FieldValue.delete(),
+            },
+            { merge: true }
+          );
+        }
 
         tx.update(inviteRef, {
           status: "used",
@@ -1570,7 +1785,12 @@ exports.acceptInvite = onRequest(async (req, res) => {
       console.error("acceptInvite error:", e);
       const msg = e?.message || "Failed to accept invite";
       const low = String(msg).toLowerCase();
-      const code = low.includes("missing authorization") ? 401 : low.includes("not found") ? 404 : 400;
+      const code = low.includes("missing authorization")
+        ? 401
+        : low.includes("not found")
+        ? 404
+        : 400;
+
       return res.status(code).json({ error: msg });
     }
   });
@@ -2130,6 +2350,31 @@ exports.sendTutorSessionReminders = onSchedule(
         start: startDate.toISOString(),
         end: endDate?.toISOString?.() || null,
       });
+    }
+  }
+);
+
+exports.syncCollaboratorReferralOnUserCreate = onDocumentCreated(
+  "users/{userId}",
+  async (event) => {
+    try {
+      const after = event.data?.data?.() || {};
+      await syncCollaboratorReferralForUser(event.params.userId, {}, after);
+    } catch (err) {
+      console.error("syncCollaboratorReferralOnUserCreate error:", err);
+    }
+  }
+);
+
+exports.syncCollaboratorReferralOnUserUpdate = onDocumentUpdated(
+  "users/{userId}",
+  async (event) => {
+    try {
+      const before = event.data?.before?.data?.() || {};
+      const after = event.data?.after?.data?.() || {};
+      await syncCollaboratorReferralForUser(event.params.userId, before, after);
+    } catch (err) {
+      console.error("syncCollaboratorReferralOnUserUpdate error:", err);
     }
   }
 );

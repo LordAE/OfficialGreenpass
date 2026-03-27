@@ -1,28 +1,27 @@
-// src/pages/AdminWalletManagement.jsx
-import React, { useState, useEffect, useCallback } from "react";
-import { db, auth } from "@/firebase";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { auth, db, storage } from "@/firebase";
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
-  query,
-  where,
-  orderBy,
   updateDoc,
 } from "firebase/firestore";
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
 
 import {
   Card,
-  CardHeader,
-  CardTitle,
   CardContent,
   CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -31,613 +30,645 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Wallet as WalletIcon,
-  DollarSign,
-  Clock,
-  CheckCircle,
-  XCircle,
-  PauseCircle,
-} from "lucide-react";
-import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Users,
+  DollarSign,
+  Clock3,
+  CheckCircle2,
+  Search,
+  Trophy,
+  TrendingUp,
+  Upload,
+  FileText,
+} from "lucide-react";
 
-// ---------- helpers ----------
-const toDate = (v) => {
-  if (!v) return null;
+const MIN_PAYOUT_THRESHOLD = 50;
+
+function normalizeRole(user = {}) {
+  return String(
+    user?.user_type ||
+      user?.role ||
+      user?.selected_role ||
+      user?.userType ||
+      ""
+  ).toLowerCase();
+}
+
+function isCollaboratorUser(user = {}) {
+  const role = normalizeRole(user);
+  const roles = Array.isArray(user?.roles)
+    ? user.roles.map((r) => String(r).toLowerCase())
+    : [];
+
+  return (
+    role === "collaborator" ||
+    roles.includes("collaborator") ||
+    user?.is_collaborator === true ||
+    !!user?.collaborator_referral_code ||
+    !!user?.collaborator_status
+  );
+}
+
+function toDate(value) {
   try {
-    if (typeof v?.toDate === "function") return v.toDate(); // Firestore Timestamp
-    return new Date(v);
+    if (!value) return null;
+    if (typeof value?.toDate === "function") return value.toDate();
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
   } catch {
     return null;
   }
-};
+}
 
-// Firestore can query up to 10 ids with "in"; chunk for larger arrays
-async function fetchDocsByIds(coll, ids) {
-  if (!ids?.length) return [];
-  const chunks = [];
-  for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
-  const results = [];
-  for (const chunk of chunks) {
-    const q = query(collection(db, coll), where("__name__", "in", chunk));
-    const snap = await getDocs(q);
-    results.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+function formatDate(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  return d.toLocaleDateString();
+}
+
+function money(value) {
+  return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function getTierPriority(tier) {
+  const t = String(tier || "bronze").toLowerCase();
+  if (t === "gold") return 3;
+  if (t === "silver") return 2;
+  return 1;
+}
+
+function StatCard({ title, value, hint, icon: Icon }) {
+  return (
+    <Card className="rounded-2xl border-slate-200 shadow-sm">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm text-slate-500">{title}</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">{value}</div>
+            {hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
+          </div>
+          <div className="rounded-xl bg-slate-100 p-3 text-slate-700">
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function getCommissionStatusBadge(status) {
+  const normalized = String(status || "not_due").toLowerCase();
+
+  if (normalized === "paid") {
+    return (
+      <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+        Paid
+      </Badge>
+    );
   }
-  return results;
+
+  if (normalized === "pending_payment") {
+    return (
+      <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+        Pending Commission
+      </Badge>
+    );
+  }
+
+  return <Badge variant="secondary">Not Due</Badge>;
 }
 
 export default function AdminWalletManagement() {
-  const [wallets, setWallets] = useState([]);
-  const [earningTransactions, setEarningTransactions] = useState([]);
-  const [payoutRequests, setPayoutRequests] = useState([]);
-  const [users, setUsers] = useState({});
-  const [relatedEntities, setRelatedEntities] = useState({});
   const [loading, setLoading] = useState(true);
+  const [collaborators, setCollaborators] = useState([]);
+  const [search, setSearch] = useState("");
 
-  const [holdModalState, setHoldModalState] = useState({
-    isOpen: false,
-    request: null,
+  const [paymentModal, setPaymentModal] = useState({
+    open: false,
+    collaborator: null,
+    action: null, // "paid" | "unpaid"
   });
-  const [holdReason, setHoldReason] = useState("");
-  const [isSubmittingHold, setIsSubmittingHold] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [paidAmount, setPaidAmount] = useState("");
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const fetchCollaborators = useCallback(async () => {
     setLoading(true);
     try {
-      // ---- wallets (ordered by balance if you keep a "balance_usd" numeric field) ----
-      // Fallback to unordered read if index not available.
-      let walletDocs = [];
-      try {
-        const wq = query(collection(db, "wallets"), orderBy("balance_usd", "desc"));
-        const wsnap = await getDocs(wq);
-        walletDocs = wsnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      } catch {
-        const wsnap = await getDocs(collection(db, "wallets"));
-        walletDocs = wsnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      }
-      setWallets(walletDocs);
+      const usersSnap = await getDocs(collection(db, "users"));
 
-      // ---- earnings (transaction_type=earning) ----
-      // To minimize index needs, query by type then filter by status client-side.
-      const earnQ = query(
-        collection(db, "walletTransactions"),
-        where("transaction_type", "==", "earning")
-      );
-      const earnSnap = await getDocs(earnQ);
-      const allEarnings = earnSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const pendingEarnings = allEarnings.filter((t) => t.status === "pending");
+      const rows = usersSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter(isCollaboratorUser)
+        .sort((a, b) => {
+          const tierDiff =
+            getTierPriority(b?.collaborator_tier) - getTierPriority(a?.collaborator_tier);
+          if (tierDiff !== 0) return tierDiff;
 
-      // ---- payout requests (transaction_type=payout_request) ----
-      const reqQ = query(
-        collection(db, "walletTransactions"),
-        where("transaction_type", "==", "payout_request")
-      );
-      const reqSnap = await getDocs(reqQ);
-      const allRequests = reqSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const pendingOrHold = allRequests.filter(
-        (r) => r.status === "pending" || r.status === "hold"
-      );
+          return (
+            Number(b?.collaborator_estimated_rewards || 0) -
+            Number(a?.collaborator_estimated_rewards || 0)
+          );
+        });
 
-      setEarningTransactions(pendingEarnings);
-      setPayoutRequests(pendingOrHold);
-
-      // ---- users map ----
-      const usnap = await getDocs(collection(db, "users"));
-      const usersMap = {};
-      usnap.docs.forEach((d) => (usersMap[d.id] = { id: d.id, ...d.data() }));
-      setUsers(usersMap);
-
-      // ---- related entities for pending earnings (tutoring session / visa commission / school commission) ----
-      const sessionIds = pendingEarnings
-        .filter((t) => t.related_entity_type === "tutoring_session" && t.related_entity_id)
-        .map((t) => t.related_entity_id);
-      const caseIds = pendingEarnings
-        .filter((t) => t.related_entity_type === "visa_commission" && t.related_entity_id)
-        .map((t) => t.related_entity_id);
-      const reservationIds = pendingEarnings
-        .filter((t) => t.related_entity_type === "school_commission" && t.related_entity_id)
-        .map((t) => t.related_entity_id);
-
-      const [sessions, cases, reservations] = await Promise.all([
-        fetchDocsByIds("tutoringSessions", Array.from(new Set(sessionIds))),
-        fetchDocsByIds("cases", Array.from(new Set(caseIds))),
-        fetchDocsByIds("reservations", Array.from(new Set(reservationIds))),
-      ]);
-
-      const entitiesMap = {};
-      sessions.forEach(
-        (s) => (entitiesMap[s.id] = { ...s, type: "Tutoring Session", studentId: s.student_id })
-      );
-      cases.forEach(
-        (c) => (entitiesMap[c.id] = { ...c, type: "Visa Commission", studentId: c.student_id })
-      );
-      reservations.forEach(
-        (r) => (entitiesMap[r.id] = { ...r, type: "School Commission", studentId: r.student_id })
-      );
-      setRelatedEntities(entitiesMap);
-    } catch (e) {
-      console.error("Error loading wallet data:", e);
+      setCollaborators(rows);
+    } catch (error) {
+      console.error("Failed to load collaborators:", error);
+      alert("Failed to load collaborator progress.");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchCollaborators();
+  }, [fetchCollaborators]);
 
-  // ---- actions ----
+  const collaboratorRows = useMemo(() => {
+    return collaborators.map((user) => {
+      const invited = Number(user?.collaborator_invited_total || 0);
+      const completed = Number(user?.collaborator_completed_profiles || 0);
+      const verified = Number(user?.collaborator_verified_users || 0);
+      const estimatedRewards = Number(user?.collaborator_estimated_rewards || 0);
+      const paidOutTotal = Number(user?.collaborator_paid_out_total || 0);
 
-  const getWalletById = async (walletId) => {
-    if (!walletId) return null;
-    const snap = await getDoc(doc(db, "wallets", walletId));
-    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+      const availableDue = Math.max(0, estimatedRewards - paidOutTotal);
+      const isDue = availableDue >= MIN_PAYOUT_THRESHOLD;
+
+      const commissionStatus = isDue
+        ? String(user?.collaborator_commission_status || "pending_payment").toLowerCase()
+        : "not_due";
+
+      return {
+        ...user,
+        invited,
+        completed,
+        verified,
+        estimatedRewards,
+        paidOutTotal,
+        availableDue,
+        isDue,
+        commissionStatus,
+      };
+    });
+  }, [collaborators]);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return collaboratorRows;
+
+    return collaboratorRows.filter((row) => {
+      const haystack = [
+        row?.full_name,
+        row?.email,
+        row?.collaborator_referral_code,
+        row?.collaborator_tier,
+        row?.collaborator_status,
+        row?.collaborator_commission_status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [collaboratorRows, search]);
+
+  const stats = useMemo(() => {
+    const totalCollaborators = collaboratorRows.length;
+    const dueCount = collaboratorRows.filter((r) => r.isDue).length;
+    const pendingCommissionCount = collaboratorRows.filter(
+      (r) => r.isDue && r.commissionStatus !== "paid"
+    ).length;
+    const totalDueAmount = collaboratorRows.reduce(
+      (sum, r) => sum + Number(r.availableDue || 0),
+      0
+    );
+    const totalPaidOut = collaboratorRows.reduce(
+      (sum, r) => sum + Number(r.paidOutTotal || 0),
+      0
+    );
+
+    return {
+      totalCollaborators,
+      dueCount,
+      pendingCommissionCount,
+      totalDueAmount,
+      totalPaidOut,
+    };
+  }, [collaboratorRows]);
+
+  const openPaymentModal = (collaborator, action) => {
+    setPaymentModal({
+      open: true,
+      collaborator,
+      action,
+    });
+    setPaymentNotes("");
+    setReceiptFile(null);
+    setPaidAmount(
+      action === "paid" ? String(Number(collaborator?.availableDue || 0).toFixed(2)) : ""
+    );
   };
 
-  const handlePayoutRequest = async (request, newStatus) => {
-    // newStatus: 'approved' | 'rejected' | 'pending' (used for release hold)
-    const isApproved = newStatus === "approved";
+  const closePaymentModal = () => {
+    setPaymentModal({
+      open: false,
+      collaborator: null,
+      action: null,
+    });
+    setPaymentNotes("");
+    setReceiptFile(null);
+    setPaidAmount("");
+  };
+
+  const uploadReceiptIfNeeded = async (collaborator, file) => {
+    if (!file) {
+      return { receiptUrl: "", receiptFileName: "" };
+    }
+
+    const safeName = `${Date.now()}-${file.name}`;
+    const collaboratorUid = collaborator?.uid || collaborator?.id || "unknown";
+    const storageRef = ref(
+      storage,
+      `collaborator_commission_receipts/${collaboratorUid}/${safeName}`
+    );
+
+    await uploadBytes(storageRef, file);
+    const receiptUrl = await getDownloadURL(storageRef);
+
+    return {
+      receiptUrl,
+      receiptFileName: file.name,
+    };
+  };
+
+  const handleCommissionUpdate = async () => {
+    const collaborator = paymentModal.collaborator;
+    const action = paymentModal.action;
+
+    if (!collaborator || !action) return;
+
+    setSubmitting(true);
     try {
-      const currentUserId = auth.currentUser?.uid || "admin";
+      const adminUid = auth.currentUser?.uid || "admin";
+      const now = new Date().toISOString();
 
-      // 1) update the payout request transaction
-      await updateDoc(doc(db, "walletTransactions", request.id), {
-        status: newStatus,
-        approved_by: currentUserId,
-        approved_at: new Date().toISOString(),
-      });
+      if (action === "paid") {
+        const amount = Number(paidAmount || 0);
 
-      // 2) adjust wallet balances
-      const wallet = await getWalletById(request.wallet_id);
-      if (wallet) {
-        const payoutAmount = Math.abs(Number(request.amount_usd) || 0);
-        const patch = {
-          pending_payout: (Number(wallet.pending_payout) || 0) - payoutAmount,
-        };
-
-        if (isApproved) {
-          patch.total_paid_out = (Number(wallet.total_paid_out) || 0) + payoutAmount;
-          patch.last_payout_date = new Date().toISOString();
-        } else if (newStatus === "rejected" || newStatus === "pending") {
-          // "pending" here is used when releasing a hold; funds stay in pending_payout if you want.
-          // In the original logic, releasing hold moved status back to 'pending' without balance change.
-          // We'll mirror original behavior exactly:
-          // - For rejected: return to available balance
-          // - For pending (release hold): do NOT change balance_usd here (funds remain pending payout)
-          if (newStatus === "rejected") {
-            patch.balance_usd = (Number(wallet.balance_usd) || 0) + payoutAmount;
-          } else {
-            // release hold => revert the transaction status only; do nothing to balances
-            delete patch.pending_payout; // keep pending_payout unchanged
-          }
+        if (!amount || amount <= 0) {
+          alert("Please enter a valid paid amount.");
+          setSubmitting(false);
+          return;
         }
 
-        if (Object.keys(patch).length > 0) {
-          await updateDoc(doc(db, "wallets", wallet.id), patch);
-        }
-      }
+        const { receiptUrl, receiptFileName } = await uploadReceiptIfNeeded(
+          collaborator,
+          receiptFile
+        );
 
-      alert(`Payout request ${newStatus}.`);
-      fetchData();
-    } catch (e) {
-      console.error(`Error ${newStatus} payout request:`, e);
-      alert(`Failed to ${newStatus} payout request.`);
-    }
-  };
-
-  const openHoldModal = (request) => {
-    setHoldModalState({ isOpen: true, request });
-    setHoldReason("");
-  };
-
-  const handleConfirmHold = async () => {
-    if (!holdModalState.request || !holdReason.trim()) {
-      alert("Please provide a reason for holding the payout.");
-      return;
-    }
-    setIsSubmittingHold(true);
-    try {
-      const currentUserId = auth.currentUser?.uid || "admin";
-      await updateDoc(doc(db, "walletTransactions", holdModalState.request.id), {
-        status: "hold",
-        notes: `HOLD: ${holdReason}`,
-        approved_by: currentUserId,
-        approved_at: new Date().toISOString(),
-      });
-
-      alert("Payout request has been put on hold.");
-      setHoldModalState({ isOpen: false, request: null });
-      fetchData();
-    } catch (e) {
-      console.error("Error holding payout request:", e);
-      alert("Failed to hold payout request.");
-    }
-    setIsSubmittingHold(false);
-  };
-
-  const handleApproveEarning = async (transaction) => {
-    try {
-      const currentUserId = auth.currentUser?.uid || "admin";
-
-      // 1) mark earning as approved
-      await updateDoc(doc(db, "walletTransactions", transaction.id), {
-        status: "approved",
-        approved_by: currentUserId,
-        approved_at: new Date().toISOString(),
-      });
-
-      // 2) credit wallet
-      const wallet = wallets.find((w) => w.id === transaction.wallet_id) || (await getWalletById(transaction.wallet_id));
-      if (wallet) {
-        const amt = Number(transaction.amount_usd) || 0;
-        await updateDoc(doc(db, "wallets", wallet.id), {
-          balance_usd: (Number(wallet.balance_usd) || 0) + amt,
-          total_earned:
-            (Number(wallet.total_earned) || 0) + (amt > 0 ? amt : 0),
+        await updateDoc(doc(db, "users", collaborator.id), {
+          collaborator_commission_status: "paid",
+          collaborator_paid_out_total: Number(
+            (Number(collaborator.paidOutTotal || 0) + amount).toFixed(2)
+          ),
+          collaborator_last_payout_amount: Number(amount.toFixed(2)),
+          collaborator_last_payout_date: now,
+          collaborator_last_payout_notes: paymentNotes.trim(),
+          collaborator_last_payout_marked_by: adminUid,
+          collaborator_last_payout_reviewed_at: now,
+          collaborator_last_receipt_url: receiptUrl || "",
+          collaborator_last_receipt_file_name: receiptFileName || "",
+        });
+      } else {
+        await updateDoc(doc(db, "users", collaborator.id), {
+          collaborator_commission_status: collaborator.isDue ? "pending_payment" : "not_due",
+          collaborator_last_payout_notes: paymentNotes.trim(),
+          collaborator_last_payout_marked_by: adminUid,
+          collaborator_last_payout_reviewed_at: now,
         });
       }
 
-      await fetchData();
-      alert("Earning approved successfully!");
-    } catch (e) {
-      console.error("Error approving earning:", e);
-      alert("Failed to approve earning.");
+      closePaymentModal();
+      await fetchCollaborators();
+      alert("Collaborator commission status updated.");
+    } catch (error) {
+      console.error("Failed to update collaborator commission status:", error);
+      alert("Failed to update collaborator commission status.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex min-h-[75vh] items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-emerald-600" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <WalletIcon className="w-8 h-8 text-blue-600" />
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-emerald-600 bg-clip-text text-transparent">
-            Wallet Management
-          </h1>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-cyan-50 p-6">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+              <TrendingUp className="h-4 w-4" />
+              Admin view
+            </div>
+            <h1 className="text-3xl font-bold text-slate-900">
+              Collaborator Progress
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Track each collaborator’s referral progress and manually update
+              commission payments done outside the app.
+            </p>
+          </div>
 
-        <Tabs defaultValue="wallets" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="wallets">Wallets Overview</TabsTrigger>
-            <TabsTrigger value="payouts">
-              Payout Requests <Badge className="ml-2">{payoutRequests.length}</Badge>
-            </TabsTrigger>
-            <TabsTrigger value="earnings">
-              Pending Earnings <Badge className="ml-2">{earningTransactions.length}</Badge>
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Wallets */}
-          <TabsContent value="wallets">
-            <Card>
-              <CardHeader>
-                <CardTitle>Wallets Overview</CardTitle>
-                <CardDescription>A summary of all user wallets.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-6">
-                  {wallets.map((wallet) => {
-                    const user = users[wallet.user_id];
-                    const last = toDate(wallet.last_payout_date);
-                    return (
-                      <Card key={wallet.id}>
-                        <CardHeader>
-                          <div className="flex justify-between items-center">
-                            <CardTitle className="flex items-center gap-2">
-                              <WalletIcon className="w-5 h-5" />
-                              {user?.full_name} - {wallet.user_type}
-                            </CardTitle>
-                            <div className="text-right">
-                              <div className="text-2xl font-bold text-green-600">
-                                ${Number(wallet.balance_usd || 0).toFixed(2)}
-                              </div>
-                              <div className="text-sm text-gray-500">Current Balance</div>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <span className="text-gray-500">Total Earned:</span>
-                              <div className="font-semibold">
-                                ${Number(wallet.total_earned || 0).toFixed(2)}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Pending Payout:</span>
-                              <div className="font-semibold">
-                                ${Number(wallet.pending_payout || 0).toFixed(2)}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Total Paid Out:</span>
-                              <div className="font-semibold">
-                                ${Number(wallet.total_paid_out || 0).toFixed(2)}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Last Payout:</span>
-                              <div className="font-semibold">
-                                {last ? format(last, "MMM dd, yyyy") : "Never"}
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Payout Requests */}
-          <TabsContent value="payouts">
-            <Card>
-              <CardHeader>
-                <CardTitle>Pending Payout Requests</CardTitle>
-                <CardDescription>
-                  Review, approve, or reject payout requests from users. Requests on hold are also shown here.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {payoutRequests.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>User</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Payment Details / Notes</TableHead>
-                        <TableHead>Date Requested</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {payoutRequests.map((request) => {
-                        const user = users[request.user_id];
-                        const wallet = wallets.find((w) => w.id === request.wallet_id);
-                        const created = toDate(request.created_date);
-                        return (
-                          <TableRow key={request.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{user?.full_name}</p>
-                                <Badge variant="outline" className="text-xs capitalize">
-                                  {wallet?.user_type}
-                                </Badge>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-medium text-red-600">
-                              {request.status === "hold" && (
-                                <Badge variant="destructive" className="mr-2">
-                                  HOLD
-                                </Badge>
-                              )}
-                              -${Math.abs(Number(request.amount_usd) || 0).toFixed(2)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="text-sm">
-                                {wallet?.payment_details?.paypal_email
-                                  ? `PayPal: ${wallet.payment_details.paypal_email}`
-                                  : "No Payment Details Set"}
-                              </div>
-                              {request.notes && (
-                                <div className="text-xs text-gray-500">{request.notes}</div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {created ? format(created, "MMM dd, yyyy") : "—"}
-                            </TableCell>
-                            <TableCell className="flex gap-2">
-                              {request.status === "pending" && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handlePayoutRequest(request, "approved")}
-                                    className="bg-green-600 hover:bg-green-700 text-white"
-                                  >
-                                    <CheckCircle className="w-4 h-4 mr-1" />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => handlePayoutRequest(request, "rejected")}
-                                  >
-                                    <XCircle className="w-4 h-4 mr-1" />
-                                    Reject
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => openHoldModal(request)}
-                                    className="text-yellow-600 border-yellow-500 hover:bg-yellow-50 hover:text-yellow-700"
-                                  >
-                                    <PauseCircle className="w-4 h-4 mr-1" />
-                                    Hold
-                                  </Button>
-                                </>
-                              )}
-                              {request.status === "hold" && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handlePayoutRequest(request, "pending")}
-                                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                                >
-                                  <CheckCircle className="w-4 h-4 mr-1" />
-                                  Release Hold
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="text-center py-8">
-                    <DollarSign className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      No Pending Payouts
-                    </h3>
-                    <p className="text-gray-600">
-                      All user payout requests have been processed or are on hold.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Earnings */}
-          <TabsContent value="earnings">
-            <Card>
-              <CardHeader>
-                <CardTitle>Pending Earnings Approval</CardTitle>
-                <CardDescription>
-                  Approve earnings to make them available in user wallets. Earnings can come from various sources.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {earningTransactions.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>User</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Details</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {earningTransactions.map((t) => {
-                        const user = users[t.user_id];
-                        const related = relatedEntities[t.related_entity_id];
-                        const student =
-                          related && related.studentId ? users[related.studentId] : null;
-                        const created = toDate(t.created_date);
-                        const wallet = wallets.find((w) => w.id === t.wallet_id);
-
-                        return (
-                          <TableRow key={t.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{user?.full_name}</p>
-                                <Badge variant="outline" className="text-xs capitalize">
-                                  {wallet?.user_type}
-                                </Badge>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge>
-                                {related?.type || (t.related_entity_type || "").replace(/_/g, " ")}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {student && (
-                                <Link
-                                  to={createPageUrl(`UserDetails?id=${student.id}`)}
-                                  className="text-blue-600 hover:underline"
-                                >
-                                  {student.full_name}
-                                </Link>
-                              )}
-                              {t.description && (
-                                <p className="text-xs text-gray-500">{t.description}</p>
-                              )}
-                            </TableCell>
-                            <TableCell className="font-medium text-green-600">
-                              +${Number(t.amount_usd || 0).toFixed(2)}
-                            </TableCell>
-                            <TableCell>
-                              {created ? format(created, "MMM dd, yyyy") : "—"}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                onClick={() => handleApproveEarning(t)}
-                                className="bg-green-600 hover:bg-green-700 text-white"
-                              >
-                                <CheckCircle className="w-4 h-4 mr-1" />
-                                Approve
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="text-center py-8">
-                    <Clock className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      No Pending Earnings
-                    </h3>
-                    <p className="text-gray-600">All earnings have been processed.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      {/* Hold Dialog */}
-      <Dialog
-        open={holdModalState.isOpen}
-        onOpenChange={(isOpen) => setHoldModalState({ ...holdModalState, isOpen })}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hold Payout Request</DialogTitle>
-            <DialogDescription>
-              Provide a reason for temporarily holding this payout. The funds will remain in
-              &quot;Pending Payout&quot; and will not be returned to the user&apos;s available
-              balance until the hold is released.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-2">
-            <div>
-              <Label htmlFor="hold-reason">Reason for Hold</Label>
-              <Textarea
-                id="hold-reason"
-                value={holdReason}
-                onChange={(e) => setHoldReason(e.target.value)}
-                placeholder="e.g., Verifying student enrollment, Awaiting payment details, Fraud suspicion"
-                rows={4}
+          <div className="w-full max-w-sm">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search collaborator, email, code, tier..."
+                className="pl-9"
               />
             </div>
           </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <StatCard
+            title="Total collaborators"
+            value={stats.totalCollaborators}
+            hint="All collaborator accounts"
+            icon={Users}
+          />
+          <StatCard
+            title="Due for commission"
+            value={stats.dueCount}
+            hint={`At least ${money(MIN_PAYOUT_THRESHOLD)} available`}
+            icon={DollarSign}
+          />
+          <StatCard
+            title="Pending commission"
+            value={stats.pendingCommissionCount}
+            hint="Due but not yet marked paid"
+            icon={Clock3}
+          />
+          <StatCard
+            title="Total amount due"
+            value={money(stats.totalDueAmount)}
+            hint="Still unpaid"
+            icon={TrendingUp}
+          />
+          <StatCard
+            title="Total paid out"
+            value={money(stats.totalPaidOut)}
+            hint="Marked manually by admin"
+            icon={CheckCircle2}
+          />
+        </div>
+
+        <Card className="rounded-2xl border-slate-200 shadow-sm">
+          <CardHeader>
+            <CardTitle>Collaborator commission tracker</CardTitle>
+            <CardDescription>
+              Monitor collaborator progress, pending commissions, and third-party payment proof.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {filteredRows.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Collaborator</TableHead>
+                      <TableHead>Tier</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Invited</TableHead>
+                      <TableHead>Completed</TableHead>
+                      <TableHead>Verified</TableHead>
+                      <TableHead>Estimated Commission</TableHead>
+                      <TableHead>Paid Out</TableHead>
+                      <TableHead>Pending Commission</TableHead>
+                      <TableHead>Last Paid</TableHead>
+                      <TableHead>Receipt</TableHead>
+                      <TableHead className="min-w-[260px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+
+                  <TableBody>
+                    {filteredRows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium text-slate-900">
+                              {row?.full_name || "Unnamed collaborator"}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {row?.email || "No email"}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              Code: {row?.collaborator_referral_code || "—"}
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <Badge
+                            className={
+                              String(row?.collaborator_tier || "bronze").toLowerCase() === "gold"
+                                ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-100"
+                                : String(row?.collaborator_tier || "bronze").toLowerCase() === "silver"
+                                ? "bg-slate-200 text-slate-700 hover:bg-slate-200"
+                                : "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                            }
+                          >
+                            <Trophy className="mr-1 h-3.5 w-3.5" />
+                            {String(row?.collaborator_tier || "bronze").toLowerCase()}
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {String(row?.collaborator_status || "pending").toLowerCase()}
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell>{row.invited}</TableCell>
+                        <TableCell>{row.completed}</TableCell>
+                        <TableCell>{row.verified}</TableCell>
+                        <TableCell>{money(row.estimatedRewards)}</TableCell>
+                        <TableCell>{money(row.paidOutTotal)}</TableCell>
+
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="font-semibold text-slate-900">
+                              {money(row.availableDue)}
+                            </div>
+                            <div>{getCommissionStatusBadge(row.commissionStatus)}</div>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="text-sm text-slate-700">
+                            {formatDate(row?.collaborator_last_payout_date)}
+                          </div>
+                          {row?.collaborator_last_payout_amount ? (
+                            <div className="text-xs text-slate-500">
+                              {money(row?.collaborator_last_payout_amount)}
+                            </div>
+                          ) : null}
+                        </TableCell>
+
+                        <TableCell>
+                          {row?.collaborator_last_receipt_url ? (
+                            <a
+                              href={row.collaborator_last_receipt_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-emerald-700 hover:underline"
+                            >
+                              <FileText className="h-4 w-4" />
+                              {row?.collaborator_last_receipt_file_name || "View receipt"}
+                            </a>
+                          ) : (
+                            <span className="text-sm text-slate-400">—</span>
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 text-white hover:bg-emerald-700"
+                              disabled={!row.isDue}
+                              onClick={() => openPaymentModal(row, "paid")}
+                            >
+                              Mark as Paid
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openPaymentModal(row, "unpaid")}
+                            >
+                              Mark as Not Yet Paid
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="py-10 text-center text-slate-500">
+                No collaborators found.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={paymentModal.open} onOpenChange={(open) => !open && closePaymentModal()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {paymentModal.action === "paid"
+                ? "Mark commission as paid"
+                : "Mark commission as not yet paid"}
+            </DialogTitle>
+            <DialogDescription>
+              This is a manual admin update only. Actual payment can be processed outside the app.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+              <div>
+                <strong>Collaborator:</strong>{" "}
+                {paymentModal.collaborator?.full_name || "—"}
+              </div>
+              <div>
+                <strong>Pending commission:</strong>{" "}
+                {money(paymentModal.collaborator?.availableDue || 0)}
+              </div>
+            </div>
+
+            {paymentModal.action === "paid" ? (
+              <>
+                <div>
+                  <div className="mb-2 text-sm font-medium text-slate-700">
+                    Amount paid
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={paidAmount}
+                    onChange={(e) => setPaidAmount(e.target.value)}
+                    placeholder="Enter actual amount paid"
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-2 text-sm font-medium text-slate-700">
+                    Upload receipt / proof document
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-600 hover:bg-slate-50">
+                    <Upload className="h-4 w-4" />
+                    <span>{receiptFile ? receiptFile.name : "Choose file"}</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                      onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+              </>
+            ) : null}
+
+            <div>
+              <div className="mb-2 text-sm font-medium text-slate-700">
+                Admin notes
+              </div>
+              <Textarea
+                rows={4}
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+                placeholder="Optional note, reference number, payment channel, or reminder"
+              />
+            </div>
+          </div>
+
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setHoldModalState({ isOpen: false, request: null })}
-            >
+            <Button variant="outline" onClick={closePaymentModal}>
               Cancel
             </Button>
-            <Button onClick={handleConfirmHold} disabled={isSubmittingHold || !holdReason.trim()}>
-              {isSubmittingHold ? "Holding..." : "Confirm Hold"}
+            <Button
+              onClick={handleCommissionUpdate}
+              disabled={submitting}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {submitting ? "Saving..." : "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>
