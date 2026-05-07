@@ -489,9 +489,21 @@ function buildCollaboratorReferralCode(userData = {}, uid = "") {
   return `GP-${namePart}${uidPart}`;
 }
 
-function buildCollaboratorReferralLink(code) {
+function buildCollaboratorReferralLink(code, role = "user") {
   const base = String(COLLABORATOR_BASE_URL || "https://greenpassgroup.com").replace(/\/+$/, "");
-  return `${base}/?ref=${encodeURIComponent(code)}`;
+  const safeRole = String(role || "user").trim().toLowerCase();
+
+  return `${base}/?role=${encodeURIComponent(safeRole)}&ref=${encodeURIComponent(code)}`;
+}
+
+function buildCollaboratorRoleInviteLinks(code) {
+  return {
+    user: buildCollaboratorReferralLink(code, "user"),
+    agent: buildCollaboratorReferralLink(code, "agent"),
+    tutor: buildCollaboratorReferralLink(code, "tutor"),
+    school: buildCollaboratorReferralLink(code, "school"),
+    collaborator: buildCollaboratorReferralLink(code, "collaborator"),
+  };
 }
 
 function getCollaboratorTierFromVerifiedCount(verifiedUsers = 0) {
@@ -561,28 +573,105 @@ async function syncCollaboratorReferralForUser(userId, beforeData = {}, afterDat
   const db = admin.firestore();
   const referralRef = db.collection("collaborator_referrals").doc(userId);
 
-  const role = normalizeRole(
-    afterData?.role || afterData?.user_type || afterData?.selected_role || afterData?.userType
-  ) || "student";
+  const role =
+    normalizeRole(
+      afterData?.role ||
+        afterData?.user_type ||
+        afterData?.selected_role ||
+        afterData?.userType ||
+        beforeData?.role ||
+        beforeData?.user_type ||
+        beforeData?.selected_role ||
+        beforeData?.userType
+    ) || "student";
 
-  const onboardingCompleted = afterData?.onboarding_completed === true;
-  const verified = afterData?.is_verified === true;
+  const onboardingCompleted =
+    afterData?.onboarding_completed === true ||
+    afterData?.profile_completed === true ||
+    beforeData?.onboarding_completed === true ||
+    beforeData?.profile_completed === true;
+
+  const verified =
+    afterData?.is_verified === true ||
+    afterData?.verified === true ||
+    beforeData?.is_verified === true ||
+    beforeData?.verified === true;
+
   const status = verified ? "verified" : onboardingCompleted ? "completed_profile" : "joined";
 
   const payload = {
     collaborator_uid: collaboratorUid,
     collaborator_code: collaboratorCode,
+
     referred_user_uid: userId,
-    referred_user_email: afterData?.email || beforeData?.email || "",
     referred_user_role: role,
+
+    referred_user_full_name:
+      afterData?.full_name ||
+      afterData?.displayName ||
+      afterData?.name ||
+      beforeData?.full_name ||
+      beforeData?.displayName ||
+      beforeData?.name ||
+      "",
+
+    referred_user_email:
+      afterData?.email ||
+      beforeData?.email ||
+      "",
+
+    referred_user_phone:
+      afterData?.phone ||
+      afterData?.phone_number ||
+      afterData?.mobile ||
+      beforeData?.phone ||
+      beforeData?.phone_number ||
+      beforeData?.mobile ||
+      "",
+
+    referred_user_country:
+      afterData?.country ||
+      beforeData?.country ||
+      "",
+
+    referred_user_country_code:
+      afterData?.country_code ||
+      beforeData?.country_code ||
+      "",
+
+    referred_user_city:
+      afterData?.city ||
+      beforeData?.city ||
+      "",
+
+    referred_user_school_id:
+      afterData?.schoolId ||
+      afterData?.school_id ||
+      beforeData?.schoolId ||
+      beforeData?.school_id ||
+      "",
+
+    referred_user_program_id:
+      afterData?.programId ||
+      afterData?.program_id ||
+      beforeData?.programId ||
+      beforeData?.program_id ||
+      "",
+
     status,
     completed_profile: onboardingCompleted,
     verified,
+
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: admin.firestore.FieldValue.serverTimestamp(),
   };
 
-  if (afterData?.createdAt || beforeData?.createdAt) {
-    payload.referred_user_created_at = afterData?.createdAt || beforeData?.createdAt;
+  if (afterData?.createdAt || beforeData?.createdAt || afterData?.created_at || beforeData?.created_at) {
+    payload.referred_user_created_at =
+      afterData?.createdAt ||
+      beforeData?.createdAt ||
+      afterData?.created_at ||
+      beforeData?.created_at;
   }
 
   if (afterData?.referred_by_collaborator_at || beforeData?.referred_by_collaborator_at) {
@@ -591,11 +680,21 @@ async function syncCollaboratorReferralForUser(userId, beforeData = {}, afterDat
   }
 
   if (onboardingCompleted) {
-    payload.completed_at = afterData?.updatedAt || admin.firestore.FieldValue.serverTimestamp();
+    payload.completed_at =
+      afterData?.updatedAt ||
+      afterData?.updated_at ||
+      beforeData?.updatedAt ||
+      beforeData?.updated_at ||
+      admin.firestore.FieldValue.serverTimestamp();
   }
 
   if (verified) {
-    payload.verified_at = afterData?.updatedAt || admin.firestore.FieldValue.serverTimestamp();
+    payload.verified_at =
+      afterData?.updatedAt ||
+      afterData?.updated_at ||
+      beforeData?.updatedAt ||
+      beforeData?.updated_at ||
+      admin.firestore.FieldValue.serverTimestamp();
   }
 
   await referralRef.set(payload, { merge: true });
@@ -3141,7 +3240,13 @@ exports.acceptInvite = onRequest(async (req, res) => {
               : "student";
 
           const collaboratorReferralCode = buildCollaboratorReferralCode(existingUser, uid);
-          const collaboratorReferralLink = buildCollaboratorReferralLink(collaboratorReferralCode);
+          const collaboratorReferralLink = buildCollaboratorReferralLink(
+            collaboratorReferralCode,
+            "user"
+          );
+          const collaboratorRoleInviteLinks = buildCollaboratorRoleInviteLinks(
+            collaboratorReferralCode
+          );
 
           tx.set(
             userRef,
@@ -3153,6 +3258,7 @@ exports.acceptInvite = onRequest(async (req, res) => {
               collaborator_tier: existingUser.collaborator_tier || "bronze",
               collaborator_referral_code: collaboratorReferralCode,
               collaborator_referral_link: collaboratorReferralLink,
+              collaborator_role_invite_links: collaboratorRoleInviteLinks,
               collaborator_invited_total: Number(existingUser.collaborator_invited_total || 0),
               collaborator_completed_profiles: Number(existingUser.collaborator_completed_profiles || 0),
               collaborator_verified_users: Number(existingUser.collaborator_verified_users || 0),

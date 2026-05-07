@@ -49,6 +49,7 @@ import {
   Loader2,
   Link2,
   XCircle,
+  Handshake,
 } from "lucide-react";
 import { format } from "date-fns";
 import InviteUsersDialog from "@/components/invites/InviteUserDialog";
@@ -59,6 +60,7 @@ const roleIcons = {
   school: <SchoolIcon className="w-4 h-4 text-purple-500" />,
   tutor: <BookOpen className="w-4 h-4 text-green-500" />,
   vendor: <Store className="w-4 h-4 text-orange-500" />,
+  collaborator: <Handshake className="w-4 h-4 text-teal-500" />,
   user: <UserIcon className="w-4 h-4 text-gray-500" />,
   student: <UserIcon className="w-4 h-4 text-gray-500" />,
 };
@@ -69,6 +71,7 @@ const roleLabels = {
   school: "School",
   tutor: "Tutor",
   vendor: "Vendor",
+  collaborator: "Collaborator",
   user: "User",
   student: "Student",
 };
@@ -203,7 +206,9 @@ function AssignedAgentDisplay({ agent }) {
 
   return (
     <div className="min-w-0">
-      <div className="font-medium truncate">{agent.full_name || "Unnamed Agent"}</div>
+      <div className="font-medium truncate">
+        {agent.full_name || "Unnamed Agent"}
+      </div>
       <div className="text-xs text-muted-foreground truncate">
         {agent.email || agent.uid || "—"}
       </div>
@@ -249,9 +254,7 @@ export default function UserManagement() {
         );
 
         setUsers(sorted);
-        setAgents(
-          sorted.filter((user) => getUserRole(user) === "agent")
-        );
+        setAgents(sorted.filter((user) => getUserRole(user) === "agent"));
       } catch (error) {
         console.error("Error loading users:", error);
         setUsers([]);
@@ -268,11 +271,9 @@ export default function UserManagement() {
     const map = new Map();
 
     agents.forEach((agent) => {
-      const possibleKeys = [
-        agent?.id,
-        agent?.uid,
-        agent?.user_id,
-      ].filter(Boolean);
+      const possibleKeys = [agent?.id, agent?.uid, agent?.user_id].filter(
+        Boolean
+      );
 
       possibleKeys.forEach((key) => {
         map.set(String(key), agent);
@@ -433,7 +434,7 @@ export default function UserManagement() {
       <InviteUsersDialog
         open={inviteOpen}
         onOpenChange={setInviteOpen}
-        allowedRoles={["agent", "school", "tutor", "vendor"]}
+        allowedRoles={["agent", "school", "tutor", "vendor", "collaborator"]}
         defaultRole="agent"
         title="Invite User"
       />
@@ -458,8 +459,13 @@ export default function UserManagement() {
             </div>
 
             <div>
-              <label className="text-sm font-medium mb-2 block">Select Agent</label>
-              <Select value={selectedAgentId || ""} onValueChange={setSelectedAgentId}>
+              <label className="text-sm font-medium mb-2 block">
+                Select Agent
+              </label>
+              <Select
+                value={selectedAgentId || ""}
+                onValueChange={setSelectedAgentId}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Choose an agent" />
                 </SelectTrigger>
@@ -633,7 +639,9 @@ export default function UserManagement() {
 
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {roleIcons[role] || <UserIcon className="w-4 h-4" />}
+                            {roleIcons[role] || (
+                              <UserIcon className="w-4 h-4" />
+                            )}
                             {roleLabels[role] || role}
                           </div>
                         </TableCell>
@@ -687,14 +695,20 @@ export default function UserManagement() {
                               <DropdownMenuItem>Edit user</DropdownMenuItem>
 
                               {canAssignAgent(user) ? (
-                                <DropdownMenuItem onClick={() => openAssignDialog(user)}>
+                                <DropdownMenuItem
+                                  onClick={() => openAssignDialog(user)}
+                                >
                                   <Link2 className="w-4 h-4 mr-2" />
-                                  {user._assignedAgentId ? "Change Agent" : "Assign Agent"}
+                                  {user._assignedAgentId
+                                    ? "Change Agent"
+                                    : "Assign Agent"}
                                 </DropdownMenuItem>
                               ) : null}
 
                               {canAssignAgent(user) && user._assignedAgentId ? (
-                                <DropdownMenuItem onClick={() => handleClearAgent(user)}>
+                                <DropdownMenuItem
+                                  onClick={() => handleClearAgent(user)}
+                                >
                                   <XCircle className="w-4 h-4 mr-2" />
                                   Clear Agent
                                 </DropdownMenuItem>
@@ -757,14 +771,20 @@ export default function UserManagement() {
                           <DropdownMenuItem>Edit user</DropdownMenuItem>
 
                           {canAssignAgent(user) ? (
-                            <DropdownMenuItem onClick={() => openAssignDialog(user)}>
+                            <DropdownMenuItem
+                              onClick={() => openAssignDialog(user)}
+                            >
                               <Link2 className="w-4 h-4 mr-2" />
-                              {user._assignedAgentId ? "Change Agent" : "Assign Agent"}
+                              {user._assignedAgentId
+                                ? "Change Agent"
+                                : "Assign Agent"}
                             </DropdownMenuItem>
                           ) : null}
 
                           {canAssignAgent(user) && user._assignedAgentId ? (
-                            <DropdownMenuItem onClick={() => handleClearAgent(user)}>
+                            <DropdownMenuItem
+                              onClick={() => handleClearAgent(user)}
+                            >
                               <XCircle className="w-4 h-4 mr-2" />
                               Clear Agent
                             </DropdownMenuItem>
@@ -777,7 +797,9 @@ export default function UserManagement() {
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-gray-500">Role</span>
                         <div className="flex items-center gap-2">
-                          {roleIcons[role] || <UserIcon className="w-4 h-4" />}
+                          {roleIcons[role] || (
+                            <UserIcon className="w-4 h-4" />
+                          )}
                           {roleLabels[role] || role}
                         </div>
                       </div>
@@ -792,11 +814,15 @@ export default function UserManagement() {
                                   {assignedAgent.full_name || "Unnamed Agent"}
                                 </div>
                                 <div className="text-xs text-muted-foreground truncate">
-                                  {assignedAgent.email || assignedAgent.uid || "—"}
+                                  {assignedAgent.email ||
+                                    assignedAgent.uid ||
+                                    "—"}
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-muted-foreground">Unassigned</span>
+                              <span className="text-muted-foreground">
+                                Unassigned
+                              </span>
                             )
                           ) : (
                             <span className="text-muted-foreground">N/A</span>
@@ -845,7 +871,9 @@ export default function UserManagement() {
                             onClick={() => openAssignDialog(user)}
                           >
                             <Link2 className="w-4 h-4 mr-2" />
-                            {user._assignedAgentId ? "Change Agent" : "Assign Agent"}
+                            {user._assignedAgentId
+                              ? "Change Agent"
+                              : "Assign Agent"}
                           </Button>
                         </div>
                       ) : null}
