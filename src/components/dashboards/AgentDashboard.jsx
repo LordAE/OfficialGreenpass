@@ -197,8 +197,6 @@ const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
     user?.business_license ??
     "";
 
-  const paypalEmail = agent.paypal_email ?? user?.paypal_email ?? "";
-
   const missing = [];
 
   if (isEmpty(user?.full_name)) {
@@ -224,13 +222,9 @@ const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
     });
   }
 
-  if (isEmpty(paypalEmail)) {
-    missing.push({ key: "paypal_email", label: tr("field_paypal_email", "PayPal Email") });
-  }
-
   if (missing.length === 0) return null;
 
-  const totalRequired = 6;
+  const totalRequired = 5;
 
   const percent = Math.max(
     0,
@@ -252,14 +246,12 @@ const InlineProfileCompletionBanner = ({ user, relatedEntity }) => {
       "Company Name": "field_company_name",
       "Business License": "field_business_license",
       "Business License (MST)": "field_business_license",
-      "PayPal Email": "field_paypal_email",
       full_name: "field_full_name",
       phone: "field_phone",
       country: "field_country",
       company_name: "field_company_name",
       business_license: "field_business_license",
       business_license_mst: "field_business_license",
-      paypal_email: "field_paypal_email",
     };
 
     const k = map[key] || null;

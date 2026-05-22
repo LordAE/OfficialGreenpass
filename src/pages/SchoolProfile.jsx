@@ -210,7 +210,7 @@ export default function SchoolProfile() {
       }
 
       const userData = userSnap.exists() ? userSnap.data() || {} : {};
-      const draft = userData?.school_profile_draft || {};
+      const draft = userData?.school_profile_draft || userData?.school_profile || {};
 
       if (institutionSnap.empty) {
         setHasClaimedProfile(false);
@@ -447,6 +447,65 @@ export default function SchoolProfile() {
         : [];
       const primaryImage = (imageUrls[0] || formData.image_url || "").trim();
 
+      const schoolProfileMirror = {
+        institution_id: String(formData.institution_id || "").trim(),
+        user_id: uid,
+
+        name: formData.name,
+        school_name: formData.name,
+        institution_name: formData.name,
+
+        school_level: formData.school_level,
+        school_type: formData.school_type,
+        type: formData.school_type,
+
+        location: formData.location,
+        city: formData.location,
+        province: formData.province,
+        country: formData.country,
+        address: formData.address,
+
+        founded_year: toNum(formData.founded_year),
+        year_established: toNum(formData.founded_year),
+
+        about: formData.about,
+        description: formData.about,
+        website: formData.website,
+
+        email: formData.email,
+        phone: formData.phone,
+
+        image_url: primaryImage,
+        imageUrl: primaryImage,
+        image_urls: imageUrls,
+        imageUrls: imageUrls,
+        logo_url: formData.logo_url || primaryImage || "",
+        logoUrl: formData.logo_url || primaryImage || "",
+        banner_url: formData.banner_url || "",
+        bannerUrl: formData.banner_url || "",
+
+        rating: toNum(formData.rating),
+        acceptance_rate: toNum(formData.acceptance_rate),
+        tuition_fees: toNum(formData.tuition_fees),
+        avgTuition: toNum(formData.tuition_fees),
+        application_fee: toNum(formData.application_fee),
+        cost_of_living: toNum(formData.cost_of_living),
+
+        is_public: formData.is_public,
+        public_private: formData.is_public,
+        isPublic: formData.is_public === "public",
+
+        pgwp_available: toBool(formData.pgwp_available),
+        has_coop: toBool(formData.has_coop),
+        hasCoop: toBool(formData.has_coop),
+        is_dli: toBool(formData.is_dli),
+        isDLI: toBool(formData.is_dli),
+        dli_number: formData.dli_number,
+        dliNumber: formData.dli_number,
+
+        updated_at: serverTimestamp(),
+      };
+
       if (saveMode === "institution") {
         const institutionId = formData.institution_id?.trim();
         if (!institutionId) {
@@ -531,6 +590,28 @@ export default function SchoolProfile() {
         };
 
         await setDoc(instRef, institutionData, { merge: true });
+
+        await setDoc(
+          doc(db, "users", uid),
+          {
+            school_profile: {
+              ...schoolProfileMirror,
+              institution_id: institutionId,
+            },
+            school_profile_draft: {
+              ...schoolProfileMirror,
+              institution_id: institutionId,
+            },
+            linked_institution_id: institutionId,
+            school_name: formData.name,
+            institution_name: formData.name,
+            organization_name: formData.name,
+            updated_at: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
         await loadSchoolData();
         alert("School profile saved successfully.");
         return;
@@ -538,62 +619,14 @@ export default function SchoolProfile() {
 
       const userRef = doc(db, "users", uid);
       const draftPayload = {
-        school_profile_draft: {
-          name: formData.name,
-          school_name: formData.name,
-          school_level: formData.school_level,
-          school_type: formData.school_type,
-          type: formData.school_type,
-
-          location: formData.location,
-          city: formData.location,
-          province: formData.province,
-          country: formData.country,
-          address: formData.address,
-
-          founded_year: toNum(formData.founded_year),
-          year_established: toNum(formData.founded_year),
-
-          about: formData.about,
-          description: formData.about,
-          website: formData.website,
-
-          email: formData.email,
-          phone: formData.phone,
-
-          image_url: primaryImage,
-          imageUrl: primaryImage,
-          image_urls: imageUrls,
-          imageUrls: imageUrls,
-          logo_url: formData.logo_url || primaryImage || "",
-          logoUrl: formData.logo_url || primaryImage || "",
-          banner_url: formData.banner_url || "",
-          bannerUrl: formData.banner_url || "",
-
-          rating: toNum(formData.rating),
-          acceptance_rate: toNum(formData.acceptance_rate),
-          tuition_fees: toNum(formData.tuition_fees),
-          avgTuition: toNum(formData.tuition_fees),
-          application_fee: toNum(formData.application_fee),
-          cost_of_living: toNum(formData.cost_of_living),
-
-          is_public: formData.is_public,
-          public_private: formData.is_public,
-          isPublic: formData.is_public === "public",
-
-          pgwp_available: toBool(formData.pgwp_available),
-          has_coop: toBool(formData.has_coop),
-          hasCoop: toBool(formData.has_coop),
-          is_dli: toBool(formData.is_dli),
-          isDLI: toBool(formData.is_dli),
-          dli_number: formData.dli_number,
-          dliNumber: formData.dli_number,
-
-          updated_at: serverTimestamp(),
-        },
+        school_profile: schoolProfileMirror,
+        school_profile_draft: schoolProfileMirror,
+        school_name: formData.name,
+        institution_name: formData.name,
+        organization_name: formData.name,
+        updated_at: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-
       await setDoc(userRef, draftPayload, { merge: true });
       await loadSchoolData();
       alert("School profile draft saved successfully.");

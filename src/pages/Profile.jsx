@@ -1007,8 +1007,6 @@ export default function Profile() {
     company_name: "",
     business_license_mst: "",
     year_established: "",
-    paypal_email: "",
-
     specializations: "",
     experience_years: "",
     hourly_rate: "",
@@ -1124,6 +1122,9 @@ export default function Profile() {
 
       const u2 = await getDoc(uref);
       const u = u2.data() || {};
+      const schoolDraft = u.school_profile_draft || {};
+      const schoolSaved = u.school_profile || {};
+      const schoolSource = { ...schoolDraft, ...schoolSaved };
 
       const resolvedRole = normalizeRole(
         u.verification?.role || u.selected_role || u.user_type || u.userType || u.role || "user"
@@ -1135,7 +1136,7 @@ export default function Profile() {
         if (resolvedRole === "school") {
           try {
             const directInstitutionId = String(
-              u.school_profile?.institution_id ||
+              schoolSource?.institution_id ||
               u.linked_institution_id ||
               ""
             ).trim();
@@ -1159,7 +1160,7 @@ export default function Profile() {
         u.bio ||
         u.agent_profile?.bio ||
         u.tutor_profile?.bio ||
-        u.school_profile?.bio ||
+        schoolSource?.bio ||
         u.vendor_profile?.bio ||
         "";
 
@@ -1212,11 +1213,6 @@ export default function Profile() {
         company_name: u.agent_profile?.company_name || "",
         business_license_mst: u.agent_profile?.business_license_mst || "",
         year_established: u.agent_profile?.year_established || "",
-        paypal_email:
-          u.agent_profile?.paypal_email ||
-          u.tutor_profile?.paypal_email ||
-          u.vendor_profile?.paypal_email ||
-          "",
 
         specializations: arrayToCSV(u.tutor_profile?.specializations),
         experience_years: u.tutor_profile?.experience_years || "",
@@ -1224,36 +1220,37 @@ export default function Profile() {
 
         institution_id:
           institutionDoc?.id ||
-          u.school_profile?.institution_id ||
+          schoolSource?.institution_id ||
           "",
 
         school_name:
           institutionDoc?.name ||
-          u.school_profile?.school_name ||
+          schoolSource?.school_name ||
+          schoolSource?.name ||
           "",
 
         type:
           institutionDoc?.type ||
           institutionDoc?.school_type ||
           institutionDoc?.school_level ||
-          u.school_profile?.type ||
+          schoolSource?.type ||
           "",
 
         location:
           institutionDoc?.city ||
           institutionDoc?.location ||
-          u.school_profile?.location ||
+          schoolSource?.location ||
           "",
 
         website:
           institutionDoc?.website ||
-          u.school_profile?.website ||
+          schoolSource?.website ||
           "",
 
         about:
           institutionDoc?.about ||
           institutionDoc?.description ||
-          u.school_profile?.about ||
+          schoolSource?.about ||
           "",
 
         business_name: u.vendor_profile?.business_name || "",
@@ -1789,6 +1786,25 @@ export default function Profile() {
       }
     }
 
+    if (role === "school") {
+      if (!form.school_name?.trim()) {
+        setActiveTab("details");
+        return alert(tr("alerts.required_school_name", "School name is required."));
+      }
+      if (!form.location?.trim()) {
+        setActiveTab("details");
+        return alert(tr("alerts.required_school_location", "School location is required."));
+      }
+      if (!form.about?.trim()) {
+        setActiveTab("details");
+        return alert(tr("alerts.required_school_about", "About school is required."));
+      }
+      if (!form.website?.trim()) {
+        setActiveTab("details");
+        return alert(tr("alerts.required_school_website", "School website is required."));
+      }
+    }
+
     if (role === "vendor") {
       if (!form.business_name?.trim()) {
         setActiveTab("details");
@@ -1797,10 +1813,6 @@ export default function Profile() {
       if (!Array.isArray(form.service_categories) || form.service_categories.length === 0) {
         setActiveTab("details");
         return alert(tr("alerts.required_service_category", "Select at least 1 service category."));
-      }
-      if (!form.paypal_email?.trim()) {
-        setActiveTab("details");
-        return alert(tr("alerts.required_paypal_email", "PayPal email is required."));
       }
     }
 
@@ -1867,11 +1879,32 @@ export default function Profile() {
         };
       }
 
+      if (role === "school") {
+        const schoolName = String(form.school_name || "").trim();
+        const schoolProfileData = {
+          institution_id: String(form.institution_id || "").trim(),
+          user_id: uid,
+          name: schoolName,
+          school_name: schoolName,
+          type: form.type || "",
+          school_level: form.type || "",
+          location: form.location || "",
+          website: form.website || "",
+          about: form.about || "",
+          bio: form.bio || "",
+          updated_at: serverTimestamp(),
+        };
+
+        updates.school_profile = schoolProfileData;
+        updates.school_profile_draft = schoolProfileData;
+        updates.school_name = schoolName;
+        updates.institution_name = schoolName;
+      }
+
       if (role === "vendor") {
         updates.vendor_profile = {
           business_name: form.business_name || "",
           service_categories: form.service_categories || [],
-          paypal_email: form.paypal_email || "",
           bio: form.bio || "",
         };
       }
@@ -2798,17 +2831,6 @@ export default function Profile() {
                               </div>
                             ))}
                           </div>
-                        </div>
-
-                        <div>
-                          <Label>{tr("paypal_email", "PayPal Email *")}</Label>
-                          <Input
-                            type="email"
-                            value={form.paypal_email}
-                            disabled={!isEditing}
-                            onChange={(e) => setField("paypal_email", e.target.value)}
-                            className="mt-1"
-                          />
                         </div>
                       </div>
                     </ProfileSection>

@@ -180,6 +180,9 @@ function institutionDisplayName(institution, user) {
     user?.school_profile?.school_name,
     user?.school_profile?.name,
     user?.school_profile?.institution_name,
+    user?.school_profile_draft?.school_name,
+    user?.school_profile_draft?.name,
+    user?.school_profile_draft?.institution_name,
     user?.school_name,
     user?.institution_name,
     user?.organization_name,
@@ -264,6 +267,9 @@ function buildInstitutionMatchTerms(user) {
     user?.school_profile?.school_name,
     user?.school_profile?.name,
     user?.school_profile?.institution_name,
+    user?.school_profile_draft?.school_name,
+    user?.school_profile_draft?.name,
+    user?.school_profile_draft?.institution_name,
   ]).filter((v) => v.length >= 4);
 }
 

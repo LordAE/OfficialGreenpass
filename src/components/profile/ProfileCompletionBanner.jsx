@@ -12,47 +12,69 @@ import { AlertCircle, CheckCircle, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
+const hasValue = (value) => {
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== undefined && value !== null && String(value).trim() !== '';
+};
+
+const firstValue = (...values) => values.find(hasValue) || '';
+
+const getSchoolProfileSource = (user, relatedEntity) => {
+  const draft = user?.school_profile_draft || {};
+  const saved = user?.school_profile || {};
+  const entity = relatedEntity || {};
+
+  return {
+    ...draft,
+    ...saved,
+    ...entity,
+    name: firstValue(entity?.name, entity?.school_name, saved?.name, saved?.school_name, draft?.name, draft?.school_name, user?.school_name, user?.institution_name),
+    location: firstValue(entity?.location, entity?.city, saved?.location, saved?.city, draft?.location, draft?.city),
+    about: firstValue(entity?.about, entity?.description, saved?.about, saved?.description, draft?.about, draft?.description),
+    website: firstValue(entity?.website, saved?.website, draft?.website),
+  };
+};
+
 const getProfileCompletionData = (user, relatedEntity) => {
+  const schoolProfile = getSchoolProfileSource(user, relatedEntity);
+
   const requirements = {
     user: [
-      { field: 'full_name', label: 'Full Name', completed: !!user?.full_name },
-      { field: 'phone', label: 'Phone Number', completed: !!user?.phone },
-      { field: 'country', label: 'Country', completed: !!user?.country }
+      { field: 'full_name', label: 'Full Name', completed: hasValue(user?.full_name) },
+      { field: 'phone', label: 'Phone Number', completed: hasValue(user?.phone) },
+      { field: 'country', label: 'Country', completed: hasValue(user?.country) }
     ],
     agent: [
-      { field: 'full_name', label: 'Full Name', completed: !!user?.full_name },
-      { field: 'phone', label: 'Phone Number', completed: !!user?.phone },
-      { field: 'country', label: 'Country', completed: !!user?.country },
-      { field: 'company_name', label: 'Company Name', completed: !!relatedEntity?.company_name },
-      { field: 'business_license_mst', label: 'Business License', completed: !!relatedEntity?.business_license_mst },
-      { field: 'paypal_email', label: 'PayPal Email', completed: !!relatedEntity?.paypal_email }
+      { field: 'full_name', label: 'Full Name', completed: hasValue(user?.full_name) },
+      { field: 'phone', label: 'Phone Number', completed: hasValue(user?.phone) },
+      { field: 'country', label: 'Country', completed: hasValue(user?.country) },
+      { field: 'company_name', label: 'Company Name', completed: hasValue(relatedEntity?.company_name) },
+      { field: 'business_license_mst', label: 'Business License', completed: hasValue(relatedEntity?.business_license_mst) }
     ],
     tutor: [
-      { field: 'full_name', label: 'Full Name', completed: !!user?.full_name },
-      { field: 'phone', label: 'Phone Number', completed: !!user?.phone },
-      { field: 'country', label: 'Country', completed: !!user?.country },
-      { field: 'specializations', label: 'Specializations', completed: relatedEntity?.specializations?.length > 0 },
-      { field: 'experience_years', label: 'Experience Years', completed: !!relatedEntity?.experience_years },
-      { field: 'hourly_rate', label: 'Hourly Rate', completed: !!relatedEntity?.hourly_rate },
-      { field: 'bio', label: 'Professional Bio', completed: !!relatedEntity?.bio },
-      { field: 'paypal_email', label: 'PayPal Email', completed: !!relatedEntity?.paypal_email }
+      { field: 'full_name', label: 'Full Name', completed: hasValue(user?.full_name) },
+      { field: 'phone', label: 'Phone Number', completed: hasValue(user?.phone) },
+      { field: 'country', label: 'Country', completed: hasValue(user?.country) },
+      { field: 'specializations', label: 'Specializations', completed: hasValue(relatedEntity?.specializations) },
+      { field: 'experience_years', label: 'Experience Years', completed: hasValue(relatedEntity?.experience_years) },
+      { field: 'hourly_rate', label: 'Hourly Rate', completed: hasValue(relatedEntity?.hourly_rate) },
+      { field: 'bio', label: 'Professional Bio', completed: hasValue(relatedEntity?.bio) }
     ],
     school: [
-      { field: 'full_name', label: 'Contact Name', completed: !!user?.full_name },
-      { field: 'phone', label: 'Phone Number', completed: !!user?.phone },
-      { field: 'country', label: 'Country', completed: !!user?.country },
-      { field: 'name', label: 'School Name', completed: !!relatedEntity?.name },
-      { field: 'location', label: 'Location', completed: !!relatedEntity?.location },
-      { field: 'about', label: 'About School', completed: !!relatedEntity?.about },
-      { field: 'website', label: 'Website', completed: !!relatedEntity?.website }
+      { field: 'full_name', label: 'Contact Name', completed: hasValue(user?.full_name) },
+      { field: 'phone', label: 'Phone Number', completed: hasValue(user?.phone) },
+      { field: 'country', label: 'Country', completed: hasValue(user?.country) },
+      { field: 'name', label: 'School Name', completed: hasValue(schoolProfile?.name) },
+      { field: 'location', label: 'Location', completed: hasValue(schoolProfile?.location) },
+      { field: 'about', label: 'About School', completed: hasValue(schoolProfile?.about) },
+      { field: 'website', label: 'Website', completed: hasValue(schoolProfile?.website) }
     ],
     vendor: [
-      { field: 'full_name', label: 'Full Name', completed: !!user?.full_name },
-      { field: 'phone', label: 'Phone Number', completed: !!user?.phone },
-      { field: 'country', label: 'Country', completed: !!user?.country },
-      { field: 'business_name', label: 'Business Name', completed: !!relatedEntity?.business_name },
-      { field: 'service_categories', label: 'Service Categories', completed: relatedEntity?.service_categories?.length > 0 },
-      { field: 'paypal_email', label: 'PayPal Email', completed: !!relatedEntity?.paypal_email }
+      { field: 'full_name', label: 'Full Name', completed: hasValue(user?.full_name) },
+      { field: 'phone', label: 'Phone Number', completed: hasValue(user?.phone) },
+      { field: 'country', label: 'Country', completed: hasValue(user?.country) },
+      { field: 'business_name', label: 'Business Name', completed: hasValue(relatedEntity?.business_name) },
+      { field: 'service_categories', label: 'Service Categories', completed: hasValue(relatedEntity?.service_categories) }
     ]
   };
 
