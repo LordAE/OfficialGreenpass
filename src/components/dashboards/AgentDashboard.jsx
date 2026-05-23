@@ -37,6 +37,7 @@ import { format } from "date-fns";
 import SharedPaymentGateway from "@/components/payments/SharedPaymentGateway";
 import CreateEventDialog from "@/components/events/CreateEventDialog";
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
+import { getProfileCompletionData } from "../profile/ProfileCompletionBanner";
 
 // ✅ Firebase
 import { db, storage } from "@/firebase";
@@ -69,8 +70,6 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
-import ActionBlocker from "../profile/ActionBlocker";
-import { getProfileCompletionData } from "../profile/ProfileCompletionBanner";
 import { useTr } from "@/i18n/useTr";
 
 /* -------------------- SAFE HELPERS (date & arrays) -------------------- */
@@ -1014,8 +1013,6 @@ export default function AgentDashboard({ user }) {
 
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [profileCompletion, setProfileCompletion] = useState({ isComplete: true });
-
   const [composerText, setComposerText] = useState("");
   const fileInputRef = useRef(null);
   const [attachments, setAttachments] = useState([]);
@@ -1048,10 +1045,6 @@ export default function AgentDashboard({ user }) {
         const agentRecord = agentData.length > 0 ? agentData[0] : null;
 
         setAgent(agentRecord);
-
-        const completion = getProfileCompletionData(effectiveUser, agentRecord);
-
-        setProfileCompletion(completion);
 
         const now = new Date();
 
@@ -1568,15 +1561,7 @@ export default function AgentDashboard({ user }) {
             </div>
 
             <div className="lg:col-span-6 space-y-4">
-              <ActionBlocker
-                isBlocked={!profileCompletion.isComplete}
-                title={tr("block_post_title", "Complete Profile to Post")}
-                message={tr(
-                  "block_post_msg",
-                  "Finish your agent profile to publish updates and announcements."
-                )}
-              >
-                <div className="rounded-2xl border bg-white">
+              <div className="rounded-2xl border bg-white">
                   <div className="p-3 flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 w-full">
                       <Avatar name={effectiveUser?.full_name || "Agent"} />
@@ -1685,8 +1670,7 @@ export default function AgentDashboard({ user }) {
                     <Globe className="h-3.5 w-3.5" />
                     Public
                   </div>
-                </div>
-              </ActionBlocker>
+              </div>
 
               <div className="space-y-4">
                 {communityLoading ? (
