@@ -1,60 +1,97 @@
 // src/pages/TutorStudents.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Loader2,
-  Search,
-  FileCheck,
-  X,
-  Plus,
-  ClipboardList,
-  MessageSquare,
-  Trash2,
-  ScanLine,
-  Camera,
-  Lock,
+  CalendarDays,
+  Clock3,
   CreditCard,
+  ExternalLink,
+  Loader2,
+  Lock,
+  MessageSquare,
+  Plus,
+  ScanLine,
+  Search,
+  Trash2,
+  UserRound,
+  Users,
+  X,
 } from "lucide-react";
-import { createPageUrl } from "@/utils";
-
-// Firebase
-import { getAuth } from "firebase/auth";
-import { db } from "@/firebase";
 import {
   collection,
+  deleteDoc,
+  doc,
+  documentId,
+  getDoc,
+  getDocs,
+  orderBy,
   query,
   where,
-  getDocs,
-  getDoc,
-  doc,
-  setDoc,
-  serverTimestamp,
-  documentId,
-  deleteDoc,
 } from "firebase/firestore";
-
-// QR
+import { getAuth } from "firebase/auth";
 import { Html5Qrcode } from "html5-qrcode";
+import {
+  endOfWeek,
+  format,
+  isSameDay,
+  isToday,
+  isTomorrow,
+  parseISO,
+  startOfWeek,
+} from "date-fns";
+
+import { db } from "@/firebase";
+import { createPageUrl } from "@/utils";
 import { useSubscriptionMode } from "@/hooks/useSubscriptionMode";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 /**
  * TUTOR PAGE (Tutor Students)
- * SOURCE OF TRUTH:
- * - Student list = tutor_students only
- * - User profile details are loaded from users collection using IDs from tutor_students
- * - Document checklist per student stored in: tutor_student_checklists/{tutorId}_{studentId}
- * - QR scanner for tutor:
- *    scan student QR -> calls backend acceptStudentReferralToTutor -> student added to tutor_students
+ * Aligned with Tutor Planner:
+ * - Student list comes from tutor_students
+ * - Student profile details come from users
+ * - Session schedule comes from tutoring_sessions
+ * - This page focuses on tutoring schedule, next session, weekly sessions, and quick planner access
  */
 
 const RELATION_COLLECTION = "tutor_students";
-const CHECKLIST_COLLECTION = "tutor_student_checklists";
 const ACCEPT_STUDENT_ENDPOINT = "acceptStudentReferralToTutor";
+
+const STATUS_STYLES = {
+  pending: "bg-amber-100 text-amber-800 border-amber-200",
+  booked: "bg-green-100 text-green-800 border-green-200",
+  completed: "bg-blue-100 text-blue-800 border-blue-200",
+  cancelled: "bg-red-100 text-red-800 border-red-200",
+  rescheduled: "bg-purple-100 text-purple-800 border-purple-200",
+  default: "bg-slate-100 text-slate-800 border-slate-200",
+};
+
+const SUBSCRIPTION_REQUIRED_ROLES = new Set(["agent", "school", "tutor"]);
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing", "paid", "subscribed"]);
+const INACTIVE_SUBSCRIPTION_STATUSES = new Set([
+  "",
+  "none",
+  "skipped",
+  "inactive",
+  "incomplete",
+  "incomplete_expired",
+  "past_due",
+  "unpaid",
+  "canceled",
+  "cancelled",
+  "expired",
+]);
 
 const chunk = (arr, size = 10) => {
   const out = [];
@@ -64,109 +101,31 @@ const chunk = (arr, size = 10) => {
 
 const makeRelId = (tutorId, studentId) => `${tutorId}_${studentId}`;
 
-const defaultDocTemplate = () => [
-  { name: "Passport bio page" },
-  { name: "School records / transcript" },
-  { name: "English test result (if available)" },
-  { name: "Current study plan / goals" },
-  { name: "Assignment or practice materials" },
-  { name: "Class schedule / availability" },
-  { name: "Parent consent (if applicable)" },
-  { name: "Notes / learning assessment" },
-];
+function toDate(value) {
+  if (!value) return null;
+  if (value?.toDate) return value.toDate();
+  if (typeof value === "string") return parseISO(value);
+  return new Date(value);
+}
 
-const cryptoRandomId = () => {
-  try {
-    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  } catch {}
-  return `doc_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-};
+function safeDate(value) {
+  const d = toDate(value);
+  return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+}
 
-const normalizeDocs = (docs) => {
-  if (!Array.isArray(docs)) return [];
-  return docs
-    .filter(Boolean)
-    .map((d) => ({
-      id: String(d.id || cryptoRandomId()),
-      name: String(d.name || "").trim(),
-      submitted: Boolean(d.submitted),
-      created_at: d.created_at || null,
-      updated_at: d.updated_at || null,
-    }))
-    .filter((d) => d.name.length > 0);
-};
+function normalizeText(value) {
+  return String(value || "").toLowerCase().trim();
+}
 
-function ProgressBadge({ docs }) {
-  const total = Array.isArray(docs) ? docs.length : 0;
-  const done = Array.isArray(docs) ? docs.filter((d) => d.submitted).length : 0;
-
-  if (!total) {
-    return (
-      <Badge variant="secondary" className="rounded-full">
-        0
-      </Badge>
-    );
-  }
-
+function getStudentName(student) {
   return (
-    <Badge variant={done === total ? "default" : "secondary"} className="rounded-full">
-      {done}/{total}
-    </Badge>
+    student?.full_name ||
+    student?.fullName ||
+    student?.displayName ||
+    student?.name ||
+    student?.email ||
+    "Unnamed Student"
   );
-}
-
-function Modal({ open, title, onClose, children }) {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-xl border">
-        <div className="flex items-center justify-between px-5 py-4 border-b">
-          <div className="font-semibold">{title}</div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 w-9 rounded-full hover:bg-gray-100 flex items-center justify-center"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function getFunctionsBase() {
-  const fromEnv =
-    import.meta.env.VITE_FUNCTIONS_BASE ||
-    import.meta.env.VITE_FUNCTIONS_HTTP_BASE ||
-    import.meta.env.VITE_FUNCTIONS_BASE_URL ||
-    import.meta.env.VITE_CLOUD_FUNCTIONS_BASE_URL ||
-    "";
-
-  if (fromEnv) return String(fromEnv).replace(/\/+$/, "");
-
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-  if (projectId) {
-    return `https://us-central1-${projectId}.cloudfunctions.net`;
-  }
-
-  return "https://us-central1-greenpass-dc92d.cloudfunctions.net";
-}
-
-function extractStudentRefFromScannedText(raw) {
-  const text = String(raw || "").trim();
-  if (!text) return "";
-
-  try {
-    const url = new URL(text);
-    return (url.searchParams.get("student_ref") || url.searchParams.get("ref") || "").trim();
-  } catch {
-    return text;
-  }
 }
 
 function getStudentIdFromRelation(data = {}) {
@@ -181,10 +140,17 @@ function getStudentIdFromRelation(data = {}) {
   );
 }
 
-
-const SUBSCRIPTION_REQUIRED_ROLES = new Set(["agent", "school", "tutor"]);
-const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing", "paid", "subscribed"]);
-const INACTIVE_SUBSCRIPTION_STATUSES = new Set(["", "none", "skipped", "inactive", "incomplete", "incomplete_expired", "past_due", "unpaid", "canceled", "cancelled", "expired"]);
+function getStudentIdFromSession(data = {}) {
+  return (
+    data.studentId ||
+    data.student_id ||
+    data.userId ||
+    data.user_id ||
+    data.clientId ||
+    data.client_id ||
+    null
+  );
+}
 
 function normalizeRole(value) {
   const role = String(value || "").toLowerCase().trim();
@@ -196,14 +162,31 @@ function normalizeRole(value) {
 }
 
 function resolveUserRole(userDoc, fallback = "student") {
-  return normalizeRole(userDoc?.role || userDoc?.selected_role || userDoc?.user_type || userDoc?.userType || userDoc?.signup_entry_role || fallback);
+  return normalizeRole(
+    userDoc?.role ||
+      userDoc?.selected_role ||
+      userDoc?.user_type ||
+      userDoc?.userType ||
+      userDoc?.signup_entry_role ||
+      fallback
+  );
 }
 
 function hasActiveSubscription(userDoc) {
   if (!userDoc) return false;
-  const status = String(userDoc?.subscription_status || userDoc?.subscriptionStatus || "").toLowerCase().trim();
+  const status = String(userDoc?.subscription_status || userDoc?.subscriptionStatus || "")
+    .toLowerCase()
+    .trim();
+
   if (ACTIVE_SUBSCRIPTION_STATUSES.has(status)) return true;
-  if ((userDoc?.subscription_active === true || userDoc?.subscriptionActive === true) && !INACTIVE_SUBSCRIPTION_STATUSES.has(status)) return true;
+
+  if (
+    (userDoc?.subscription_active === true || userDoc?.subscriptionActive === true) &&
+    !INACTIVE_SUBSCRIPTION_STATUSES.has(status)
+  ) {
+    return true;
+  }
+
   return false;
 }
 
@@ -220,38 +203,167 @@ function buildSubscriptionCheckoutUrl(userDoc, expectedRole, fallbackPath) {
   const role = SUBSCRIPTION_REQUIRED_ROLES.has(roleFromDoc) ? roleFromDoc : expectedRole;
   const existingPlan = String(userDoc?.subscription_plan || userDoc?.subscriptionPlan || "").trim();
   const plan = existingPlan || `${role}_monthly`;
-  const query = new URLSearchParams({ type: "subscription", role, plan, lock: "1", returnTo: fallbackPath || window.location.pathname || "/dashboard" });
+  const query = new URLSearchParams({
+    type: "subscription",
+    role,
+    plan,
+    lock: "1",
+    returnTo: fallbackPath || window.location.pathname || "/dashboard",
+  });
+
   return `${createPageUrl("Checkout")}?${query.toString()}`;
 }
 
-function buildSuccessText(data) {
-  let successText = "Student added successfully.";
+function getFunctionsBase() {
+  const fromEnv =
+    import.meta.env.VITE_FUNCTIONS_BASE ||
+    import.meta.env.VITE_FUNCTIONS_HTTP_BASE ||
+    import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+    import.meta.env.VITE_CLOUD_FUNCTIONS_BASE_URL ||
+    "";
 
-  if (data?.alreadyExists) {
-    successText = "Student is already in your student list.";
-  } else if (data?.student?.full_name) {
-    successText = `${data.student.full_name} added to your student list.`;
+  if (fromEnv) return String(fromEnv).replace(/\/+$/, "");
+
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+  if (projectId) return `https://us-central1-${projectId}.cloudfunctions.net`;
+
+  return "https://us-central1-greenpass-dc92d.cloudfunctions.net";
+}
+
+function extractStudentRefFromScannedText(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+
+  try {
+    const url = new URL(text);
+    return (url.searchParams.get("student_ref") || url.searchParams.get("ref") || "").trim();
+  } catch {
+    return text;
   }
+}
 
-  return successText;
+function buildSuccessText(data) {
+  if (data?.alreadyExists) return "Student is already in your student list.";
+  if (data?.student?.full_name) return `${data.student.full_name} added to your student list.`;
+  return "Student added successfully.";
+}
+
+function formatSessionDate(date) {
+  if (!date) return "No date";
+  if (isToday(date)) return `Today, ${format(date, "p")}`;
+  if (isTomorrow(date)) return `Tomorrow, ${format(date, "p")}`;
+  return format(date, "MMM d, p");
+}
+
+function getStatusBadgeClass(status) {
+  const key = String(status || "default").toLowerCase().trim();
+  return STATUS_STYLES[key] || STATUS_STYLES.default;
+}
+
+function Modal({ open, title, onClose, children, maxWidth = "max-w-2xl" }) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className={`relative w-full ${maxWidth} max-h-[88vh] overflow-y-auto rounded-2xl bg-white shadow-xl border`}>
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b bg-white rounded-t-2xl">
+          <div className="font-semibold">{title}</div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 w-9 rounded-full hover:bg-gray-100 flex items-center justify-center"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ title, value, subtitle, icon: Icon }) {
+  return (
+    <Card className="rounded-2xl shadow-sm">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm text-gray-500">{title}</div>
+            <div className="mt-1 text-2xl font-bold text-gray-900">{value}</div>
+            {subtitle ? <div className="mt-1 text-xs text-gray-500">{subtitle}</div> : null}
+          </div>
+          <div className="rounded-xl bg-gray-100 p-2">
+            <Icon className="h-5 w-5 text-gray-700" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SessionRow({ session, compact = false }) {
+  const start = safeDate(session.start);
+  const end = safeDate(session.end);
+  const status = session.status || "booked";
+  const title = session.title || session.subject || "Tutoring Session";
+
+  return (
+    <div className="rounded-xl border p-3 hover:bg-gray-50 transition">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+        <div>
+          <div className="font-medium text-gray-900">{title}</div>
+          <div className="text-sm text-gray-500 mt-0.5">
+            {start ? formatSessionDate(start) : "No start time"}
+            {end ? ` - ${format(end, "p")}` : ""}
+          </div>
+          {!compact && session.studentName ? (
+            <div className="text-sm text-gray-600 mt-1">{session.studentName}</div>
+          ) : null}
+          {session.notes ? <div className="text-xs text-gray-500 mt-1 line-clamp-2">{session.notes}</div> : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {session.paymentStatus ? (
+            <Badge variant="secondary" className="rounded-full capitalize">
+              {session.paymentStatus}
+            </Badge>
+          ) : null}
+          <Badge className={`rounded-full border capitalize ${getStatusBadgeClass(status)}`}>{status}</Badge>
+        </div>
+      </div>
+
+      {session.meetingLink ? (
+        <a
+          href={session.meetingLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center text-sm font-medium text-green-700 hover:underline"
+        >
+          Open meeting link
+          <ExternalLink className="h-3.5 w-3.5 ml-1" />
+        </a>
+      ) : null}
+    </div>
+  );
 }
 
 export default function TutorStudents() {
   const navigate = useNavigate();
-  const { subscriptionModeEnabled } = useSubscriptionMode();
+  const [searchParams] = useSearchParams();
+  const { subscriptionModeEnabled, loading: subscriptionModeLoading } = useSubscriptionMode();
+
   const [students, setStudents] = useState([]);
   const [removableStudentIds, setRemovableStudentIds] = useState(new Set());
-  const [checklistsByStudent, setChecklistsByStudent] = useState({});
+  const [sessions, setSessions] = useState([]);
+  const [meDoc, setMeDoc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [errorText, setErrorText] = useState("");
-  const [meDoc, setMeDoc] = useState(null);
-  const [searchParams] = useSearchParams();
 
-  const [docsOpen, setDocsOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [activeStudent, setActiveStudent] = useState(null);
-  const [docsSaving, setDocsSaving] = useState(false);
-  const [docName, setDocName] = useState("");
 
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerStarting, setScannerStarting] = useState(false);
@@ -284,159 +396,10 @@ export default function TutorStudents() {
 
   const goToSubscription = () => navigate(subscriptionCheckoutUrl);
 
-  const requireSubscription = (message = "Subscription required. Activate your subscription to continue.") => {
+  const requireSubscription = (message = "Subscription required. Activate your tutor subscription to continue.") => {
     if (!subscriptionLocked) return false;
     setErrorText(message);
     return true;
-  };
-
-
-  const openDocs = (student) => {
-    if (requireSubscription("Document checklists are locked. Activate your tutor subscription to manage student documents.")) return;
-    setActiveStudent(student);
-    setDocName("");
-    setDocsOpen(true);
-  };
-
-  const closeDocs = () => {
-    setDocsOpen(false);
-    setActiveStudent(null);
-    setDocName("");
-    setDocsSaving(false);
-  };
-
-  const activeDocs = useMemo(() => {
-    if (!activeStudent?.id) return [];
-    return normalizeDocs(checklistsByStudent[activeStudent.id] || []);
-  }, [activeStudent?.id, checklistsByStudent]);
-
-  const saveChecklist = async (tutorId, studentId, nextDocs) => {
-    const relId = makeRelId(tutorId, studentId);
-    const ref = doc(db, CHECKLIST_COLLECTION, relId);
-
-    const payload = {
-      tutor_id: tutorId,
-      student_id: studentId,
-      documents: nextDocs.map((d) => ({
-        id: d.id,
-        name: d.name,
-        submitted: !!d.submitted,
-        updated_at: new Date().toISOString(),
-        created_at: d.created_at || new Date().toISOString(),
-      })),
-      updated_at: serverTimestamp(),
-      created_at: serverTimestamp(),
-    };
-
-    await setDoc(ref, payload, { merge: true });
-
-    if (!isMountedRef.current) return;
-
-    setChecklistsByStudent((prev) => ({
-      ...prev,
-      [studentId]: payload.documents,
-    }));
-  };
-
-  const handleToggleDoc = async (docId) => {
-    if (requireSubscription()) return;
-    const auth = getAuth();
-    const me = auth.currentUser;
-    if (!me || !activeStudent?.id) return;
-
-    const next = activeDocs.map((d) =>
-      d.id === docId ? { ...d, submitted: !d.submitted, updated_at: new Date().toISOString() } : d
-    );
-
-    setDocsSaving(true);
-    try {
-      await saveChecklist(me.uid, activeStudent.id, next);
-    } catch (e) {
-      console.error("Checklist toggle failed:", e);
-      setErrorText(e?.message || "Failed to update document checklist.");
-    } finally {
-      if (isMountedRef.current) setDocsSaving(false);
-    }
-  };
-
-  const handleAddDoc = async () => {
-    if (requireSubscription()) return;
-    const name = String(docName || "").trim();
-    if (!name) return;
-
-    const auth = getAuth();
-    const me = auth.currentUser;
-    if (!me || !activeStudent?.id) return;
-
-    const next = [
-      ...activeDocs,
-      {
-        id: cryptoRandomId(),
-        name,
-        submitted: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ];
-
-    setDocsSaving(true);
-    try {
-      await saveChecklist(me.uid, activeStudent.id, next);
-      if (isMountedRef.current) setDocName("");
-    } catch (e) {
-      console.error("Checklist add failed:", e);
-      setErrorText(e?.message || "Failed to add document.");
-    } finally {
-      if (isMountedRef.current) setDocsSaving(false);
-    }
-  };
-
-  const handleRemoveDoc = async (docId) => {
-    if (requireSubscription()) return;
-    const auth = getAuth();
-    const me = auth.currentUser;
-    if (!me || !activeStudent?.id) return;
-
-    const next = activeDocs.filter((d) => d.id !== docId);
-
-    setDocsSaving(true);
-    try {
-      await saveChecklist(me.uid, activeStudent.id, next);
-    } catch (e) {
-      console.error("Checklist remove failed:", e);
-      setErrorText(e?.message || "Failed to remove document.");
-    } finally {
-      if (isMountedRef.current) setDocsSaving(false);
-    }
-  };
-
-  const handleApplyTemplate = async () => {
-    if (requireSubscription()) return;
-    const auth = getAuth();
-    const me = auth.currentUser;
-    if (!me || !activeStudent?.id) return;
-
-    const base = defaultDocTemplate().map((d) => ({
-      id: cryptoRandomId(),
-      name: d.name,
-      submitted: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
-
-    setDocsSaving(true);
-    try {
-      await saveChecklist(me.uid, activeStudent.id, base);
-    } catch (e) {
-      console.error("Checklist template failed:", e);
-      setErrorText(e?.message || "Failed to apply template.");
-    } finally {
-      if (isMountedRef.current) setDocsSaving(false);
-    }
-  };
-
-  const handleMessage = (studentId) => {
-    window.location.href = createPageUrl(`Messages?to=${studentId}`);
   };
 
   const fetchData = useCallback(async () => {
@@ -449,14 +412,16 @@ export default function TutorStudents() {
 
       if (!me) {
         setStudents([]);
+        setSessions([]);
         setRemovableStudentIds(new Set());
-        setChecklistsByStudent({});
         setLoading(false);
         return;
       }
 
       const meSnap = await getDoc(doc(db, "users", me.uid));
-      if (isMountedRef.current) setMeDoc(meSnap.exists() ? { id: meSnap.id, ...meSnap.data() } : null);
+      if (isMountedRef.current) {
+        setMeDoc(meSnap.exists() ? { id: meSnap.id, ...meSnap.data() } : null);
+      }
 
       const relationQueries = [
         query(collection(db, RELATION_COLLECTION), where("tutorId", "==", me.uid)),
@@ -473,84 +438,57 @@ export default function TutorStudents() {
       );
 
       const relationDocs = relationSnapshots.flatMap((snap) => snap.docs || []);
-
       const seenRelationDocIds = new Set();
       const uniqueRelationDocs = relationDocs.filter((d) => {
-        if (!d?.id) return false;
-        if (seenRelationDocIds.has(d.id)) return false;
+        if (!d?.id || seenRelationDocIds.has(d.id)) return false;
         seenRelationDocIds.add(d.id);
         return true;
       });
 
-      const relationUserIds = [];
+      const studentIds = [];
       const removableIds = new Set();
 
       uniqueRelationDocs.forEach((d) => {
         const studentId = getStudentIdFromRelation(d.data() || {});
         if (!studentId) return;
-        relationUserIds.push(studentId);
+        studentIds.push(studentId);
         removableIds.add(studentId);
       });
 
-      const uniqueUserIds = Array.from(new Set(relationUserIds));
-      const relationUsers = [];
+      const uniqueStudentIds = Array.from(new Set(studentIds));
+      const studentProfiles = [];
 
-      if (uniqueUserIds.length) {
-        for (const batch of chunk(uniqueUserIds, 10)) {
+      if (uniqueStudentIds.length) {
+        for (const batch of chunk(uniqueStudentIds, 10)) {
           const usersQ = query(collection(db, "users"), where(documentId(), "in", batch));
           const usersSnap = await getDocs(usersQ);
-          usersSnap.docs.forEach((u) => {
-            relationUsers.push({ id: u.id, ...u.data() });
-          });
+          usersSnap.docs.forEach((u) => studentProfiles.push({ id: u.id, ...u.data() }));
         }
       }
 
-      const seenUserIds = new Set();
-      const studentDocs = relationUsers.filter((u) => {
-        if (!u?.id) return false;
-        if (seenUserIds.has(u.id)) return false;
-        seenUserIds.add(u.id);
-        return true;
-      });
-
-      const map = {};
-      const checklistQueries = [
-        query(collection(db, CHECKLIST_COLLECTION), where("tutor_id", "==", me.uid)),
-        query(collection(db, CHECKLIST_COLLECTION), where("tutorId", "==", me.uid)),
-      ];
-
-      const checklistSnapshots = await Promise.all(
-        checklistQueries.map((qRef) =>
-          getDocs(qRef).catch((err) => {
-            console.error("Checklist query failed:", err);
-            return { docs: [] };
-          })
-        )
+      const sessionsQ = query(
+        collection(db, "tutoring_sessions"),
+        where("tutorId", "==", me.uid),
+        orderBy("start", "asc")
       );
 
-      checklistSnapshots.forEach((snap) => {
-        (snap.docs || []).forEach((d) => {
-          const data = d.data() || {};
-          const sid = data.student_id || data.studentId;
-          if (!sid) return;
-          map[sid] = Array.isArray(data.documents) ? data.documents : [];
-        });
+      const sessionsSnap = await getDocs(sessionsQ).catch((err) => {
+        console.error("tutoring_sessions query failed:", err);
+        return { docs: [] };
       });
+
+      const sessionDocs = (sessionsSnap.docs || []).map((d) => ({ id: d.id, ...d.data() }));
 
       if (!isMountedRef.current) return;
 
-      setStudents(studentDocs);
+      setStudents(studentProfiles);
       setRemovableStudentIds(removableIds);
-      setChecklistsByStudent(map);
+      setSessions(sessionDocs);
     } catch (err) {
-      console.error("Error fetching students/checklists:", err);
-      if (isMountedRef.current) {
-        setErrorText(err?.message || "Failed to load students.");
-      }
+      console.error("Error fetching tutor students and schedules:", err);
+      if (isMountedRef.current) setErrorText(err?.message || "Failed to load tutor students.");
     } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
+      if (isMountedRef.current) setLoading(false);
     }
   }, []);
 
@@ -559,9 +497,7 @@ export default function TutorStudents() {
       const scanner = qrScannerRef.current;
       if (scanner) {
         const state = scanner.getState?.();
-        if (state === 2 || state === 3) {
-          await scanner.stop().catch(() => {});
-        }
+        if (state === 2 || state === 3) await scanner.stop().catch(() => {});
         await scanner.clear().catch(() => {});
       }
     } catch {}
@@ -583,14 +519,15 @@ export default function TutorStudents() {
 
   const handleAcceptStudentQr = useCallback(
     async (rawValue) => {
+      if (requireSubscription("QR scanning is locked. Activate your tutor subscription to add students.")) return;
+
       const token = extractStudentRefFromScannedText(rawValue);
       if (!token) {
         setScannerError("Could not read a valid student QR token.");
         return;
       }
 
-      if (scannerBusy) return;
-      if (handledTokenRef.current === token) return;
+      if (scannerBusy || handledTokenRef.current === token) return;
 
       handledTokenRef.current = token;
       setScannerBusy(true);
@@ -611,16 +548,11 @@ export default function TutorStudents() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${idToken}`,
           },
-          body: JSON.stringify({
-            student_ref: token,
-          }),
+          body: JSON.stringify({ student_ref: token }),
         });
 
         const data = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          throw new Error(data?.error || "Failed to add student.");
-        }
+        if (!res.ok) throw new Error(data?.error || "Failed to add student.");
 
         if (!isMountedRef.current) return;
 
@@ -633,20 +565,17 @@ export default function TutorStudents() {
       } catch (e) {
         console.error(`${ACCEPT_STUDENT_ENDPOINT} failed:`, e);
         handledTokenRef.current = "";
-        if (isMountedRef.current) {
-          setScannerError(e?.message || "Failed to add student.");
-        }
+        if (isMountedRef.current) setScannerError(e?.message || "Failed to add student.");
       } finally {
-        if (isMountedRef.current) {
-          setScannerBusy(false);
-        }
+        if (isMountedRef.current) setScannerBusy(false);
       }
     },
     [scannerBusy, fetchData, closeScanner, subscriptionLocked]
   );
 
   const startScanner = async () => {
-    if (requireSubscription("QR scanning is locked. Activate your subscription to add students.")) return;
+    if (requireSubscription("QR scanning is locked. Activate your tutor subscription to add students.")) return;
+
     setScannerOpen(true);
     setScannerStarting(true);
     setScannerError("");
@@ -667,7 +596,6 @@ export default function TutorStudents() {
         }
 
         setCameraSupported(true);
-
         await stopScanner();
 
         const scanner = new Html5Qrcode(qrRegionIdRef.current);
@@ -691,9 +619,7 @@ export default function TutorStudents() {
             await scanner.start({ facingMode: "user" }, config, onScan, () => {});
           } catch {
             const cameras = await Html5Qrcode.getCameras();
-            if (!cameras || !cameras.length) {
-              throw new Error("No camera found on this device.");
-            }
+            if (!cameras || !cameras.length) throw new Error("No camera found on this device.");
             await scanner.start(cameras[0].id, config, onScan, () => {});
           }
         }
@@ -701,30 +627,24 @@ export default function TutorStudents() {
         console.error("Scanner start failed:", e);
         setScannerError(e?.message || "Could not access the camera. You can paste the QR token or link below.");
       } finally {
-        if (isMountedRef.current) {
-          setScannerStarting(false);
-        }
+        if (isMountedRef.current) setScannerStarting(false);
       }
     }, 250);
   };
 
   const handleRemoveStudent = async (student) => {
+    if (requireSubscription("Removing students is locked. Activate your tutor subscription to manage your student list.")) return;
+
     const auth = getAuth();
     const me = auth.currentUser;
     if (!me || !student?.id) return;
     if (!removableStudentIds.has(student.id)) return;
 
-    const ok = window.confirm(
-      `Remove ${student.full_name || student.email || "this student"} from your student list?`
-    );
+    const ok = window.confirm(`Remove ${getStudentName(student)} from your student list?`);
     if (!ok) return;
 
     try {
       await deleteDoc(doc(db, RELATION_COLLECTION, makeRelId(me.uid, student.id)));
-
-      try {
-        await deleteDoc(doc(db, CHECKLIST_COLLECTION, makeRelId(me.uid, student.id)));
-      } catch {}
 
       if (!isMountedRef.current) return;
 
@@ -734,17 +654,28 @@ export default function TutorStudents() {
         next.delete(student.id);
         return next;
       });
-      setChecklistsByStudent((prev) => {
-        const next = { ...prev };
-        delete next[student.id];
-        return next;
-      });
     } catch (e) {
       console.error("Remove student failed:", e);
-      if (isMountedRef.current) {
-        setErrorText(e?.message || "Failed to remove student.");
-      }
+      if (isMountedRef.current) setErrorText(e?.message || "Failed to remove student.");
     }
+  };
+
+  const handleMessage = (studentId) => {
+    window.location.href = createPageUrl(`Messages?to=${studentId}`);
+  };
+
+  const openPlannerForStudent = (student) => {
+    const params = new URLSearchParams({
+      studentId: student.id,
+      studentName: getStudentName(student),
+    });
+
+    navigate(`/planner?${params.toString()}`);
+  };
+
+  const openSchedule = (student) => {
+    setActiveStudent(student);
+    setScheduleOpen(true);
   };
 
   useEffect(() => {
@@ -756,12 +687,8 @@ export default function TutorStudents() {
     if (!studentRef) return;
 
     const process = async () => {
-      try {
-        await handleAcceptStudentQr(studentRef);
-        window.history.replaceState({}, "", "/TutorStudents");
-      } catch (err) {
-        console.error(err);
-      }
+      await handleAcceptStudentQr(studentRef);
+      window.history.replaceState({}, "", "/TutorStudents");
     };
 
     process();
@@ -773,18 +700,115 @@ export default function TutorStudents() {
     };
   }, [stopScanner]);
 
-  const filteredStudents = useMemo(() => {
+  const normalizedSessions = useMemo(() => {
+    return sessions
+      .map((session) => ({
+        ...session,
+        startDate: safeDate(session.start),
+        endDate: safeDate(session.end),
+        studentId: getStudentIdFromSession(session),
+        normalizedStudentName: normalizeText(session.studentName || session.student_name),
+      }))
+      .filter((session) => session.startDate)
+      .sort((a, b) => a.startDate - b.startDate);
+  }, [sessions]);
+
+  const getSessionsForStudent = useCallback(
+    (student) => {
+      const studentName = normalizeText(getStudentName(student));
+      const studentEmail = normalizeText(student.email);
+
+      return normalizedSessions.filter((session) => {
+        if (session.studentId && session.studentId === student.id) return true;
+
+        const sessionName = normalizeText(session.studentName || session.student_name);
+        const sessionEmail = normalizeText(session.studentEmail || session.student_email || session.email);
+
+        if (studentEmail && sessionEmail && studentEmail === sessionEmail) return true;
+        if (studentName && sessionName && studentName === sessionName) return true;
+
+        return false;
+      });
+    },
+    [normalizedSessions]
+  );
+
+  const studentRows = useMemo(() => {
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+
+    return students.map((student) => {
+      const studentSessions = getSessionsForStudent(student);
+      const upcoming = studentSessions.filter(
+        (session) => session.startDate >= now && String(session.status || "").toLowerCase() !== "cancelled"
+      );
+      const weekSessions = studentSessions.filter(
+        (session) => session.startDate >= weekStart && session.startDate <= weekEnd
+      );
+      const completed = studentSessions.filter(
+        (session) => String(session.status || "").toLowerCase() === "completed"
+      );
+
+      return {
+        student,
+        sessions: studentSessions,
+        nextSession: upcoming[0] || null,
+        upcomingCount: upcoming.length,
+        weekCount: weekSessions.length,
+        completedCount: completed.length,
+      };
+    });
+  }, [students, getSessionsForStudent]);
+
+  const filteredStudentRows = useMemo(() => {
     const s = searchTerm.toLowerCase().trim();
-    if (!s) return students;
+    if (!s) return studentRows;
 
-    return students.filter(
-      (student) =>
-        String(student.full_name || "").toLowerCase().includes(s) ||
-        String(student.email || "").toLowerCase().includes(s)
-    );
-  }, [students, searchTerm]);
+    return studentRows.filter(({ student, sessions: studentSessions }) => {
+      const matchesStudent =
+        normalizeText(getStudentName(student)).includes(s) || normalizeText(student.email).includes(s);
+      const matchesSession = studentSessions.some(
+        (session) =>
+          normalizeText(session.subject).includes(s) ||
+          normalizeText(session.title).includes(s) ||
+          normalizeText(session.status).includes(s)
+      );
 
-  if (loading) {
+      return matchesStudent || matchesSession;
+    });
+  }, [studentRows, searchTerm]);
+
+  const activeStudentSessions = useMemo(() => {
+    if (!activeStudent) return [];
+    return getSessionsForStudent(activeStudent);
+  }, [activeStudent, getSessionsForStudent]);
+
+  const upcomingSessions = useMemo(() => {
+    const now = new Date();
+    return normalizedSessions
+      .filter((session) => session.startDate >= now && String(session.status || "").toLowerCase() !== "cancelled")
+      .slice(0, 6);
+  }, [normalizedSessions]);
+
+  const todaySessions = useMemo(
+    () => normalizedSessions.filter((session) => isSameDay(session.startDate, new Date())),
+    [normalizedSessions]
+  );
+
+  const sessionsThisWeek = useMemo(() => {
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+    return normalizedSessions.filter((session) => session.startDate >= weekStart && session.startDate <= weekEnd);
+  }, [normalizedSessions]);
+
+  const completedSessions = useMemo(
+    () => normalizedSessions.filter((session) => String(session.status || "").toLowerCase() === "completed"),
+    [normalizedSessions]
+  );
+
+  if (loading || subscriptionModeLoading) {
     return (
       <div className="p-6">
         <div className="flex items-center gap-2 text-gray-700">
@@ -796,39 +820,43 @@ export default function TutorStudents() {
   }
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="flex items-center justify-between gap-3 mb-6">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Tutor Students</h1>
-          <div className="mt-2 hidden sm:flex items-center gap-2 text-sm text-gray-600">
-            <ClipboardList className="h-4 w-4" />
-            Track required documents per student
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Tutor Students</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            View your linked students and their tutoring schedules from Tutor Planner.
+          </p>
         </div>
 
-        <Button type="button" className="rounded-xl" onClick={startScanner} disabled={subscriptionLocked}>
-          <ScanLine className="h-4 w-4 mr-2" />
-          Scan Student QR
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" className="rounded-xl" onClick={() => navigate("/planner")}>
+            <CalendarDays className="h-4 w-4 mr-2" />
+            Open Tutor Planner
+          </Button>
+
+          <Button type="button" className="rounded-xl" onClick={startScanner} disabled={subscriptionLocked}>
+            <ScanLine className="h-4 w-4 mr-2" />
+            Add Student by QR
+          </Button>
+        </div>
       </div>
 
       {errorText ? (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {errorText}
         </div>
       ) : null}
 
-
-
       {subscriptionLocked ? (
-        <Card className="mb-4 rounded-2xl border-amber-200 bg-amber-50">
+        <Card className="rounded-2xl border-amber-200 bg-amber-50">
           <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3 text-amber-900">
               <Lock className="h-5 w-5 mt-0.5 shrink-0" />
               <div>
                 <div className="font-semibold">Subscription required</div>
                 <div className="text-sm text-amber-800 mt-1">
-                  Subscription mode is enabled. Activate your tutor subscription to use QR scanning, messaging, and document checklist tools.
+                  Subscription mode is enabled. Activate your tutor subscription to manage students, schedules, and messages.
                 </div>
               </div>
             </div>
@@ -840,137 +868,170 @@ export default function TutorStudents() {
         </Card>
       ) : null}
 
-      <Card className="rounded-2xl">
-        <CardHeader>
-          <CardTitle>My Students List</CardTitle>
-          <div className="mt-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-              <Input
-                placeholder="Search by student name or email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 rounded-xl"
-              />
+      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <SummaryCard title="Total Students" value={students.length} subtitle="Linked to this tutor" icon={Users} />
+        <SummaryCard title="Today" value={todaySessions.length} subtitle="Sessions scheduled" icon={CalendarDays} />
+        <SummaryCard title="This Week" value={sessionsThisWeek.length} subtitle="Tutoring sessions" icon={Clock3} />
+        <SummaryCard title="Completed" value={completedSessions.length} subtitle="All completed sessions" icon={UserRound} />
+      </div>
+
+      <div className="grid xl:grid-cols-[1fr_380px] gap-6">
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <CardTitle>Student Schedule Overview</CardTitle>
+                <p className="text-sm text-gray-500 mt-1">Next session and weekly schedule per student.</p>
+              </div>
+
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                <Input
+                  placeholder="Search student, subject, or status..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 rounded-xl"
+                />
+              </div>
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
 
-        <CardContent>
-          <div className="hidden md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Docs</TableHead>
-                  <TableHead>Profile</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
+          <CardContent>
+            <div className="hidden lg:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Next Session</TableHead>
+                    <TableHead>This Week</TableHead>
+                    <TableHead>Progress</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
 
-              <TableBody>
-                {filteredStudents.map((student) => {
-                  const isRemovable = removableStudentIds.has(student.id);
+                <TableBody>
+                  {filteredStudentRows.map(({ student, nextSession, weekCount, completedCount, sessions: studentSessions }) => {
+                    const isRemovable = removableStudentIds.has(student.id);
 
-                  return (
-                    <TableRow key={student.id}>
-                      <TableCell>
-                        <div className="font-medium">{student.full_name || "Unnamed"}</div>
-                        <div className="text-sm text-muted-foreground">{student.email || "No email"}</div>
-                      </TableCell>
+                    return (
+                      <TableRow key={student.id}>
+                        <TableCell>
+                          <div className="font-medium text-gray-900">{getStudentName(student)}</div>
+                          <div className="text-sm text-muted-foreground">{student.email || "No email"}</div>
+                        </TableCell>
 
-                      <TableCell className="whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <ProgressBadge docs={checklistsByStudent[student.id]} />
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => openDocs(student)}
-                          >
-                            <FileCheck className="h-4 w-4 mr-2" />
-                            Documents
-                          </Button>
-                        </div>
-                      </TableCell>
+                        <TableCell>
+                          {nextSession ? (
+                            <div>
+                              <div className="font-medium text-gray-900">
+                                {nextSession.subject || nextSession.title || "Tutoring Session"}
+                              </div>
+                              <div className="text-sm text-gray-500">{formatSessionDate(nextSession.startDate)}</div>
+                              <Badge className={`mt-1 rounded-full border capitalize ${getStatusBadgeClass(nextSession.status)}`}>
+                                {nextSession.status || "booked"}
+                              </Badge>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-500">No upcoming session</span>
+                          )}
+                        </TableCell>
 
-                      <TableCell className="whitespace-nowrap">
-                        <Badge
-                          variant={student.onboarding_completed ? "default" : "secondary"}
-                          className="rounded-full"
-                        >
-                          {student.onboarding_completed ? "Complete" : "Incomplete"}
-                        </Badge>
-                      </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="rounded-full">
+                            {weekCount} session{weekCount === 1 ? "" : "s"}
+                          </Badge>
+                        </TableCell>
 
-                      <TableCell className="text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="rounded-xl"
-                            onClick={() => handleMessage(student.id)}
-                          >
-                            <MessageSquare className="h-4 w-4 mr-2" />
-                            Message
-                          </Button>
+                        <TableCell>
+                          <div className="text-sm text-gray-700">{completedCount} completed</div>
+                          <div className="text-xs text-gray-500">{studentSessions.length} total sessions</div>
+                        </TableCell>
 
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="rounded-xl"
-                            disabled={subscriptionLocked || !isRemovable}
-                            title={
-                              isRemovable ? "Remove from your student list" : "Student cannot be removed"
-                            }
-                            onClick={() => handleRemoveStudent(student)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Remove
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => openSchedule(student)}>
+                              <CalendarDays className="h-4 w-4 mr-2" />
+                              Schedule
+                            </Button>
 
-          <div className="md:hidden grid grid-cols-1 gap-4">
-            {filteredStudents.map((student) => {
-              const isRemovable = removableStudentIds.has(student.id);
+                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => openPlannerForStudent(student)}>
+                              <Plus className="h-4 w-4 mr-2" />
+                              Plan
+                            </Button>
 
-              return (
-                <Card key={student.id} className="p-4 rounded-2xl">
-                  <div className="flex justify-between items-start gap-3">
-                    <div>
-                      <p className="font-bold">{student.full_name || "Unnamed"}</p>
-                      <p className="text-sm text-gray-500">{student.email || "No email"}</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-xs text-gray-500">Docs</span>
-                        <ProgressBadge docs={checklistsByStudent[student.id]} />
+                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => handleMessage(student.id)}>
+                              <MessageSquare className="h-4 w-4 mr-2" />
+                              Message
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl"
+                              disabled={subscriptionLocked || !isRemovable}
+                              title={isRemovable ? "Remove from your student list" : "Student cannot be removed"}
+                              onClick={() => handleRemoveStudent(student)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="lg:hidden grid grid-cols-1 gap-4">
+              {filteredStudentRows.map(({ student, nextSession, weekCount, completedCount, sessions: studentSessions }) => {
+                const isRemovable = removableStudentIds.has(student.id);
+
+                return (
+                  <Card key={student.id} className="p-4 rounded-2xl">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-bold text-gray-900">{getStudentName(student)}</div>
+                        <div className="text-sm text-gray-500">{student.email || "No email"}</div>
                       </div>
+                      <Badge variant="secondary" className="rounded-full">
+                        {weekCount} this week
+                      </Badge>
                     </div>
 
-                    <div className="flex flex-col gap-2 items-end">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-xl"
-                        onClick={() => openDocs(student)}
-                      >
-                        <FileCheck className="h-4 w-4 mr-2" />
-                        Docs
+                    <div className="mt-4 rounded-xl bg-gray-50 border p-3">
+                      <div className="text-xs text-gray-500 mb-1">Next Session</div>
+                      {nextSession ? (
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {nextSession.subject || nextSession.title || "Tutoring Session"}
+                          </div>
+                          <div className="text-sm text-gray-500">{formatSessionDate(nextSession.startDate)}</div>
+                          <Badge className={`mt-2 rounded-full border capitalize ${getStatusBadgeClass(nextSession.status)}`}>
+                            {nextSession.status || "booked"}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">No upcoming session</div>
+                      )}
+                    </div>
+
+                    <div className="mt-3 text-sm text-gray-600">
+                      {completedCount} completed • {studentSessions.length} total sessions
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <Button variant="outline" size="sm" className="rounded-xl" onClick={() => openSchedule(student)}>
+                        <CalendarDays className="h-4 w-4 mr-2" />
+                        Schedule
                       </Button>
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-xl"
-                        onClick={() => handleMessage(student.id)}
-                      >
+                      <Button variant="outline" size="sm" className="rounded-xl" onClick={() => openPlannerForStudent(student)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Plan
+                      </Button>
+
+                      <Button variant="outline" size="sm" className="rounded-xl" onClick={() => handleMessage(student.id)}>
                         <MessageSquare className="h-4 w-4 mr-2" />
                         Message
                       </Button>
@@ -980,178 +1041,112 @@ export default function TutorStudents() {
                         size="sm"
                         className="rounded-xl"
                         disabled={subscriptionLocked || !isRemovable}
-                        title={
-                          isRemovable ? "Remove from your student list" : "Student cannot be removed"
-                        }
                         onClick={() => handleRemoveStudent(student)}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
                         Remove
                       </Button>
                     </div>
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t flex items-center justify-between text-sm">
-                    <div>
-                      <p className="text-gray-500">Profile</p>
-                      <Badge
-                        variant={student.onboarding_completed ? "default" : "secondary"}
-                        className="mt-1 rounded-full"
-                      >
-                        {student.onboarding_completed ? "Complete" : "Incomplete"}
-                      </Badge>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-
-          {filteredStudents.length === 0 && (
-            <div className="text-center py-12">
-              <div className="mx-auto h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
-                <FileCheck className="h-6 w-6 text-gray-500" />
-              </div>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No students found</h3>
-              <p className="mt-1 text-sm text-gray-500">No students match your search criteria.</p>
+                  </Card>
+                );
+              })}
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            {filteredStudentRows.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="mx-auto h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
+                  <Users className="h-6 w-6 text-gray-500" />
+                </div>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No students found</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Add a student by QR or create sessions in Tutor Planner.
+                </p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl shadow-sm h-fit">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5" />
+              Upcoming Schedule
+            </CardTitle>
+            <p className="text-sm text-gray-500">Latest sessions from Tutor Planner.</p>
+          </CardHeader>
+
+          <CardContent>
+            {upcomingSessions.length === 0 ? (
+              <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-500">
+                No upcoming tutoring sessions yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingSessions.map((session) => (
+                  <SessionRow key={session.id} session={session} />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Modal
-        open={docsOpen}
-        onClose={closeDocs}
-        title={activeStudent ? `Documents • ${activeStudent.full_name || activeStudent.email || "Student"}` : "Documents"}
+        open={scheduleOpen}
+        onClose={() => {
+          setScheduleOpen(false);
+          setActiveStudent(null);
+        }}
+        title={activeStudent ? `Schedule • ${getStudentName(activeStudent)}` : "Student Schedule"}
+        maxWidth="max-w-3xl"
       >
         {!activeStudent ? null : (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm text-gray-600">
-                Create a required document list for this student, then tick off items as they submit them.
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div className="text-sm text-gray-500">Student</div>
+                <div className="font-medium text-gray-900">{getStudentName(activeStudent)}</div>
+                <div className="text-sm text-gray-500">{activeStudent.email || "No email"}</div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <ProgressBadge docs={activeDocs} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-xl"
-                  onClick={handleApplyTemplate}
-                  disabled={docsSaving}
-                  title="Adds a default checklist (you can edit after)"
-                >
-                  Use template
-                </Button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Input
-                className="rounded-xl"
-                placeholder="Add a document (e.g., assessment form)…"
-                value={docName}
-                onChange={(e) => setDocName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddDoc();
-                }}
-              />
-              <Button
-                type="button"
-                className="rounded-xl"
-                onClick={handleAddDoc}
-                disabled={docsSaving || !docName.trim()}
-              >
+              <Button type="button" className="rounded-xl" onClick={() => openPlannerForStudent(activeStudent)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add
+                Open in Planner
               </Button>
             </div>
 
-            <div className="border rounded-2xl overflow-hidden">
-              {activeDocs.length === 0 ? (
-                <div className="p-4 text-sm text-gray-600">
-                  No documents yet. Click <span className="font-medium">Use template</span> or add your own.
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {activeDocs.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between gap-3 p-3">
-                      <label className="flex items-center gap-3 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={!!d.submitted}
-                          onChange={() => handleToggleDoc(d.id)}
-                          disabled={docsSaving}
-                          className="h-4 w-4"
-                        />
-                        <div>
-                          <div className="font-medium">{d.name}</div>
-                          <div className="text-xs text-gray-500">{d.submitted ? "Submitted" : "Pending"}</div>
-                        </div>
-                      </label>
-
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="rounded-xl"
-                        onClick={() => handleRemoveDoc(d.id)}
-                        disabled={docsSaving}
-                        title="Remove"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {docsSaving ? (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving…
+            {activeStudentSessions.length === 0 ? (
+              <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-500">
+                No sessions found for this student. Create one from Tutor Planner.
               </div>
-            ) : null}
+            ) : (
+              <div className="space-y-3">
+                {activeStudentSessions.map((session) => (
+                  <SessionRow key={session.id} session={session} compact />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </Modal>
 
-      <Modal open={scannerOpen} onClose={() => closeScanner()} title="Scan Student QR">
+      <Modal open={scannerOpen} onClose={closeScanner} title="Add Student by QR" maxWidth="max-w-xl">
         <div className="space-y-4">
           <div className="text-sm text-gray-600">
-            Scan the student QR using your camera, or paste the student QR link/token manually.
+            Scan the student QR code to add them to your tutor student list.
           </div>
 
-          <div className="overflow-hidden rounded-2xl border bg-black">
-            <div className="relative aspect-video w-full">
-              <div id={qrRegionIdRef.current} className="h-full w-full" />
-
-              {!cameraSupported ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/90 bg-black/70 px-4 text-center">
-                  <Camera className="h-8 w-8 mb-3" />
-                  <div className="text-sm">Live camera QR scan is not supported here.</div>
-                  <div className="text-xs text-white/70 mt-1">Use the manual token/link input below.</div>
-                </div>
-              ) : null}
-
-              {scannerStarting ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Starting camera…
-                  </div>
-                </div>
-              ) : null}
-
-              {scannerBusy ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Adding student…
-                  </div>
-                </div>
-              ) : null}
-            </div>
+          <div className="rounded-2xl border bg-gray-50 p-3">
+            <div id={qrRegionIdRef.current} className="w-full overflow-hidden rounded-xl" />
+            {scannerStarting ? (
+              <div className="flex items-center gap-2 text-sm text-gray-600 mt-3">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Starting camera…
+              </div>
+            ) : null}
+            {!cameraSupported ? (
+              <div className="text-sm text-gray-600 mt-3">Camera unavailable. Use manual input below.</div>
+            ) : null}
           </div>
 
           {scannerError ? (
@@ -1166,19 +1161,14 @@ export default function TutorStudents() {
             </div>
           ) : null}
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Manual QR token / link</label>
+          <div className="grid gap-2">
+            <div className="text-sm font-medium">Paste QR token or link</div>
             <div className="flex gap-2">
               <Input
                 className="rounded-xl"
-                placeholder="Paste student_ref link or token here..."
                 value={manualQrValue}
                 onChange={(e) => setManualQrValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && manualQrValue.trim()) {
-                    handleAcceptStudentQr(manualQrValue);
-                  }
-                }}
+                placeholder="student_ref token or QR link"
               />
               <Button
                 type="button"
@@ -1186,15 +1176,9 @@ export default function TutorStudents() {
                 disabled={scannerBusy || !manualQrValue.trim()}
                 onClick={() => handleAcceptStudentQr(manualQrValue)}
               >
-                Add
+                {scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
               </Button>
             </div>
-          </div>
-
-          <div className="flex justify-end">
-            <Button type="button" variant="outline" className="rounded-xl" onClick={() => closeScanner()}>
-              Close
-            </Button>
           </div>
         </div>
       </Modal>
