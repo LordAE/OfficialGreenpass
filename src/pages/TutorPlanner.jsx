@@ -802,7 +802,9 @@ function buildSubscriptionCheckoutUrl(userDoc, expectedRole, fallbackPath) {
 
 export default function TutorPlanner() {
   const { tr } = useTr();
+  const navigate = useNavigate();
   const currentUser = auth.currentUser;
+  const { subscriptionModeEnabled, loading: subscriptionModeLoading } = useSubscriptionMode();
 
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("week");
@@ -831,6 +833,10 @@ export default function TutorPlanner() {
       setLoading(true);
 
       try {
+        const userRef = doc(db, "users", currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        setMeDoc(userSnap.exists() ? userSnap.data() : null);
+
         const availabilityRef = doc(db, "tutor_availability", currentUser.uid);
         const availabilitySnap = await getDoc(availabilityRef);
         setAvailability(availabilitySnap.exists() ? availabilitySnap.data() : null);
@@ -1405,7 +1411,7 @@ export default function TutorPlanner() {
         </CardContent>
       </Card>
 
-      {loading ? (
+      {loading || subscriptionModeLoading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-gray-600" />
         </div>
