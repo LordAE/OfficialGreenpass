@@ -105,6 +105,65 @@ function normalizeRole(r) {
   return VALID_ROLES.includes(v) ? v : DEFAULT_ROLE;
 }
 
+
+function normalizeSchoolRecord(rawData, id, source = "institution") {
+  const imageUrls = ensureArray(
+    pickFirst(rawData?.imageUrls, rawData?.image_urls, [])
+  ).filter(Boolean);
+
+  const primaryImage = pickFirst(
+    rawData?.imageUrl,
+    rawData?.image_url,
+    imageUrls[0],
+    ""
+  );
+
+  return {
+    id,
+    source,
+
+    name: pickFirst(
+      rawData?.name,
+      rawData?.school_name,
+      rawData?.institution_name,
+      "Institution"
+    ),
+
+    logo_url: pickFirst(rawData?.logoUrl, rawData?.logo_url, primaryImage),
+    banner_url: pickFirst(rawData?.bannerUrl, rawData?.banner_url),
+    image_url: primaryImage,
+    image_urls: imageUrls,
+
+    website: pickFirst(rawData?.website),
+    location: pickFirst(rawData?.city, rawData?.location),
+    province: pickFirst(rawData?.province),
+    country: pickFirst(rawData?.country),
+    about: pickFirst(rawData?.about, rawData?.description),
+    description: pickFirst(rawData?.description, rawData?.about),
+    address: pickFirst(rawData?.address),
+    phone: pickFirst(rawData?.phone),
+    email: pickFirst(rawData?.email),
+    dliNumber: pickFirst(rawData?.dliNumber, rawData?.dli_number),
+    year_established: pickFirst(rawData?.year_established, rawData?.founded_year),
+    application_fee: pickFirst(rawData?.application_fee),
+    avgTuition_field: pickFirst(rawData?.avgTuition, rawData?.tuition_fees),
+    cost_of_living: pickFirst(rawData?.cost_of_living),
+    public_private: pickFirst(rawData?.public_private, rawData?.is_public),
+    verification_status: pickFirst(rawData?.verification_status),
+    claim_status: pickFirst(rawData?.claim_status),
+    account_type: source === "user_draft" ? "draft" : pickFirst(rawData?.account_type, "real"),
+    status: rawData?.status,
+    type: pickFirst(rawData?.type, rawData?.school_type),
+    school_level: pickFirst(rawData?.school_level),
+    user_id: pickFirst(rawData?.user_id),
+    rating: pickFirst(rawData?.rating),
+    acceptance_rate: pickFirst(rawData?.acceptance_rate),
+    raw: {
+      [source]: rawData,
+    },
+  };
+}
+
 export default function SchoolDetails() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -210,114 +269,143 @@ export default function SchoolDetails() {
       try {
         if (!schoolIdParam && !authReady) return;
 
-        const institutionId = await resolveInstitutionId();
+        let loadedSchool = null;
+        let programInstitutionId = "";
+        let programOwnerUid = "";
 
-        if (!institutionId) {
-          if (!cancelled) {
-            setSchool(null);
-            setPrograms([]);
-            setLoading(false);
-          }
-          return;
-        }
+        const loadDraftFromUser = async (uid) => {
+          if (!uid) return null;
 
-        const instSnap = await safeGetDoc("institutions", institutionId);
-        const instData = instSnap.exists() ? { id: institutionId, ...instSnap.data() } : null;
+          const userSnap = await safeGetDoc("users", uid);
+          if (!userSnap.exists()) return null;
 
-        if (!instData) {
-          if (!cancelled) {
-            setSchool(null);
-            setPrograms([]);
-            setLoading(false);
-          }
-          return;
-        }
+          const userData = userSnap.data() || {};
+          const draft = userData?.school_profile_draft || userData?.school_profile || null;
+          if (!draft) return null;
 
-        const merged = {
-          id: institutionId,
-          name: pickFirst(instData?.name, "Institution"),
-          logo_url: pickFirst(instData?.logoUrl, instData?.logo_url),
-          banner_url: pickFirst(instData?.bannerUrl, instData?.banner_url),
-          image_url: pickFirst(instData?.imageUrl, instData?.image_url),
-          image_urls: ensureArray(
-            pickFirst(instData?.imageUrls, instData?.image_urls, [])
-          ),
-          website: pickFirst(instData?.website),
-          location: pickFirst(instData?.city, instData?.location),
-          province: pickFirst(instData?.province),
-          country: pickFirst(instData?.country),
-          about: pickFirst(instData?.about, instData?.description),
-          description: pickFirst(instData?.description),
-          address: pickFirst(instData?.address),
-          phone: pickFirst(instData?.phone),
-          email: pickFirst(instData?.email),
-          dliNumber: pickFirst(instData?.dliNumber, instData?.dli_number),
-          year_established: pickFirst(instData?.year_established, instData?.founded_year),
-          application_fee: pickFirst(instData?.application_fee),
-          avgTuition_field: pickFirst(instData?.avgTuition, instData?.tuition_fees),
-          cost_of_living: pickFirst(instData?.cost_of_living),
-          public_private: pickFirst(instData?.public_private, instData?.is_public),
-          verification_status: pickFirst(instData?.verification_status),
-          claim_status: pickFirst(instData?.claim_status),
-          account_type: pickFirst(instData?.account_type, "real"),
-          status: instData?.status,
-          type: pickFirst(instData?.type, instData?.school_type),
-          school_level: pickFirst(instData?.school_level),
-          user_id: pickFirst(instData?.user_id),
-          rating: pickFirst(instData?.rating),
-          acceptance_rate: pickFirst(instData?.acceptance_rate),
-          raw: {
-            institution: instData,
-          },
+          const draftData = {
+            ...draft,
+            user_id: uid,
+            email: draft?.email || userData?.email || "",
+            phone: draft?.phone || userData?.phone || "",
+          };
+
+          return {
+            school: normalizeSchoolRecord(draftData, uid, "user_draft"),
+            institutionId: draft?.institution_id || userData?.linked_institution_id || uid,
+            ownerUid: uid,
+          };
         };
 
-        if (!cancelled) setSchool(merged);
+        const loadProgramsForSchool = async ({ institutionId, ownerUid }) => {
+          const programsFound = [];
 
-        const programsFound = [];
-
-        try {
-          const q1 = query(
-            collection(db, "schools"),
-            where("institution_id", "==", institutionId),
-            limit(500)
-          );
-          const snap1 = await getDocs(q1);
-          snap1.forEach((d) => programsFound.push({ id: d.id, ...d.data() }));
-        } catch (e) {
-          console.warn("Programs query (schools by institution_id) failed:", e);
-        }
-
-        try {
-          const q2 = query(
-            collection(db, "schools"),
-            where("institutionId", "==", institutionId),
-            limit(500)
-          );
-          const snap2 = await getDocs(q2);
-          snap2.forEach((d) => {
+          const pushUnique = (d) => {
             if (!programsFound.find((p) => p.id === d.id)) {
               programsFound.push({ id: d.id, ...d.data() });
             }
-          });
-        } catch {}
+          };
 
-        try {
-          if (instData?.user_id) {
-            const q3 = query(
-              collection(db, "schools"),
-              where("user_id", "==", instData.user_id),
-              limit(500)
-            );
-            const snap3 = await getDocs(q3);
-            snap3.forEach((d) => {
-              if (!programsFound.find((p) => p.id === d.id)) {
-                programsFound.push({ id: d.id, ...d.data() });
-              }
-            });
+          if (institutionId) {
+            try {
+              const q1 = query(
+                collection(db, "schools"),
+                where("institution_id", "==", institutionId),
+                limit(500)
+              );
+              const snap1 = await getDocs(q1);
+              snap1.forEach(pushUnique);
+            } catch (e) {
+              console.warn("Programs query by institution_id failed:", e);
+            }
+
+            try {
+              const q2 = query(
+                collection(db, "schools"),
+                where("institutionId", "==", institutionId),
+                limit(500)
+              );
+              const snap2 = await getDocs(q2);
+              snap2.forEach(pushUnique);
+            } catch (e) {
+              console.warn("Programs query by institutionId failed:", e);
+            }
+
+            try {
+              const q3 = query(
+                collection(db, "schools"),
+                where("school_id", "==", institutionId),
+                limit(500)
+              );
+              const snap3 = await getDocs(q3);
+              snap3.forEach(pushUnique);
+            } catch (e) {
+              console.warn("Programs query by school_id failed:", e);
+            }
           }
-        } catch {}
+
+          if (ownerUid) {
+            try {
+              const q4 = query(
+                collection(db, "schools"),
+                where("user_id", "==", ownerUid),
+                limit(500)
+              );
+              const snap4 = await getDocs(q4);
+              snap4.forEach(pushUnique);
+            } catch (e) {
+              console.warn("Programs query by user_id failed:", e);
+            }
+          }
+
+          return programsFound;
+        };
+
+        const institutionId = await resolveInstitutionId();
+
+        if (institutionId) {
+          const instSnap = await safeGetDoc("institutions", institutionId);
+          const instData = instSnap.exists()
+            ? { id: institutionId, ...instSnap.data() }
+            : null;
+
+          if (instData) {
+            loadedSchool = normalizeSchoolRecord(instData, institutionId, "institution");
+            programInstitutionId = institutionId;
+            programOwnerUid = instData?.user_id || "";
+          }
+        }
+
+        // Important fallback:
+        // If the school account is not claimed yet, SchoolProfile saves to users/{uid}.school_profile_draft.
+        // This allows SchoolDetails to show that draft instead of showing School Not Found.
+        if (!loadedSchool) {
+          const draftUid = schoolIdParam || fbUser?.uid || auth.currentUser?.uid;
+          const draftResult = await loadDraftFromUser(draftUid);
+
+          if (draftResult) {
+            loadedSchool = draftResult.school;
+            programInstitutionId = draftResult.institutionId;
+            programOwnerUid = draftResult.ownerUid;
+          }
+        }
+
+        if (!loadedSchool) {
+          if (!cancelled) {
+            setSchool(null);
+            setPrograms([]);
+            setProgramsPage(1);
+          }
+          return;
+        }
+
+        const programsFound = await loadProgramsForSchool({
+          institutionId: programInstitutionId || loadedSchool.id,
+          ownerUid: programOwnerUid || loadedSchool.user_id,
+        });
 
         if (!cancelled) {
+          setSchool(loadedSchool);
           setPrograms(programsFound);
           setProgramsPage(1);
         }
@@ -326,6 +414,7 @@ export default function SchoolDetails() {
         if (!cancelled) {
           setSchool(null);
           setPrograms([]);
+          setProgramsPage(1);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -341,7 +430,11 @@ export default function SchoolDetails() {
   const isSignedIn = !!fbUser;
 
   const ownerIds = useMemo(() => {
-    return [school?.user_id, school?.raw?.institution?.user_id]
+    return [
+      school?.user_id,
+      school?.raw?.institution?.user_id,
+      school?.raw?.user_draft?.user_id,
+    ]
       .filter(Boolean)
       .map((v) => String(v));
   }, [school]);
@@ -610,8 +703,8 @@ export default function SchoolDetails() {
           </p>
           {role === "school" && (
             <div className="mt-5">
-              <Button onClick={() => navigate(createPageUrl("Dashboard"))}>
-                Go to School Dashboard
+              <Button onClick={() => navigate(createPageUrl("SchoolProfile"))}>
+                Go to School Profile
               </Button>
             </div>
           )}
@@ -681,10 +774,16 @@ export default function SchoolDetails() {
                         className={
                           school.account_type === "real"
                             ? "bg-blue-100 text-blue-800"
+                            : school.account_type === "draft"
+                            ? "bg-amber-100 text-amber-800"
                             : "bg-gray-100 text-gray-800"
                         }
                       >
-                        {school.account_type === "real" ? "Real" : "Demo"}
+                        {school.account_type === "real"
+                          ? "Real"
+                          : school.account_type === "draft"
+                          ? "Draft"
+                          : "Demo"}
                       </Badge>
                     )}
 

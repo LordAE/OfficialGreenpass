@@ -1,5 +1,6 @@
 // src/pages/SchoolProfile.jsx
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UploadFile } from "@/api/integrations";
+import { createPageUrl } from "@/utils";
 import {
   Building,
   Save,
@@ -28,6 +30,7 @@ import {
 
 /* ---------- Firebase ---------- */
 import { db, auth } from "@/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   doc,
   getDoc,
@@ -155,9 +158,14 @@ function formatDateTime(v) {
 }
 
 export default function SchoolProfile() {
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const [fbUser, setFbUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
 
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -168,14 +176,26 @@ export default function SchoolProfile() {
   const [saveMode, setSaveMode] = useState("user_draft"); // user_draft | institution
   const [draftDocId, setDraftDocId] = useState("");
 
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setFbUser(user || null);
+      setAuthReady(true);
+    });
+
+    return () => unsub();
+  }, []);
+
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const loadSchoolData = useCallback(async () => {
+    if (!authReady) return;
+
     setLoading(true);
     try {
-      const uid = auth.currentUser?.uid;
+      const uid = fbUser?.uid || auth.currentUser?.uid;
+
       if (!uid) {
         setHasClaimedProfile(false);
         setLatestClaimRequest(null);
@@ -185,22 +205,31 @@ export default function SchoolProfile() {
         return;
       }
 
-      const [institutionSnap, claimReqSnap, userSnap] = await Promise.all([
-        getDocs(
-          query(collection(db, "institutions"), where("user_id", "==", uid), limit(1))
-        ),
-        getDocs(
-          query(
-            collection(db, CLAIM_REQUESTS_COLL),
-            where("requested_by_uid", "==", uid),
-            orderBy("created_at", "desc"),
-            limit(1)
-          )
-        ),
-        getDoc(doc(db, "users", uid)),
+      const institutionPromise = getDocs(
+        query(collection(db, "institutions"), where("user_id", "==", uid), limit(1))
+      );
+
+      const userPromise = getDoc(doc(db, "users", uid));
+
+      const claimPromise = getDocs(
+        query(
+          collection(db, CLAIM_REQUESTS_COLL),
+          where("requested_by_uid", "==", uid),
+          orderBy("created_at", "desc"),
+          limit(1)
+        )
+      ).catch((error) => {
+        console.warn("Claim request lookup failed:", error);
+        return null;
+      });
+
+      const [institutionSnap, userSnap, claimReqSnap] = await Promise.all([
+        institutionPromise,
+        userPromise,
+        claimPromise,
       ]);
 
-      if (!claimReqSnap.empty) {
+      if (claimReqSnap && !claimReqSnap.empty) {
         setLatestClaimRequest({
           id: claimReqSnap.docs[0].id,
           ...claimReqSnap.docs[0].data(),
@@ -255,7 +284,7 @@ export default function SchoolProfile() {
           about: draft.about || draft.description || "",
           website: draft.website || "",
 
-          email: draft.email || userData?.email || auth.currentUser?.email || "",
+          email: draft.email || userData?.email || fbUser?.email || auth.currentUser?.email || "",
           phone: draft.phone || userData?.phone || "",
 
           image_url: draft.image_url || draft.imageUrl || loadedImageUrls[0] || "",
@@ -355,11 +384,12 @@ export default function SchoolProfile() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authReady, fbUser]);
 
   useEffect(() => {
+    if (!authReady) return;
     loadSchoolData();
-  }, [loadSchoolData]);
+  }, [authReady, loadSchoolData]);
 
   const handleUploadSingle = async (e, field, setUploading) => {
     const file = e.target.files?.[0];
@@ -439,7 +469,7 @@ export default function SchoolProfile() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const uid = auth.currentUser?.uid;
+      const uid = fbUser?.uid || auth.currentUser?.uid;
       if (!uid) throw new Error("Not signed in");
 
       const imageUrls = Array.isArray(formData.image_urls)
@@ -617,19 +647,126 @@ export default function SchoolProfile() {
         return;
       }
 
-      const userRef = doc(db, "users", uid);
-      const draftPayload = {
-        school_profile: schoolProfileMirror,
-        school_profile_draft: schoolProfileMirror,
-        school_name: formData.name,
-        institution_name: formData.name,
-        organization_name: formData.name,
+      // No claimed/linked institution yet:
+      // Create a real self-created institution so the school appears in Directory,
+      // SchoolDetails, and SchoolDashboard without needing to claim an existing profile.
+      const institutionId = String(formData.institution_id || "").trim() || uid;
+      const instRef = doc(db, "institutions", institutionId);
+      const instSnap = await getDoc(instRef);
+
+      if (instSnap.exists()) {
+        const existingData = instSnap.data() || {};
+        const existingOwner = String(existingData.user_id || "").trim();
+
+        if (existingOwner && existingOwner !== uid) {
+          throw new Error("This institution profile is already owned by another account.");
+        }
+      }
+
+      const institutionData = {
+        user_id: uid,
+        created_by_uid: uid,
+        created_from: "school_profile",
+        claim_status: "self_created",
+        verification_status: instSnap.exists()
+          ? instSnap.data()?.verification_status || "pending"
+          : "pending",
+
+        name: formData.name,
+        short_name: formData.name || "",
+
+        school_level: formData.school_level,
+        type: formData.school_type,
+        school_type: formData.school_type,
+
+        public_private: formData.is_public,
+        isPublic: formData.is_public === "public",
+        is_public: formData.is_public,
+
+        year_established: toNum(formData.founded_year),
+        founded_year: toNum(formData.founded_year),
+
+        country: formData.country,
+        province: formData.province,
+        city: formData.location,
+        location: formData.location,
+        address: formData.address,
+
+        website: formData.website,
+        email: formData.email,
+        phone: formData.phone,
+
+        logoUrl: formData.logo_url || primaryImage || "",
+        logo_url: formData.logo_url || primaryImage || "",
+        bannerUrl: formData.banner_url || "",
+        banner_url: formData.banner_url || "",
+
+        imageUrl: primaryImage,
+        image_url: primaryImage,
+        imageUrls: imageUrls,
+        image_urls: imageUrls,
+
+        about: formData.about,
+        description: formData.about,
+
+        pgwp_available: toBool(formData.pgwp_available),
+        hasCoop: toBool(formData.has_coop),
+        has_coop: toBool(formData.has_coop),
+        isDLI: toBool(formData.is_dli),
+        is_dli: toBool(formData.is_dli),
+        dliNumber: formData.dli_number,
+        dli_number: formData.dli_number,
+
+        rating: toNum(formData.rating),
+        acceptance_rate: toNum(formData.acceptance_rate),
+        avgTuition: toNum(formData.tuition_fees),
+        tuition_fees: toNum(formData.tuition_fees),
+        application_fee: toNum(formData.application_fee),
+        cost_of_living: toNum(formData.cost_of_living),
+
+        status: instSnap.exists() ? instSnap.data()?.status || "active" : "active",
+        visibility: instSnap.exists() ? instSnap.data()?.visibility || "public" : "public",
         updated_at: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      await setDoc(userRef, draftPayload, { merge: true });
+
+      if (!instSnap.exists()) {
+        institutionData.created_at = serverTimestamp();
+        institutionData.createdAt = serverTimestamp();
+      }
+
+      await setDoc(instRef, institutionData, { merge: true });
+
+      const userRef = doc(db, "users", uid);
+      const linkedProfile = {
+        ...schoolProfileMirror,
+        institution_id: institutionId,
+        claim_status: "self_created",
+        verification_status: institutionData.verification_status,
+      };
+
+      await setDoc(
+        userRef,
+        {
+          school_profile: linkedProfile,
+          school_profile_draft: linkedProfile,
+          linked_institution_id: institutionId,
+          school_name: formData.name,
+          institution_name: formData.name,
+          organization_name: formData.name,
+          updated_at: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setSaveMode("institution");
+      setHasClaimedProfile(true);
+      setDraftDocId(uid);
+      setFormData((prev) => ({ ...prev, institution_id: institutionId }));
+
       await loadSchoolData();
-      alert("School profile draft saved successfully.");
+      alert("School profile created and saved successfully.");
     } catch (error) {
       console.error("Error saving school profile:", error);
       alert(error?.message || "Failed to save profile. Please try again.");
@@ -725,16 +862,42 @@ export default function SchoolProfile() {
                   Save mode: <strong>School account draft</strong>
                 </span>
               </div>
+
+              <div className="pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const uid = fbUser?.uid || auth.currentUser?.uid;
+                    navigate(`${createPageUrl("SchoolDetails")}${uid ? `?id=${uid}` : ""}`);
+                  }}
+                >
+                  View School Details
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
           <Card className="mb-6 border-green-200 bg-white">
             <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-sm text-green-800">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>
-                  Save mode: <strong>Linked institution profile</strong>
-                </span>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2 text-sm text-green-800">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>
+                    Save mode: <strong>Linked institution profile</strong>
+                  </span>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const id = formData.institution_id || fbUser?.uid || auth.currentUser?.uid;
+                    navigate(`${createPageUrl("SchoolDetails")}${id ? `?id=${id}` : ""}`);
+                  }}
+                >
+                  View School Details
+                </Button>
               </div>
             </CardContent>
           </Card>

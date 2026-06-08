@@ -218,6 +218,104 @@ function getVerificationSummary(userDoc) {
   };
 }
 
+
+function normalizeSchoolProfileForInstitution(profile, uid, institutionId, existingInstitution = {}) {
+  const p = profile && typeof profile === "object" ? profile : {};
+
+  const imageUrls = Array.isArray(p.imageUrls)
+    ? p.imageUrls.filter(Boolean)
+    : Array.isArray(p.image_urls)
+    ? p.image_urls.filter(Boolean)
+    : p.imageUrl || p.image_url
+    ? [p.imageUrl || p.image_url].filter(Boolean)
+    : [];
+
+  const primaryImage = firstNonEmpty(
+    p.imageUrl,
+    p.image_url,
+    imageUrls[0],
+    existingInstitution.imageUrl,
+    existingInstitution.image_url
+  );
+
+  const name = firstNonEmpty(
+    p.name,
+    p.school_name,
+    p.institution_name,
+    existingInstitution.name,
+    existingInstitution.school_name,
+    existingInstitution.institution_name
+  );
+
+  return {
+    user_id: uid,
+    claim_status: "claimed",
+    claimed_at: serverTimestamp(),
+
+    name,
+    short_name: firstNonEmpty(p.short_name, existingInstitution.short_name, name),
+
+    school_level: firstNonEmpty(p.school_level, existingInstitution.school_level, "University"),
+    type: firstNonEmpty(p.type, p.school_type, existingInstitution.type, existingInstitution.school_type, "university"),
+    school_type: firstNonEmpty(p.school_type, p.type, existingInstitution.school_type, existingInstitution.type, "university"),
+
+    public_private: firstNonEmpty(p.public_private, p.is_public, existingInstitution.public_private, "public"),
+    isPublic:
+      typeof p.isPublic === "boolean"
+        ? p.isPublic
+        : firstNonEmpty(p.public_private, p.is_public, existingInstitution.public_private, "public") === "public",
+    is_public: firstNonEmpty(p.is_public, p.public_private, existingInstitution.is_public, "public"),
+
+    year_established: firstNonEmpty(p.year_established, p.founded_year, existingInstitution.year_established, existingInstitution.founded_year, ""),
+    founded_year: firstNonEmpty(p.founded_year, p.year_established, existingInstitution.founded_year, existingInstitution.year_established, ""),
+
+    country: firstNonEmpty(p.country, existingInstitution.country, ""),
+    province: firstNonEmpty(p.province, existingInstitution.province, ""),
+    city: firstNonEmpty(p.city, p.location, existingInstitution.city, existingInstitution.location, ""),
+    location: firstNonEmpty(p.location, p.city, existingInstitution.location, existingInstitution.city, ""),
+    address: firstNonEmpty(p.address, existingInstitution.address, ""),
+
+    website: firstNonEmpty(p.website, existingInstitution.website, ""),
+    email: firstNonEmpty(p.email, existingInstitution.email, ""),
+    phone: firstNonEmpty(p.phone, existingInstitution.phone, ""),
+
+    logoUrl: firstNonEmpty(p.logoUrl, p.logo_url, primaryImage, existingInstitution.logoUrl, existingInstitution.logo_url, ""),
+    logo_url: firstNonEmpty(p.logo_url, p.logoUrl, primaryImage, existingInstitution.logo_url, existingInstitution.logoUrl, ""),
+    bannerUrl: firstNonEmpty(p.bannerUrl, p.banner_url, existingInstitution.bannerUrl, existingInstitution.banner_url, ""),
+    banner_url: firstNonEmpty(p.banner_url, p.bannerUrl, existingInstitution.banner_url, existingInstitution.bannerUrl, ""),
+
+    imageUrl: primaryImage || "",
+    image_url: primaryImage || "",
+    imageUrls,
+    image_urls: imageUrls,
+
+    about: firstNonEmpty(p.about, p.description, existingInstitution.about, existingInstitution.description, ""),
+    description: firstNonEmpty(p.description, p.about, existingInstitution.description, existingInstitution.about, ""),
+
+    pgwp_available: typeof p.pgwp_available === "boolean" ? p.pgwp_available : existingInstitution.pgwp_available || false,
+    hasCoop: typeof p.hasCoop === "boolean" ? p.hasCoop : typeof p.has_coop === "boolean" ? p.has_coop : existingInstitution.hasCoop || false,
+    has_coop: typeof p.has_coop === "boolean" ? p.has_coop : typeof p.hasCoop === "boolean" ? p.hasCoop : existingInstitution.has_coop || false,
+    isDLI: typeof p.isDLI === "boolean" ? p.isDLI : typeof p.is_dli === "boolean" ? p.is_dli : existingInstitution.isDLI || false,
+    is_dli: typeof p.is_dli === "boolean" ? p.is_dli : typeof p.isDLI === "boolean" ? p.isDLI : existingInstitution.is_dli || false,
+    dliNumber: firstNonEmpty(p.dliNumber, p.dli_number, existingInstitution.dliNumber, existingInstitution.dli_number, ""),
+    dli_number: firstNonEmpty(p.dli_number, p.dliNumber, existingInstitution.dli_number, existingInstitution.dliNumber, ""),
+
+    rating: firstNonEmpty(p.rating, existingInstitution.rating, 0),
+    acceptance_rate: firstNonEmpty(p.acceptance_rate, existingInstitution.acceptance_rate, 0),
+    avgTuition: firstNonEmpty(p.avgTuition, p.tuition_fees, existingInstitution.avgTuition, existingInstitution.tuition_fees, 0),
+    tuition_fees: firstNonEmpty(p.tuition_fees, p.avgTuition, existingInstitution.tuition_fees, existingInstitution.avgTuition, 0),
+    application_fee: firstNonEmpty(p.application_fee, existingInstitution.application_fee, 0),
+    cost_of_living: firstNonEmpty(p.cost_of_living, existingInstitution.cost_of_living, 0),
+
+    status: firstNonEmpty(existingInstitution.status, "active"),
+    visibility: firstNonEmpty(existingInstitution.visibility, "public"),
+    verification_status: firstNonEmpty(existingInstitution.verification_status, "pending"),
+
+    linked_institution_id: institutionId,
+    updated_at: serverTimestamp(),
+  };
+}
+
 export default function AdminClaimRequests() {
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState([]);
@@ -373,14 +471,25 @@ export default function AdminClaimRequests() {
           throw new Error("This institution is already owned by another user.");
         }
 
+        const draftProfile =
+          requesterData.school_profile_draft && typeof requesterData.school_profile_draft === "object"
+            ? requesterData.school_profile_draft
+            : requesterData.school_profile && typeof requesterData.school_profile === "object"
+            ? requesterData.school_profile
+            : {};
+
+        const institutionMergeData = normalizeSchoolProfileForInstitution(
+          draftProfile,
+          selected.requested_by_uid,
+          selected.institution_id,
+          instData
+        );
+
         tx.set(
           instRef,
           {
-            user_id: selected.requested_by_uid,
-            claim_status: "claimed",
-            claimed_at: serverTimestamp(),
+            ...institutionMergeData,
             claimed_by_email: requestData.requested_by_email || "",
-            updated_at: serverTimestamp(),
           },
           { merge: true }
         );
@@ -404,14 +513,20 @@ export default function AdminClaimRequests() {
               ? requesterData.school_profile
               : {};
 
+          const approvedProfile = {
+            ...prevSchoolProfile,
+            ...draftProfile,
+            institution_id: selected.institution_id,
+            user_id: selected.requested_by_uid,
+            claim_status: "claimed",
+          };
+
           tx.set(
             requesterRef,
             {
               linked_institution_id: selected.institution_id,
-              school_profile: {
-                ...prevSchoolProfile,
-                institution_id: selected.institution_id,
-              },
+              school_profile: approvedProfile,
+              school_profile_draft: approvedProfile,
               updated_at: serverTimestamp(),
             },
             { merge: true }

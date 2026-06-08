@@ -1189,17 +1189,32 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    function validSchoolInstitutionCreate() {
+      return signedIn() &&
+        requestUserIsSchool() &&
+        request.resource.data.user_id is string &&
+        request.resource.data.user_id == request.auth.uid &&
+        request.resource.data.created_by_uid is string &&
+        request.resource.data.created_by_uid == request.auth.uid &&
+        request.resource.data.claim_status is string &&
+        request.resource.data.claim_status == "self_created" &&
+        request.resource.data.created_from is string &&
+        request.resource.data.created_from == "school_profile";
+    }
+
     match /institutions/{docId} {
       allow read: if true;
 
-      // Keep create restricted so schools do NOT create fresh institution docs
-      // through profile editing. Admin only for admin-reviewed claim flow.
-      allow create: if isAdmin();
+      // Admin can seed official institutions.
+      // School users can create their own institution ONLY from SchoolProfile,
+      // linked to their own UID. This supports the "no claim needed" flow.
+      allow create: if isAdmin() || validSchoolInstitutionCreate();
 
       // Updates allowed for:
       // 1) admin
       // 2) current owner editing their own institution without changing ownership
-      // Schools may NOT self-claim directly. Claim approval must be done by admin.
+      // Schools may NOT claim an existing unowned institution directly.
+      // Existing profile claims still require admin approval through institution_claim_requests.
       allow update: if signedIn() && (
         isAdmin() ||
         (

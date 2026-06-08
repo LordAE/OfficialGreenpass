@@ -1193,7 +1193,7 @@ export default function Onboarding() {
           </div>
         )}
 
-        {rolePlanOptions.length > 1 && (
+        {subscriptionModeEnabled && rolePlanOptions.length > 1 && (
           <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left">
             <div className="text-sm font-semibold text-gray-900 mb-3">
               {tr("onboarding.subscription.choose_plan", "Choose your billing plan")}
@@ -1297,6 +1297,8 @@ export default function Onboarding() {
   };
 
   const renderSubscription = () => {
+    if (!subscriptionModeEnabled || !subscriptionRequired) return null;
+
     const plan = selectedPlan || getPlanById(getDefaultPlanIdForRole(selectedRole));
 
     if (!plan) return null;
